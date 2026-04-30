@@ -1,0 +1,114 @@
+[root@server betcheza]# mysql -u admin_betcheza -p'dj@Topaz2016' admin_betcheza <<'SQL'
+> CREATE TABLE IF NOT EXISTS match_votes (
+>   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+>   match_id VARCHAR(191) NOT NULL,
+>   voter_id VARCHAR(191) NOT NULL,
+>   pick ENUM('home','draw','away') NOT NULL,
+>   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+>   UNIQUE KEY uniq_match_voter (match_id, voter_id),
+>   KEY idx_match (match_id)
+> ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+> SQL
+ Verify it was [root@server betcheza]#
+[root@server betcheza]# # Verify it was created
+[root@server betcheza]# mysql -u admin_betcheza -p'dj@Topaz2016' admin_betcheza -e "SHOW TABLES LIKE 'match_votes';"
++----------------------------------------+
+| Tables_in_admin_betcheza (match_votes) |
++----------------------------------------+
+| match_votes                            |
++----------------------------------------+
+[root@server betcheza]# cd /home/admin/apps/betcheza
+[root@server betcheza]#
+[root@server betcheza]# # Backup .env.local and any local-only files BEFORE we touch git
+[root@server betcheza]# cp .env.local /root/betcheza.env.local.backup
+[root@server betcheza]#
+[root@server betcheza]# # Initialize git, point to your GitHub, and sync to main
+[root@server betcheza]# git init
+remote ahint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint:   git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint:   git branch -m <name>
+Initialized empty Git repository in /home/admin/apps/betcheza/.git/
+[root@server betcheza]# git remote add origin https://github.com/topazdigital/BETCHEZA-COMPLETE.git
+fatal: detected dubious ownership in repository at '/home/admin/apps/betcheza'
+To add an exception for this directory, call:
+
+        git config --global --add safe.directory /home/admin/apps/betcheza
+[root@server betcheza]# git fetch origin main
+fatal: detected dubious ownership in repository at '/home/admin/apps/betcheza'
+To add an exception for this directory, call:
+
+        git config --global --add safe.directory /home/admin/apps/betcheza
+[root@server betcheza]#
+[root@server betcheza]# # Hard reset to GitHub's main (this overwrites local files with the repo)
+[root@server betcheza]# # .env.local is gitignored so it survives, but we backed it up just in case
+[root@server betcheza]# git reset --hard origin/main
+fatal: detected dubious ownership in repository at '/home/admin/apps/betcheza'
+To add an exception for this directory, call:
+
+        git config --global --add safe.directory /home/admin/apps/betcheza
+[root@server betcheza]#
+[root@server betcheza]# # Restore .env.local if anything happened to it
+[root@server betcheza]# [ -f .env.local ] || cp /root/betcheza.env.local.backup .env.local
+[root@server betcheza]#
+[root@server betcheza]# # Confirm
+[root@server betcheza]# git log --oneline -3
+la .env.fatal: detected dubious ownership in repository at '/home/admin/apps/betcheza'
+To add an exception for this directory, call:
+
+        git config --global --add safe.directory /home/admin/apps/betcheza
+[root@server betcheza]# ls -la .env.local
+-rw-r--r-- 1 admin admin 588 Apr 30 16:20 .env.local
+[root@server betcheza]# cat > /home/admin/apps/betcheza/deploy.sh <<'DEPLOY'
+> #!/bin/bash
+> set -e
+> cd /home/admin/apps/betcheza
+>
+> echo "=========================================="
+> echo "  BETCHEZA DEPLOY"
+> echo "=========================================="
+>
+> echo ""
+> echo "[1/5] Pulling latest code from GitHub..."
+> git fetch origin main
+> git reset --hard origin/main
+>
+> echo ""
+> echo "[2/5] Installing dependencies..."
+> npm install --no-audit --no-fund 2>&1 | tail -5
+>
+> echo ""
+> echo "[3/5] Building Next.js..."
+> npm run build 2>&1 | tail -20
+>
+> echo ""
+> echo "[4/5] Restarting PM2 (admin user)..."
+> sudo -u admin -i pm2 restart betcheza --update-env
+>
+> echo ""
+> echo "[5/5] Checking status..."
+> sleep 4
+> sudo -u admin -i pm2 list | grep betcheza
+> echo ""
+> echo "Last 10 log lines:"
+> sudo -u admin -i pm2 logs betcheza --lines 10 --nostream | tail -15
+>
+> echo ""
+> echo "=========================================="
+> echo "  DEPLOY COMPLETE - https://betcheza.co.ke"
+> echo "=========================================="
+> DEPLOY
+[root@server betcheza]#
+[root@server betcheza]# # Make it executable
+[root@server betcheza]# chmod +x /home/admin/apps/betcheza/deploy.sh
+[root@server betcheza]#
+[root@server betcheza]# # Confirm
+[root@server betcheza]# ls -la /home/admin/apps/betcheza/deploy.sh
+-rwxr-xr-x 1 root root 907 Apr 30 16:51 /home/admin/apps/betcheza/deploy.sh
+[root@server betcheza]#
