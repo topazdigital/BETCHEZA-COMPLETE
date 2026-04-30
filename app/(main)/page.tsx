@@ -333,14 +333,21 @@ export default function HomePage() {
                   </Button>
                 </div>
                 {topTipsters.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div
+                    className={cn(
+                      // Mobile: horizontal scroll snap row (no vertical stack).
+                      // Tablet+: switch to a clean responsive grid.
+                      'flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                      'sm:grid sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4',
+                    )}
+                  >
                     {topTipsters.map((tipster, index) => {
                       const initial = (tipster.displayName || tipster.username || '?').charAt(0).toUpperCase();
                       return (
                         <Link
                           key={tipster.id}
                           href={tipsterHref(tipster.username || tipster.displayName, tipster.username || tipster.id)}
-                          className="group rounded-xl border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-lg"
+                          className="group w-[78%] shrink-0 snap-start rounded-xl border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-lg sm:w-auto sm:shrink"
                         >
                           <div className="mb-2.5 flex items-center gap-2.5">
                             <div className="relative">

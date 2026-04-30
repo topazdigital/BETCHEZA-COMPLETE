@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, Search, Bell, Settings, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User
+  Star, Wallet, User, Sparkles, UserPlus
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -34,11 +34,13 @@ const mainNavItems: Array<{ href: string; label: string; icon: typeof Home; badg
   { href: "/", label: "Home", icon: Home },
   { href: "/live", label: "Live", icon: Radio, badgeKey: 'live' },
   { href: "/matches", label: "Matches", icon: Calendar, badgeKey: 'today' },
+  { href: "/predictor", label: "AI Predictor", icon: Sparkles },
   { href: "/tipsters", label: "Tipsters", icon: Users },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/competitions", label: "Competitions", icon: Star },
   { href: "/bookmakers", label: "Bookmakers", icon: Wallet },
   { href: "/results", label: "Results", icon: BarChart3 },
+  { href: "/become-tipster", label: "Become a Tipster", icon: UserPlus },
 ]
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {

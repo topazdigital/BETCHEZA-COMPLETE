@@ -295,6 +295,20 @@ export function Header() {
             >
               Competitions
             </Link>
+            <Link
+              href="/predictor"
+              className="rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-accent"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              AI Predictor
+            </Link>
+            <Link
+              href="/become-tipster"
+              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              Become a Tipster
+            </Link>
           </nav>
         </div>
       )}
