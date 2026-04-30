@@ -1,0 +1,123 @@
+[root@server ~]# # === 1. Stop both PM2 apps so nothing respawns during cleanup ===
+[root@server ~]# su - admin -c "pm2 delete betcheza dossy 2>/dev/null; pm2 save --force"
+= 2. Kill any orphan Next.js processes still holding p[PM2] Applying action deleteProcessId on app [betcheza](ids: [ 4 ])
+orts ===[PM2] [betcheza](4) ✓
+[PM2] Applying action deleteProcessId on app [dossy](ids: [ 0 ])
+
+pkill -[PM2] [dossy](0) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+9 -u admin -f "[PM2] Saving current process list...
+[PM2] Successfully saved in /home/admin/.pm2/dump.pm2
+[root@server ~]#
+[root@server ~]# # === 2. Kill any orphan Next.js processes still holding ports ===
+[root@server ~]# pkill -9 -u admin -f "next-server" 2>/dev/null
+[root@server ~]# pkill -9 -u admin -f "next start" 2>/dev/null
+[root@server ~]# sleep 3
+ "--- Ports after cleanup (should be empty) ---"
+ss -tlnp | grep -E ':(3000|5000|5001)' || echo "All clear"
+
+# === 3. Make Betcheza listen on a UNIQUE port (5001) bound to localhost ===
+se[root@server ~]# echo "--- Ports after cleanup (should be empty) ---"
+--- Ports after cleanup (should be empty) ---
+[root@server ~]# ss -tlnp | grep -E ':(3000|5000|5001)' || echo "All clear"
+LISTEN 0      511                                 0.0.0.0:5000      0.0.0.0:*    users:(("next-server (v1",pid=1050525,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+[root@server ~]#
+[root@server ~]# # === 3. Make Betcheza listen on a UNIQUE port (5001) bound to localhost ===
+[root@server ~]# sed -i 's|"start": "next start -p 5000 -H 0.0.0.0"|"start": "next start -p 5001 -H 127.0.0.1"|' \
+>     /home/admin/apps/betcheza/package.json
+[root@server ~]# echo "--- Betcheza start script now: ---"
+--- Betcheza start script now: ---
+[root@server ~]# grep '"start"' /home/admin/apps/betcheza/package.json
+    "start": "next start -p 5001 -H 127.0.0.1",
+[root@server ~]#
+[root@server ~]# # === 4. Start Dossy on port 3000 ===
+[root@server ~]# su - admin -c "cd /home/admin/domains/dossy.world/dossy_app && PORT=3000 pm2 start npm --name dossy -- run start"
+ === 5. [PM2] Starting /usr/bin/npm in fork_mode (1 instance)
+Start B[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 23.3mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server ~]#
+[root@server ~]# # === 5. Start Betcheza on port 5001 ===
+[root@server ~]# su - admin -c "cd /home/admin/apps/betcheza && pm2 start npm --name betcheza -- start"
+eep 8
+su[PM2] Starting /usr/bin/npm in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 0    │ online    │ 0%       │ 20.4mb   │
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 60.5mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server ~]#
+[root@server ~]# sleep 8
+ - admin -c "pm2 save"
+
+# === 6. Sanity check both apps locally ===
+echo ""
+echo "=== PORT 3000 (should say Dossy World) ==="
+curl -s http://127.0.0.1:3000/ | grep -oE '<title[^<]*</title>' | head -1
+echo "=== PORT 5001 (should say Betcheza) ==="
+curl -s http://127.0.0.1:5001/ | grep -oE '<title[^<]*</title>' | head -1
+
+# === 7. Point Apache at the new Betcheza port ===
+cat > /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_http[root@server ~]# su - admin -c "pm2 save"
+d <<'EOF'
+ProxyPreserveH[PM2] Saving current process list...
+[PM2] Successfully saved in /home/admin/.pm2/dump.pm2
+[root@server ~]#
+[root@server ~]# # === 6. Sanity check both apps locally ===
+[root@server ~]# echo ""
+
+[root@server ~]# echo "=== PORT 3000 (should say Dossy World) ==="
+=== PORT 3000 (should say Dossy World) ===
+[root@server ~]# curl -s http://127.0.0.1:3000/ | grep -oE '<title[^<]*</title>' | head -1
+<title>Dossy World - Fill the Vault. Share the Profit.</title>
+[root@server ~]# echo "=== PORT 5001 (should say Betcheza) ==="
+=== PORT 5001 (should say Betcheza) ===
+[root@server ~]# curl -s http://127.0.0.1:5001/ | grep -oE '<title[^<]*</title>' | head -1
+<title>Betcheza - Betting Tips Community</title>
+[root@server ~]#
+[root@server ~]# # === 7. Point Apache at the new Betcheza port ===
+[root@server ~]# cat > /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd <<'EOF'
+> ProxyPreserveHost On
+> ProxyRequests Off
+> ProxyPass /.well-known !
+> ProxyPass / http://127.0.0.1:5001/
+> ProxyPassReverse / http://127.0.0.1:5001/
+> RequestHeader set X-Forwarded-Proto "https"
+> RequestHeader set X-Forwarded-Port "443"
+> EOF
+[root@server ~]# chown admin:admin /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd
+[root@server ~]# echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue
+[root@server ~]# /usr/local/directadmin/dataskq d
+tl resta2026/04/30 15:22:28  info executing task            task=action=rewrite&value=httpd
+dataskq: command: action=rewrite&value=httpd
+rt httpdApache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+
+
+# === 8. Final external test ===
+echo ""
+e2026/04/30 15:22:29  info finished task             duration=747.892158ms task=action=rewrite&value=httpd
+[root@server ~]# systemctl restart httpd
+cho "=== EXTERNAL — https://www.betcheza.co.ke ==="
+curl -ks https://www.betcheza.co.ke/ | grep -oE '<title[^<]*</title>' | head -1
+echo "=== EXTERNAL — https://betcheza.co.ke ==="
+curl -ks https://betcheza.co.ke/ | grep -oE '<title[^<]*</title>' | head -1[root@server ~]#
+[root@server ~]# # === 8. Final external test ===
+[root@server ~]# echo ""
+
+[root@server ~]# echo "=== EXTERNAL — https://www.betcheza.co.ke ==="
+=== EXTERNAL — https://www.betcheza.co.ke ===
+[root@server ~]# curl -ks https://www.betcheza.co.ke/ | grep -oE '<title[^<]*</title>' | head -1
+<title>Betcheza - Betting Tips Community</title>
+[root@server ~]# echo "=== EXTERNAL — https://betcheza.co.ke ==="
+=== EXTERNAL — https://betcheza.co.ke ===
+[root@server ~]# curl -ks https://betcheza.co.ke/ | grep -oE '<title[^<]*</title>' | head -1
+<title>301 Moved Permanently</title>
+[root@server ~]#
