@@ -1,0 +1,346 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getCurrentUser } from '@/lib/auth'
+
+export interface PaymentGateway {
+  id: string
+  name: string
+  provider: string
+  enabled: boolean
+  countries: string[]
+  currencies: string[]
+  type: 'card' | 'mobile_money' | 'bank' | 'crypto' | 'ewallet' | 'regional'
+  credentials: Record<string, string>
+  fees?: { percent: number; fixed: number; currency: string }
+  minAmount?: number
+  maxAmount?: number
+  supportsPayouts: boolean
+  logoUrl?: string
+}
+
+export interface PayoutSettings {
+  minimumPayoutAmount: number
+  payoutSchedule: 'instant' | 'daily' | 'weekly' | 'monthly'
+  payoutCurrency: string
+  platformFeePercent: number
+  tipsterSharePercent: number
+  autoPayouts: boolean
+  payoutMethods: string[]
+}
+
+// ── In-memory defaults (swap for DB queries when ready) ──
+const DEFAULT_GATEWAYS: PaymentGateway[] = [
+  {
+    id: 'stripe',
+    name: 'Stripe',
+    provider: 'stripe',
+    enabled: false,
+    countries: ['US', 'GB', 'CA', 'AU', 'EU', 'DE', 'FR', 'NL', 'IT', 'ES'],
+    currencies: ['USD', 'GBP', 'EUR', 'AUD', 'CAD'],
+    type: 'card',
+    credentials: { publishable_key: '', secret_key: '', webhook_secret: '' },
+    fees: { percent: 2.9, fixed: 0.30, currency: 'USD' },
+    minAmount: 1,
+    maxAmount: 999999,
+    supportsPayouts: true,
+    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Stripe_Logo%2C_revised_2016.svg',
+  },
+  {
+    id: 'paypal',
+    name: 'PayPal',
+    provider: 'paypal',
+    enabled: false,
+    countries: ['US', 'GB', 'CA', 'AU', 'EU', 'DE', 'FR', 'NL', 'IT', 'ES', 'BR'],
+    currencies: ['USD', 'GBP', 'EUR', 'AUD', 'CAD', 'BRL'],
+    type: 'ewallet',
+    credentials: { client_id: '', client_secret: '', mode: 'sandbox' },
+    fees: { percent: 3.49, fixed: 0.49, currency: 'USD' },
+    minAmount: 1,
+    maxAmount: 10000,
+    supportsPayouts: true,
+    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg',
+  },
+  {
+    id: 'google-pay',
+    name: 'Google Pay',
+    provider: 'google',
+    enabled: false,
+    countries: ['US', 'GB', 'CA', 'AU', 'EU', 'DE', 'FR', 'NL', 'IT', 'ES', 'IN', 'JP', 'KE', 'NG', 'ZA'],
+    currencies: ['USD', 'GBP', 'EUR', 'AUD', 'CAD', 'INR', 'JPY', 'KES', 'NGN', 'ZAR'],
+    type: 'ewallet',
+    credentials: {
+      merchant_id: '',
+      gateway_merchant_id: '',
+      gateway: 'stripe',
+      public_key: '',
+    },
+    fees: { percent: 2.9, fixed: 0.30, currency: 'USD' },
+    minAmount: 1,
+    maxAmount: 100000,
+    supportsPayouts: false,
+    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/f/f2/Google_Pay_Logo.svg',
+  },
+  {
+    id: 'mpesa',
+    name: 'M-Pesa',
+    provider: 'safaricom',
+    enabled: false,
+    countries: ['KE', 'TZ', 'UG', 'ET', 'GH', 'ZA', 'MZ', 'CD', 'LS'],
+    currencies: ['KES', 'TZS', 'UGX', 'ETB', 'GHS', 'ZAR'],
+    type: 'mobile_money',
+    credentials: {
+      consumer_key: '',
+      consumer_secret: '',
+      passkey: '',
+      shortcode: '',
+      initiator_name: '',
+      security_credential: '',
+    },
+    fees: { percent: 1.5, fixed: 0, currency: 'KES' },
+    minAmount: 1,
+    maxAmount: 300000,
+    supportsPayouts: true,
+  },
+  {
+    id: 'mpesa-payhero',
+    name: 'M-Pesa via Payhero',
+    provider: 'payhero',
+    enabled: false,
+    countries: ['KE'],
+    currencies: ['KES'],
+    type: 'mobile_money',
+    credentials: {
+      api_username: '',
+      api_password: '',
+      channel_id: '',
+      callback_url: '',
+    },
+    fees: { percent: 1.0, fixed: 0, currency: 'KES' },
+    minAmount: 10,
+    maxAmount: 250000,
+    supportsPayouts: true,
+  },
+  {
+    id: 'mpesa-pesapal',
+    name: 'M-Pesa via Pesapal',
+    provider: 'pesapal',
+    enabled: false,
+    countries: ['KE', 'TZ', 'UG', 'RW', 'MW', 'ZM', 'ZW'],
+    currencies: ['KES', 'TZS', 'UGX', 'RWF', 'USD'],
+    type: 'mobile_money',
+    credentials: {
+      consumer_key: '',
+      consumer_secret: '',
+      ipn_id: '',
+      callback_url: '',
+    },
+    fees: { percent: 3.5, fixed: 0, currency: 'KES' },
+    minAmount: 10,
+    maxAmount: 1000000,
+    supportsPayouts: true,
+  },
+  {
+    id: 'mpesa-intasend',
+    name: 'M-Pesa via IntaSend',
+    provider: 'intasend',
+    enabled: false,
+    countries: ['KE', 'UG'],
+    currencies: ['KES', 'UGX', 'USD'],
+    type: 'mobile_money',
+    credentials: {
+      publishable_key: '',
+      secret_key: '',
+      webhook_secret: '',
+    },
+    fees: { percent: 1.5, fixed: 0, currency: 'KES' },
+    minAmount: 10,
+    maxAmount: 500000,
+    supportsPayouts: true,
+  },
+  {
+    id: 'mtn',
+    name: 'MTN Mobile Money',
+    provider: 'mtn',
+    enabled: false,
+    countries: ['NG', 'GH', 'UG', 'CM', 'CI', 'ZM', 'RW', 'BJ', 'BF', 'SN'],
+    currencies: ['NGN', 'GHS', 'UGX', 'XAF', 'XOF', 'ZMW', 'RWF'],
+    type: 'mobile_money',
+    credentials: {
+      subscription_key: '',
+      api_user: '',
+      api_key: '',
+      collection_primary_key: '',
+      disbursement_primary_key: '',
+    },
+    fees: { percent: 1.5, fixed: 0, currency: 'NGN' },
+    minAmount: 50,
+    maxAmount: 5000000,
+    supportsPayouts: true,
+  },
+  {
+    id: 'orange-money',
+    name: 'Orange Money',
+    provider: 'orange',
+    enabled: false,
+    countries: ['SN', 'CI', 'ML', 'CM', 'MG', 'TN', 'JO', 'EG'],
+    currencies: ['XOF', 'XAF', 'MAD', 'TND'],
+    type: 'mobile_money',
+    credentials: { client_id: '', client_secret: '', merchant_key: '' },
+    fees: { percent: 2.0, fixed: 0, currency: 'XOF' },
+    minAmount: 100,
+    maxAmount: 2000000,
+    supportsPayouts: true,
+  },
+  {
+    id: 'flutterwave',
+    name: 'Flutterwave',
+    provider: 'flutterwave',
+    enabled: false,
+    countries: ['NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'CM', 'CI', 'ET', 'EG'],
+    currencies: ['NGN', 'GHS', 'KES', 'ZAR', 'UGX', 'USD', 'EUR', 'GBP'],
+    type: 'regional',
+    credentials: { public_key: '', secret_key: '', encryption_key: '' },
+    fees: { percent: 1.4, fixed: 0, currency: 'NGN' },
+    minAmount: 100,
+    maxAmount: 10000000,
+    supportsPayouts: true,
+  },
+  {
+    id: 'paystack',
+    name: 'Paystack',
+    provider: 'paystack',
+    enabled: false,
+    countries: ['NG', 'GH', 'ZA', 'KE', 'CI'],
+    currencies: ['NGN', 'GHS', 'ZAR', 'KES'],
+    type: 'regional',
+    credentials: { public_key: '', secret_key: '' },
+    fees: { percent: 1.5, fixed: 100, currency: 'NGN' },
+    minAmount: 50,
+    maxAmount: 5000000,
+    supportsPayouts: false,
+  },
+  {
+    id: 'bank-transfer',
+    name: 'Bank Transfer (SWIFT/SEPA)',
+    provider: 'bank',
+    enabled: false,
+    countries: ['ALL'],
+    currencies: ['USD', 'EUR', 'GBP'],
+    type: 'bank',
+    credentials: { bank_name: '', account_number: '', routing_number: '', iban: '', swift: '' },
+    fees: { percent: 0, fixed: 5, currency: 'USD' },
+    minAmount: 10,
+    maxAmount: 999999,
+    supportsPayouts: true,
+  },
+  {
+    id: 'crypto-usdt',
+    name: 'Crypto (USDT / BTC)',
+    provider: 'coinpayments',
+    enabled: false,
+    countries: ['ALL'],
+    currencies: ['USDT', 'BTC', 'ETH', 'BNB'],
+    type: 'crypto',
+    credentials: {
+      public_key: '',
+      private_key: '',
+      merchant_id: '',
+      ipn_secret: '',
+    },
+    fees: { percent: 0.5, fixed: 0, currency: 'USDT' },
+    minAmount: 1,
+    maxAmount: 999999,
+    supportsPayouts: true,
+  },
+]
+
+const DEFAULT_PAYOUT_SETTINGS: PayoutSettings = {
+  minimumPayoutAmount: 10,
+  payoutSchedule: 'weekly',
+  payoutCurrency: 'USD',
+  platformFeePercent: 20,
+  tipsterSharePercent: 80,
+  autoPayouts: false,
+  payoutMethods: ['paypal', 'bank-transfer', 'crypto-usdt'],
+}
+
+// Simple in-memory store (replace with DB calls)
+let gatewayStore: PaymentGateway[] = DEFAULT_GATEWAYS
+let payoutStore: PayoutSettings = DEFAULT_PAYOUT_SETTINGS
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await getCurrentUser()
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Mask sensitive credential values for display
+    const masked = gatewayStore.map((gw) => ({
+      ...gw,
+      credentials: Object.fromEntries(
+        Object.entries(gw.credentials).map(([k, v]) => [
+          k,
+          v ? `${v.slice(0, 4)}${'•'.repeat(Math.max(0, v.length - 4))}` : '',
+        ])
+      ),
+    }))
+
+    return NextResponse.json({ gateways: masked, payoutSettings: payoutStore })
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const session = await getCurrentUser()
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await req.json()
+
+    if (body.gateways) {
+      // Merge credentials — don't overwrite values that are already set if new value is masked
+      gatewayStore = (body.gateways as PaymentGateway[]).map((incoming) => {
+        const existing = gatewayStore.find((g) => g.id === incoming.id)
+        const mergedCredentials = existing
+          ? Object.fromEntries(
+              Object.entries(incoming.credentials).map(([k, v]) => {
+                // If the incoming value looks like a masked placeholder, keep the real value
+                const isMasked = /^.{1,4}•+$/.test(v)
+                return [k, isMasked && existing.credentials[k] ? existing.credentials[k] : v]
+              })
+            )
+          : incoming.credentials
+        return { ...incoming, credentials: mergedCredentials }
+      })
+    }
+
+    if (body.payoutSettings) {
+      payoutStore = { ...payoutStore, ...body.payoutSettings }
+    }
+
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const session = await getCurrentUser()
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id, enabled } = await req.json()
+    gatewayStore = gatewayStore.map((g) =>
+      g.id === id ? { ...g, enabled } : g
+    )
+
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}

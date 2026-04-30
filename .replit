@@ -1,0 +1,44 @@
+modules = ["nodejs-20", "web", "postgresql-16"]
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+integrations = ["javascript_openai_ai_integrations:2.0.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "ajwevMnBk7XqQFYow7kDZKolmDx2QMxmYGMJ8Q4-0yEfb5jRSpbFezh9BgOq-7o-"
+FOOTBALL_DATA_API_KEY = "a88e7138cd4747c299e34ebd2ba8d970"
+DISABLE_MOCK_MATCHES = "true"
+SPORTSGAMEODDS_API_KEY = "56b729df59f151a4c45c15059c5ba402"

@@ -1,0 +1,123 @@
+⚽ FOOTBALL (SOCCER) FULL MARKET UNIVERSE
+🔹 Match Outcome Variants
+1X2
+Double Chance
+Draw No Bet
+HT/FT
+Winning Margin
+To Win Either Half
+🔹 Goals Markets
+Over/Under (all lines: 0.5, 1.5, 2.5…)
+Both Teams to Score (BTTS)
+BTTS + Result combo
+Exact Goals (0,1,2,3…)
+Odd/Even Goals
+Winning to Nil
+Clean Sheet
+🔹 Time-Based Goal Markets
+Goal in first 10 minutes (Yes/No)
+Goal in both halves
+Highest scoring half
+Time of first goal (0–10, 11–20, etc.)
+Last goal time
+🔹 Correct Score & Combos
+Correct score
+Scorecast (score + scorer)
+Result + total goals
+🔹 Corners Markets
+Total corners (Over/Under 7.5, 8.5…)
+Team corners
+First to 3/5/7 corners
+Corner handicap
+Odd/even corners
+Race to X corners
+🔹 Cards (Bookings)
+Total cards (Over/Under)
+Team cards
+Player to be booked
+Red card (Yes/No)
+First card
+Card handicap
+🔹 Player Markets
+Anytime goalscorer
+First/last goalscorer
+Shots on target
+Assists
+Fouls committed
+Passes completed (advanced books)
+🔹 Specials
+Penalty awarded (Yes/No)
+Own goal (Yes/No)
+VAR intervention
+Method of goal (header, penalty, etc.)
+🏀 BASKETBALL MARKETS
+🔹 Core
+Moneyline
+Spread (handicap)
+Total points (Over/Under)
+🔹 Advanced Totals
+Team totals
+Quarter/half totals
+Alternate spreads/totals
+🔹 Player Props
+Points
+Rebounds
+Assists
+3-pointers made
+Double-double / triple-double
+🔹 Game Props
+Race to 10/20/50 points
+Highest scoring quarter
+Overtime (Yes/No)
+🏈 AMERICAN FOOTBALL
+Moneyline
+Spread
+Total points
+Team totals
+Passing yards (player)
+Rushing yards
+Touchdowns (first/anytime)
+Field goals
+Quarter/half betting
+🎾 TENNIS
+Match winner
+Set betting (2–0, 2–1)
+Total games (Over/Under)
+Games handicap
+Set winner
+Correct score in sets
+Tie-break in match (Yes/No)
+🏏 CRICKET
+Match winner
+Top batsman/bowler
+Total runs
+Over/Under runs per innings
+Fall of next wicket
+Method of dismissal
+Sixes total
+🥊 / MMA
+Winner
+Method of victory (KO, submission, decision)
+Round betting
+Fight goes distance (Yes/No)
+🏎️ MOTORSPORTS
+Race winner
+Podium finish
+Fastest lap
+Head-to-head driver matchups
+🎮 ESPORTS
+Match winner
+Map winner
+Total maps
+First blood
+Total kills
+🎯 UNIVERSAL “MICRO” MARKETS (LIVE BETTING)
+
+These are the most granular and constantly changing:
+
+Next goal
+Next point
+Next corner
+Next card
+Next possession outcome
+Race to X (points/goals/corners/cards)
