@@ -1,0 +1,42 @@
+[root@server betcheza]# # A. Who owns each next-server process? (look at column 1 — root vs admin)
+[root@server betcheza]# ps -ef | grep next-server | grep -v grep
+B. Are there multiple PM2 daemons?
+ps -ef |root      356879  356868  0 Apr24 ?        00:35:55 next-server (v16.2.0)
+admin    1211177 1211155  0 16:37 ?        00:00:01 next-server (v16.2.0)
+admin    1215006 1214995 75 16:41 ?        00:01:43 next-server (v16.2.0)
+[root@server betcheza]#
+[root@server betcheza]# # B. Are there multiple PM2 daemons?
+[root@server betcheza]# ps -ef | grep -i "PM2" | grep -v grep
+C. Cheroot      354007       1  0 Apr24 ?        00:14:14 PM2 v6.0.14: God Daemon (/root/.pm2)
+admin     383633       1  0 Apr24 ?        00:09:46 PM2 v6.0.14: God Daemon (/home/admin/.pm2)
+root     1216545  354007  0 16:43 ?        00:00:00 node /usr/lib/node_modules/pm2/lib/ProcessContainerFork.js start -p 5001 -H 127.0.0.1
+[root@server betcheza]#
+[root@server betcheza]# # C. Check if user 'admin' has their own pm2 process list
+[root@server betcheza]# sudo -u admin -i pm2 list 2>/dev/null
+ Any systemd service auto-starting betcheza?
+systemctl list-units --type=service --state=running | grep -iE "betcheza|node|pm2"
+
+# E. Any cron job restarting it?
+for u in root admin; do echo "--- crontab for $u ---"; crontab -u $u -l 2>/dev/null; done┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 2    │ online    │ 0%       │ 56.2mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 56.2mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]#
+[root@server betcheza]# # D. Any systemd service auto-starting betcheza?
+[root@server betcheza]# systemctl list-units --type=service --state=running | grep -iE "betcheza|node|pm2"
+[root@server betcheza]#
+[root@server betcheza]# # E. Any cron job restarting it?
+[root@server betcheza]# for u in root admin; do echo "--- crontab for $u ---"; crontab -u $u -l 2>/dev/null; done
+--- crontab for root ---
+# This can be removed after the intial boot of of the vps
+# It handles ssh key regeneration once and never runs again
+@reboot if [ -x /admin/firstbootkvm ]; then /admin/firstbootkvm yes | tee -a /var/log/firstboot.log; fi
+17 1 * * * /usr/bin/yum -y update >/dev/null 2>&1
+--- crontab for admin ---
+#direct_crons enabled. Safe to edit this file. DirectAdmin will update accordingly.
+MAILTO=""
+PATH=/usr/local/php83/bin:/home/admin/.local/bin:/home/admin/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+*/1 * * * * curl -s https://dossy.world/cron
+[root@server betcheza]#
