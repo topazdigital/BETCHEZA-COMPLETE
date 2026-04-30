@@ -1,0 +1,125 @@
+[root@server betcheza]# # Kill the orphan holding port 5001 + its parent
+[root@server betcheza]# kill 1203413 1203351
+[root@server betcheza]#
+[root@server betcheza]# # Wait a moment, then verify port 5001 is free
+[root@server betcheza]# sleep 2
+lnp | grep :5001
+# Should show NOTHING (empty output = port free)
+
+# Restart betcheza fresh
+pm2 restart betcheza --update-env
+
+# Wait for startup, then check status + logs
+sleep 4
+pm2 list
+pm2 logs betcheza --lines 40 --nostream[root@server betcheza]# ss -tlnp | grep :5001
+LISTEN 0      511                               127.0.0.1:5001      0.0.0.0:*    users:(("next-server (v1",pid=1211183,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+[root@server betcheza]# # Should show NOTHING (empty output = port free)
+[root@server betcheza]#
+[root@server betcheza]# # Restart betcheza fresh
+[root@server betcheza]# pm2 restart betcheza --update-env
+[PM2] Applying action restartProcessId on app [betcheza](ids: [ 2 ])
+[PM2] [betcheza](2) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ betcheza           │ fork     │ 68   │ online    │ 0%       │ 19.0mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.1mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]#
+[root@server betcheza]# # Wait for startup, then check status + logs
+[root@server betcheza]# sleep 4
+[root@server betcheza]# pm2 list
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ betcheza           │ fork     │ 71   │ online    │ 0%       │ 60.4mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.3mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]# pm2 logs betcheza --lines 40 --nostream
+[TAILING] Tailing last 40 lines for [betcheza] process (change the value with --lines option)
+/root/.pm2/logs/betcheza-out.log last 40 lines:
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+
+/root/.pm2/logs/betcheza-error.log last 40 lines:
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+
+[root@server betcheza]#
