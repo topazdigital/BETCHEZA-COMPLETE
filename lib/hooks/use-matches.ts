@@ -311,7 +311,7 @@ export function useMatches(filters?: MatchFilters) {
 // the request was in-flight, which caused the home page to oscillate between
 // the live marquee and the upcoming-games fallback.
 export function useLiveMatches() {
-  const { data, error, isLoading } = useSWR<Match[]>(
+  const { data, error, isLoading, isValidating } = useSWR<Match[]>(
     '/api/matches?status=live',
     matchesFetcher,
     {
@@ -327,7 +327,9 @@ export function useLiveMatches() {
 
   return {
     matches: getLiveMatches(matches),
-    isLoading,
+    // Show as loading if SWR hasn't resolved yet OR is revalidating with zero results
+    // (prevents "Nothing live" flash when data is en-route)
+    isLoading: isLoading || (isValidating && matches.length === 0),
     error,
   };
 }

@@ -35,6 +35,7 @@ import { MatchFacts } from "@/components/matches/match-facts"
 import { WinnerVote } from "@/components/matches/winner-vote"
 import { useAuth } from "@/contexts/auth-context"
 import { useMatches } from "@/lib/hooks/use-matches"
+import { FavoritedTipsPanel } from "@/components/home/favorited-tips-panel"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -975,7 +976,15 @@ export default function MatchDetailPage({ params }: PageProps) {
   const sport = match.sport.slug
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1">
+      {/* LEFT SIDEBAR — Favorited Tips (lg+) */}
+      <aside className="hidden lg:block w-64 xl:w-72 shrink-0 border-r border-border">
+        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
+          <FavoritedTipsPanel />
+        </div>
+      </aside>
+
+      <div className="flex-1 min-w-0 overflow-hidden">
       <div className="px-3 py-2 pb-28 md:px-5 md:py-3 md:pb-8">
         {/* Back */}
         <Button variant="ghost" size="sm" className="mb-2 -ml-2 h-7 text-xs text-muted-foreground hover:text-foreground" asChild>
@@ -1636,21 +1645,19 @@ export default function MatchDetailPage({ params }: PageProps) {
           </TabsContent>
 
           {/* ══ ODDS ══ */}
-          <TabsContent value="odds" className="mt-0 space-y-4">
-            {/* Summary odds card */}
+          <TabsContent value="odds" className="mt-0 space-y-3">
+            {/* Summary odds card — compact */}
             {match.odds && (
               <Card className="overflow-hidden">
-                <div className="bg-gradient-to-r from-primary/10 to-transparent px-4 pt-4 pb-3 border-b border-border/50">
-                  <h3 className="flex items-center gap-2 text-sm font-bold">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    Match Result
-                    {match.oddsIsComputed && (
-                      <Badge variant="outline" className="text-[9px] ml-1">Estimated</Badge>
-                    )}
-                  </h3>
+                <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
+                  <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                  <h3 className="text-xs font-bold uppercase tracking-wide">Match Result (1X2)</h3>
+                  {match.oddsIsComputed && (
+                    <Badge variant="outline" className="text-[9px] ml-auto">Estimated</Badge>
+                  )}
                 </div>
-                <CardContent className="p-4 space-y-4">
-                  <div className="grid grid-cols-3 gap-3">
+                <CardContent className="p-3 space-y-2.5">
+                  <div className="grid grid-cols-3 gap-2">
                     <OddsCardLarge label="1 Home" sublabel={match.homeTeam.name} value={match.odds.home} />
                     {match.odds.draw !== undefined
                       ? <OddsCardLarge label="X Draw" sublabel="Draw" value={match.odds.draw} highlight />
@@ -1658,12 +1665,11 @@ export default function MatchDetailPage({ params }: PageProps) {
                     <OddsCardLarge label="2 Away" sublabel={match.awayTeam.name} value={match.odds.away} />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground mb-2 font-medium">Win Probability</p>
                     <OddsProbBar home={match.odds.home} draw={match.odds.draw} away={match.odds.away} />
-                    <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                      <span>{match.homeTeam.name}</span>
+                    <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
+                      <span className="truncate max-w-[35%]">{match.homeTeam.name}</span>
                       {match.odds.draw !== undefined && <span>Draw</span>}
-                      <span>{match.awayTeam.name}</span>
+                      <span className="truncate max-w-[35%] text-right">{match.awayTeam.name}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1673,20 +1679,20 @@ export default function MatchDetailPage({ params }: PageProps) {
             {/* Bookmaker comparison */}
             {bookmakerOdds.length > 0 && (
               <Card>
-                <div className="px-4 pt-4 pb-3 border-b border-border/50">
-                  <h3 className="text-sm font-bold">Bookmaker Comparison</h3>
+                <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wide">Bookmaker Comparison</h3>
                 </div>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-border/40 text-xs uppercase text-muted-foreground bg-muted/30">
-                          <th className="px-4 py-3 text-left">Bookmaker</th>
-                          <th className="px-4 py-3 text-center">1</th>
-                          {bookmakerOdds.some(o => o.draw !== undefined) && <th className="px-4 py-3 text-center">X</th>}
-                          <th className="px-4 py-3 text-center">2</th>
+                        <tr className="border-b border-border/40 text-[10px] uppercase text-muted-foreground bg-muted/30">
+                          <th className="px-3 py-2 text-left">Bookmaker</th>
+                          <th className="px-3 py-2 text-center">1</th>
+                          {bookmakerOdds.some(o => o.draw !== undefined) && <th className="px-3 py-2 text-center">X</th>}
+                          <th className="px-3 py-2 text-center">2</th>
                           {bookmakerOdds.some(o => o.links?.home || o.links?.away || o.links?.draw) && (
-                            <th className="px-4 py-3 text-right">Bet</th>
+                            <th className="px-3 py-2 text-right">Bet</th>
                           )}
                         </tr>
                       </thead>
@@ -1703,36 +1709,36 @@ export default function MatchDetailPage({ params }: PageProps) {
                           const link = o.links?.home || o.links?.away || o.links?.draw
                           return (
                             <tr key={i} className="border-b border-border/20 hover:bg-muted/30 transition-colors">
-                              <td className="px-4 py-3 font-semibold text-sm">{o.bookmaker}</td>
-                              <td className="px-4 py-3 text-center">
-                                <span className={cn("font-mono font-bold text-sm", o.home === best1 ? "text-emerald-500" : "text-foreground")}>
+                              <td className="px-3 py-1.5 font-semibold text-xs">{o.bookmaker}</td>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className={cn("font-mono font-bold text-xs", o.home === best1 ? "text-emerald-500" : "text-foreground")}>
                                   {o.home.toFixed(2)}
                                 </span>
                               </td>
                               {bookmakerOdds.some(x => x.draw !== undefined) && (
-                                <td className="px-4 py-3 text-center">
+                                <td className="px-3 py-1.5 text-center">
                                   {o.draw !== undefined ? (
-                                    <span className={cn("font-mono font-bold text-sm", o.draw === bestX ? "text-emerald-500" : "text-foreground")}>
+                                    <span className={cn("font-mono font-bold text-xs", o.draw === bestX ? "text-emerald-500" : "text-foreground")}>
                                       {o.draw.toFixed(2)}
                                     </span>
                                   ) : <span className="text-muted-foreground">—</span>}
                                 </td>
                               )}
-                              <td className="px-4 py-3 text-center">
-                                <span className={cn("font-mono font-bold text-sm", o.away === best2 ? "text-emerald-500" : "text-foreground")}>
+                              <td className="px-3 py-1.5 text-center">
+                                <span className={cn("font-mono font-bold text-xs", o.away === best2 ? "text-emerald-500" : "text-foreground")}>
                                   {o.away.toFixed(2)}
                                 </span>
                               </td>
                               {anyLinks && (
-                                <td className="px-4 py-3 text-right">
+                                <td className="px-3 py-1.5 text-right">
                                   {link ? (
                                     <a
                                       href={link}
                                       target="_blank"
                                       rel="nofollow noopener sponsored"
-                                      className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-xs font-semibold px-2.5 py-1 transition-colors"
+                                      className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-[10px] font-semibold px-2 py-0.5 transition-colors"
                                     >
-                                      Bet now →
+                                      Bet →
                                     </a>
                                   ) : null}
                                 </td>
@@ -2174,6 +2180,7 @@ export default function MatchDetailPage({ params }: PageProps) {
           </DialogContent>
         </Dialog>
       </div>
+      </div>
     </div>
   )
 }
@@ -2475,12 +2482,12 @@ function OddsButton({ label, sublabel, value }: { label: string; sublabel: strin
 function OddsCardLarge({ label, sublabel, value, highlight }: { label: string; sublabel: string; value: number; highlight?: boolean }) {
   return (
     <div className={cn(
-      "rounded-xl border p-4 text-center transition-all hover:shadow-md cursor-pointer",
+      "rounded-lg border px-2 py-2 text-center transition-all hover:shadow-sm cursor-pointer",
       highlight ? "border-primary/30 bg-primary/8" : "border-border/50 bg-muted/40 hover:bg-muted/60"
     )}>
-      <p className="text-xs uppercase tracking-widest text-muted-foreground font-medium">{label}</p>
-      <p className={cn("text-2xl font-black mt-1", highlight ? "text-primary" : "text-foreground")}>{value.toFixed(2)}</p>
-      <p className="text-[10px] text-muted-foreground truncate mt-0.5">{sublabel}</p>
+      <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
+      <p className={cn("text-xl font-black leading-none mt-0.5", highlight ? "text-primary" : "text-foreground")}>{value.toFixed(2)}</p>
+      <p className="text-[9px] text-muted-foreground truncate mt-0.5">{sublabel}</p>
     </div>
   )
 }

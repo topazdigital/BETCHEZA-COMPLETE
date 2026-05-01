@@ -30,7 +30,7 @@ import { ALL_SPORTS, getSportIcon } from '@/lib/sports-data';
 import { BestBetsPanel } from '@/components/home/best-bets-panel';
 import { FavoritedTipsPanel, FavoritedTipMarqueeCard, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
 import { useAuthModal } from '@/contexts/auth-modal-context';
-import { matchIdToSlug } from '@/lib/utils/match-url';
+import { matchToSlug } from '@/lib/utils/match-url';
 import { liveStatusLabel } from '@/lib/utils/live-status';
 import { tipsterHref } from '@/lib/utils/slug';
 import { NewsletterSection } from '@/components/sections/newsletter';
@@ -295,7 +295,7 @@ export default function HomePage() {
                           return (
                             <Link
                               key={m.id}
-                              href={`/matches/${matchIdToSlug(m.id)}`}
+                              href={`/matches/${matchToSlug(m.id, m.homeTeam.name, m.awayTeam.name)}`}
                               className="group flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 transition-colors hover:border-primary/50"
                             >
                               <div className="min-w-0">
@@ -319,10 +319,10 @@ export default function HomePage() {
                 )}
               </section>
 
-              {/* Favorited Tips — shown standalone only when there are zero
-                  live games. When 1-3 are live, the tips are mixed into the
-                  live marquee row instead. */}
-              {liveMatches.length === 0 && <FavoritedTipsPanel />}
+              {/* Favorited Tips — mobile only (always visible); on lg+ it lives in the left sidebar */}
+              <div className="mb-4 lg:hidden">
+                <FavoritedTipsPanel />
+              </div>
 
               {/* Top Tipsters */}
               <section className="mb-4">
@@ -341,10 +341,10 @@ export default function HomePage() {
                 {topTipsters.length > 0 ? (
                   <div
                     className={cn(
-                      // Mobile: horizontal scroll snap row (no vertical stack).
-                      // Tablet+: switch to a clean responsive grid.
-                      'flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-                      'sm:grid sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4',
+                      // Mobile: 2-col grid (no horizontal scroll, cards stack neatly)
+                      // md: 3-col, xl: 4-col (accounts for left + right sidebars)
+                      'grid grid-cols-2 gap-3',
+                      'md:grid-cols-3 xl:grid-cols-4',
                     )}
                   >
                     {topTipsters.map((tipster, index) => {
@@ -353,7 +353,7 @@ export default function HomePage() {
                         <Link
                           key={tipster.id}
                           href={tipsterHref(tipster.username || tipster.displayName, tipster.username || tipster.id)}
-                          className="group w-[78%] shrink-0 snap-start rounded-xl border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-lg sm:w-auto sm:shrink"
+                          className="group rounded-xl border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-lg"
                         >
                           <div className="mb-2.5 flex items-center gap-2.5">
                             <div className="relative">
@@ -485,7 +485,7 @@ export default function HomePage() {
                           {sportMatches.slice(0, 3).map(match => (
                             <Link 
                               key={match.id}
-                              href={`/matches/${matchIdToSlug(match.id)}`}
+                              href={`/matches/${matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name)}`}
                               className="block rounded-lg bg-muted/50 p-2 transition-colors hover:bg-muted"
                             >
                               <div className="flex items-center justify-between text-[11px]">
@@ -607,7 +607,7 @@ function LiveSidePanel({
           return (
             <Link
               key={m.id}
-              href={`/matches/${matchIdToSlug(m.id)}`}
+              href={`/matches/${matchToSlug(m.id, m.homeTeam.name, m.awayTeam.name)}`}
               className="group flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-[11px] transition-colors hover:border-primary/50"
             >
               <div className="min-w-0 flex-1">
@@ -745,7 +745,7 @@ function LiveSlide({ matches, totalCount }: { matches: CarouselMatch[]; totalCou
           return (
             <Link
               key={match.id}
-              href={`/matches/${matchIdToSlug(match.id)}`}
+              href={`/matches/${matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name)}`}
               className="block rounded-lg bg-card/50 p-3 transition-colors hover:bg-card"
             >
               <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
@@ -795,7 +795,7 @@ function FeaturedSlide({ matches }: { matches: CarouselMatch[] }) {
         {matches.map(match => (
           <Link
             key={match.id}
-            href={`/matches/${matchIdToSlug(match.id)}`}
+            href={`/matches/${matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name)}`}
             className="block rounded-lg bg-card/50 p-3 transition-colors hover:bg-card"
           >
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">

@@ -435,7 +435,7 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'pol.cup', sportId: 1, leagueId: 245, leagueName: 'Polish Cup', country: 'Poland', countryCode: 'PL', sportType: 'soccer' },
 
   // SOCCER - More Africa
-  { sport: 'soccer', league: 'ken.1', sportId: 1, leagueId: 250, leagueName: 'Kenyan Premier League', country: 'Kenya', countryCode: 'KE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ken.1', sportId: 1, leagueId: 9022, leagueName: 'Kenya Premier League', country: 'Kenya', countryCode: 'KE', sportType: 'soccer' },
   { sport: 'soccer', league: 'nga.1', sportId: 1, leagueId: 251, leagueName: 'Nigerian Professional Football League', country: 'Nigeria', countryCode: 'NG', sportType: 'soccer' },
   { sport: 'soccer', league: 'gha.1', sportId: 1, leagueId: 252, leagueName: 'Ghana Premier League', country: 'Ghana', countryCode: 'GH', sportType: 'soccer' },
   { sport: 'soccer', league: 'civ.1', sportId: 1, leagueId: 253, leagueName: "Côte d'Ivoire Ligue 1", country: "Côte d'Ivoire", countryCode: 'CI', sportType: 'soccer' },
@@ -3170,8 +3170,34 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
     const allMatches = await getAllMatches();
     const found = allMatches.find(m => m.id === matchId);
     if (found) return found;
+
+    // Handle new human-readable URL format (espn_eventid_NNNNN) — scan by numeric event ID
+    const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
+    if (eventIdOnly) {
+      const numericId = eventIdOnly[1];
+      const byEventId = allMatches.find(m => m.id.endsWith(`_${numericId}`));
+      if (byEventId) return byEventId;
+    }
   } catch (error) {
     console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
+  }
+
+  // Handle new human-readable URL format via direct ESPN lookup
+  const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
+  if (eventIdOnly) {
+    const numericId = eventIdOnly[1];
+    for (const cfg of ESPN_LEAGUES) {
+      try {
+        const summary = await fetchESPNSummary(cfg.sport, cfg.league, numericId);
+        const competition = summary?.header?.competitions?.[0];
+        if (!competition) continue;
+        const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
+        if (!homeComp) continue;
+        const resolvedId = `espn_${cfg.league}_${numericId}`;
+        return getMatchById(resolvedId);
+      } catch { continue; }
+    }
+    return null;
   }
 
   try {

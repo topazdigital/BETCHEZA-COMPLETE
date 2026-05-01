@@ -9,6 +9,8 @@ import { MatchCardNew } from "@/components/matches/match-card-new"
 import { ALL_SPORTS, getSportIcon } from "@/lib/sports-data"
 import { useLiveMatches } from "@/lib/hooks/use-matches"
 import { FlagIcon } from "@/components/ui/flag-icon"
+import { FavoritedTipsPanel } from "@/components/home/favorited-tips-panel"
+import { BestBetsPanel } from "@/components/home/best-bets-panel"
 
 // Priority order for sports (football first, then by popularity)
 const SPORT_PRIORITY: Record<number, number> = {
@@ -64,33 +66,21 @@ export default function LivePage() {
     })
   }, [filteredMatches])
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex h-96 items-center justify-center">
-        <div className="flex items-center gap-3">
-          <Spinner className="h-8 w-8" />
-          <span className="text-muted-foreground">Loading live matches…</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex-1 p-8 text-center">
-        <Radio className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-        <h1 className="text-xl font-bold">Unable to load live matches</h1>
-        <p className="text-muted-foreground mt-2">Please try again later</p>
-      </div>
-    )
-  }
-
   const totalLive = matches.length
   const totalPredictions = matches.reduce((acc, m) => acc + (m.tipsCount || 0), 0)
   const totalWatching = totalPredictions * 10
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1">
+      {/* LEFT SIDEBAR — Favorited Tips (lg+) */}
+      <aside className="hidden lg:block w-64 xl:w-72 shrink-0 border-r border-border">
+        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
+          <FavoritedTipsPanel />
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="px-3 py-3 md:px-5 md:py-4">
           {/* Compact Header */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -136,8 +126,21 @@ export default function LivePage() {
             ))}
           </div>
 
-          {/* Live Matches grouped by league — DENSE single-column rows */}
-          {groupedMatches.length > 0 ? (
+          {/* Live Matches grouped by league */}
+          {isLoading ? (
+            <div className="flex h-64 items-center justify-center">
+              <div className="flex items-center gap-3">
+                <Spinner className="h-8 w-8" />
+                <span className="text-muted-foreground text-sm">Loading live matches…</span>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border p-8 text-center">
+              <Radio className="mb-2 h-8 w-8 text-muted-foreground" />
+              <h1 className="text-base font-bold">Unable to load live matches</h1>
+              <p className="mt-1 text-xs text-muted-foreground">Please try again later</p>
+            </div>
+          ) : groupedMatches.length > 0 ? (
             <div className="space-y-2.5">
               {groupedMatches.map(group => (
                 <section key={`${group.sportSlug}-${group.leagueName}`} className="overflow-hidden rounded-xl border border-border bg-card">
@@ -193,5 +196,13 @@ export default function LivePage() {
           )}
         </div>
       </div>
+
+      {/* RIGHT SIDEBAR — Best Bets (xl+) */}
+      <aside className="hidden xl:block w-72 shrink-0 border-l border-border">
+        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
+          <BestBetsPanel matches={matches} />
+        </div>
+      </aside>
+    </div>
   )
 }

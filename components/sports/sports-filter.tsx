@@ -1,8 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ALL_SPORTS, getSportIcon } from '@/lib/sports-data';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
@@ -21,26 +21,24 @@ interface SportsFilterProps {
   variant?: 'horizontal' | 'dropdown';
 }
 
+const VISIBLE_POPULAR_COUNT = 8;
+
 export function SportsFilter({ 
   selectedSportId, 
   onSelectSport, 
   matchCounts = {},
   variant = 'horizontal'
 }: SportsFilterProps) {
-  // Show every sport in the horizontal pill row, ordered popular-first.
-  // The strip is fully horizontally scrollable, so users can swipe / scroll
-  // to discover Esports, Chess, Cycling, etc. without any "show more" toggle.
   const popularSports = ALL_SPORTS.filter(s => s.category === 'popular');
   const otherSports = ALL_SPORTS.filter(s => s.category !== 'popular');
-  const displayedSports = [...popularSports, ...otherSports];
 
   const selectedSport = selectedSportId 
     ? ALL_SPORTS.find(s => s.id === selectedSportId) 
     : null;
 
-  // The dropdown variant still benefits from a separate "Popular" group, so
-  // it keeps its own popularSports/otherSports references below.
-  void otherSports;
+  const visibleSports = popularSports.slice(0, VISIBLE_POPULAR_COUNT);
+  const moreSports = [...popularSports.slice(VISIBLE_POPULAR_COUNT), ...otherSports];
+  const selectedInMore = selectedSport && !visibleSports.find(s => s.id === selectedSport.id) && selectedSport.id !== null;
 
   if (variant === 'dropdown') {
     return (
@@ -79,9 +77,9 @@ export function SportsFilter({
             >
               <span className="mr-2 text-lg">{getSportIcon(sport.slug)}</span>
               <span className="flex-1">{sport.name}</span>
-              {matchCounts[sport.id] && (
+              {matchCounts[sport.id] ? (
                 <span className="text-xs text-muted-foreground">{matchCounts[sport.id]}</span>
-              )}
+              ) : null}
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
@@ -94,9 +92,9 @@ export function SportsFilter({
             >
               <span className="mr-2 text-lg">{getSportIcon(sport.slug)}</span>
               <span className="flex-1">{sport.name}</span>
-              {matchCounts[sport.id] && (
+              {matchCounts[sport.id] ? (
                 <span className="text-xs text-muted-foreground">{matchCounts[sport.id]}</span>
-              )}
+              ) : null}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -106,55 +104,95 @@ export function SportsFilter({
 
   return (
     <div className="w-full">
-      <ScrollArea className="w-full whitespace-nowrap">
-        <div className="flex gap-1.5 pb-2 sm:gap-2 sm:pb-3">
-          {/* All Sports */}
+      <div className="flex items-center gap-1.5">
+        {/* All Sports pill */}
+        <button
+          onClick={() => onSelectSport(null)}
+          className={cn(
+            'flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+            !selectedSportId 
+              ? 'border-primary bg-primary text-primary-foreground' 
+              : 'border-border bg-card text-foreground hover:border-primary/50'
+          )}
+        >
+          <span className="text-sm">🏆</span>
+          <span>All</span>
+        </button>
+
+        {/* Visible popular sports */}
+        {visibleSports.map(sport => (
           <button
-            onClick={() => onSelectSport(null)}
+            key={sport.id}
+            onClick={() => onSelectSport(sport.id)}
             className={cn(
-              'flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:py-1.5 sm:text-sm',
-              !selectedSportId 
-                ? 'border-primary bg-primary text-primary-foreground' 
+              'flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+              selectedSportId === sport.id
+                ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border bg-card text-foreground hover:border-primary/50'
             )}
           >
-            <span className="text-sm sm:text-base">🏆</span>
-            <span>All</span>
+            <span className="text-sm">{getSportIcon(sport.slug)}</span>
+            <span className="hidden sm:inline">{sport.name}</span>
+            <span className="sm:hidden">{sport.name.split(' ')[0]}</span>
+            {matchCounts[sport.id] ? (
+              <span className={cn(
+                'hidden rounded-full px-1 text-[10px] sm:inline-block',
+                selectedSportId === sport.id ? 'bg-primary-foreground/20' : 'bg-muted'
+              )}>
+                {matchCounts[sport.id]}
+              </span>
+            ) : null}
           </button>
+        ))}
 
-          {/* Sports */}
-          {displayedSports.map(sport => (
+        {/* More sports dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <button
-              key={sport.id}
-              onClick={() => onSelectSport(sport.id)}
               className={cn(
-                'flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:py-1.5 sm:text-sm',
-                selectedSportId === sport.id
+                'flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                selectedInMore
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-border bg-card text-foreground hover:border-primary/50'
               )}
             >
-              <span className="text-sm sm:text-base">{getSportIcon(sport.slug)}</span>
-              <span className="hidden sm:inline">{sport.name}</span>
-              <span className="sm:hidden">{sport.name.split(' ')[0]}</span>
-              {matchCounts[sport.id] ? (
-                <span className={cn(
-                  'hidden rounded-full px-1 text-[10px] sm:inline-block sm:px-1.5 sm:text-xs',
-                  selectedSportId === sport.id ? 'bg-primary-foreground/20' : 'bg-muted'
-                )}>
-                  {matchCounts[sport.id]}
-                </span>
-              ) : null}
+              {selectedInMore ? (
+                <>
+                  <span className="text-sm">{getSportIcon(selectedSport!.slug)}</span>
+                  <span className="hidden sm:inline">{selectedSport!.name}</span>
+                </>
+              ) : (
+                <>
+                  <span>More</span>
+                </>
+              )}
+              <ChevronDown className="h-3 w-3" />
             </button>
-          ))}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-72 w-48 overflow-y-auto">
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              More Sports
+            </DropdownMenuLabel>
+            {moreSports.map(sport => (
+              <DropdownMenuItem 
+                key={sport.id}
+                onClick={() => onSelectSport(sport.id)}
+                className={cn('gap-2', selectedSportId === sport.id && 'bg-accent')}
+              >
+                <span className="text-base leading-none">{getSportIcon(sport.slug)}</span>
+                <span className="flex-1 text-sm">{sport.name}</span>
+                {matchCounts[sport.id] ? (
+                  <span className="text-[11px] text-muted-foreground">{matchCounts[sport.id]}</span>
+                ) : null}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }
 
-// Sport badge for compact display
 export function SportBadge({ 
   sportId, 
   size = 'sm' 

@@ -799,8 +799,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
-    const cfg = getEspnLeagueConfigForId(id);
-    const eventId = getEspnEventIdFromMatchId(id);
+    // Use the real ESPN match ID (not the slug-derived ID) for subsequent lookups
+    const resolvedId = match.id || id;
+    const cfg = getEspnLeagueConfigForId(resolvedId);
+    const eventId = getEspnEventIdFromMatchId(resolvedId);
 
     let summary: ESPNSummaryResponse | null = null;
     if (cfg && eventId) {

@@ -9,7 +9,7 @@ import { formatOdds } from '@/lib/utils/odds-converter';
 import type { MatchWithDetails } from '@/lib/types';
 import { LiveIndicator } from './live-indicator';
 import { LeagueFlag } from '@/components/ui/team-logo';
-import { matchIdToSlug } from '@/lib/utils/match-url';
+import { matchToSlug } from '@/lib/utils/match-url';
 
 interface MatchCardProps {
   match: MatchWithDetails;
@@ -25,7 +25,7 @@ export function MatchCard({ match, odds, compact = false }: MatchCardProps) {
   const kickoffTime = new Date(match.kickoff_time);
 
   return (
-    <Link href={`/matches/${matchIdToSlug(match.id)}`} className="block">
+    <Link href={`/matches/${match.api_id ? matchToSlug(match.api_id, match.home_team.name, match.away_team.name) : match.id}`} className="block">
       <div
         className={cn(
           'group rounded-lg border border-border bg-card transition-all hover:border-primary/50 hover:shadow-sm',

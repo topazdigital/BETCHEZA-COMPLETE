@@ -36,8 +36,13 @@ Key architectural decisions and features include:
 -   **Affiliate Management**: Tracks affiliate clicks, sign-ups, and deposits through a conversion funnel, with a dedicated admin dashboard for monitoring.
 -   **UI/UX Enhancements**: Features infinite scroll for match listings, sport-aware live timers, fuzzy logic for form sidebar logos, and a redesigned brand identity.
 -   **Persistence**: Critical settings and user data (e.g., wallet, tipster applications, email templates, user profiles, admin settings) are persisted to local files (`.local/state/`) for development resilience and to MySQL for production.
--   **3-Column Homepage Layout**: Homepage uses a 3-column flex layout — left sidebar (lg+) shows Live Now/Up Next + Favorited Tips, center shows hero/matches, right panel (xl+) shows Featured Matches + Today's Best Bets.
+-   **3-Column Layout on All Main Pages**: Homepage, Matches, Live, Results, and Match Detail pages all use a 3-column flex layout — left sidebar (lg+) shows Favorited Tips, center shows main content, right panel (xl+) shows Best Bets/Featured Matches.
 -   **Dark Menu Removed**: `SidebarNew` (dark secondary sidebar) has been removed from all pages (bookmakers, competitions, leagues, leaderboard, live, predictor, results, stats, tipsters, tipsters/compare). All pages now use the full content width.
+-   **Match URL Slugs**: Match URLs use `team-a-vs-team-b-NUMERICID` format (e.g. `/matches/leeds-vs-burnley-740942`). `matchToSlug()` in `lib/utils/match-url.ts` generates them; `slugToMatchId()` handles both old and new formats.
+-   **Sports Filter**: `components/sports/sports-filter.tsx` shows 8 popular sports as pills + a "More" dropdown for the rest. 
+-   **Kenya Premier League**: leagueId corrected to 9022 in `lib/api/unified-sports-api.ts`. Kenyan/African teams now resolve to correct country via `SOCCER_COUNTRY_TO_LEAGUE` in `app/api/teams/[id]/route.ts`.
+-   **Live Flicker Fix**: `useLiveMatches` hook returns `isLoading: true` while SWR is validating with zero results, preventing "Nothing live" empty-state flash.
+-   **SQL Changes**: User runs own live MySQL server. SQL changes are always provided as code snippets only, never modifying schema files directly.
 -   **Match Caching**: `getAllMatches()` in `lib/api/unified-sports-api.ts` uses an in-process 20s TTL cache with promise deduplication to avoid duplicate API calls. A 5-day date window prevents the 2616-match bloat.
 -   **Fake Votes System**: `/api/cron/fake-votes` endpoint seeds realistic vote distributions (home/draw/away) for upcoming matches. Votes are stored in `globalThis.__matchVotes`.
 -   **Loading States**: `loading.tsx` skeleton files added for main, matches, feed, live, tipsters, and leaderboard pages to eliminate blank-screen navigation lag.
