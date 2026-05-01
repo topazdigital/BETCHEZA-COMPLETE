@@ -85,27 +85,38 @@ export default function AdminEmailConfigPage() {
     setSaving(true);
     setStatus(null);
     try {
-      const body: Partial<Cfg> & { keepPassword?: boolean } = { ...cfg };
-      if (!passwordChanged && cfg.passwordSet) {
-        body.keepPassword = true;
-        delete body.password;
+      const keepPassword = !passwordChanged && !!cfg.passwordSet;
+      const body: Record<string, unknown> = {
+        enabled: cfg.enabled,
+        host: cfg.host,
+        port: cfg.port,
+        secure: cfg.secure,
+        username: cfg.username,
+        fromEmail: cfg.fromEmail,
+        fromName: cfg.fromName,
+        replyTo: cfg.replyTo,
+        keepPassword,
+      };
+      if (!keepPassword) {
+        body.password = cfg.password;
       }
       const res = await fetch('/api/admin/email-config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const d = await res.json();
-      if (res.ok) {
+      let d: { config?: Cfg; error?: string } = {};
+      try { d = await res.json(); } catch { /* non-JSON body */ }
+      if (res.ok && d.config) {
         setCfg({ ...DEFAULT, ...d.config, password: '' });
         setPasswordChanged(false);
         setUnsavedChanges(false);
         setStatus({ kind: 'ok', msg: 'Settings saved.' });
       } else {
-        setStatus({ kind: 'err', msg: d.error || 'Save failed' });
+        setStatus({ kind: 'err', msg: d.error || `Save failed (HTTP ${res.status})` });
       }
-    } catch {
-      setStatus({ kind: 'err', msg: 'Save failed' });
+    } catch (err) {
+      setStatus({ kind: 'err', msg: err instanceof Error ? err.message : 'Save failed — network error' });
     } finally {
       setSaving(false);
     }
