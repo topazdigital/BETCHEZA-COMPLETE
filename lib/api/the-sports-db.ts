@@ -56,7 +56,8 @@ export const TSDB_LEAGUES: TSDBLeagueConfig[] = [
   // ─── East / Southern African football ───
   { tsdbId: '4504', leagueId: 5001, leagueName: 'Kenyan Premier League', sportId: 1, sportType: 'soccer', country: 'Kenya', countryCode: 'KE', tier: 2 },
   { tsdbId: '4621', leagueId: 5002, leagueName: 'Tanzanian Premier League', sportId: 1, sportType: 'soccer', country: 'Tanzania', countryCode: 'TZ', tier: 3 },
-  { tsdbId: '4422', leagueId: 5003, leagueName: 'Ugandan Premier League', sportId: 1, sportType: 'soccer', country: 'Uganda', countryCode: 'UG', tier: 3 },
+  // tsdbId '4422' removed — TheSportsDB erroneously returns Polish Ekstraklasa fixtures for this league ID.
+  // Real Uganda coverage comes from the ESPN global scoreboard (id 14059).
   { tsdbId: '4623', leagueId: 5004, leagueName: 'Rwandan Premier League', sportId: 1, sportType: 'soccer', country: 'Rwanda', countryCode: 'RW', tier: 3 },
   { tsdbId: '4486', leagueId: 5020, leagueName: 'South African Premier Division', sportId: 1, sportType: 'soccer', country: 'South Africa', countryCode: 'ZA', tier: 2 },
   { tsdbId: '4488', leagueId: 5021, leagueName: 'Egyptian Premier League', sportId: 1, sportType: 'soccer', country: 'Egypt', countryCode: 'EG', tier: 2 },

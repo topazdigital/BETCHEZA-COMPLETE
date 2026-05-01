@@ -1250,27 +1250,25 @@ export default function MatchDetailPage({ params }: PageProps) {
           </Button>
         </div>
 
-        {/* ─── TABS — compact, scrollable on mobile, Tips first ─── */}
+        {/* ─── TABS — 5 tabs: Tips | Match | Analysis | Table | News ─── */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full h-7 flex flex-wrap gap-0.5 bg-muted/60 p-0.5 rounded-md mb-2">
-            <TabsTrigger value="tips" className="flex-1 min-w-[50px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded relative data-[state=active]:bg-amber-500 data-[state=active]:text-amber-950">
+          <TabsList className="w-full h-8 flex gap-0.5 bg-muted/60 p-0.5 rounded-lg mb-2">
+            <TabsTrigger value="tips" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:bg-amber-500 data-[state=active]:text-amber-950 data-[state=active]:shadow">
               Tips
               {tips.length > 0 && (
-                <span className="ml-0.5 rounded-full bg-amber-500 px-1 py-0 text-[8px] font-bold text-white leading-3">{tips.length}</span>
+                <span className="ml-0.5 rounded-full bg-white/30 data-[state=active]:bg-amber-950/20 px-1 text-[8px] font-black leading-3">{tips.length}</span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="overview" className="flex-1 min-w-[50px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">Overview</TabsTrigger>
-            <TabsTrigger value="events" className="flex-1 min-w-[50px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded relative">
-              Events
+            <TabsTrigger value="overview" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:shadow">
+              Match
               {isLive && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="stats" className="flex-1 min-w-[40px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded relative">
-              Stats
+            <TabsTrigger value="stats" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:shadow">
+              Analysis
               {hasTeamStats && isLive && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="h2h" className="flex-1 min-w-[35px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">H2H</TabsTrigger>
-            <TabsTrigger value="standings" className="flex-1 min-w-[40px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">Table</TabsTrigger>
-            <TabsTrigger value="news" className="flex-1 min-w-[40px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">News</TabsTrigger>
+            <TabsTrigger value="standings" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md data-[state=active]:shadow">Table</TabsTrigger>
+            <TabsTrigger value="news" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md data-[state=active]:shadow">News</TabsTrigger>
           </TabsList>
 
           {/* ══ OVERVIEW ══ */}
@@ -1371,25 +1369,22 @@ export default function MatchDetailPage({ params }: PageProps) {
               </Card>
             )}
 
-            {/* Match summary events preview */}
+            {/* Match Events — full timeline inline in Match tab */}
             {matchEvents.length > 0 && (
               <Card className="overflow-hidden">
-                <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                  <h3 className="flex items-center gap-2 text-sm font-bold">
-                    <Zap className="h-4 w-4 text-primary" />Match Events
-                  </h3>
-                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setActiveTab('events')}>
-                    View all
-                  </Button>
+                <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b border-border/40">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-bold flex-1">Match Events</h3>
+                  {isLive && <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />}
                 </div>
-                <CardContent className="px-4 pb-4">
-                  <div className="mb-2 grid grid-cols-3 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <CardContent className="px-4 pb-4 pt-3">
+                  <div className="mb-2 grid grid-cols-3 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
                     <span className="text-right">{match.homeTeam.name}</span>
                     <span className="text-center">Min</span>
                     <span>{match.awayTeam.name}</span>
                   </div>
                   <EventsTimeline
-                    events={matchEvents.filter(e => e.type === 'goal' || e.type === 'own_goal' || e.type === 'penalty_goal').slice(0, 6)}
+                    events={matchEvents}
                     homeName={match.homeTeam.name}
                     awayName={match.awayTeam.name}
                   />
@@ -1497,7 +1492,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                     <h3 className="flex items-center gap-2 text-sm font-bold">
                       <Users className="h-4 w-4 text-primary" />Head to Head
                     </h3>
-                    <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setActiveTab('h2h')}>View all</Button>
+                    <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setActiveTab('stats')}>View all</Button>
                   </div>
                   <div className="space-y-2">
                     {h2h.slice(0, 3).map((g, i) => (
@@ -1644,6 +1639,26 @@ export default function MatchDetailPage({ params }: PageProps) {
               isLive={isLive}
               isFinished={isFinished}
             />
+            {/* H2H merged into Analysis tab */}
+            {h2h && h2h.length > 0 && (
+              <div className="space-y-3">
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="mb-3 text-sm font-bold flex items-center gap-2">
+                      <Users className="h-4 w-4 text-primary" />Head to Head — Last {h2h.length} meetings
+                    </h3>
+                    <H2HSummaryBar games={h2h} homeName={match.homeTeam.name} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="space-y-2">
+                      {h2h.map((g, i) => <H2HRow key={i} game={g} timezone={timezone} homeName={match.homeTeam.name} />)}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </TabsContent>
 
           {/* ══ ODDS ══ */}
@@ -2638,6 +2653,122 @@ function H2HRow({ game, timezone, homeName }: { game: H2HGame; timezone: string;
   )
 }
 
+// ── Sidebar-specific pitch: always vertical (ignores md: breakpoints) ──
+function SidebarPitch({ home, away }: { home: PitchData | null; away: PitchData | null }) {
+  const awayColumnsTopDown = away ? [...away.columns].reverse() : []
+  const homeColumnsTopDown = home?.columns ?? []
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{ background: 'linear-gradient(180deg, #1a5c2a 0%, #1e7a35 50%, #1a5c2a 100%)', minHeight: 420 }}
+    >
+      <svg className="absolute inset-0 w-full h-full opacity-25 pointer-events-none" viewBox="0 0 220 420" preserveAspectRatio="none">
+        <rect x="6" y="6" width="208" height="408" fill="none" stroke="white" strokeWidth="1.5" />
+        <line x1="6" y1="210" x2="214" y2="210" stroke="white" strokeWidth="1.5" />
+        <circle cx="110" cy="210" r="38" fill="none" stroke="white" strokeWidth="1.5" />
+        <circle cx="110" cy="210" r="2.5" fill="white" />
+        <rect x="62" y="6" width="96" height="64" fill="none" stroke="white" strokeWidth="1" />
+        <rect x="86" y="6" width="48" height="30" fill="none" stroke="white" strokeWidth="1" />
+        <circle cx="110" cy="70" r="2.5" fill="white" />
+        <rect x="62" y="350" width="96" height="64" fill="none" stroke="white" strokeWidth="1" />
+        <rect x="86" y="384" width="48" height="30" fill="none" stroke="white" strokeWidth="1" />
+        <circle cx="110" cy="350" r="2.5" fill="white" />
+      </svg>
+      <div className="relative flex flex-col px-1 py-2" style={{ minHeight: 420 }}>
+        {/* Home — top half */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {home && <TeamHeader team={home.team} align="center" />}
+          <div className="flex flex-1 flex-col items-stretch justify-around gap-0.5">
+            {homeColumnsTopDown.map((row, ri) => (
+              <div key={ri} className="flex justify-around items-center gap-0.5 px-1">
+                {row.map((p, pi) => <PitchPlayer key={pi} player={p} color="bg-rose-500" />)}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Half-way divider */}
+        <div className="flex items-center gap-1 py-0.5 opacity-40">
+          <div className="h-px flex-1 bg-white/40" />
+          <div className="h-1.5 w-1.5 rounded-full bg-white/60" />
+          <div className="h-px flex-1 bg-white/40" />
+        </div>
+        {/* Away — bottom half */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex flex-1 flex-col items-stretch justify-around gap-0.5">
+            {awayColumnsTopDown.map((row, ri) => (
+              <div key={ri} className="flex justify-around items-center gap-0.5 px-1">
+                {row.map((p, pi) => <PitchPlayer key={pi} player={p} color="bg-sky-500" />)}
+              </div>
+            ))}
+          </div>
+          {away && <TeamHeader team={away.team} align="center" />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Basketball court SVG for sidebar ──
+function BasketballCourtSVG({ homeName, awayName }: { homeName: string; awayName: string }) {
+  return (
+    <div className="relative" style={{ background: '#8B4513', minHeight: 120 }}>
+      <svg viewBox="0 0 220 130" className="w-full" style={{ display: 'block' }}>
+        {/* Court surface */}
+        <rect width="220" height="130" fill="#c8802a" />
+        {/* Court outline */}
+        <rect x="5" y="5" width="210" height="120" fill="none" stroke="white" strokeWidth="1.5" />
+        {/* Center line */}
+        <line x1="5" y1="65" x2="215" y2="65" stroke="white" strokeWidth="1.5" />
+        {/* Center circle */}
+        <circle cx="110" cy="65" r="18" fill="none" stroke="white" strokeWidth="1.5" />
+        {/* Home key (left) */}
+        <rect x="5" y="37" width="48" height="56" fill="none" stroke="white" strokeWidth="1" />
+        <ellipse cx="53" cy="65" rx="18" ry="18" fill="none" stroke="white" strokeWidth="1" strokeDasharray="4 2" />
+        <circle cx="20" cy="65" r="4" fill="none" stroke="white" strokeWidth="1" />
+        {/* Away key (right) */}
+        <rect x="167" y="37" width="48" height="56" fill="none" stroke="white" strokeWidth="1" />
+        <ellipse cx="167" cy="65" rx="18" ry="18" fill="none" stroke="white" strokeWidth="1" strokeDasharray="4 2" />
+        <circle cx="200" cy="65" r="4" fill="none" stroke="white" strokeWidth="1" />
+        {/* Labels */}
+        <text x="32" y="12" fontSize="7" fill="white" opacity="0.7" textAnchor="middle">{homeName.split(' ')[0]}</text>
+        <text x="190" y="12" fontSize="7" fill="white" opacity="0.7" textAnchor="middle">{awayName.split(' ')[0]}</text>
+      </svg>
+    </div>
+  )
+}
+
+// ── Hockey rink SVG for sidebar ──
+function HockeyRinkSVG({ homeName, awayName }: { homeName: string; awayName: string }) {
+  return (
+    <div className="relative">
+      <svg viewBox="0 0 220 130" className="w-full" style={{ display: 'block' }}>
+        {/* Rink surface */}
+        <rect width="220" height="130" rx="20" fill="#c8e8f5" />
+        {/* Rink outline */}
+        <rect x="4" y="4" width="212" height="122" rx="18" fill="none" stroke="#1a6e9e" strokeWidth="2" />
+        {/* Center red line */}
+        <line x1="110" y1="4" x2="110" y2="126" stroke="#d42020" strokeWidth="2" />
+        {/* Center circle */}
+        <circle cx="110" cy="65" r="20" fill="none" stroke="#1a6e9e" strokeWidth="1.5" />
+        <circle cx="110" cy="65" r="3" fill="#d42020" />
+        {/* Home blue line (left) */}
+        <line x1="73" y1="4" x2="73" y2="126" stroke="#1a6e9e" strokeWidth="1.5" />
+        {/* Away blue line (right) */}
+        <line x1="147" y1="4" x2="147" y2="126" stroke="#1a6e9e" strokeWidth="1.5" />
+        {/* Home goal crease */}
+        <rect x="4" y="48" width="22" height="34" fill="none" stroke="#1a6e9e" strokeWidth="1" />
+        <ellipse cx="26" cy="65" rx="12" ry="14" fill="rgba(100,160,220,0.25)" stroke="#1a6e9e" strokeWidth="1" />
+        {/* Away goal crease */}
+        <rect x="194" y="48" width="22" height="34" fill="none" stroke="#1a6e9e" strokeWidth="1" />
+        <ellipse cx="194" cy="65" rx="12" ry="14" fill="rgba(100,160,220,0.25)" stroke="#1a6e9e" strokeWidth="1" />
+        {/* Labels */}
+        <text x="37" y="12" fontSize="7" fill="#1a6e9e" opacity="0.8" textAnchor="middle">{homeName.split(' ')[0]}</text>
+        <text x="183" y="12" fontSize="7" fill="#1a6e9e" opacity="0.8" textAnchor="middle">{awayName.split(' ')[0]}</text>
+      </svg>
+    </div>
+  )
+}
+
 function SidebarLineupsPanel({
   lineups,
   match,
@@ -2650,6 +2781,20 @@ function SidebarLineupsPanel({
   hasLineups: boolean
 }) {
   const hasData = lineups && (lineups.home || lineups.away)
+  const [showBenchHome, setShowBenchHome] = useState(false)
+  const [showBenchAway, setShowBenchAway] = useState(false)
+  const isSoccer = sport === 'soccer' || sport === 'football' || sport === 'rugby'
+  const isBasketball = sport === 'basketball'
+  const isHockey = sport === 'ice-hockey' || sport === 'hockey' || sport === 'ice_hockey'
+
+  const headerBadge = hasData && (
+    <span className={cn(
+      "ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+      hasLineups ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"
+    )}>
+      {hasLineups ? "Confirmed" : "Predicted"}
+    </span>
+  )
 
   return (
     <section className="space-y-3">
@@ -2658,26 +2803,163 @@ function SidebarLineupsPanel({
         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
           <Shirt className="h-3.5 w-3.5 text-primary" />
         </div>
-        <h2 className="text-sm font-bold text-foreground">Lineups</h2>
-        {hasData && (
-          <span className={cn(
-            "ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full",
-            hasLineups
-              ? "bg-emerald-500/15 text-emerald-600"
-              : "bg-amber-500/15 text-amber-600"
-          )}>
-            {hasLineups ? "Confirmed" : "Predicted"}
-          </span>
-        )}
+        <h2 className="text-sm font-bold text-foreground">
+          {isSoccer ? 'Formation' : isBasketball ? 'Rosters' : isHockey ? 'Rosters' : 'Lineups'}
+        </h2>
+        {headerBadge}
       </div>
 
       {!hasData ? (
         <div className="rounded-xl border border-border bg-card px-3 py-8 text-center">
-          <Shirt className="h-8 w-8 mx-auto mb-2 opacity-25" />
-          <p className="text-xs font-medium text-muted-foreground">Not announced yet</p>
+          {isSoccer ? (
+            <>
+              {/* Mini empty pitch placeholder */}
+              <div className="mx-auto mb-3 rounded-lg overflow-hidden" style={{ width: 80, height: 110, background: 'linear-gradient(180deg,#1a5c2a,#1e7a35)' }}>
+                <svg viewBox="0 0 80 110" className="w-full h-full opacity-20">
+                  <rect x="4" y="4" width="72" height="102" fill="none" stroke="white" strokeWidth="1.5" />
+                  <line x1="4" y1="55" x2="76" y2="55" stroke="white" strokeWidth="1.5" />
+                  <circle cx="40" cy="55" r="14" fill="none" stroke="white" strokeWidth="1.5" />
+                </svg>
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Formation not announced</p>
+            </>
+          ) : isBasketball ? (
+            <>
+              <div className="mx-auto mb-3 rounded-lg overflow-hidden" style={{ width: 80, height: 110, background: '#c8802a' }}>
+                <svg viewBox="0 0 80 110" className="w-full h-full opacity-20">
+                  <rect x="4" y="4" width="72" height="102" fill="none" stroke="white" strokeWidth="1.5" />
+                  <line x1="4" y1="55" x2="76" y2="55" stroke="white" strokeWidth="1.5" />
+                  <circle cx="40" cy="55" r="14" fill="none" stroke="white" strokeWidth="1.5" />
+                </svg>
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Rosters not available</p>
+            </>
+          ) : (
+            <>
+              <Shirt className="h-8 w-8 mx-auto mb-2 opacity-25" />
+              <p className="text-xs font-medium text-muted-foreground">Not announced yet</p>
+            </>
+          )}
           <p className="text-[10px] text-muted-foreground mt-0.5">Usually 1h before kickoff</p>
         </div>
+      ) : isSoccer ? (
+        /* ── SOCCER / RUGBY: real formation pitch ── */
+        <div className="space-y-2">
+          {/* Vertical pitch — always shown in sidebar regardless of breakpoint */}
+          <div className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(180deg, #1a5c2a 0%, #1e7a35 50%, #1a5c2a 100%)' }}>
+            <svg className="absolute inset-0 w-full h-full opacity-0 pointer-events-none" style={{ display: 'none' }} />
+            {/* We render a compact VerticalPitch inline here to bypass md: breakpoints */}
+            <SidebarPitch home={buildPitchData(lineups.home)} away={buildPitchData(lineups.away)} />
+          </div>
+          {/* Bench toggles */}
+          {lineups.home && lineups.home.bench.length > 0 && (
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <button
+                className="flex w-full items-center justify-between px-2.5 py-2 text-[11px] font-semibold hover:bg-muted/40 transition-colors"
+                onClick={() => setShowBenchHome(v => !v)}
+              >
+                <span className="flex items-center gap-1.5">
+                  <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} size="xs" />
+                  {match.homeTeam.name} bench
+                </span>
+                {showBenchHome ? <ChevronUp className="h-3 w-3 opacity-60" /> : <ChevronDown className="h-3 w-3 opacity-60" />}
+              </button>
+              {showBenchHome && (
+                <div className="border-t border-border/40 p-2 space-y-0.5">
+                  {lineups.home.bench.slice(0, 9).map((p, i) => (
+                    <div key={i} className="flex items-center gap-1.5 py-0.5">
+                      <span className="w-4 text-[10px] font-mono text-muted-foreground">{p.jersey || '—'}</span>
+                      <span className="text-[10px] truncate flex-1">{p.name}</span>
+                      {p.position && <span className="text-[9px] text-muted-foreground uppercase">{p.position.slice(0, 3)}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {lineups.away && lineups.away.bench.length > 0 && (
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <button
+                className="flex w-full items-center justify-between px-2.5 py-2 text-[11px] font-semibold hover:bg-muted/40 transition-colors"
+                onClick={() => setShowBenchAway(v => !v)}
+              >
+                <span className="flex items-center gap-1.5">
+                  <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} size="xs" />
+                  {match.awayTeam.name} bench
+                </span>
+                {showBenchAway ? <ChevronUp className="h-3 w-3 opacity-60" /> : <ChevronDown className="h-3 w-3 opacity-60" />}
+              </button>
+              {showBenchAway && (
+                <div className="border-t border-border/40 p-2 space-y-0.5">
+                  {lineups.away.bench.slice(0, 9).map((p, i) => (
+                    <div key={i} className="flex items-center gap-1.5 py-0.5">
+                      <span className="w-4 text-[10px] font-mono text-muted-foreground">{p.jersey || '—'}</span>
+                      <span className="text-[10px] truncate flex-1">{p.name}</span>
+                      {p.position && <span className="text-[9px] text-muted-foreground uppercase">{p.position.slice(0, 3)}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : isBasketball ? (
+        /* ── BASKETBALL: court with team info ── */
+        <div className="space-y-2">
+          <div className="rounded-xl overflow-hidden" style={{ background: '#7c4a1a' }}>
+            <BasketballCourtSVG homeName={match.homeTeam.name} awayName={match.awayTeam.name} />
+          </div>
+          {[
+            { roster: lineups.home, team: match.homeTeam, color: 'bg-rose-500' },
+            { roster: lineups.away, team: match.awayTeam, color: 'bg-sky-500' },
+          ].map(({ roster, team, color }) => roster ? (
+            <div key={team.name} className="rounded-lg border border-border bg-card overflow-hidden">
+              <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border/40">
+                <div className={cn("h-2 w-2 rounded-full shrink-0", color)} />
+                <TeamLogo teamName={team.name} logoUrl={team.logo} size="xs" />
+                <span className="text-[11px] font-bold truncate">{team.name}</span>
+              </div>
+              <div className="p-2 space-y-0.5">
+                {roster.starting.slice(0, 5).map((p, i) => (
+                  <div key={i} className="flex items-center gap-1.5 py-0.5">
+                    <span className="w-4 text-[10px] font-mono text-muted-foreground">{p.jersey || (i + 1)}</span>
+                    <span className="text-[10px] truncate flex-1">{p.name}</span>
+                    {p.position && <span className="text-[9px] text-muted-foreground uppercase">{p.position.slice(0, 2)}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null)}
+        </div>
+      ) : isHockey ? (
+        /* ── HOCKEY: ice rink ── */
+        <div className="space-y-2">
+          <div className="rounded-xl overflow-hidden">
+            <HockeyRinkSVG homeName={match.homeTeam.name} awayName={match.awayTeam.name} />
+          </div>
+          {[
+            { roster: lineups.home, team: match.homeTeam },
+            { roster: lineups.away, team: match.awayTeam },
+          ].map(({ roster, team }) => roster ? (
+            <div key={team.name} className="rounded-lg border border-border bg-card overflow-hidden">
+              <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border/40">
+                <TeamLogo teamName={team.name} logoUrl={team.logo} size="xs" />
+                <span className="text-[11px] font-bold truncate">{team.name}</span>
+              </div>
+              <div className="p-2 space-y-0.5">
+                {roster.starting.slice(0, 6).map((p, i) => (
+                  <div key={i} className="flex items-center gap-1.5 py-0.5">
+                    <span className="w-4 text-[10px] font-mono text-muted-foreground">{p.jersey || (i + 1)}</span>
+                    <span className="text-[10px] truncate flex-1">{p.name}</span>
+                    {p.position && <span className="text-[9px] text-muted-foreground uppercase">{p.position.slice(0, 2)}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null)}
+        </div>
       ) : (
+        /* ── DEFAULT: plain compact list ── */
         <div className="space-y-3">
           {[
             { roster: lineups.home, team: match.homeTeam, side: "Home" },
@@ -2685,38 +2967,22 @@ function SidebarLineupsPanel({
           ].map(({ roster, team, side }) =>
             roster ? (
               <div key={side} className="rounded-xl border border-border bg-card overflow-hidden">
-                {/* Team header */}
                 <div className="flex items-center gap-2 border-b border-border/50 px-2.5 py-2">
                   <TeamLogo teamName={team.name} logoUrl={team.logo} size="sm" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-bold text-foreground truncate">{team.name}</p>
-                    {roster.formation && (
-                      <p className="text-[10px] text-muted-foreground">{roster.formation}</p>
-                    )}
+                    {roster.formation && <p className="text-[10px] text-muted-foreground">{roster.formation}</p>}
                   </div>
                 </div>
-                {/* Starters */}
                 <div className="p-2 space-y-0.5">
                   {roster.starting.slice(0, 11).map((p, i) => (
                     <div key={i} className="flex items-center gap-1.5 py-0.5">
-                      <span className="w-4 text-center text-[10px] font-mono text-muted-foreground shrink-0">
-                        {p.jersey || (i + 1)}
-                      </span>
+                      <span className="w-4 text-center text-[10px] font-mono text-muted-foreground shrink-0">{p.jersey || (i + 1)}</span>
                       <span className="text-[11px] text-foreground truncate flex-1">{p.name}</span>
-                      {p.position && (
-                        <span className="text-[9px] text-muted-foreground uppercase font-medium shrink-0">
-                          {p.position.slice(0, 3)}
-                        </span>
-                      )}
+                      {p.position && <span className="text-[9px] text-muted-foreground uppercase font-medium shrink-0">{p.position.slice(0, 3)}</span>}
                     </div>
                   ))}
                 </div>
-                {/* Formation for soccer/rugby only */}
-                {(sport === 'soccer' || sport === 'football' || sport === 'rugby') && roster.formation && (
-                  <div className="border-t border-border/40 px-2.5 py-1.5">
-                    <p className="text-[10px] text-muted-foreground text-center">Formation: {roster.formation}</p>
-                  </div>
-                )}
               </div>
             ) : null
           )}
