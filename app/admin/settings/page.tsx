@@ -43,6 +43,7 @@ interface Settings {
   the_odds_api_key: string
   sportsgameodds_api_key: string
   openai_api_key: string
+  football_data_api_key: string
   vapid_public_key: string
   vapid_private_key: string
   vapid_subject: string
@@ -126,6 +127,7 @@ const defaultSettings: Settings = {
   the_odds_api_key: "",
   sportsgameodds_api_key: "",
   openai_api_key: "",
+  football_data_api_key: "",
   vapid_public_key: "",
   vapid_private_key: "",
   vapid_subject: "",
@@ -794,6 +796,12 @@ export default function AdminSettingsPage() {
                 hint="Used by the AI tip-generation features. Falls back to OPENAI_API_KEY when blank."
                 value={settings.openai_api_key}
                 onChange={(v) => updateSetting('openai_api_key', v)}
+              />
+              <ApiKeyField
+                label="Football-Data.org API key"
+                hint="Powers live scores and fixtures from football-data.org. Falls back to FOOTBALL_DATA_API_KEY env var when blank."
+                value={settings.football_data_api_key || ''}
+                onChange={(v) => updateSetting('football_data_api_key', v)}
               />
               <div className="border-t pt-4 space-y-4">
                 <div>

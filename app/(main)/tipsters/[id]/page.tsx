@@ -149,7 +149,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
   
   return (
     <div className="flex-1 overflow-hidden">
-      <div className="mx-auto max-w-5xl px-3 py-4 pb-24 md:pb-6">
+      <div className="px-3 py-4 pb-24 md:pb-6">
         {/* Back Button */}
         <Button variant="ghost" size="sm" className="mb-3 h-7 text-xs" asChild>
           <Link href="/tipsters">

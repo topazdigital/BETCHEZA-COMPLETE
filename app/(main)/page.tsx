@@ -136,7 +136,7 @@ export default function HomePage() {
     <div className="overflow-hidden">
         {/* Hero Section — compact */}
         <section className="relative overflow-hidden border-b border-border bg-gradient-to-br from-background via-background to-primary/5">
-          <div className="mx-auto max-w-6xl px-4 py-4 sm:py-6">
+          <div className="px-4 py-4 sm:py-6">
             <div className="grid gap-4 lg:grid-cols-2 lg:gap-8">
               {/* Left: Main content */}
               <div className="flex flex-col justify-center">
@@ -214,16 +214,14 @@ export default function HomePage() {
 
         {/* Sports Filter */}
         <section className="border-b border-border bg-card/50 px-4 py-2">
-          <div className="mx-auto max-w-6xl">
-            <SportsFilter 
-              selectedSportId={selectedSportId}
-              onSelectSport={setSelectedSportId}
-              matchCounts={matchCounts}
-            />
-          </div>
+          <SportsFilter 
+            selectedSportId={selectedSportId}
+            onSelectSport={setSelectedSportId}
+            matchCounts={matchCounts}
+          />
         </section>
 
-        <div className="mx-auto max-w-6xl px-4 py-3">
+        <div className="px-4 py-3">
           {isLoading ? (
             <div className="flex h-64 items-center justify-center">
               <Spinner className="h-8 w-8" />

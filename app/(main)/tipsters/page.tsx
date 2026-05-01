@@ -105,7 +105,7 @@ export default function TipstersPage() {
     <div className="flex">
       <SidebarNew />
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-6xl px-3 py-2.5 pb-24">
+        <div className="px-3 py-2.5 pb-24">
           {/* Header */}
           <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
             <div>

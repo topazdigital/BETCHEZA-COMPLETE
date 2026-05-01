@@ -155,7 +155,7 @@ export default function ResultsPage() {
       <SidebarNew selectedSportId={selectedSport} onSelectSport={setSelectedSport} />
 
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-7xl px-3 py-3 md:px-5 md:py-4">
+        <div className="px-3 py-3 md:px-5 md:py-4">
           {/* Compact header */}
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">

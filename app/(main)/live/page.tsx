@@ -101,7 +101,7 @@ export default function LivePage() {
       <SidebarNew selectedSportId={selectedSport} onSelectSport={setSelectedSport} />
 
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-7xl px-3 py-3 md:px-5 md:py-4">
+        <div className="px-3 py-3 md:px-5 md:py-4">
           {/* Compact Header */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">

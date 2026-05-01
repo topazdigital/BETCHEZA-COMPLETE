@@ -91,7 +91,7 @@ export default function LeaderboardPage() {
     <div className="flex">
       <SidebarNew />
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-5xl px-3 py-2.5">
+        <div className="px-3 py-2.5">
           {/* Header */}
           <div className="mb-4 flex items-center justify-between">
             <div>

@@ -156,7 +156,7 @@ export default function MatchPredictorPage() {
     <div className="flex">
       <SidebarNew />
       <div className="flex-1">
-        <div className="mx-auto max-w-4xl px-3 py-4 md:px-4 md:py-6">
+        <div className="px-3 py-4 md:px-4 md:py-6">
           {/* Hero */}
           <div className="mb-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-3.5">
             <div className="flex items-start gap-2.5">

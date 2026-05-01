@@ -111,7 +111,7 @@ export function Footer() {
       {/* Promoted "Follow us" social bar — sits above the footer columns */}
       {socialLinks.length > 0 && (
         <div className="border-b border-border bg-muted/40">
-          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-3 py-2.5 sm:flex-row">
+          <div className="flex flex-col items-center justify-between gap-2 px-3 py-2.5 sm:flex-row">
             <div className="text-center sm:text-left">
               <p className="text-xs font-semibold text-foreground">
                 Join our sports betting community
@@ -125,7 +125,7 @@ export function Footer() {
         </div>
       )}
 
-      <div className="mx-auto max-w-7xl px-3 py-4">
+      <div className="px-3 py-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div>

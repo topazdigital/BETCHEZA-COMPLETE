@@ -976,7 +976,7 @@ export default function MatchDetailPage({ params }: PageProps) {
 
   return (
     <div className="flex-1 overflow-hidden">
-      <div className="mx-auto max-w-7xl px-3 py-2 pb-28 md:px-5 md:py-3 md:pb-8">
+      <div className="px-3 py-2 pb-28 md:px-5 md:py-3 md:pb-8">
         {/* Back */}
         <Button variant="ghost" size="sm" className="mb-2 -ml-2 h-7 text-xs text-muted-foreground hover:text-foreground" asChild>
           <Link href="/matches"><ArrowLeft className="mr-1 h-3.5 w-3.5" />Matches</Link>

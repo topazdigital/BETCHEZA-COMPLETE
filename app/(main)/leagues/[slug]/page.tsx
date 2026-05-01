@@ -232,7 +232,7 @@ export default function LeaguePage({ params }: PageProps) {
       <SidebarNew />
 
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-7xl px-3 py-3 md:px-4 md:py-4">
+        <div className="px-3 py-3 md:px-4 md:py-4">
           {/* Back Button */}
           <Button variant="ghost" size="sm" className="mb-2 h-7 text-xs px-2" asChild>
             <Link href="/matches">

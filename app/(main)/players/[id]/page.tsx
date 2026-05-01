@@ -122,7 +122,7 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
   const recent = player.recentMatches || [];
 
   return (
-    <div className="mx-auto max-w-5xl px-3 py-4">
+    <div className="px-3 py-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <Link
           href="/matches"

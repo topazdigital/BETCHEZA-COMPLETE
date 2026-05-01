@@ -218,7 +218,7 @@ export default function TeamPage({ params }: PageProps) {
   const nextMatch = upcoming?.find((e: MatchEvent) => e.status !== 'finished') || upcoming?.[0];
 
   return (
-    <div className="mx-auto max-w-7xl p-4">
+    <div className="p-4">
       {/* Back nav */}
       <Link
         href="/matches"

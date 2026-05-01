@@ -134,7 +134,7 @@ export default function StatsPage() {
     <div className="flex">
       <SidebarNew />
       <div className="flex-1 overflow-x-hidden">
-        <div className="mx-auto max-w-6xl space-y-4 p-3 lg:p-4">
+        <div className="space-y-4 p-3 lg:p-4">
           <header className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
               <BarChart3 className="h-5 w-5 text-primary" />

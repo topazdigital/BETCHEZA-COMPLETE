@@ -73,12 +73,26 @@ const ENV_BACKED_SETTINGS: Record<string, string> = {
 };
 
 function fillFromEnv(settings: Record<string, string>): Record<string, string> {
+  let didFill = false;
   for (const [key, envName] of Object.entries(ENV_BACKED_SETTINGS)) {
     const current = settings[key];
     if (!current || !String(current).trim()) {
       const envValue = (process.env[envName] || '').trim();
-      if (envValue) settings[key] = envValue;
+      if (envValue) {
+        settings[key] = envValue;
+        // Also push into the shared memory store so getSiteSettings() / getApiKey()
+        // can read this value without requiring a database or an explicit admin save.
+        if (!memorySettings[key] || !String(memorySettings[key]).trim()) {
+          memorySettings[key] = envValue;
+          didFill = true;
+        }
+      }
     }
+  }
+  // Persist to file store so env-backed keys survive process restarts even
+  // before the admin opens the settings page.
+  if (didFill) {
+    fileStoreSet('site-settings', memorySettings);
   }
   return settings;
 }

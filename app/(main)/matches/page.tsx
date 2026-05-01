@@ -195,16 +195,14 @@ function MatchesContent() {
       <div className="flex-1 overflow-hidden">
         {/* Sports Filter Bar */}
         <div className="border-b border-border bg-card/50 px-4 py-2">
-          <div className="mx-auto max-w-5xl">
-            <SportsFilter 
-              selectedSportId={selectedSportId}
-              onSelectSport={setSelectedSportId}
-              matchCounts={matchCounts}
-            />
-          </div>
+          <SportsFilter 
+            selectedSportId={selectedSportId}
+            onSelectSport={setSelectedSportId}
+            matchCounts={matchCounts}
+          />
         </div>
 
-        <div className="mx-auto max-w-5xl px-4 py-2.5">
+        <div className="px-4 py-2.5">
           {/* Header */}
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
             <div>

@@ -507,7 +507,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        <main className="p-3 pb-20 md:p-4 md:pb-4">{children}</main>
+        <main className="pb-20 md:pb-0">{children}</main>
 
         <Footer />
         <BottomNav />

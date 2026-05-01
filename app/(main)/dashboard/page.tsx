@@ -199,7 +199,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4">
+    <div className="container px-3 py-3 sm:px-4 sm:py-4">
       {/* Hero header — compact */}
       <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">

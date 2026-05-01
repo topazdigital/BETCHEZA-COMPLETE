@@ -102,7 +102,7 @@ function ComparePageInner() {
     <div className="flex">
       <SidebarNew />
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-6xl px-3 py-2.5 pb-24">
+        <div className="px-3 py-2.5 pb-24">
           <Button variant="ghost" size="sm" asChild className="mb-2 h-7 text-xs">
             <Link href="/tipsters"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Back to tipsters</Link>
           </Button>

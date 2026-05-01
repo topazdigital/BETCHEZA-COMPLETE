@@ -49,7 +49,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
     <div className="flex">
       <SidebarNew />
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-5xl px-3 py-2.5">
+        <div className="px-3 py-2.5">
           <Button variant="ghost" size="sm" className="mb-2 h-7 text-xs" asChild>
             <Link href="/competitions"><ArrowLeft className="mr-1 h-3.5 w-3.5" />All competitions</Link>
           </Button>

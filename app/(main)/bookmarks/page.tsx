@@ -120,7 +120,7 @@ export default function BookmarksPage() {
   const isLoading = loadingBookmarks || matchesLoading;
 
   return (
-    <div className="container mx-auto max-w-4xl px-3 py-4">
+    <div className="container px-3 py-4">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>

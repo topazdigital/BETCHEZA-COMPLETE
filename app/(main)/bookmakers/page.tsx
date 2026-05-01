@@ -91,7 +91,7 @@ export default function BookmakersPage() {
     <div className="flex">
       <SidebarNew />
       <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-5xl px-3 py-3">
+        <div className="px-3 py-3">
           <div className="mb-4">
             <h1 className="flex items-center gap-1.5 text-lg font-bold text-foreground">
               <Globe className="h-5 w-5 text-primary" />

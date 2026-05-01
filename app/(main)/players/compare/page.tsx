@@ -114,7 +114,7 @@ function PlayerComparePageInner() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-3 py-4">
+    <div className="px-3 py-4">
       <Link
         href="/matches"
         className="mb-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
