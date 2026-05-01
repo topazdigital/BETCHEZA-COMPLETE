@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { getFeaturedConfig, saveFeaturedConfig, DEFAULT_FEATURED_CONFIG } from '@/lib/featured-store';
 
 export const dynamic = 'force-dynamic';
 
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user) return null;
-  if ((user as unknown as { role?: string }).role !== 'admin') return null;
-  return user;
-}
-
+).role !== 'admin') return null;
 export async function GET() {
   const user = await requireAdmin();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

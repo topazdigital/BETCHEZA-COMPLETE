@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { listAllAutoTips, getAutoTipsStats } from '@/lib/auto-tips-store';
 import { listActivity } from '@/lib/auto-tip-activity';
 import { getFakeTipsters } from '@/lib/fake-tipsters';

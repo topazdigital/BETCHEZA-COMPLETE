@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { seedTipsForMatch, getAutoTipsStats, type GeneratedTip } from '@/lib/auto-tips-store';
 import { pushActivity, listActivity } from '@/lib/auto-tip-activity';
 import { getAllMatches } from '@/lib/api/unified-sports-api';

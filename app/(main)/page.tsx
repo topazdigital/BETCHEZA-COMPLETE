@@ -17,7 +17,6 @@ import {
   Shield,
   Sparkles,
 } from 'lucide-react';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { BetchezaBackBanner } from '@/components/home/betcheza-back-banner';
 import { SportsFilter } from '@/components/sports/sports-filter';
 import { MatchCardNew } from '@/components/matches/match-card-new';
@@ -134,10 +133,7 @@ export default function HomePage() {
   }, [upcomingMatches]);
 
   return (
-    <div className="flex">
-      <SidebarNew selectedSportId={selectedSportId} onSelectSport={setSelectedSportId} />
-      
-      <div className="flex-1 overflow-hidden">
+    <div className="overflow-hidden">
         {/* Hero Section — compact */}
         <section className="relative overflow-hidden border-b border-border bg-gradient-to-br from-background via-background to-primary/5">
           <div className="mx-auto max-w-6xl px-4 py-4 sm:py-6">
@@ -555,7 +551,6 @@ export default function HomePage() {
           )}
         </div>
       </div>
-    </div>
   );
 }
 

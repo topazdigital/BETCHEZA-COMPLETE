@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { listStaticPages, saveStaticPage, STATIC_PAGE_SLUGS } from '@/lib/static-pages-store';
 
 export const dynamic = 'force-dynamic';

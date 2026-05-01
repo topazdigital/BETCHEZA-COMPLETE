@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import {
   getOAuthConfig,
   saveOAuthConfig,
@@ -11,12 +11,6 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user || (user.role !== 'admin' && (user.role as string) !== 'super_admin')) return null;
-  return user;
-}
 
 export async function GET() {
   const user = await requireAdmin();

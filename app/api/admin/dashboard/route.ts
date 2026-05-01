@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { hasPermission } from '@/lib/permissions';
 import { mockUsers } from '@/lib/mock-data';
 import { getFakeTipsters } from '@/lib/fake-tipsters';

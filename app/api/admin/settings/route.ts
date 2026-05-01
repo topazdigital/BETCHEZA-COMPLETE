@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, execute, getPool } from '@/lib/db';
 import { invalidateSiteSettingsCache } from '@/lib/site-settings';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
+import { requireAdmin } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +85,8 @@ function fillFromEnv(settings: Record<string, string>): Record<string, string> {
 
 // Get all settings
 export async function GET() {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const pool = getPool();
 
   // If no database, return memory settings (still backfilled from env so the
@@ -131,6 +134,8 @@ export async function GET() {
 
 // Update settings
 export async function POST(request: NextRequest) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const pool = getPool();
 
   // Parse body ONCE — re-reading after the body is consumed throws and used

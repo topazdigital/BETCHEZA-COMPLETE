@@ -1,21 +1,20 @@
+import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { AdminShell } from '@/components/admin/admin-shell';
-import { AdminLoginGate } from '@/components/admin/admin-login-gate';
 import { canAccessAdmin } from '@/lib/permissions';
 
 /**
- * Server-side admin layout. The /admin URL is no longer a free pass to the
- * dashboard — every render verifies the auth cookie and only lets in users
- * whose role grants `admin.access` (admin, moderator, editor).
+ * Server-side admin layout.
+ * Unauthenticated users → redirected to homepage (no separate admin login).
+ * Authenticated but insufficient role → also redirected to homepage.
+ * Admin logs in from the main site login button; once logged in, the
+ * user menu shows "Admin Panel" which links here.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
 
-  if (!user) {
-    return <AdminLoginGate reason="signin" />;
-  }
-  if (!canAccessAdmin(user.role)) {
-    return <AdminLoginGate reason="forbidden" />;
+  if (!user || !canAccessAdmin(user.role)) {
+    redirect('/');
   }
 
   return (

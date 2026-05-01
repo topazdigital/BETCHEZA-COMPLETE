@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import {
   listTemplates,
   updateTemplate,
@@ -9,12 +9,6 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-async function requireAdmin() {
-  const u = await getCurrentUser();
-  if (!u || u.role !== 'admin') return null;
-  return u;
-}
 
 export async function GET() {
   const u = await requireAdmin();

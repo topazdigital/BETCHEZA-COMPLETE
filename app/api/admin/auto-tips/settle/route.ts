@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { settleStaleAutoTips, getAutoTipsStats } from '@/lib/auto-tips-store';
 import { pushActivity } from '@/lib/auto-tip-activity';
 

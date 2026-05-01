@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import {
   getCompetitionBySlug,
   settleCompetition,
@@ -12,12 +12,6 @@ import { getTemplate } from '@/lib/email-templates-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') return null;
-  return user;
-}
 
 function renderTpl(s: string, vars: Record<string, string | number>): string {
   return s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => String(vars[k] ?? ''));

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { getFeaturedConfig } from '@/lib/featured-store';
 import {
   getAllMatches,
@@ -53,13 +53,7 @@ function bestTipFor(matchId: string) {
   return best!;
 }
 
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user) return null;
-  if ((user as unknown as { role?: string }).role !== 'admin') return null;
-  return user;
-}
-
+).role !== 'admin') return null;
 interface AdminTipItem {
   matchId: string;
   pinned: boolean;

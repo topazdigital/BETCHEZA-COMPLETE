@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
+import { requireAdmin } from '@/lib/admin-auth'
 import { query } from '@/lib/db'
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store'
 
@@ -346,8 +346,8 @@ async function savePayoutSettings(settings: PayoutSettings): Promise<void> {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getCurrentUser()
-    if (!session || session.role !== 'admin') {
+    const session = await requireAdmin()
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -375,8 +375,8 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const session = await getCurrentUser()
-    if (!session || session.role !== 'admin') {
+    const session = await requireAdmin()
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -413,8 +413,8 @@ export async function PUT(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await getCurrentUser()
-    if (!session || session.role !== 'admin') {
+    const session = await requireAdmin()
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

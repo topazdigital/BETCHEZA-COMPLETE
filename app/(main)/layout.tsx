@@ -5,8 +5,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
-  Menu, X, Search, Bell, Settings, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User, Sparkles, UserPlus
+  Menu, X, LogIn, LogOut, ChevronDown,
+  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -26,25 +26,75 @@ import { BottomNav } from "@/components/layout/bottom-nav"
 import { Footer } from "@/components/layout/footer"
 import { CookieBanner } from "@/components/layout/cookie-banner"
 import { useMatchStats } from "@/lib/hooks/use-matches"
-
-// ✅ FIX: import correct export and alias it
 import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
 
-const POPULAR_LEAGUE_IDS = [1, 2, 3, 4, 5]; // Premier League, La Liga, Bundesliga, Serie A, Ligue 1
-const INTERNATIONAL_LEAGUE_IDS = [9, 10, 26, 102]; // UCL, UEL, UECL, CAF CL
+const POPULAR_LEAGUE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
+const INTERNATIONAL_LEAGUE_IDS = [9, 10, 26, 102, 24, 29, 30, 31];
 
-const mainNavItems: Array<{ href: string; label: string; icon: typeof Home; badgeKey?: 'live' | 'today' }> = [
-  { href: "/", label: "Home", icon: Home },
-  { href: "/live", label: "Live", icon: Radio, badgeKey: 'live' },
-  { href: "/matches", label: "Matches", icon: Calendar, badgeKey: 'today' },
-  { href: "/predictor", label: "AI Predictor", icon: Sparkles },
-  { href: "/tipsters", label: "Tipsters", icon: Users },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
-  { href: "/competitions", label: "Competitions", icon: Star },
-  { href: "/bookmakers", label: "Bookmakers", icon: Wallet },
-  { href: "/results", label: "Results", icon: BarChart3 },
-  { href: "/become-tipster", label: "Become a Tipster", icon: UserPlus },
+// Country code → league IDs mapping for "your country first" feature
+const COUNTRY_LEAGUE_MAP: Record<string, number[]> = {
+  KE: [9022], TZ: [9028], UG: [9029], NG: [9027], GH: [9026],
+  ZA: [96], EG: [97], MA: [98], TN: [99], DZ: [100],
+  GB: [1, 44, 41], ES: [2, 47], DE: [3, 49], IT: [4, 51],
+  FR: [5], US: [200, 201], AU: [20], MX: [27], CN: [28],
+};
+
+// Detect user's country code from Intl timezone
+function detectCountryCode(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz.startsWith('Africa/Nairobi') || tz.startsWith('Africa/Dar') || tz === 'Africa/Kampala') return 'KE';
+    if (tz.startsWith('Africa/Lagos') || tz.startsWith('Africa/Kano')) return 'NG';
+    if (tz.startsWith('Africa/Accra')) return 'GH';
+    if (tz.startsWith('Africa/Dar_es_Salaam')) return 'TZ';
+    if (tz.startsWith('Africa/Kampala')) return 'UG';
+    if (tz.startsWith('Africa/Johannesburg')) return 'ZA';
+    if (tz.startsWith('Africa/Cairo')) return 'EG';
+    if (tz.startsWith('Africa/Casablanca') || tz.startsWith('Africa/El_Aaiun')) return 'MA';
+    if (tz.startsWith('Europe/London')) return 'GB';
+    if (tz.startsWith('Europe/Madrid')) return 'ES';
+    if (tz.startsWith('Europe/Berlin') || tz.startsWith('Europe/Vienna') || tz.startsWith('Europe/Zurich')) return 'DE';
+    if (tz.startsWith('Europe/Rome')) return 'IT';
+    if (tz.startsWith('Europe/Paris')) return 'FR';
+    if (tz.startsWith('America/New_York') || tz.startsWith('America/Los_Angeles') || tz.startsWith('America/Chicago')) return 'US';
+    if (tz.startsWith('Australia/')) return 'AU';
+    if (tz.startsWith('America/Mexico_City')) return 'MX';
+    if (tz.startsWith('Asia/Shanghai') || tz.startsWith('Asia/Hong_Kong')) return 'CN';
+    return '';
+  } catch { return ''; }
+}
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  badgeKey?: 'live' | 'today';
+  color: string;
+  activeColor: string;
+}
+
+const mainNavItems: NavItem[] = [
+  { href: "/", label: "Home", icon: Home, color: "text-blue-500", activeColor: "bg-blue-500" },
+  { href: "/live", label: "Live", icon: Radio, badgeKey: 'live', color: "text-red-500", activeColor: "bg-red-500" },
+  { href: "/matches", label: "Matches", icon: Calendar, badgeKey: 'today', color: "text-green-500", activeColor: "bg-green-500" },
+  { href: "/predictor", label: "AI Predictor", icon: Sparkles, color: "text-purple-500", activeColor: "bg-purple-500" },
+  { href: "/feed", label: "Community Feed", icon: MessageSquare, color: "text-teal-500", activeColor: "bg-teal-500" },
+  { href: "/tipsters", label: "Tipsters", icon: Users, color: "text-orange-500", activeColor: "bg-orange-500" },
+  { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-yellow-500", activeColor: "bg-yellow-500" },
+  { href: "/competitions", label: "Competitions", icon: Star, color: "text-pink-500", activeColor: "bg-pink-500" },
+  { href: "/results", label: "Results", icon: BarChart3, color: "text-slate-400", activeColor: "bg-slate-500" },
+  { href: "/become-tipster", label: "Become a Tipster", icon: UserPlus, color: "text-indigo-500", activeColor: "bg-indigo-500" },
 ]
+
+// Popular bookmakers for the sidebar
+const SIDEBAR_BOOKMAKERS = [
+  { name: "Bet365", slug: "bet365", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Bet365_logo.svg/200px-Bet365_logo.svg.png" },
+  { name: "1xBet", slug: "1xbet", logo: "https://1xbet.co.ke/favicon.ico" },
+  { name: "SportPesa", slug: "sportpesa", logo: "https://www.sportpesa.co.ke/favicon.ico" },
+  { name: "Betway", slug: "betway", logo: "https://www.betway.co.ke/favicon.ico" },
+  { name: "Odibets", slug: "odibets", logo: "https://odibets.com/favicon.ico" },
+  { name: "Mozzartbet", slug: "mozzartbet", logo: "https://mozzartbet.co.ke/favicon.ico" },
+];
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -54,12 +104,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const [showSports, setShowSports] = useState(false)
   const [showLeagues, setShowLeagues] = useState(false)
   const [showInternationals, setShowInternationals] = useState(false)
+  const [showBookmakers, setShowBookmakers] = useState(false)
+  const [userCountry, setUserCountry] = useState<string>('KE')
+  const [intlMatchCount, setIntlMatchCount] = useState(0)
   const stats = useMatchStats()
   const [branding, setBranding] = useState<{ siteName: string; logoUrl: string; logoDarkUrl: string }>({
     siteName: "Betcheza",
     logoUrl: "",
     logoDarkUrl: "",
   })
+
+  useEffect(() => {
+    setUserCountry(detectCountryCode() || 'KE')
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -77,6 +134,32 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     return () => { cancelled = true }
   }, [])
 
+  // Fetch today's international match count for the Internationals badge
+  useEffect(() => {
+    fetch('/api/matches?category=international&limit=50')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return
+        const matches = d.matches || d || []
+        if (Array.isArray(matches)) setIntlMatchCount(matches.length)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  // Build popular leagues list: user's country leagues first, then global popular
+  const popularLeagues = (() => {
+    const countryIds = COUNTRY_LEAGUE_MAP[userCountry] || []
+    const countryLeagues = ALL_LEAGUES.filter(l => countryIds.includes(l.id))
+    const globalLeagues = ALL_LEAGUES
+      .filter(l => POPULAR_LEAGUE_IDS.includes(l.id) && !countryIds.includes(l.id))
+      .sort((a, b) => POPULAR_LEAGUE_IDS.indexOf(a.id) - POPULAR_LEAGUE_IDS.indexOf(b.id))
+    return [...countryLeagues, ...globalLeagues]
+  })()
+
+  const internationalLeagues = ALL_LEAGUES
+    .filter(l => INTERNATIONAL_LEAGUE_IDS.includes(l.id))
+    .sort((a, b) => INTERNATIONAL_LEAGUE_IDS.indexOf(a.id) - INTERNATIONAL_LEAGUE_IDS.indexOf(b.id))
+
   return (
     <div className="min-h-screen bg-background">
       {sidebarOpen && (
@@ -86,8 +169,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         />
       )}
 
-      {/* Sidebar — narrower & denser. Whole sidebar scrolls so the full
-          sports list is reachable without an inner scroll cap. */}
       <aside className={cn(
         "fixed inset-y-0 left-0 z-50 flex w-56 transform flex-col overflow-y-auto border-r border-border bg-card transition-transform lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -113,13 +194,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             ) : (
               <>
                 <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
-                  {branding.siteName
-                    .split(" ")
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((w) => w.charAt(0).toUpperCase())
-                    .join("")
-                    .slice(0, 2) || "BZ"}
+                  {branding.siteName.split(" ").filter(Boolean).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join("").slice(0, 2) || "BZ"}
                 </div>
                 <span className="text-sm font-bold">{branding.siteName}</span>
               </>
@@ -130,10 +205,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           </Button>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation — colorful tabs */}
         <nav className="space-y-0.5 p-2">
           {mainNavItems.map((item) => {
-            const isActive = pathname === item.href
+            const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
             return (
               <Link
                 key={item.href}
@@ -141,13 +216,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 onClick={() => setSidebarOpen(false)}
                 className={cn(
                   "flex items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                  isActive 
-                    ? "bg-primary text-primary-foreground" 
+                  isActive
+                    ? `${item.activeColor} text-white`
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <item.icon className="h-3.5 w-3.5" />
+                  <item.icon className={cn("h-3.5 w-3.5", !isActive && item.color)} />
                   {item.label}
                 </div>
                 {item.badgeKey && (() => {
@@ -176,7 +251,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             Sports
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showSports && "rotate-180")} />
           </button>
-
           {showSports && (
             <div className="mt-0.5 space-y-0.5">
               {SPORTS_LIST?.map((sport) => (
@@ -194,68 +268,134 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           )}
         </div>
 
-        {/* Popular Leagues */}
+        {/* Popular Leagues — user's country first */}
         <div className="border-t border-border p-2">
           <button
             onClick={() => setShowLeagues(!showLeagues)}
             className="flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            <span className="flex items-center gap-1.5"><Trophy className="h-3 w-3" /> Popular Leagues</span>
+            <span className="flex items-center gap-1.5">
+              <Trophy className="h-3 w-3 text-yellow-500" /> Popular Leagues
+            </span>
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showLeagues && "rotate-180")} />
           </button>
           {showLeagues && (
             <div className="mt-0.5 space-y-0.5">
-              {ALL_LEAGUES
-                .filter(l => POPULAR_LEAGUE_IDS.includes(l.id))
-                .sort((a, b) => POPULAR_LEAGUE_IDS.indexOf(a.id) - POPULAR_LEAGUE_IDS.indexOf(b.id))
-                .map(league => (
+              {popularLeagues.map((league, idx) => {
+                const isCountry = (COUNTRY_LEAGUE_MAP[userCountry] || []).includes(league.id)
+                return (
                   <Link
                     key={league.id}
                     href={`/leagues/${league.slug}`}
                     onClick={() => setSidebarOpen(false)}
                     className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
-                    <span className="text-sm">🏆</span>
+                    {isCountry
+                      ? <span className="text-sm">🏠</span>
+                      : <span className="text-sm">🏆</span>
+                    }
                     <span className="truncate">{league.name}</span>
+                    {isCountry && idx === 0 && (
+                      <span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-primary">Local</span>
+                    )}
                   </Link>
-                ))
-              }
+                )
+              })}
             </div>
           )}
         </div>
 
-        {/* Internationals */}
+        {/* Internationals — shows today's count badge */}
         <div className="border-t border-border p-2">
           <button
             onClick={() => setShowInternationals(!showInternationals)}
             className="flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            <span className="flex items-center gap-1.5"><Star className="h-3 w-3" /> Internationals</span>
-            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showInternationals && "rotate-180")} />
+            <span className="flex items-center gap-1.5">
+              <Star className="h-3 w-3 text-orange-500" /> Internationals
+            </span>
+            <div className="flex items-center gap-1">
+              {intlMatchCount > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
+                  {intlMatchCount}
+                </span>
+              )}
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showInternationals && "rotate-180")} />
+            </div>
           </button>
           {showInternationals && (
             <div className="mt-0.5 space-y-0.5">
-              {ALL_LEAGUES
-                .filter(l => INTERNATIONAL_LEAGUE_IDS.includes(l.id))
-                .sort((a, b) => INTERNATIONAL_LEAGUE_IDS.indexOf(a.id) - INTERNATIONAL_LEAGUE_IDS.indexOf(b.id))
-                .map(league => (
-                  <Link
-                    key={league.id}
-                    href={`/leagues/${league.slug}`}
-                    onClick={() => setSidebarOpen(false)}
-                    className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    <span className="text-sm">🌍</span>
-                    <span className="truncate">{league.name}</span>
-                  </Link>
-                ))
-              }
+              {/* Quick link to today's international games */}
+              <Link
+                href="/matches?category=international"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-2 rounded-md px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+              >
+                <span className="text-sm">📅</span>
+                <span>Today&apos;s Internationals</span>
+                {intlMatchCount > 0 && (
+                  <span className="ml-auto text-[10px] font-bold text-orange-500">{intlMatchCount} games</span>
+                )}
+              </Link>
+              {internationalLeagues.map(league => (
+                <Link
+                  key={league.id}
+                  href={`/leagues/${league.slug}`}
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <span className="text-sm">🌍</span>
+                  <span className="truncate">{league.name}</span>
+                </Link>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Admin - only visible for admin users */}
-        {isAuthenticated && user?.role === 'admin' && (
+        {/* Top Bookmakers — collapsible with logos */}
+        <div className="border-t border-border p-2">
+          <button
+            onClick={() => setShowBookmakers(!showBookmakers)}
+            className="flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            <span className="flex items-center gap-1.5">
+              <Wallet className="h-3 w-3 text-emerald-500" /> Top Bookmakers
+            </span>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showBookmakers && "rotate-180")} />
+          </button>
+          {showBookmakers && (
+            <div className="mt-0.5 space-y-0.5">
+              {SIDEBAR_BOOKMAKERS.map((bk) => (
+                <Link
+                  key={bk.slug}
+                  href={`/bookmakers`}
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm border border-border bg-white">
+                    <img
+                      src={bk.logo}
+                      alt={bk.name}
+                      className="h-4 w-4 object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                  </div>
+                  <span className="truncate">{bk.name}</span>
+                </Link>
+              ))}
+              <Link
+                href="/bookmakers"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-2 rounded-md px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+              >
+                View all bookmakers →
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Admin — only visible for admin/moderator/editor users */}
+        {isAuthenticated && user && (user.role === 'admin' || user.role === 'super_admin' || user.role === 'moderator' || user.role === 'editor') && (
           <div className="mt-auto border-t border-border p-2">
             <Link href="/admin" className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-muted rounded-md text-primary">
               <Settings className="h-3.5 w-3.5" />
@@ -265,7 +405,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         )}
       </aside>
 
-      {/* Main */}
+      {/* Main content */}
       <div className="lg:pl-56">
         {/* Header */}
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-card px-3">
@@ -276,7 +416,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <div className="hidden flex-1 max-w-md md:block">
             <HeaderSearch inline />
           </div>
-          {/* Mobile: collapsed icon-button search keeps the header tidy. */}
           <div className="md:hidden">
             <HeaderSearch />
           </div>
@@ -284,8 +423,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
             <NotificationBell />
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <Bookmark className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+              <Link href="/bookmarks">
+                <Bookmark className="h-4 w-4" />
+              </Link>
             </Button>
             
             {isLoading ? (
@@ -319,17 +460,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/tips">
-                      My Tips
-                    </Link>
+                    <Link href="/dashboard/tips">My Tips</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/wallet">
-                      Wallet
+                    <Link href="/dashboard/wallet">Wallet</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Settings
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  {user.role === 'admin' && (
+                  {(user.role === 'admin' || user.role === 'super_admin' || user.role === 'moderator' || user.role === 'editor') && (
                     <>
                       <DropdownMenuItem asChild>
                         <Link href="/admin" className="text-primary">
@@ -366,13 +509,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
         <main className="p-3 pb-20 md:p-4 md:pb-4">{children}</main>
 
-        {/* Site footer (admin-managed branding + social links) */}
         <Footer />
-
-        {/* Mobile Bottom Navigation */}
         <BottomNav />
-
-        {/* Cookie consent banner (admin-toggleable) */}
         <CookieBanner />
       </div>
     </div>

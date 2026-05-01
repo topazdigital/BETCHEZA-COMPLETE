@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { getStats, clearAll } from '@/lib/affiliate-clicks-store';
 
 export const dynamic = 'force-dynamic';

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { requireAdmin } from '@/lib/admin-auth';
 import { listEmailSubscribers } from '@/lib/notification-store';
 
 export const dynamic = 'force-dynamic';
