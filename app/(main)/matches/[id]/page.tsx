@@ -35,7 +35,6 @@ import { MatchFacts } from "@/components/matches/match-facts"
 import { WinnerVote } from "@/components/matches/winner-vote"
 import { useAuth } from "@/contexts/auth-context"
 import { useMatches } from "@/lib/hooks/use-matches"
-import { FavoritedTipsPanel } from "@/components/home/favorited-tips-panel"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -977,10 +976,15 @@ export default function MatchDetailPage({ params }: PageProps) {
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* LEFT SIDEBAR — Favorited Tips (lg+) */}
+      {/* LEFT SIDEBAR — Lineups (lg+) */}
       <aside className="hidden lg:block w-64 xl:w-72 shrink-0 border-r border-border">
         <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
-          <FavoritedTipsPanel />
+          <SidebarLineupsPanel
+            lineups={lineups}
+            match={match}
+            sport={sport}
+            hasLineups={!!data?.hasLineups}
+          />
         </div>
       </aside>
 
@@ -1264,8 +1268,6 @@ export default function MatchDetailPage({ params }: PageProps) {
               Stats
               {hasTeamStats && isLive && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="odds" className="flex-1 min-w-[40px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">Odds</TabsTrigger>
-            <TabsTrigger value="lineups" className="flex-1 min-w-[50px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">Lineups</TabsTrigger>
             <TabsTrigger value="h2h" className="flex-1 min-w-[35px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">H2H</TabsTrigger>
             <TabsTrigger value="standings" className="flex-1 min-w-[40px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">Table</TabsTrigger>
             <TabsTrigger value="news" className="flex-1 min-w-[40px] px-1 py-0 h-full text-[10px] md:text-[11px] font-semibold rounded">News</TabsTrigger>
@@ -2340,39 +2342,53 @@ function MatchInfoRail({
         </CardContent>
       </Card>
 
-      {/* Quick odds */}
-      {consensus && (
+      {/* Odds comparison */}
+      {bookmakerOdds.length > 0 && (
         <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
-                {hasRealOdds ? 'Best Odds' : 'Estimated Odds'}
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <TrendingUp className="h-3.5 w-3.5" />
+                {hasRealOdds ? 'Bookmaker Odds' : 'Estimated Odds'}
               </h3>
-              <button
-                onClick={() => onJumpToTab('odds')}
-                className="text-xs text-primary hover:underline"
-              >
-                All →
-              </button>
             </div>
-            <div className={cn('grid gap-1.5', isTwoWay ? 'grid-cols-2' : 'grid-cols-3')}>
-              <div className="rounded-lg bg-muted/50 p-2 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase">{isTwoWay ? 'Home' : '1'}</p>
-                <p className="font-bold">{consensus.home.toFixed(2)}</p>
+            {/* Column headers */}
+            <div className={cn('grid gap-1 text-[9px] font-bold uppercase text-muted-foreground px-0.5', isTwoWay ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]')}>
+              <span>Book</span>
+              <span className="text-center w-10">1</span>
+              {!isTwoWay && <span className="text-center w-10">X</span>}
+              <span className="text-center w-10">2</span>
+            </div>
+            {/* Up to 6 bookmakers */}
+            {bookmakerOdds.slice(0, 6).map((b, i) => (
+              <div key={i} className={cn(
+                'grid gap-1 items-center rounded-lg px-0.5 py-1',
+                isTwoWay ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]',
+                i === 0 ? 'bg-primary/5' : '',
+              )}>
+                <span className="text-[10px] truncate text-muted-foreground">{b.bookmaker}</span>
+                <span className={cn('w-10 text-center text-xs font-bold tabular-nums', i === 0 ? 'text-primary' : '')}>{b.home.toFixed(2)}</span>
+                {!isTwoWay && <span className={cn('w-10 text-center text-xs font-bold tabular-nums', i === 0 ? 'text-primary' : '')}>{b.draw?.toFixed(2) ?? '—'}</span>}
+                <span className={cn('w-10 text-center text-xs font-bold tabular-nums', i === 0 ? 'text-primary' : '')}>{b.away.toFixed(2)}</span>
               </div>
-              {!isTwoWay && consensus.draw !== undefined && (
+            ))}
+            {bookmakerOdds.length === 0 && consensus && (
+              <div className={cn('grid gap-1.5', isTwoWay ? 'grid-cols-2' : 'grid-cols-3')}>
                 <div className="rounded-lg bg-muted/50 p-2 text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase">X</p>
-                  <p className="font-bold">{consensus.draw.toFixed(2)}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">{isTwoWay ? 'Home' : '1'}</p>
+                  <p className="font-bold">{consensus.home.toFixed(2)}</p>
                 </div>
-              )}
-              <div className="rounded-lg bg-muted/50 p-2 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase">{isTwoWay ? 'Away' : '2'}</p>
-                <p className="font-bold">{consensus.away.toFixed(2)}</p>
+                {!isTwoWay && consensus.draw !== undefined && (
+                  <div className="rounded-lg bg-muted/50 p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">X</p>
+                    <p className="font-bold">{consensus.draw.toFixed(2)}</p>
+                  </div>
+                )}
+                <div className="rounded-lg bg-muted/50 p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase">{isTwoWay ? 'Away' : '2'}</p>
+                  <p className="font-bold">{consensus.away.toFixed(2)}</p>
+                </div>
               </div>
-            </div>
-            {consensus.bookmaker && (
-              <p className="text-[10px] text-muted-foreground text-center">via {consensus.bookmaker}</p>
             )}
           </CardContent>
         </Card>
@@ -2619,6 +2635,94 @@ function H2HRow({ game, timezone, homeName }: { game: H2HGame; timezone: string;
         </div>
       )}
     </div>
+  )
+}
+
+function SidebarLineupsPanel({
+  lineups,
+  match,
+  sport,
+  hasLineups,
+}: {
+  lineups: Lineups | null
+  match: MatchDetails['match']
+  sport: string
+  hasLineups: boolean
+}) {
+  const hasData = lineups && (lineups.home || lineups.away)
+
+  return (
+    <section className="space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+          <Shirt className="h-3.5 w-3.5 text-primary" />
+        </div>
+        <h2 className="text-sm font-bold text-foreground">Lineups</h2>
+        {hasData && (
+          <span className={cn(
+            "ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+            hasLineups
+              ? "bg-emerald-500/15 text-emerald-600"
+              : "bg-amber-500/15 text-amber-600"
+          )}>
+            {hasLineups ? "Confirmed" : "Predicted"}
+          </span>
+        )}
+      </div>
+
+      {!hasData ? (
+        <div className="rounded-xl border border-border bg-card px-3 py-8 text-center">
+          <Shirt className="h-8 w-8 mx-auto mb-2 opacity-25" />
+          <p className="text-xs font-medium text-muted-foreground">Not announced yet</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Usually 1h before kickoff</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {[
+            { roster: lineups.home, team: match.homeTeam, side: "Home" },
+            { roster: lineups.away, team: match.awayTeam, side: "Away" },
+          ].map(({ roster, team, side }) =>
+            roster ? (
+              <div key={side} className="rounded-xl border border-border bg-card overflow-hidden">
+                {/* Team header */}
+                <div className="flex items-center gap-2 border-b border-border/50 px-2.5 py-2">
+                  <TeamLogo teamName={team.name} logoUrl={team.logo} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-bold text-foreground truncate">{team.name}</p>
+                    {roster.formation && (
+                      <p className="text-[10px] text-muted-foreground">{roster.formation}</p>
+                    )}
+                  </div>
+                </div>
+                {/* Starters */}
+                <div className="p-2 space-y-0.5">
+                  {roster.starting.slice(0, 11).map((p, i) => (
+                    <div key={i} className="flex items-center gap-1.5 py-0.5">
+                      <span className="w-4 text-center text-[10px] font-mono text-muted-foreground shrink-0">
+                        {p.jersey || (i + 1)}
+                      </span>
+                      <span className="text-[11px] text-foreground truncate flex-1">{p.name}</span>
+                      {p.position && (
+                        <span className="text-[9px] text-muted-foreground uppercase font-medium shrink-0">
+                          {p.position.slice(0, 3)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* Formation for soccer/rugby only */}
+                {(sport === 'soccer' || sport === 'football' || sport === 'rugby') && roster.formation && (
+                  <div className="border-t border-border/40 px-2.5 py-1.5">
+                    <p className="text-[10px] text-muted-foreground text-center">Formation: {roster.formation}</p>
+                  </div>
+                )}
+              </div>
+            ) : null
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 

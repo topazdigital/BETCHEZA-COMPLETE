@@ -17,7 +17,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { SportsFilter } from '@/components/sports/sports-filter';
 import { BestBetsPanel } from '@/components/home/best-bets-panel';
-import { FavoritedTipsPanel } from '@/components/home/favorited-tips-panel';
 import { MatchCardNew } from '@/components/matches/match-card-new';
 import { SportIcon, LeagueFlag } from '@/components/ui/team-logo';
 import { Spinner } from '@/components/ui/spinner';
@@ -191,13 +190,6 @@ function MatchesContent() {
 
   return (
     <div className="flex min-h-0">
-      {/* LEFT SIDEBAR — Favorited Tips (lg+) */}
-      <aside className="hidden lg:block w-64 xl:w-72 shrink-0 border-r border-border">
-        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
-          <FavoritedTipsPanel />
-        </div>
-      </aside>
-
       <div className="flex-1 overflow-hidden min-w-0">
         {/* Sports Filter Bar */}
         <div className="border-b border-border bg-card/50 px-4 py-2">

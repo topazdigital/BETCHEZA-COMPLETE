@@ -28,7 +28,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { ALL_SPORTS, getSportIcon } from '@/lib/sports-data';
 import { BestBetsPanel } from '@/components/home/best-bets-panel';
-import { FavoritedTipsPanel, FavoritedTipMarqueeCard, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
+import { FavoritedTipsPanel, FavoritedTipMarqueeCard, MyTipsPanel, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { liveStatusLabel } from '@/lib/utils/live-status';
@@ -229,6 +229,8 @@ export default function HomePage() {
           <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3 space-y-3">
             {/* Live Now compact list */}
             <LiveSidePanel liveMatches={liveMatches} upcomingMatches={upcomingMatches} />
+            {/* My Tips — logged-in user's recent tips */}
+            <MyTipsPanel />
             {/* Favorited Tips */}
             <FavoritedTipsPanel />
           </div>
@@ -319,8 +321,9 @@ export default function HomePage() {
                 )}
               </section>
 
-              {/* Favorited Tips — mobile only (always visible); on lg+ it lives in the left sidebar */}
-              <div className="mb-4 lg:hidden">
+              {/* My Tips + Favorited Tips — mobile only; on lg+ they live in the left sidebar */}
+              <div className="mb-4 lg:hidden space-y-3">
+                <MyTipsPanel />
                 <FavoritedTipsPanel />
               </div>
 

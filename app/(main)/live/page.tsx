@@ -9,7 +9,6 @@ import { MatchCardNew } from "@/components/matches/match-card-new"
 import { ALL_SPORTS, getSportIcon } from "@/lib/sports-data"
 import { useLiveMatches } from "@/lib/hooks/use-matches"
 import { FlagIcon } from "@/components/ui/flag-icon"
-import { FavoritedTipsPanel } from "@/components/home/favorited-tips-panel"
 import { BestBetsPanel } from "@/components/home/best-bets-panel"
 
 // Priority order for sports (football first, then by popularity)
@@ -72,13 +71,6 @@ export default function LivePage() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* LEFT SIDEBAR — Favorited Tips (lg+) */}
-      <aside className="hidden lg:block w-64 xl:w-72 shrink-0 border-r border-border">
-        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
-          <FavoritedTipsPanel />
-        </div>
-      </aside>
-
       {/* MAIN CONTENT */}
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="px-3 py-3 md:px-5 md:py-4">

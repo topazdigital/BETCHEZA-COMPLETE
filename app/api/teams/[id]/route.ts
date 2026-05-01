@@ -66,7 +66,12 @@ const TEAM_RESOLVER_CANDIDATES: Array<[string, string]> = [
 const teamLeagueCache = new Map<string, { sport: string; league: string } | null>();
 
 interface TeamProbeData {
-  team?: { id?: string; slug?: string };
+  team?: {
+    id?: string;
+    slug?: string;
+    leagueAbbrev?: string;
+    defaultLeague?: { slug?: string; id?: string };
+  };
 }
 
 async function probeTeam(sport: string, league: string, teamId: string): Promise<TeamProbeData | null> {
@@ -121,11 +126,40 @@ async function resolveTeamSportLeague(
   if (cached !== undefined) return cached;
 
   // Strategy 1 (fast & accurate for soccer): fetch the team payload using
-  // the hint (or any soccer league) and read its slug country prefix.
+  // the hint (or any soccer league). ESPN IDs are globally unique per sport,
+  // so ANY league context returns the correct team data.
+  // We check `defaultLeague.slug` first — ESPN always sets this to the
+  // team's actual domestic league (e.g. "nor.1" for Viking FK), making it
+  // the most reliable source regardless of which league path we used.
   const probeSport = hint?.sport || 'soccer';
   const probeLeague = hint?.league || 'eng.1';
   const probed = await probeTeam(probeSport, probeLeague, espnTeamId);
   if (probed && probeSport === 'soccer') {
+    // Prefer ESPN's own defaultLeague field — it's always the team's
+    // real domestic league, avoiding slug-parsing edge cases (e.g. slugs
+    // like "team.viking_fk" that don't follow the "nor.viking" convention).
+    const defaultLeagueSlug = probed.team?.defaultLeague?.slug?.toLowerCase().trim() || probed.team?.leagueAbbrev?.toLowerCase().trim();
+    if (defaultLeagueSlug && defaultLeagueSlug !== 'eng.1') {
+      // Validate it's a known soccer league by checking the slug resolves
+      const choice = { sport: 'soccer', league: defaultLeagueSlug };
+      teamLeagueCache.set(espnTeamId, choice);
+      return choice;
+    }
+    if (defaultLeagueSlug === 'eng.1') {
+      // Could be a real English team OR a fallback. Check slug to confirm.
+      const slug = probed.team?.slug || '';
+      const domestic = leagueFromSlug(slug);
+      if (domestic) {
+        const choice = { sport: 'soccer', league: domestic };
+        teamLeagueCache.set(espnTeamId, choice);
+        return choice;
+      }
+      // No slug country prefix — trust defaultLeague
+      const choice = { sport: 'soccer', league: 'eng.1' };
+      teamLeagueCache.set(espnTeamId, choice);
+      return choice;
+    }
+    // Fallback to slug-based resolution for teams that don't have defaultLeague
     const slug = probed.team?.slug || '';
     const domestic = leagueFromSlug(slug);
     if (domestic) {

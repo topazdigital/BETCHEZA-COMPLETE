@@ -2210,17 +2210,85 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
 // ============================================
 
 const THE_ODDS_API_SPORTS: Record<string, { sportId: number; leagueId: number }> = {
+  // Soccer — Big 5 + more
   'soccer_epl': { sportId: 1, leagueId: 1 },
   'soccer_spain_la_liga': { sportId: 1, leagueId: 2 },
   'soccer_germany_bundesliga': { sportId: 1, leagueId: 3 },
   'soccer_italy_serie_a': { sportId: 1, leagueId: 4 },
   'soccer_france_ligue_one': { sportId: 1, leagueId: 5 },
   'soccer_uefa_champs_league': { sportId: 1, leagueId: 9 },
+  'soccer_uefa_europa_league': { sportId: 1, leagueId: 10 },
+  'soccer_netherlands_eredivisie': { sportId: 1, leagueId: 57 },
+  'soccer_portugal_primeira_liga': { sportId: 1, leagueId: 58 },
+  'soccer_scotland_premier_league': { sportId: 1, leagueId: 59 },
+  'soccer_turkey_super_league': { sportId: 1, leagueId: 60 },
+  'soccer_belgium_first_div': { sportId: 1, leagueId: 61 },
+  'soccer_norway_eliteserien': { sportId: 1, leagueId: 66 },
+  'soccer_sweden_allsvenskan': { sportId: 1, leagueId: 67 },
+  'soccer_denmark_superliga': { sportId: 1, leagueId: 68 },
+  'soccer_austria_bundesliga': { sportId: 1, leagueId: 69 },
+  'soccer_switzerland_super_league': { sportId: 1, leagueId: 70 },
+  'soccer_greece_super_league': { sportId: 1, leagueId: 71 },
+  'soccer_poland_ekstraklasa': { sportId: 1, leagueId: 72 },
+  'soccer_czech_republic_liga': { sportId: 1, leagueId: 73 },
+  'soccer_russia_premier_league': { sportId: 1, leagueId: 74 },
+  'soccer_ukraine_premier_league': { sportId: 1, leagueId: 75 },
+  'soccer_england_championship': { sportId: 1, leagueId: 7 },
+  'soccer_usa_mls': { sportId: 1, leagueId: 76 },
+  'soccer_brazil_campeonato': { sportId: 1, leagueId: 77 },
+  'soccer_argentina_primera_division': { sportId: 1, leagueId: 78 },
+  'soccer_mexico_ligamx': { sportId: 1, leagueId: 79 },
+  'soccer_australia_aleague': { sportId: 1, leagueId: 80 },
+  'soccer_japan_j_league': { sportId: 1, leagueId: 81 },
+  'soccer_south_korea_kleague': { sportId: 1, leagueId: 82 },
+  'soccer_saudi_premier_league': { sportId: 1, leagueId: 83 },
+  'soccer_conmebol_copa_libertadores': { sportId: 1, leagueId: 11 },
+  'soccer_fifa_world_cup': { sportId: 1, leagueId: 12 },
+  'soccer_africa_cup_of_nations': { sportId: 1, leagueId: 30 },
+  // Basketball
   'basketball_nba': { sportId: 2, leagueId: 101 },
+  'basketball_euroleague': { sportId: 2, leagueId: 103 },
+  'basketball_ncaab': { sportId: 2, leagueId: 102 },
+  'basketball_wnba': { sportId: 2, leagueId: 104 },
+  // American Football
   'americanfootball_nfl': { sportId: 5, leagueId: 401 },
+  'americanfootball_ncaaf': { sportId: 5, leagueId: 402 },
+  'americanfootball_cfl': { sportId: 5, leagueId: 403 },
+  // Baseball
   'baseball_mlb': { sportId: 6, leagueId: 501 },
+  // Ice Hockey
   'icehockey_nhl': { sportId: 7, leagueId: 601 },
+  'icehockey_sweden_hockey_league': { sportId: 7, leagueId: 602 },
+  'icehockey_ahl': { sportId: 7, leagueId: 603 },
+  // Tennis
+  'tennis_atp_french_open': { sportId: 3, leagueId: 201 },
+  'tennis_wta_french_open': { sportId: 3, leagueId: 202 },
+  'tennis_atp_wimbledon': { sportId: 3, leagueId: 203 },
+  'tennis_wta_wimbledon': { sportId: 3, leagueId: 204 },
+  'tennis_atp_us_open': { sportId: 3, leagueId: 205 },
+  'tennis_wta_us_open': { sportId: 3, leagueId: 206 },
+  'tennis_atp_australian_open': { sportId: 3, leagueId: 207 },
+  'tennis_wta_australian_open': { sportId: 3, leagueId: 208 },
+  // Rugby
+  'rugbyunion_six_nations': { sportId: 13, leagueId: 1001 },
+  'rugbyunion_world_cup': { sportId: 13, leagueId: 1002 },
+  'rugbyleague_nrl': { sportId: 14, leagueId: 1101 },
+  // Cricket
+  'cricket_test_match': { sportId: 9, leagueId: 701 },
+  'cricket_icc_world_cup': { sportId: 9, leagueId: 702 },
+  'cricket_ipl': { sportId: 9, leagueId: 703 },
+  // MMA / Boxing
   'mma_mixed_martial_arts': { sportId: 27, leagueId: 2701 },
+  'boxing_boxing': { sportId: 28, leagueId: 2801 },
+  // Golf
+  'golf_masters_tournament_winner': { sportId: 11, leagueId: 901 },
+  'golf_pga_championship_winner': { sportId: 11, leagueId: 902 },
+  'golf_the_open_championship_winner': { sportId: 11, leagueId: 903 },
+  'golf_us_open_winner': { sportId: 11, leagueId: 904 },
+  // Esports
+  'esports_csgo': { sportId: 29, leagueId: 2901 },
+  // Aussie Rules
+  'aussierules_afl': { sportId: 15, leagueId: 1201 },
 };
 
 // Track quota exhaustion so we don't keep hammering the API
