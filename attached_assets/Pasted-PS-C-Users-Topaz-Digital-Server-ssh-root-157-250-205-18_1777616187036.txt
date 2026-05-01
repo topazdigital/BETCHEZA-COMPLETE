@@ -1,0 +1,159 @@
+PS C:\Users\Topaz Digital Server> ssh root@157.250.205.180
+root@157.250.205.180's password:
+
+--
+The default directadmin username is admin
+Directadmin defaults to installing CSF firewall - failed logins may be temp blocked in /etc/csf/csf.deny
+--
+Last login: Thu Apr 30 15:21:38 2026 from 102.207.191.80
+[root@server ~]# /home/admin/apps/betcheza/deploy.sh
+==========================================
+  BETCHEZA DEPLOY
+==========================================
+
+[1/5] Pulling latest code from GitHub...
+remote: Enumerating objects: 84, done.
+remote: Counting objects: 100% (84/84), done.
+remote: Compressing objects: 100% (12/12), done.
+remote: Total 63 (delta 50), reused 63 (delta 50), pack-reused 0 (from 0)
+Unpacking objects: 100% (63/63), 1.07 MiB | 7.67 MiB/s, done.
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+   24731c2..e71c30c  main       -> origin/main
+HEAD is now at e71c30c Improve mobile responsiveness and site speed
+
+[2/5] Installing dependencies...
+
+up to date in 2s
+
+[3/5] Building Next.js...
+├ ƒ /register
+├ ƒ /responsible-gambling
+├ ƒ /results
+├ ○ /robots.txt
+├ ƒ /settings
+├ ○ /sitemap.xml                                   1h      1y
+├ ƒ /stats
+├ ƒ /teams/[id]
+├ ƒ /terms
+├ ƒ /tipsters
+├ ƒ /tipsters/[id]
+├ ƒ /tipsters/compare
+└ ƒ /verify-email
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[4/5] Restarting PM2 (admin user)...
+[PM2] Applying action restartProcessId on app [betcheza](ids: [ 1 ])
+[PM2] [betcheza](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 4    │ online    │ 0%       │ 7.9mb    │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.7mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+
+[5/5] Checking status...
+│ 1  │ betcheza    │ default     │ N/A     │ fork    │ 1247361  │ 4s     │ 4    │ online    │ 0%       │ 60.5mb   │ admin    │ disabled │
+
+Last 10 log lines:
+1|betcheza | [cron] match-reminders error fetch failed
+1|betcheza | [cron] match-reminders error fetch failed
+
+/home/admin/.pm2/logs/betcheza-out.log last 10 lines:
+1|betcheza | [cron] started match-reminders interval (5 min)
+1|betcheza |
+1|betcheza | > my-project@0.1.0 start
+1|betcheza | > next start -p 5001 -H 127.0.0.1
+1|betcheza |
+1|betcheza | ▲ Next.js 16.2.0
+1|betcheza | - Local:         http://127.0.0.1:5001
+1|betcheza | - Network:       http://127.0.0.1:5001
+1|betcheza | ✓ Ready in 285ms
+1|betcheza | [cron] started match-reminders interval (5 min)
+
+
+==========================================
+  DEPLOY COMPLETE - https://betcheza.co.ke
+==========================================
+[root@server ~]# /home/admin/apps/betcheza/deploy.sh
+==========================================
+  BETCHEZA DEPLOY
+==========================================
+
+[1/5] Pulling latest code from GitHub...
+remote: Enumerating objects: 53, done.
+remote: Counting objects: 100% (53/53), done.
+remote: Compressing objects: 100% (5/5), done.
+remote: Total 28 (delta 20), reused 28 (delta 20), pack-reused 0 (from 0)
+Unpacking objects: 100% (28/28), 1.21 MiB | 7.22 MiB/s, done.
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+   e71c30c..f323e5d  main       -> origin/main
+HEAD is now at f323e5d Update website appearance and improve search functionality
+
+[2/5] Installing dependencies...
+
+up to date in 2s
+
+[3/5] Building Next.js...
+├ ƒ /register
+├ ƒ /responsible-gambling
+├ ƒ /results
+├ ○ /robots.txt
+├ ƒ /settings
+├ ○ /sitemap.xml                                   1h      1y
+├ ƒ /stats
+├ ƒ /teams/[id]
+├ ƒ /terms
+├ ƒ /tipsters
+├ ƒ /tipsters/[id]
+├ ƒ /tipsters/compare
+└ ƒ /verify-email
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[4/5] Restarting PM2 (admin user)...
+[PM2] Applying action restartProcessId on app [betcheza](ids: [ 1 ])
+[PM2] [betcheza](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 5    │ online    │ 0%       │ 15.5mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.4mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+
+[5/5] Checking status...
+│ 1  │ betcheza    │ default     │ N/A     │ fork    │ 1249288  │ 4s     │ 5    │ online    │ 0%       │ 60.8mb   │ admin    │ disabled │
+
+Last 10 log lines:
+1|betcheza | [cron] match-reminders error fetch failed
+1|betcheza | [cron] match-reminders error fetch failed
+
+/home/admin/.pm2/logs/betcheza-out.log last 10 lines:
+1|betcheza | [cron] started match-reminders interval (5 min)
+1|betcheza |
+1|betcheza | > my-project@0.1.0 start
+1|betcheza | > next start -p 5001 -H 127.0.0.1
+1|betcheza |
+1|betcheza | ▲ Next.js 16.2.0
+1|betcheza | - Local:         http://127.0.0.1:5001
+1|betcheza | - Network:       http://127.0.0.1:5001
+1|betcheza | ✓ Ready in 316ms
+1|betcheza | [cron] started match-reminders interval (5 min)
+
+
+==========================================
+  DEPLOY COMPLETE - https://betcheza.co.ke
+==========================================
+[root@server ~]#

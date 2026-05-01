@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { query } from '@/lib/db'
+import { fileStoreGet, fileStoreSet } from '@/lib/file-store'
 
 export interface PaymentGateway {
   id: string
@@ -273,6 +274,7 @@ const g = globalThis as {
 
 async function loadGateways(): Promise<PaymentGateway[]> {
   if (g.__gwStore) return g.__gwStore;
+  // 1. Try MySQL DB
   try {
     const result = await query<{ value: string }>(
       "SELECT value FROM admin_settings WHERE name = 'payment_gateways' LIMIT 1"
@@ -283,12 +285,19 @@ async function loadGateways(): Promise<PaymentGateway[]> {
       return g.__gwStore;
     }
   } catch { /* ignore */ }
+  // 2. File-based persistence
+  const stored = fileStoreGet<PaymentGateway[] | null>('payment-gateways', null);
+  if (stored && stored.length > 0) {
+    g.__gwStore = stored;
+    return g.__gwStore;
+  }
   g.__gwStore = DEFAULT_GATEWAYS;
   return g.__gwStore;
 }
 
 async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
   g.__gwStore = gateways;
+  fileStoreSet('payment-gateways', gateways);
   try {
     await query(
       `INSERT INTO admin_settings (name, value, type, description)
@@ -296,11 +305,12 @@ async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
        ON DUPLICATE KEY UPDATE value = VALUES(value)`,
       [JSON.stringify(gateways)]
     );
-  } catch { /* ignore — in-memory saved above */ }
+  } catch { /* ignore — file-based fallback already saved */ }
 }
 
 async function loadPayoutSettings(): Promise<PayoutSettings> {
   if (g.__pwStore) return g.__pwStore;
+  // 1. Try MySQL DB
   try {
     const result = await query<{ value: string }>(
       "SELECT value FROM admin_settings WHERE name = 'payout_settings' LIMIT 1"
@@ -311,12 +321,19 @@ async function loadPayoutSettings(): Promise<PayoutSettings> {
       return g.__pwStore;
     }
   } catch { /* ignore */ }
+  // 2. File-based persistence
+  const stored = fileStoreGet<PayoutSettings | null>('payout-settings', null);
+  if (stored) {
+    g.__pwStore = stored;
+    return g.__pwStore;
+  }
   g.__pwStore = DEFAULT_PAYOUT_SETTINGS;
   return g.__pwStore;
 }
 
 async function savePayoutSettings(settings: PayoutSettings): Promise<void> {
   g.__pwStore = settings;
+  fileStoreSet('payout-settings', settings);
   try {
     await query(
       `INSERT INTO admin_settings (name, value, type, description)

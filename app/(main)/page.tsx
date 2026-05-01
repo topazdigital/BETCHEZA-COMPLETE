@@ -784,24 +784,36 @@ function LiveMarquee({ matches, tips = [] }: { matches: Match[]; tips?: Featured
   const shouldLoop = cards >= MARQUEE_MIN;
   const cardsToRender = shouldLoop ? [...entries, ...entries] : entries;
 
+  if (!shouldLoop) {
+    // Non-looping: grid layout so cards don't get clipped by overflow-hidden
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {cardsToRender.map((entry, idx) => (
+          <div
+            key={
+              entry.kind === 'live'
+                ? `live-${entry.match.id}-${idx}`
+                : `tip-${entry.tip.matchId}-${idx}`
+            }
+          >
+            {entry.kind === 'live'
+              ? <MatchCardNew match={entry.match} showSport />
+              : <FavoritedTipMarqueeCard item={entry.tip} />}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="group relative overflow-hidden">
       {/* Fade edges only when looping */}
-      {shouldLoop && (
-        <>
-          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-background to-transparent" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-background to-transparent" />
-        </>
-      )}
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-background to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-background to-transparent" />
 
       <div
-        className={cn(
-          "flex items-stretch gap-4 pb-2 motion-reduce:animate-none",
-          shouldLoop
-            ? "animate-marquee group-hover:[animation-play-state:paused]"
-            : "flex-wrap",
-        )}
-        style={shouldLoop ? { animationDuration: `${duration}s` } : undefined}
+        className="flex items-stretch gap-4 pb-2 animate-marquee group-hover:[animation-play-state:paused] motion-reduce:animate-none"
+        style={{ animationDuration: `${duration}s` }}
       >
         {cardsToRender.map((entry, idx) => (
           <div
@@ -810,8 +822,8 @@ function LiveMarquee({ matches, tips = [] }: { matches: Match[]; tips?: Featured
                 ? `live-${entry.match.id}-${idx}`
                 : `tip-${entry.tip.matchId}-${idx}`
             }
-            className="w-80 shrink-0"
-            aria-hidden={shouldLoop && idx >= cards}
+            className="w-72 sm:w-80 shrink-0"
+            aria-hidden={idx >= cards}
           >
             {entry.kind === 'live'
               ? <MatchCardNew match={entry.match} showSport />

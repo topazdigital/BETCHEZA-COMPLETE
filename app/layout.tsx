@@ -31,12 +31,25 @@ export async function generateMetadata(): Promise<Metadata> {
   const pathname = hdrs.get('x-pathname') || '/';
   const seoEntry = findSeoForPath(parseSeoPages(settings.seo_pages), pathname);
 
-  const fallbackTitle = `${settings.site_name} - Betting Tips Community`;
+  // Per-path title/description improvements for pages without admin SEO overrides
+  const isHomePage = pathname === '/';
+  const fallbackTitle = isHomePage
+    ? `${settings.site_name} — #1 Sports Betting Tips Community | Free Expert Predictions`
+    : `${settings.site_name} - Expert Betting Tips & Predictions`;
+  const fallbackDescription = isHomePage
+    ? `Join ${settings.site_name}, the #1 platform for free sports betting tips and expert predictions. Get AI-powered forecasts, track tipster performance, and beat the bookmakers across football, basketball, tennis and 35+ sports.`
+    : settings.site_description;
+
   const title = seoEntry?.title || fallbackTitle;
-  const description = seoEntry?.description || settings.site_description;
+  const description = seoEntry?.description || fallbackDescription;
   const keywords = seoEntry?.keywords
     ? seoEntry.keywords.split(',').map((k) => k.trim()).filter(Boolean)
-    : ['betting tips', 'sports predictions', 'tipster', 'football tips', 'betting community', 'odds comparison'];
+    : [
+        'betting tips', 'sports predictions', 'free betting tips',
+        'football tips today', 'tipster community', 'expert predictions',
+        'betting advice', 'sports betting Kenya', 'odds comparison',
+        'win rate tipsters', 'AI sports predictions', 'bet of the day',
+      ];
 
   // Build the icons list. If the admin uploaded a custom favicon, prefer it.
   const customFavicon = settings.favicon_url?.trim();

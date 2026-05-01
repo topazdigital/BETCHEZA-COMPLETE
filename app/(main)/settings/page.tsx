@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
@@ -15,29 +15,94 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut,
+  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut, Save, CheckCircle2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const { user, isLoading: loading, logout } = useAuth();
   const { open } = useAuthModal();
 
+  // Profile fields
+  const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
+  const [bio, setBio] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  // Display prefs
   const [oddsFormat, setOddsFormat] = useState<'decimal' | 'fractional' | 'american'>('decimal');
   const [timezone, setTimezone] = useState('Africa/Nairobi');
   const [notifMatches, setNotifMatches] = useState(true);
   const [notifTipsters, setNotifTipsters] = useState(true);
   const [notifPromos, setNotifPromos] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [prefSaved, setPrefSaved] = useState(false);
+
+  // Load saved profile + prefs on mount
+  useEffect(() => {
+    if (!user) return;
+    setDisplayName(user.displayName ?? '');
+    setUsername(user.username ?? '');
+
+    // Load profile overrides from server
+    fetch('/api/users/me')
+      .then(r => r.json())
+      .then(d => {
+        if (d.profile) {
+          if (d.profile.displayName) setDisplayName(d.profile.displayName);
+          if (d.profile.username) setUsername(d.profile.username);
+          if (d.profile.phone) setPhone(d.profile.phone);
+          if (d.profile.bio) setBio(d.profile.bio);
+        }
+      })
+      .catch(() => { /* ignore */ });
+
+    // Load local preferences
+    try {
+      const raw = localStorage.getItem('bz_prefs');
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p.oddsFormat) setOddsFormat(p.oddsFormat);
+        if (p.timezone) setTimezone(p.timezone);
+        if (typeof p.notifMatches === 'boolean') setNotifMatches(p.notifMatches);
+        if (typeof p.notifTipsters === 'boolean') setNotifTipsters(p.notifTipsters);
+        if (typeof p.notifPromos === 'boolean') setNotifPromos(p.notifPromos);
+      }
+    } catch { /* ignore */ }
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      const res = await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: displayName.trim(), username: username.trim(), phone: phone.trim(), bio: bio.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to save profile');
+        return;
+      }
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 2500);
+      toast.success('Profile updated successfully');
+    } catch {
+      toast.error('Network error — please try again');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   const handleSavePreferences = () => {
-    // Persisted client-side only for the stub — real wiring lives in
-    // /dashboard/payment-settings and the upcoming /api/users/me PATCH.
     try {
       localStorage.setItem('bz_prefs', JSON.stringify({
         oddsFormat, timezone, notifMatches, notifTipsters, notifPromos,
       }));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setPrefSaved(true);
+      setTimeout(() => setPrefSaved(false), 2000);
+      toast.success('Preferences saved');
     } catch { /* ignore */ }
   };
 
@@ -85,26 +150,69 @@ export default function SettingsPage() {
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4 text-primary" /> Account
           </CardTitle>
-          <CardDescription>Your basic profile details.</CardDescription>
+          <CardDescription>Update your display name, username, phone and bio.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="display-name" className="text-xs">Display name</Label>
-              <Input id="display-name" defaultValue={user.displayName ?? ''} disabled />
+              <Input
+                id="display-name"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                placeholder="Your name"
+                maxLength={100}
+              />
             </div>
             <div>
               <Label htmlFor="username" className="text-xs">Username</Label>
-              <Input id="username" defaultValue={user.username ?? ''} disabled />
+              <Input
+                id="username"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder="username"
+                maxLength={50}
+              />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Letters, numbers and underscores only</p>
+            </div>
+            <div>
+              <Label htmlFor="phone" className="text-xs">Phone number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="+254 700 000 000"
+                maxLength={30}
+              />
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="email" className="text-xs">Email</Label>
-              <Input id="email" type="email" defaultValue={user.email ?? ''} disabled />
+              <Input id="email" type="email" defaultValue={user.email ?? ''} disabled className="opacity-60" />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Contact support to change your email address</p>
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="bio" className="text-xs">Bio</Label>
+              <Input
+                id="bio"
+                value={bio}
+                onChange={e => setBio(e.target.value)}
+                placeholder="Tell others about yourself..."
+                maxLength={500}
+              />
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            Profile editing is coming soon. Contact support if you need to change these details urgently.
-          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <Button size="sm" onClick={handleSaveProfile} disabled={profileSaving}>
+              {profileSaving ? <Spinner className="h-3.5 w-3.5 mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+              Save profile
+            </Button>
+            {profileSaved && (
+              <span className="flex items-center gap-1 text-xs text-emerald-600">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -199,11 +307,14 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Save + sign out */}
+      {/* Save preferences + sign out */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button onClick={handleSavePreferences}>Save preferences</Button>
-          {saved && <span className="text-xs text-emerald-600">Saved</span>}
+          <Button onClick={handleSavePreferences}>
+            <Save className="h-3.5 w-3.5 mr-1" />
+            Save preferences
+          </Button>
+          {prefSaved && <span className="text-xs text-emerald-600">Saved</span>}
         </div>
         <Button variant="ghost" className="text-destructive" onClick={logout}>
           <LogOut className="mr-1 h-4 w-4" /> Sign out

@@ -168,3 +168,17 @@ export function listTxns(userId: number, limit = 50): WalletTxn[] {
   const s = load();
   return s.txns.filter((t) => t.userId === userId).slice(0, limit);
 }
+
+export function getAllTxns(opts?: { limit?: number; offset?: number; type?: WalletTxnType; status?: WalletTxnStatus }): {
+  txns: WalletTxn[];
+  total: number;
+} {
+  const s = load();
+  let txns = [...s.txns].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (opts?.type) txns = txns.filter((t) => t.type === opts.type);
+  if (opts?.status) txns = txns.filter((t) => t.status === opts.status);
+  const total = txns.length;
+  const offset = opts?.offset ?? 0;
+  const limit = opts?.limit ?? 100;
+  return { txns: txns.slice(offset, offset + limit), total };
+}

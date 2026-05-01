@@ -1,0 +1,110 @@
+/**
+ * Persistent user profile overrides.
+ * MySQL-first, file-based fallback for dev/no-DB environments.
+ */
+import { query, execute } from './db';
+import { fileStoreGet, fileStoreSet } from './file-store';
+
+export interface ProfilePatch {
+  displayName?: string;
+  username?: string;
+  phone?: string;
+  bio?: string;
+  avatarUrl?: string;
+}
+
+export interface StoredProfile extends ProfilePatch {
+  userId: number;
+  updatedAt: string;
+}
+
+const g = globalThis as { __userProfiles?: Record<number, StoredProfile> };
+function cache(): Record<number, StoredProfile> {
+  if (!g.__userProfiles) {
+    g.__userProfiles = fileStoreGet<Record<number, StoredProfile>>('user-profiles', {});
+  }
+  return g.__userProfiles;
+}
+
+let tableReady = false;
+async function ensureTable(): Promise<void> {
+  if (tableReady) return;
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        display_name VARCHAR(100),
+        username VARCHAR(50),
+        phone VARCHAR(30),
+        bio TEXT,
+        avatar_url VARCHAR(500),
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    tableReady = true;
+  } catch { /* ignore — no MySQL */ }
+}
+
+export async function getProfile(userId: number): Promise<StoredProfile | null> {
+  // 1. Try MySQL
+  try {
+    await ensureTable();
+    const r = await query<{
+      user_id: number; display_name: string; username: string; phone: string; bio: string; avatar_url: string; updated_at: string;
+    }>('SELECT * FROM user_profiles WHERE user_id = ? LIMIT 1', [userId]);
+    if (r.rows[0]) {
+      const row = r.rows[0];
+      return {
+        userId,
+        displayName: row.display_name ?? undefined,
+        username: row.username ?? undefined,
+        phone: row.phone ?? undefined,
+        bio: row.bio ?? undefined,
+        avatarUrl: row.avatar_url ?? undefined,
+        updatedAt: row.updated_at,
+      };
+    }
+  } catch { /* no DB */ }
+  // 2. File-based cache
+  return cache()[userId] ?? null;
+}
+
+export async function updateProfile(userId: number, patch: ProfilePatch): Promise<StoredProfile> {
+  const existing = await getProfile(userId) ?? { userId, updatedAt: new Date().toISOString() };
+  const merged: StoredProfile = {
+    ...existing,
+    ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)),
+    userId,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Always persist to file cache
+  const c = cache();
+  c[userId] = merged;
+  fileStoreSet('user-profiles', c);
+
+  // Also persist to MySQL
+  try {
+    await ensureTable();
+    await execute(
+      `INSERT INTO user_profiles (user_id, display_name, username, phone, bio, avatar_url)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         display_name = VALUES(display_name),
+         username = VALUES(username),
+         phone = VALUES(phone),
+         bio = VALUES(bio),
+         avatar_url = VALUES(avatar_url)`,
+      [
+        userId,
+        merged.displayName ?? null,
+        merged.username ?? null,
+        merged.phone ?? null,
+        merged.bio ?? null,
+        merged.avatarUrl ?? null,
+      ]
+    );
+  } catch { /* ignore — file fallback saved */ }
+
+  return merged;
+}

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute, getPool } from '@/lib/db';
 import { invalidateSiteSettingsCache } from '@/lib/site-settings';
+import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 
 export const dynamic = 'force-dynamic';
 
 // In-memory storage for development mode when no database. Exposed on
 // globalThis so the public site-settings reader picks up admin updates
 // even when no DB is configured.
-const g = globalThis as { __memorySettings?: Record<string, string> };
-const memorySettings: Record<string, string> = g.__memorySettings ?? (g.__memorySettings = {
+const DEFAULT_SETTINGS: Record<string, string> = {
   site_name: 'Betcheza',
   site_description: 'Your trusted betting tips community. Get expert predictions, track your performance, and compete with other tipsters.',
   default_theme: 'light',
@@ -37,6 +37,13 @@ const memorySettings: Record<string, string> = g.__memorySettings ?? (g.__memory
   cookie_banner_enabled: 'true',
   cookie_banner_message:
     'We use cookies to improve your experience, analyse site traffic and personalise content. By clicking "Accept", you consent to our use of cookies.',
+};
+
+const g = globalThis as { __memorySettings?: Record<string, string> };
+// Initialize from file store (survives restarts) then fall back to defaults
+const memorySettings: Record<string, string> = g.__memorySettings ?? (g.__memorySettings = {
+  ...DEFAULT_SETTINGS,
+  ...fileStoreGet<Record<string, string>>('site-settings', {}),
 });
 
 // Map of admin-panel keys to the matching environment-variable name.
@@ -144,14 +151,16 @@ export async function POST(request: NextRequest) {
   // Always update in-memory copy so non-DB readers + cache reflect change
   // immediately, regardless of whether DB write succeeds.
   Object.assign(memorySettings, settings);
+  // Persist to file so settings survive process restarts
+  fileStoreSet('site-settings', memorySettings);
   invalidateSiteSettingsCache();
 
-  // If no database configured, memory store is the source of truth.
+  // If no database configured, file + memory store are the source of truth.
   if (!pool) {
     return NextResponse.json({
       success: true,
-      message: 'Settings saved to memory (no database connection)',
-      source: 'memory',
+      message: 'Settings saved successfully',
+      source: 'file',
     });
   }
 

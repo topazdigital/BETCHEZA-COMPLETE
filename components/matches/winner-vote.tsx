@@ -135,28 +135,25 @@ export function WinnerVote({
   ];
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Trophy className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground">
+    <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Trophy className="h-3.5 w-3.5 text-primary" />
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">
             Who will win?
           </h3>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Users className="h-3.5 w-3.5" />
-          <span>
-            {totals.total.toLocaleString()} {totals.total === 1 ? "vote" : "votes"}
-          </span>
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Users className="h-3 w-3" />
+          <span>{totals.total.toLocaleString()} {totals.total === 1 ? "vote" : "votes"}</span>
         </div>
       </div>
 
-      <div className={cn("grid gap-2", allowDraw ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
+      {/* Always 3-column on mobile for compactness, consistent layout */}
+      <div className={cn("grid gap-1.5", allowDraw ? "grid-cols-3" : "grid-cols-2")}>
         {buttons.map(({ pick, label, logo, pctVal, count }) => {
           const isMine = myVote === pick;
           const disabled = hasVoted || submitting !== null || locked;
-          // Once locked, reveal the crowd's prediction so guests/visitors
-          // can see what the consensus was even if they never voted.
           const revealResults = hasVoted || locked;
           return (
             <button
@@ -165,15 +162,13 @@ export function WinnerVote({
               onClick={() => cast(pick)}
               disabled={disabled}
               className={cn(
-                "group relative overflow-hidden rounded-lg border p-3 text-left transition-all",
+                "group relative overflow-hidden rounded-lg border p-2 text-center transition-all",
                 "border-border bg-background",
                 !disabled && "hover:border-primary hover:bg-primary/5",
                 isMine && "border-primary bg-primary/10",
-                disabled && !isMine && "opacity-80",
+                disabled && !isMine && "opacity-75",
               )}
             >
-              {/* Fill bar — shown after the user votes OR once voting locks
-                  so we still display the final crowd sentiment publicly. */}
               {revealResults && (
                 <div
                   className={cn(
@@ -185,49 +180,40 @@ export function WinnerVote({
                 />
               )}
 
-              <div className="relative z-10 flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  {pick === "draw" ? (
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-xs font-bold text-muted-foreground">
-                      X
-                    </div>
-                  ) : (
-                    <TeamLogo teamName={label} logoUrl={logo} size="sm" />
-                  )}
-                  <span className="truncate text-sm font-medium text-foreground">{label}</span>
-                  {isMine && <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />}
-                </div>
-                {revealResults ? (
-                  <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">
-                    {pctVal}%
-                  </span>
+              <div className="relative z-10 flex flex-col items-center gap-1">
+                {pick === "draw" ? (
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-muted text-[10px] font-bold text-muted-foreground">
+                    X
+                  </div>
                 ) : (
-                  <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                  <TeamLogo teamName={label} logoUrl={logo} size="sm" />
+                )}
+                <span className="w-full truncate text-[10px] font-medium text-foreground leading-tight">{label}</span>
+                {revealResults ? (
+                  <span className="text-xs font-bold tabular-nums text-foreground">{pctVal}%</span>
+                ) : (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-primary opacity-0 transition-opacity group-hover:opacity-100">
                     Vote
                   </span>
                 )}
+                {isMine && <CheckCircle2 className="h-3 w-3 text-primary" />}
               </div>
-              {revealResults && (
-                <div className="relative z-10 mt-1 text-xs text-muted-foreground">
-                  {count.toLocaleString()} {count === 1 ? "vote" : "votes"}
-                </div>
-              )}
             </button>
           );
         })}
       </div>
 
-      <p className="mt-3 text-xs text-muted-foreground">
+      <p className="mt-2 text-[11px] text-muted-foreground">
         {isLoading
           ? "Loading votes…"
           : locked
-            ? "Voting has closed — the match has already started. Final crowd prediction shown above."
+            ? "Voting closed — match started."
             : hasVoted
-              ? "Thanks for voting! Results update live as more fans cast their pick."
-              : "Cast your prediction — one vote per device, no login needed."}
+              ? "Thanks! Results update live."
+              : "One vote per device · no login needed."}
       </p>
       {flash && (
-        <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{flash}</p>
+        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{flash}</p>
       )}
     </div>
   );

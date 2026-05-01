@@ -26,6 +26,7 @@ const adminNavItems = [
   { href: "/admin/feed", label: "Community Feed", icon: Rss },
   { href: "/admin/news", label: "News", icon: Newspaper },
   { href: "/admin/payments", label: "Payments", icon: Wallet },
+  { href: "/admin/transactions", label: "Transactions", icon: BarChart3 },
   { href: "/admin/payment-gateways", label: "Gateways", icon: CreditCard },
   { href: "/admin/subscribers", label: "Subscribers", icon: Mail },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },

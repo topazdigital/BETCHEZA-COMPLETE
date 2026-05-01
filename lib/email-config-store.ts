@@ -1,4 +1,5 @@
 import { query } from './db';
+import { fileStoreGet, fileStoreSet } from './file-store';
 
 export interface EmailConfig {
   enabled: boolean;
@@ -41,7 +42,7 @@ function fromEnv(): EmailConfig {
 }
 
 export async function getEmailConfig(): Promise<EmailConfig> {
-  // Prefer stored DB config when DATABASE_URL is set, otherwise in-memory or env.
+  // 1. Try MySQL DB
   try {
     const result = await query<{ name: string; value: string }>(
       "SELECT name, value FROM admin_settings WHERE name LIKE 'smtp_%'"
@@ -49,7 +50,7 @@ export async function getEmailConfig(): Promise<EmailConfig> {
     const rows = result.rows;
     if (rows && rows.length > 0) {
       const m = new Map(rows.map((r) => [r.name, r.value]));
-      return {
+      const cfg: EmailConfig = {
         enabled: m.get('smtp_enabled') === 'true',
         host: m.get('smtp_host') || '',
         port: parseInt(m.get('smtp_port') || '587', 10),
@@ -60,11 +61,24 @@ export async function getEmailConfig(): Promise<EmailConfig> {
         fromName: m.get('smtp_from_name') || 'Betcheza',
         replyTo: m.get('smtp_reply_to') || '',
       };
+      g.__emailCfg = cfg;
+      return cfg;
     }
   } catch {
     // table not present / no DB — fall through
   }
+
+  // 2. In-memory cache (set after a save)
   if (g.__emailCfg) return g.__emailCfg;
+
+  // 3. File-based persistence (survives restarts without MySQL)
+  const stored = fileStoreGet<EmailConfig | null>('email-config', null);
+  if (stored && stored.host) {
+    g.__emailCfg = stored;
+    return stored;
+  }
+
+  // 4. Environment variables
   const env = fromEnv();
   g.__emailCfg = env;
   return env;
@@ -73,8 +87,12 @@ export async function getEmailConfig(): Promise<EmailConfig> {
 export async function saveEmailConfig(cfg: Partial<EmailConfig>): Promise<EmailConfig> {
   const current = await getEmailConfig();
   const merged: EmailConfig = { ...current, ...cfg };
+  // Always update in-memory cache
   g.__emailCfg = merged;
-  // Persist into admin_settings table when possible
+  // Always persist to file (works without MySQL)
+  fileStoreSet('email-config', merged);
+
+  // Also persist into admin_settings table when MySQL is available
   try {
     const entries: Array<[string, string]> = [
       ['smtp_enabled', String(merged.enabled)],
@@ -96,7 +114,7 @@ export async function saveEmailConfig(cfg: Partial<EmailConfig>): Promise<EmailC
       );
     }
   } catch {
-    // ignore — in-memory fallback already saved
+    // ignore — file-based fallback already saved
   }
   return merged;
 }
