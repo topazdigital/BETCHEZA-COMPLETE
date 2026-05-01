@@ -37,6 +37,36 @@ export async function register() {
     console.warn('[instrumentation] env seed failed:', e);
   }
 
+  // Seed SMTP env vars into the email config file store so sendMail() works
+  // immediately without the admin needing to open Email Setup and click Save.
+  try {
+    const smtpHost = (process.env.SMTP_HOST || '').trim();
+    const smtpUser = (process.env.SMTP_USERNAME || '').trim();
+    if (smtpHost && smtpUser) {
+      const { fileStoreGet, fileStoreSet } = await import('./lib/file-store');
+      const existing = fileStoreGet<Record<string, unknown> | null>('email-config', null);
+      // Only seed if no host is already stored (so admin overrides aren't clobbered)
+      if (!existing || !existing.host) {
+        const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+        const smtpSecure = (process.env.SMTP_SECURE || '').toLowerCase() === 'true' || smtpPort === 465;
+        fileStoreSet('email-config', {
+          enabled: true,
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpSecure,
+          username: smtpUser,
+          password: (process.env.SMTP_PASSWORD || '').trim(),
+          fromEmail: (process.env.SMTP_FROM_EMAIL || smtpUser).trim(),
+          fromName: (process.env.SMTP_FROM_NAME || 'Betcheza').trim(),
+          replyTo: (process.env.SMTP_REPLY_TO || '').trim(),
+        });
+        console.log('[instrumentation] SMTP config seeded from environment variables');
+      }
+    }
+  } catch (e) {
+    console.warn('[instrumentation] SMTP seed failed:', e);
+  }
+
   const { startCron } = await import('./lib/cron');
   startCron();
 }
