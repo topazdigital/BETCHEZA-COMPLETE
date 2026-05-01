@@ -107,19 +107,19 @@ export function SportsFilter({
   return (
     <div className="w-full">
       <ScrollArea className="w-full whitespace-nowrap">
-        <div className="flex gap-2 pb-3">
+        <div className="flex gap-1.5 pb-2 sm:gap-2 sm:pb-3">
           {/* All Sports */}
           <button
             onClick={() => onSelectSport(null)}
             className={cn(
-              'flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all',
+              'flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:py-1.5 sm:text-sm',
               !selectedSportId 
                 ? 'border-primary bg-primary text-primary-foreground' 
                 : 'border-border bg-card text-foreground hover:border-primary/50'
             )}
           >
-            <span className="text-base">🏆</span>
-            <span>All Sports</span>
+            <span className="text-sm sm:text-base">🏆</span>
+            <span>All</span>
           </button>
 
           {/* Sports */}
@@ -128,22 +128,23 @@ export function SportsFilter({
               key={sport.id}
               onClick={() => onSelectSport(sport.id)}
               className={cn(
-                'flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all',
+                'flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:py-1.5 sm:text-sm',
                 selectedSportId === sport.id
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-border bg-card text-foreground hover:border-primary/50'
               )}
             >
-              <span className="text-base">{getSportIcon(sport.slug)}</span>
-              <span>{sport.name}</span>
-              {matchCounts[sport.id] && (
+              <span className="text-sm sm:text-base">{getSportIcon(sport.slug)}</span>
+              <span className="hidden sm:inline">{sport.name}</span>
+              <span className="sm:hidden">{sport.name.split(' ')[0]}</span>
+              {matchCounts[sport.id] ? (
                 <span className={cn(
-                  'rounded-full px-1.5 text-xs',
+                  'hidden rounded-full px-1 text-[10px] sm:inline-block sm:px-1.5 sm:text-xs',
                   selectedSportId === sport.id ? 'bg-primary-foreground/20' : 'bg-muted'
                 )}>
                   {matchCounts[sport.id]}
                 </span>
-              )}
+              ) : null}
             </button>
           ))}
         </div>

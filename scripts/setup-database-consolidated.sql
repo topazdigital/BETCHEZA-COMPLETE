@@ -852,4 +852,15 @@ CREATE TABLE IF NOT EXISTS user_bookmarks (
   INDEX idx_bookmarks_user (user_id, entity_type)
 );
 
+-- ─── Match votes: "Who Will Win?" poll on each match ───
+CREATE TABLE IF NOT EXISTS match_votes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  match_id VARCHAR(191) NOT NULL,
+  voter_id VARCHAR(191) NOT NULL,
+  pick ENUM('home','draw','away') NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_match_voter (match_id, voter_id),
+  KEY idx_match (match_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- End of schema

@@ -28,7 +28,10 @@ import { CookieBanner } from "@/components/layout/cookie-banner"
 import { useMatchStats } from "@/lib/hooks/use-matches"
 
 // ✅ FIX: import correct export and alias it
-import { ALL_SPORTS as SPORTS_LIST, getSportIcon } from "@/lib/sports-data"
+import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
+
+const POPULAR_LEAGUE_IDS = [1, 2, 3, 4, 5]; // Premier League, La Liga, Bundesliga, Serie A, Ligue 1
+const INTERNATIONAL_LEAGUE_IDS = [9, 10, 26, 102]; // UCL, UEL, UECL, CAF CL
 
 const mainNavItems: Array<{ href: string; label: string; icon: typeof Home; badgeKey?: 'live' | 'today' }> = [
   { href: "/", label: "Home", icon: Home },
@@ -187,6 +190,54 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               ))}
             </div>
           )}
+        </div>
+
+        {/* Popular Leagues */}
+        <div className="border-t border-border p-2">
+          <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Trophy className="h-3 w-3" /> Popular Leagues
+          </p>
+          <div className="mt-0.5 space-y-0.5">
+            {ALL_LEAGUES
+              .filter(l => POPULAR_LEAGUE_IDS.includes(l.id))
+              .sort((a, b) => POPULAR_LEAGUE_IDS.indexOf(a.id) - POPULAR_LEAGUE_IDS.indexOf(b.id))
+              .map(league => (
+                <Link
+                  key={league.id}
+                  href={`/leagues/${league.slug}`}
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <span className="text-sm">🏆</span>
+                  <span className="truncate">{league.name}</span>
+                </Link>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* Internationals */}
+        <div className="border-t border-border p-2">
+          <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Star className="h-3 w-3" /> Internationals
+          </p>
+          <div className="mt-0.5 space-y-0.5">
+            {ALL_LEAGUES
+              .filter(l => INTERNATIONAL_LEAGUE_IDS.includes(l.id))
+              .sort((a, b) => INTERNATIONAL_LEAGUE_IDS.indexOf(a.id) - INTERNATIONAL_LEAGUE_IDS.indexOf(b.id))
+              .map(league => (
+                <Link
+                  key={league.id}
+                  href={`/leagues/${league.slug}`}
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <span className="text-sm">🌍</span>
+                  <span className="truncate">{league.name}</span>
+                </Link>
+              ))
+            }
+          </div>
         </div>
 
         {/* Admin - only visible for admin users */}

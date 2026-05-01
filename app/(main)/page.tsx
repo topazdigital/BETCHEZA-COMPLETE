@@ -467,9 +467,12 @@ export default function HomePage() {
                     <Target className="h-4 w-4 text-primary" />
                     <h2 className="text-lg font-bold text-foreground">Across All Sports</h2>
                   </div>
-                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  <div className={cn(
+                    'flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                    'md:grid md:snap-none md:grid-cols-2 md:overflow-visible md:pb-0 lg:grid-cols-3',
+                  )}>
                     {Object.entries(upcomingBySport).slice(0, 6).map(([sportName, sportMatches]) => (
-                      <div key={sportName} className="rounded-xl border border-border bg-card p-3">
+                      <div key={sportName} className="w-[80%] shrink-0 snap-start rounded-xl border border-border bg-card p-3 md:w-auto md:shrink">
                         <div className="mb-2.5 flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <span className="text-lg">{sportMatches[0]?.sport.icon}</span>
@@ -509,29 +512,33 @@ export default function HomePage() {
               <section className="mb-5">
                 <div className="rounded-2xl border border-border bg-gradient-to-br from-card to-muted/30 p-4">
                   <h2 className="mb-3 text-center text-xl font-bold">Why Choose Betcheza?</h2>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="text-center">
+                  {/* Mobile: horizontal scroll snap — no vertical stacking */}
+                  <div className={cn(
+                    'flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                    'sm:grid sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4',
+                  )}>
+                    <div className="w-[72%] shrink-0 snap-start rounded-xl bg-muted/40 p-3 text-center sm:w-auto sm:shrink sm:rounded-none sm:bg-transparent sm:p-0">
                       <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                         <Target className="h-5 w-5 text-primary" />
                       </div>
                       <h3 className="mb-1 font-semibold">Expert Predictions</h3>
                       <p className="text-sm text-muted-foreground">AI-powered tips with detailed analysis</p>
                     </div>
-                    <div className="text-center">
+                    <div className="w-[72%] shrink-0 snap-start rounded-xl bg-muted/40 p-3 text-center sm:w-auto sm:shrink sm:rounded-none sm:bg-transparent sm:p-0">
                       <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-success/10">
                         <TrendingUp className="h-5 w-5 text-success" />
                       </div>
                       <h3 className="mb-1 font-semibold">Track Performance</h3>
                       <p className="text-sm text-muted-foreground">Detailed stats and ROI tracking</p>
                     </div>
-                    <div className="text-center">
+                    <div className="w-[72%] shrink-0 snap-start rounded-xl bg-muted/40 p-3 text-center sm:w-auto sm:shrink sm:rounded-none sm:bg-transparent sm:p-0">
                       <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-warning/10">
                         <Users className="h-5 w-5 text-warning" />
                       </div>
                       <h3 className="mb-1 font-semibold">Community</h3>
                       <p className="text-sm text-muted-foreground">Connect with top tipsters worldwide</p>
                     </div>
-                    <div className="text-center">
+                    <div className="w-[72%] shrink-0 snap-start rounded-xl bg-muted/40 p-3 text-center sm:w-auto sm:shrink sm:rounded-none sm:bg-transparent sm:p-0">
                       <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
                         <Shield className="h-5 w-5 text-destructive" />
                       </div>

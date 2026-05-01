@@ -199,17 +199,14 @@ function autoTipToRecent(t: GeneratedTip, realMatch?: UnifiedMatch) {
 }
 
 // Best-effort: ensure this tipster has *some* recent tips on real matches.
-// We pull the cached upcoming match list and seed any matches the catalogue
-// would have this tipster picking. Caller already guards for fake-only.
-async function bootstrapTipsterTipsFromMatches(tipsterId: number, target = 12): Promise<void> {
+// Accepts a pre-fetched matches array so we don't call getAllMatches() twice.
+function bootstrapTipsterTipsFromMatches(
+  tipsterId: number,
+  matches: UnifiedMatch[],
+  target = 12,
+): void {
   const existing = listTipsForTipster(tipsterId, 1);
   if (existing.length >= target) return;
-  let matches;
-  try {
-    matches = await getAllMatches();
-  } catch {
-    return;
-  }
   if (!matches || matches.length === 0) return;
   // Cap to keep the work bounded.
   const slice = matches.slice(0, 80);
@@ -271,20 +268,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
   } = { tipster };
 
   if (includeTips) {
+    // Fetch matches ONCE and share the result for both bootstrap + matchIndex.
+    let allMatchesCached: UnifiedMatch[] = [];
+    try {
+      allMatchesCached = await getAllMatches();
+    } catch {
+      // falls back to empty — tips will still show with synthetic scores
+    }
+
     // Make sure this tipster has tips on real upcoming matches and any
     // tip whose kickoff has passed gets a deterministic settled status.
-    await bootstrapTipsterTipsFromMatches(tipsterId).catch(() => null);
+    bootstrapTipsterTipsFromMatches(tipsterId, allMatchesCached);
     settleStaleAutoTips();
 
     // Build a matchId → real match index so finished tips can carry the
     // actual score-line into the profile UI.
-    let matchIndex = new Map<string, UnifiedMatch>();
-    try {
-      const all = await getAllMatches();
-      matchIndex = new Map(all.map(m => [String(m.id), m]));
-    } catch {
-      // ignore — falls back to deterministic synthetic scores
-    }
+    const matchIndex = new Map(allMatchesCached.map(m => [String(m.id), m]));
 
     const tips = listTipsForTipster(tipsterId, 25).map(t =>
       autoTipToRecent(t, matchIndex.get(String(t.matchId))),

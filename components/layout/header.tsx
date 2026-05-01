@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { User, ChevronDown, Settings, LogOut, Menu, X, Bookmark } from 'lucide-react';
+import { User, ChevronDown, Settings, LogOut, Menu, X, Bookmark, Globe, Trophy } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HeaderSearch } from '@/components/layout/header-search';
 import { NotificationBell } from '@/components/layout/notification-bell';
@@ -251,65 +251,110 @@ export function Header() {
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div className="border-t border-border bg-card p-4 md:hidden">
-          <nav className="flex flex-col gap-2">
-            <Link
-              href="/matches"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Matches
-            </Link>
-            <Link
-              href="/results"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Results
-            </Link>
-            <Link
-              href="/feed"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Feed
-            </Link>
-            <Link
-              href="/tipsters"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Tipsters
-            </Link>
-            <Link
-              href="/leaderboard"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Leaderboard
-            </Link>
-            <Link
-              href="/competitions"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Competitions
-            </Link>
-            <Link
-              href="/predictor"
-              className="rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              AI Predictor
-            </Link>
-            <Link
-              href="/become-tipster"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Become a Tipster
-            </Link>
-          </nav>
+        <div className="max-h-[80vh] overflow-y-auto border-t border-border bg-card md:hidden">
+          <div className="p-3">
+            {/* Main nav links */}
+            <nav className="flex flex-col gap-0.5">
+              {[
+                { href: '/matches', label: 'Matches' },
+                { href: '/results', label: 'Results' },
+                { href: '/feed', label: 'Feed' },
+                { href: '/tipsters', label: 'Tipsters' },
+                { href: '/leaderboard', label: 'Leaderboard' },
+                { href: '/competitions', label: 'Competitions' },
+              ].map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  {label}
+                </Link>
+              ))}
+              <Link
+                href="/predictor"
+                className="rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-accent"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                ✨ AI Predictor
+              </Link>
+              <Link
+                href="/become-tipster"
+                className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Become a Tipster
+              </Link>
+            </nav>
+
+            {/* Popular Leagues */}
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="mb-1.5 flex items-center gap-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Trophy className="h-3 w-3" />
+                Popular Leagues
+              </p>
+              <nav className="flex flex-col gap-0.5">
+                {[
+                  { href: '/leagues/premier-league', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', label: 'Premier League' },
+                  { href: '/leagues/la-liga', flag: '🇪🇸', label: 'La Liga' },
+                  { href: '/leagues/bundesliga', flag: '🇩🇪', label: 'Bundesliga' },
+                  { href: '/leagues/serie-a', flag: '🇮🇹', label: 'Serie A' },
+                  { href: '/leagues/ligue-1', flag: '🇫🇷', label: 'Ligue 1' },
+                ].map(({ href, flag, label }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <span>{flag}</span>
+                    <span>{label}</span>
+                  </Link>
+                ))}
+                <Link
+                  href="/leagues"
+                  className="rounded-md px-3 py-1.5 text-xs text-primary hover:bg-accent"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  View all leagues →
+                </Link>
+              </nav>
+            </div>
+
+            {/* Internationals */}
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="mb-1.5 flex items-center gap-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Globe className="h-3 w-3" />
+                Internationals Today
+              </p>
+              <nav className="flex flex-col gap-0.5">
+                {[
+                  { href: '/leagues/uefa-champions-league', flag: '⭐', label: 'Champions League' },
+                  { href: '/leagues/uefa-europa-league', flag: '🌍', label: 'Europa League' },
+                  { href: '/leagues/uefa-conference-league', flag: '🏆', label: 'Conference League' },
+                  { href: '/leagues/caf-champions-league', flag: '🌍', label: 'CAF Champions League' },
+                ].map(({ href, flag, label }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <span>{flag}</span>
+                    <span>{label}</span>
+                  </Link>
+                ))}
+                <Link
+                  href="/matches?type=international"
+                  className="rounded-md px-3 py-1.5 text-xs text-primary hover:bg-accent"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  All internationals →
+                </Link>
+              </nav>
+            </div>
+          </div>
         </div>
       )}
     </header>
