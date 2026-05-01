@@ -71,7 +71,7 @@ function isExempt(pathname: string): boolean {
   );
 }
 
-export async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   const { pathname, search, origin } = req.nextUrl;
 
   // ── Maintenance gate ────────────────────────────────────────────
