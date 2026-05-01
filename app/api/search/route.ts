@@ -7,13 +7,27 @@ import { matchIdToSlug } from '@/lib/utils/match-url';
 import { SENIOR_FOOTBALL_TEAMS, type CatalogTeam } from '@/lib/data/team-catalog';
 
 // Unified search endpoint backing the header typeahead.
-// Returns up to ~5 hits per category for: leagues, matches, teams, tipsters.
+// Returns up to ~15 hits per category for: leagues, matches, teams, tipsters.
 // Designed to stay snappy (<200ms warm) — leagues/sports are searched
 // in-memory; matches reuse the cached unified feed; tipsters fall back to []
 // when the DB is unreachable so the UI doesn't break in local/dev.
 export const dynamic = 'force-dynamic';
-export const revalidate = 30;
 export const runtime = 'nodejs';
+
+// Module-level match cache: keeps the feed hot for 30s so repeated search
+// keystrokes don't each pay the full getAllMatches() round-trip cost.
+let _matchCache: { data: UnifiedMatch[]; ts: number } | null = null;
+const MATCH_CACHE_TTL = 30_000; // 30 seconds
+
+async function getCachedMatches(): Promise<UnifiedMatch[]> {
+  const now = Date.now();
+  if (_matchCache && now - _matchCache.ts < MATCH_CACHE_TTL) {
+    return _matchCache.data;
+  }
+  const matches = await getAllMatches();
+  _matchCache = { data: matches, ts: now };
+  return matches;
+}
 
 type SearchHit =
   | { type: 'league'; id: string; title: string; subtitle: string; href: string; logoUrl?: string; sportSlug?: string }
@@ -169,7 +183,7 @@ interface DbTipsterRow {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const rawQ = (searchParams.get('q') || '').trim();
-  const limitPerKind = Math.min(10, Math.max(1, parseInt(searchParams.get('limit') || '5', 10) || 5));
+  const limitPerKind = Math.min(15, Math.max(1, parseInt(searchParams.get('limit') || '5', 10) || 5));
 
   if (rawQ.length < 2) {
     return NextResponse.json({ q: rawQ, hits: [] satisfies SearchHit[] });
@@ -262,7 +276,7 @@ export async function GET(request: NextRequest) {
     return c.length > 0 && c !== 'world' && c !== 'europe' && c !== 'international' && c !== 'south america' && c !== 'north america' && c !== 'asia' && c !== 'africa';
   };
   try {
-    const allMatches = await getAllMatches();
+    const allMatches = await getCachedMatches();
     for (const m of allMatches) {
       const homeS = scoreMatch(q, m.homeTeam.name);
       const awayS = scoreMatch(q, m.awayTeam.name);

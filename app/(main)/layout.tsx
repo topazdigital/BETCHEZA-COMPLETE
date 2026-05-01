@@ -51,7 +51,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const { user, isAuthenticated, logout, isLoading } = useAuth()
   const { open: openAuthModal } = useAuthModal()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [showSports, setShowSports] = useState(true)
+  const [showSports, setShowSports] = useState(false)
+  const [showLeagues, setShowLeagues] = useState(false)
+  const [showInternationals, setShowInternationals] = useState(false)
   const stats = useMatchStats()
   const [branding, setBranding] = useState<{ siteName: string; logoUrl: string; logoDarkUrl: string }>({
     siteName: "Betcheza",
@@ -110,7 +112,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               </>
             ) : (
               <>
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-xs font-bold">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
                   {branding.siteName
                     .split(" ")
                     .filter(Boolean)
@@ -194,50 +196,62 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
         {/* Popular Leagues */}
         <div className="border-t border-border p-2">
-          <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-            <Trophy className="h-3 w-3" /> Popular Leagues
-          </p>
-          <div className="mt-0.5 space-y-0.5">
-            {ALL_LEAGUES
-              .filter(l => POPULAR_LEAGUE_IDS.includes(l.id))
-              .sort((a, b) => POPULAR_LEAGUE_IDS.indexOf(a.id) - POPULAR_LEAGUE_IDS.indexOf(b.id))
-              .map(league => (
-                <Link
-                  key={league.id}
-                  href={`/leagues/${league.slug}`}
-                  onClick={() => setSidebarOpen(false)}
-                  className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <span className="text-sm">🏆</span>
-                  <span className="truncate">{league.name}</span>
-                </Link>
-              ))
-            }
-          </div>
+          <button
+            onClick={() => setShowLeagues(!showLeagues)}
+            className="flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            <span className="flex items-center gap-1.5"><Trophy className="h-3 w-3" /> Popular Leagues</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showLeagues && "rotate-180")} />
+          </button>
+          {showLeagues && (
+            <div className="mt-0.5 space-y-0.5">
+              {ALL_LEAGUES
+                .filter(l => POPULAR_LEAGUE_IDS.includes(l.id))
+                .sort((a, b) => POPULAR_LEAGUE_IDS.indexOf(a.id) - POPULAR_LEAGUE_IDS.indexOf(b.id))
+                .map(league => (
+                  <Link
+                    key={league.id}
+                    href={`/leagues/${league.slug}`}
+                    onClick={() => setSidebarOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <span className="text-sm">🏆</span>
+                    <span className="truncate">{league.name}</span>
+                  </Link>
+                ))
+              }
+            </div>
+          )}
         </div>
 
         {/* Internationals */}
         <div className="border-t border-border p-2">
-          <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-            <Star className="h-3 w-3" /> Internationals
-          </p>
-          <div className="mt-0.5 space-y-0.5">
-            {ALL_LEAGUES
-              .filter(l => INTERNATIONAL_LEAGUE_IDS.includes(l.id))
-              .sort((a, b) => INTERNATIONAL_LEAGUE_IDS.indexOf(a.id) - INTERNATIONAL_LEAGUE_IDS.indexOf(b.id))
-              .map(league => (
-                <Link
-                  key={league.id}
-                  href={`/leagues/${league.slug}`}
-                  onClick={() => setSidebarOpen(false)}
-                  className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <span className="text-sm">🌍</span>
-                  <span className="truncate">{league.name}</span>
-                </Link>
-              ))
-            }
-          </div>
+          <button
+            onClick={() => setShowInternationals(!showInternationals)}
+            className="flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            <span className="flex items-center gap-1.5"><Star className="h-3 w-3" /> Internationals</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showInternationals && "rotate-180")} />
+          </button>
+          {showInternationals && (
+            <div className="mt-0.5 space-y-0.5">
+              {ALL_LEAGUES
+                .filter(l => INTERNATIONAL_LEAGUE_IDS.includes(l.id))
+                .sort((a, b) => INTERNATIONAL_LEAGUE_IDS.indexOf(a.id) - INTERNATIONAL_LEAGUE_IDS.indexOf(b.id))
+                .map(league => (
+                  <Link
+                    key={league.id}
+                    href={`/leagues/${league.slug}`}
+                    onClick={() => setSidebarOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <span className="text-sm">🌍</span>
+                    <span className="truncate">{league.name}</span>
+                  </Link>
+                ))
+              }
+            </div>
+          )}
         </div>
 
         {/* Admin - only visible for admin users */}

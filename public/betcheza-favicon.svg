@@ -1,31 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <!-- Rounded green badge -->
-  <defs>
-    <linearGradient id="bz-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#10B981"/>
-      <stop offset="100%" stop-color="#059669"/>
-    </linearGradient>
-    <linearGradient id="bz-stroke" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="100%" stop-color="#D1FAE5"/>
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bz-bg)"/>
-  <!-- Subtle inner highlight -->
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bz-stroke)" fill-opacity="0.05"/>
+  <!-- Blue rounded background -->
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="#1565C0"/>
+  <!-- Subtle top shine -->
+  <rect x="2" y="2" width="60" height="28" rx="13" fill="white" fill-opacity="0.06"/>
 
-  <!-- Stylized "B" with an integrated upward checkmark/arrow forming the right side.
-       Two stacked lobes (upper smaller, lower larger), and the right edge of the lower
-       lobe extends upward into a checkmark - reading both as B and as a winning tick. -->
-  <g stroke="#FFFFFF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <!-- Vertical spine of B -->
-    <path d="M 18 12 L 18 52"/>
-    <!-- Upper lobe (B's top bowl) -->
-    <path d="M 18 12 L 33 12 Q 43 12 43 21 Q 43 30 33 30 L 18 30"/>
-    <!-- Lower lobe with extended checkmark tail -->
-    <path d="M 18 30 L 35 30 Q 47 30 47 41 Q 47 52 35 52 L 18 52"/>
+  <!-- Crown (gold) -->
+  <!-- Left prong -->
+  <polygon points="11,26 17,13 23,26" fill="#FFC107"/>
+  <!-- Center prong (tallest) -->
+  <polygon points="25,26 32,7 39,26" fill="#FFC107"/>
+  <!-- Right prong -->
+  <polygon points="41,26 47,13 53,26" fill="#FFC107"/>
+  <!-- Crown base band -->
+  <rect x="9" y="24" width="46" height="8" rx="2.5" fill="#FFC107"/>
+  <!-- Crown jewels -->
+  <circle cx="19" cy="28" r="1.8" fill="#E53935"/>
+  <circle cx="32" cy="28" r="1.8" fill="#E53935"/>
+  <circle cx="45" cy="28" r="1.8" fill="#E53935"/>
+
+  <!-- Letter B (white stroke) -->
+  <g stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Spine -->
+    <path d="M 17 35 L 17 57"/>
+    <!-- Upper bowl -->
+    <path d="M 17 35 L 29 35 Q 40 35 40 42 Q 40 49 29 49 L 17 49"/>
+    <!-- Lower bowl -->
+    <path d="M 17 49 L 31 49 Q 44 49 44 54 Q 44 59 31 59 L 17 59"/>
   </g>
-
-  <!-- Accent dot (scoreboard "live" indicator) -->
-  <circle cx="50" cy="14" r="4" fill="#FBBF24"/>
 </svg>

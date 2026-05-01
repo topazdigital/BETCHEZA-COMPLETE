@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { query } from '@/lib/db'
 
 export interface PaymentGateway {
   id: string
@@ -263,9 +264,68 @@ const DEFAULT_PAYOUT_SETTINGS: PayoutSettings = {
   payoutMethods: ['paypal', 'bank-transfer', 'crypto-usdt'],
 }
 
-// Simple in-memory store (replace with DB calls)
-let gatewayStore: PaymentGateway[] = DEFAULT_GATEWAYS
-let payoutStore: PayoutSettings = DEFAULT_PAYOUT_SETTINGS
+// ── DB-backed persistence via admin_settings ──────────────────────────────
+// Falls back to in-memory defaults when DB is unreachable (dev / no DB).
+const g = globalThis as {
+  __gwStore?: PaymentGateway[];
+  __pwStore?: PayoutSettings;
+};
+
+async function loadGateways(): Promise<PaymentGateway[]> {
+  if (g.__gwStore) return g.__gwStore;
+  try {
+    const result = await query<{ value: string }>(
+      "SELECT value FROM admin_settings WHERE name = 'payment_gateways' LIMIT 1"
+    );
+    const rows = result.rows;
+    if (rows?.length && rows[0].value) {
+      g.__gwStore = JSON.parse(rows[0].value) as PaymentGateway[];
+      return g.__gwStore;
+    }
+  } catch { /* ignore */ }
+  g.__gwStore = DEFAULT_GATEWAYS;
+  return g.__gwStore;
+}
+
+async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
+  g.__gwStore = gateways;
+  try {
+    await query(
+      `INSERT INTO admin_settings (name, value, type, description)
+       VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration')
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      [JSON.stringify(gateways)]
+    );
+  } catch { /* ignore — in-memory saved above */ }
+}
+
+async function loadPayoutSettings(): Promise<PayoutSettings> {
+  if (g.__pwStore) return g.__pwStore;
+  try {
+    const result = await query<{ value: string }>(
+      "SELECT value FROM admin_settings WHERE name = 'payout_settings' LIMIT 1"
+    );
+    const rows = result.rows;
+    if (rows?.length && rows[0].value) {
+      g.__pwStore = JSON.parse(rows[0].value) as PayoutSettings;
+      return g.__pwStore;
+    }
+  } catch { /* ignore */ }
+  g.__pwStore = DEFAULT_PAYOUT_SETTINGS;
+  return g.__pwStore;
+}
+
+async function savePayoutSettings(settings: PayoutSettings): Promise<void> {
+  g.__pwStore = settings;
+  try {
+    await query(
+      `INSERT INTO admin_settings (name, value, type, description)
+       VALUES ('payout_settings', ?, 'json', 'Tipster payout configuration')
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      [JSON.stringify(settings)]
+    );
+  } catch { /* ignore */ }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -273,6 +333,11 @@ export async function GET(req: NextRequest) {
     if (!session || session.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const [gatewayStore, payoutStore] = await Promise.all([
+      loadGateways(),
+      loadPayoutSettings(),
+    ]);
 
     // Mask sensitive credential values for display
     const masked = gatewayStore.map((gw) => ({
@@ -301,13 +366,13 @@ export async function PUT(req: NextRequest) {
     const body = await req.json()
 
     if (body.gateways) {
-      // Merge credentials — don't overwrite values that are already set if new value is masked
-      gatewayStore = (body.gateways as PaymentGateway[]).map((incoming) => {
-        const existing = gatewayStore.find((g) => g.id === incoming.id)
+      const gatewayStore = await loadGateways();
+      // Merge credentials — don't overwrite real values with masked placeholders
+      const updated = (body.gateways as PaymentGateway[]).map((incoming) => {
+        const existing = gatewayStore.find((gw) => gw.id === incoming.id)
         const mergedCredentials = existing
           ? Object.fromEntries(
               Object.entries(incoming.credentials).map(([k, v]) => {
-                // If the incoming value looks like a masked placeholder, keep the real value
                 const isMasked = /^.{1,4}•+$/.test(v)
                 return [k, isMasked && existing.credentials[k] ? existing.credentials[k] : v]
               })
@@ -315,10 +380,12 @@ export async function PUT(req: NextRequest) {
           : incoming.credentials
         return { ...incoming, credentials: mergedCredentials }
       })
+      await saveGateways(updated);
     }
 
     if (body.payoutSettings) {
-      payoutStore = { ...payoutStore, ...body.payoutSettings }
+      const payoutStore = await loadPayoutSettings();
+      await savePayoutSettings({ ...payoutStore, ...body.payoutSettings });
     }
 
     return NextResponse.json({ success: true })
@@ -335,9 +402,11 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { id, enabled } = await req.json()
-    gatewayStore = gatewayStore.map((g) =>
-      g.id === id ? { ...g, enabled } : g
+    const gatewayStore = await loadGateways();
+    const updated = gatewayStore.map((gw) =>
+      gw.id === id ? { ...gw, enabled } : gw
     )
+    await saveGateways(updated);
 
     return NextResponse.json({ success: true })
   } catch {

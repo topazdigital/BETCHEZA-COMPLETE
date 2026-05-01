@@ -43,9 +43,10 @@ function fromEnv(): EmailConfig {
 export async function getEmailConfig(): Promise<EmailConfig> {
   // Prefer stored DB config when DATABASE_URL is set, otherwise in-memory or env.
   try {
-    const rows = await query<{ name: string; value: string }>(
+    const result = await query<{ name: string; value: string }>(
       "SELECT name, value FROM admin_settings WHERE name LIKE 'smtp_%'"
     );
+    const rows = result.rows;
     if (rows && rows.length > 0) {
       const m = new Map(rows.map((r) => [r.name, r.value]));
       return {

@@ -52,8 +52,8 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
   const inputRef = useRef<HTMLInputElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  // Debounced fetch — 200ms is the sweet spot for typeahead: feels live but
-  // doesn't fire a request on every keystroke.
+  // Debounced fetch — 150ms debounce, keeps previous hits visible while
+  // loading new results so the dropdown never flashes empty.
   useEffect(() => {
     if (!open) return;
     const trimmed = q.trim();
@@ -66,17 +66,18 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&limit=5`, { signal: ctrl.signal });
+        const r = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&limit=12`, { signal: ctrl.signal });
         if (!r.ok) throw new Error('bad response');
         const data = (await r.json()) as { hits: SearchHit[] };
         setHits(data.hits || []);
         setActiveIdx(0);
       } catch (err) {
+        // On abort, keep previous hits visible — don't flash empty
         if ((err as Error).name !== 'AbortError') setHits([]);
       } finally {
         setLoading(false);
       }
-    }, 200);
+    }, 150);
     return () => {
       ctrl.abort();
       clearTimeout(t);

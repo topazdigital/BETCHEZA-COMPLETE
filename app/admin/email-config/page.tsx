@@ -60,14 +60,25 @@ export default function AdminEmailConfigPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const [unsavedChanges, setUnsavedChanges] = useState(false);
+
   function update<K extends keyof Cfg>(k: K, v: Cfg[K]) {
-    setCfg((c) => ({ ...c, [k]: v }));
+    setCfg((c) => {
+      const next = { ...c, [k]: v };
+      // Auto-sync port when SSL toggle changes
+      if (k === 'secure') {
+        next.port = v ? 465 : 587;
+      }
+      return next;
+    });
+    setUnsavedChanges(true);
   }
 
   function applyPreset(name: string) {
     const p = PRESETS[name];
     if (!p) return;
     setCfg((c) => ({ ...c, ...p }));
+    setUnsavedChanges(true);
   }
 
   async function save() {
@@ -88,6 +99,7 @@ export default function AdminEmailConfigPage() {
       if (res.ok) {
         setCfg({ ...DEFAULT, ...d.config, password: '' });
         setPasswordChanged(false);
+        setUnsavedChanges(false);
         setStatus({ kind: 'ok', msg: 'Settings saved.' });
       } else {
         setStatus({ kind: 'err', msg: d.error || 'Save failed' });
@@ -240,10 +252,15 @@ export default function AdminEmailConfigPage() {
               <Save className="mr-1.5 h-3.5 w-3.5" />
               {saving ? 'Saving…' : 'Save settings'}
             </Button>
-            <Button variant="outline" onClick={verify} disabled={verifying} size="sm" className="h-8 text-xs">
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              {verifying ? 'Verifying…' : 'Verify connection'}
-            </Button>
+            <div className="flex flex-col gap-0.5">
+              <Button variant="outline" onClick={verify} disabled={verifying || unsavedChanges} size="sm" className="h-8 text-xs">
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                {verifying ? 'Verifying…' : 'Verify connection'}
+              </Button>
+              {unsavedChanges && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400">Save settings first before verifying.</p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
