@@ -21,10 +21,10 @@ async function getTransporter(): Promise<{ cfg: EmailConfig; transporter: Transp
   const transporter = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
-    secure: cfg.secure,           // true = SMTPS (port 465), false = STARTTLS (port 587)
-    requireTLS: !cfg.secure,      // force STARTTLS upgrade when not using SSL
+    secure: cfg.secure,
+    requireTLS: !cfg.secure,
     auth: { user: cfg.username, pass: cfg.password },
-    tls: { rejectUnauthorized: false }, // accept self-signed certs on VPS servers
+    tls: { rejectUnauthorized: false },
   });
   cached = { cfg, transporter };
   return cached;
@@ -52,9 +52,16 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
     return { ok: false, skipped: true, error: 'SMTP not configured' };
   }
   try {
+    // Always fall back to username so MAIL FROM is never empty (<>)
+    const senderEmail = ctx.cfg.fromEmail || ctx.cfg.username;
+    const fromHeader = ctx.cfg.fromName
+      ? `${ctx.cfg.fromName} <${senderEmail}>`
+      : senderEmail;
+    const toList = Array.isArray(input.to) ? input.to : [input.to];
     const info = await ctx.transporter.sendMail({
-      from: ctx.cfg.fromName ? `${ctx.cfg.fromName} <${ctx.cfg.fromEmail}>` : ctx.cfg.fromEmail,
-      to: Array.isArray(input.to) ? input.to.join(',') : input.to,
+      envelope: { from: senderEmail, to: toList },
+      from: fromHeader,
+      to: toList.join(','),
       subject: input.subject,
       text: input.text,
       html: input.html,
@@ -93,22 +100,12 @@ export async function sendBulkMail(
 }
 
 export interface BatchOptions {
-  /** How many emails to send before pausing (default 25). */
   batchSize?: number;
-  /** Delay between individual emails inside a batch, ms (default 80). */
   perEmailDelayMs?: number;
-  /** Delay between batches, ms (default 1000). */
   perBatchDelayMs?: number;
-  /** Optional callback for progress (sent + failed counts). */
   onProgress?: (progress: { sent: number; failed: number; total: number }) => void;
 }
 
-/**
- * Batched bulk send. Sends in chunks with two delays:
- *  - perEmailDelayMs spaces individual emails inside a batch
- *  - perBatchDelayMs pauses between batches
- * Useful for staying under SMTP rate limits (e.g. SES "1/sec", Gmail 100/day, etc).
- */
 export async function sendBulkMailBatched(
   recipients: string[],
   subject: string,
@@ -144,7 +141,6 @@ export async function sendBulkMailBatched(
   return { sent, failed, total };
 }
 
-/** Replace {{var}} placeholders in a string. Unknown vars are left blank. */
 export function renderTemplate(tpl: string, vars: Record<string, string | number | undefined | null>): string {
   return tpl.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
     const v = vars[key];

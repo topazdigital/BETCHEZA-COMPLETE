@@ -23,8 +23,8 @@ interface Cfg {
 const DEFAULT: Cfg = {
   enabled: false,
   host: '',
-  port: 587,
-  secure: false,
+  port: 465,
+  secure: true,
   username: '',
   password: '',
   fromEmail: '',
@@ -65,9 +65,12 @@ export default function AdminEmailConfigPage() {
   function update<K extends keyof Cfg>(k: K, v: Cfg[K]) {
     setCfg((c) => {
       const next = { ...c, [k]: v };
-      // Auto-sync port when SSL toggle changes
       if (k === 'secure') {
         next.port = v ? 465 : 587;
+      } else if (k === 'port') {
+        const p = Number(v);
+        if (p === 465) next.secure = true;
+        else if (p === 587 || p === 25) next.secure = false;
       }
       return next;
     });
@@ -207,7 +210,7 @@ export default function AdminEmailConfigPage() {
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
               <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">SMTP Host</label>
-              <Input className="h-8 text-xs" value={cfg.host} onChange={(e) => update('host', e.target.value)} placeholder="smtp.gmail.com" />
+              <Input className="h-8 text-xs" value={cfg.host} onChange={(e) => update('host', e.target.value)} placeholder="mail.betcheza.co.ke" />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">Port</label>
@@ -215,12 +218,12 @@ export default function AdminEmailConfigPage() {
                 className="h-8 text-xs"
                 type="number"
                 value={cfg.port}
-                onChange={(e) => update('port', parseInt(e.target.value, 10) || 587)}
+                onChange={(e) => update('port', parseInt(e.target.value, 10) || 465)}
               />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">Username</label>
-              <Input className="h-8 text-xs" value={cfg.username} onChange={(e) => update('username', e.target.value)} placeholder="user@example.com" />
+              <Input className="h-8 text-xs" value={cfg.username} onChange={(e) => update('username', e.target.value)} placeholder="support@betcheza.co.ke" />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">
@@ -260,7 +263,7 @@ export default function AdminEmailConfigPage() {
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">From Email</label>
-              <Input className="h-8 text-xs" value={cfg.fromEmail} onChange={(e) => update('fromEmail', e.target.value)} placeholder="noreply@betcheza.co.ke" />
+              <Input className="h-8 text-xs" value={cfg.fromEmail} onChange={(e) => update('fromEmail', e.target.value)} placeholder="support@betcheza.co.ke" />
             </div>
             <div className="md:col-span-2 space-y-1">
               <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">Reply-To (optional)</label>

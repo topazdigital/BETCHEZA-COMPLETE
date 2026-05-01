@@ -1,0 +1,14 @@
+{
+  "pending": {
+    "6": {
+      "userId": 6,
+      "email": "patrickndungu.pnn@gmail.com",
+      "code": "926626",
+      "token": "fNjk2GqKLcNKvAUnk88oYO3fqAn0IYu4",
+      "createdAt": 1777581582884,
+      "expiresAt": 1777667982884,
+      "attempts": 0
+    }
+  },
+  "verifiedUserIds": []
+}
