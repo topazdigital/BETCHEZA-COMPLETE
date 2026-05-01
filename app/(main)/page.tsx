@@ -221,17 +221,29 @@ export default function HomePage() {
           />
         </section>
 
-        <div className="px-4 py-3">
+        {/* 3-column content area: [Left: Live+Tips] [Center: Main] [Right: Best Bets] */}
+      <div className="flex min-h-0">
+
+        {/* LEFT PANEL — Live Now + Favorited Tips (lg+) */}
+        <aside className="hidden lg:block w-64 xl:w-72 shrink-0 border-r border-border">
+          <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3 space-y-3">
+            {/* Live Now compact list */}
+            <LiveSidePanel liveMatches={liveMatches} upcomingMatches={upcomingMatches} />
+            {/* Favorited Tips */}
+            <FavoritedTipsPanel />
+          </div>
+        </aside>
+
+        {/* CENTER — main content */}
+        <div className="flex-1 min-w-0 overflow-hidden px-4 py-3">
           {isLoading ? (
             <div className="flex h-64 items-center justify-center">
               <Spinner className="h-8 w-8" />
             </div>
           ) : (
             <>
-              {/* Live Matches Section — ALWAYS visible. When no matches are
-                  live, show a friendly "no live games" panel + the next few
-                  scheduled kickoffs so the row never silently disappears. */}
-              <section className="mb-4">
+              {/* Mobile-only: Live section (hidden on lg+ since it's in the left panel) */}
+              <section className="mb-4 lg:hidden">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="relative flex h-2.5 w-2.5">
@@ -423,11 +435,10 @@ export default function HomePage() {
                   </Button>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-                  <div className="min-w-0">
+                <div>
                 {todayMatches.length > 0 ? (
                   <div className="space-y-2">
-                    {todayMatches.slice(0, 10).map(match => (
+                    {todayMatches.slice(0, 12).map(match => (
                       <MatchCardNew key={match.id} match={match} variant="compact" showSport />
                     ))}
                   </div>
@@ -443,14 +454,6 @@ export default function HomePage() {
                     </Button>
                   </div>
                 )}
-                  </div>
-
-                  {/* Right rail: Today's Best Bets (lg+) */}
-                  <div className="hidden lg:block">
-                    <div className="sticky top-4">
-                      <BestBetsPanel matches={todayMatches} />
-                    </div>
-                  </div>
                 </div>
               </section>
 
@@ -548,7 +551,88 @@ export default function HomePage() {
             </>
           )}
         </div>
+
+        {/* RIGHT PANEL — Best Bets (xl+) */}
+        <aside className="hidden xl:block w-72 shrink-0 border-l border-border">
+          <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
+            <BestBetsPanel matches={todayMatches} />
+          </div>
+        </aside>
+
       </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────
+// LiveSidePanel — compact live + upcoming for the left sidebar on desktop
+// ───────────────────────────────────────────────
+type SidePanelMatch = ReturnType<typeof useMatches>['matches'][number];
+
+function LiveSidePanel({
+  liveMatches,
+  upcomingMatches,
+}: {
+  liveMatches: SidePanelMatch[];
+  upcomingMatches: SidePanelMatch[];
+}) {
+  const hasLive = liveMatches.length > 0;
+  const displayMatches = hasLive ? liveMatches.slice(0, 8) : upcomingMatches.slice(0, 8);
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="relative flex h-2 w-2">
+          <span className={cn(
+            'absolute inline-flex h-full w-full rounded-full opacity-75',
+            hasLive ? 'animate-ping bg-live' : 'bg-muted-foreground/40',
+          )}></span>
+          <span className={cn(
+            'relative inline-flex h-2 w-2 rounded-full',
+            hasLive ? 'bg-live' : 'bg-muted-foreground/60',
+          )}></span>
+        </span>
+        <h3 className="text-xs font-bold text-foreground">{hasLive ? 'Live Now' : 'Up Next'}</h3>
+        <Badge variant={hasLive ? 'destructive' : 'secondary'} className="h-4 px-1 text-[9px]">
+          {displayMatches.length}
+        </Badge>
+        <Link href="/matches?status=live" className="ml-auto text-[10px] text-primary hover:underline">
+          All
+        </Link>
+      </div>
+      <div className="space-y-1">
+        {displayMatches.map(m => {
+          const t = new Date(m.kickoffTime);
+          const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return (
+            <Link
+              key={m.id}
+              href={`/matches/${matchIdToSlug(m.id)}`}
+              className="group flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-[11px] transition-colors hover:border-primary/50"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-foreground group-hover:text-primary">
+                  {m.homeTeam.shortName || m.homeTeam.name} <span className="text-muted-foreground">vs</span> {m.awayTeam.shortName || m.awayTeam.name}
+                </p>
+                <p className="truncate text-[9px] text-muted-foreground">{m.league?.name || m.sport?.name}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                {m.status === 'live' || m.status === 'halftime' ? (
+                  <span className="rounded bg-live/20 px-1 py-0.5 text-[9px] font-bold text-live">
+                    {m.status === 'halftime' ? 'HT' : m.minute ? `${m.minute}'` : 'LIVE'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold text-foreground">{time}</span>
+                )}
+              </div>
+            </Link>
+          );
+        })}
+        {displayMatches.length === 0 && (
+          <p className="py-2 text-center text-[10px] text-muted-foreground">No matches right now</p>
+        )}
+      </div>
+    </div>
   );
 }
 

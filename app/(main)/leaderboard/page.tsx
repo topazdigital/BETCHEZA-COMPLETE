@@ -7,7 +7,6 @@ import { Trophy, Medal, TrendingUp, Flame, Calendar, ChevronRight, Crown, Star }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -88,9 +87,7 @@ export default function LeaderboardPage() {
   }, [apiData, def.tipsRatio]);
 
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-2.5">
           {/* Header */}
           <div className="mb-4 flex items-center justify-between">
@@ -273,6 +270,5 @@ export default function LeaderboardPage() {
           )}
         </div>
       </div>
-    </div>
   );
 }

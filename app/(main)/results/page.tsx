@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
-import { SidebarNew } from "@/components/layout/sidebar-new"
 import { MatchCardNew } from "@/components/matches/match-card-new"
 import { FlagIcon } from "@/components/ui/flag-icon"
 import { ALL_SPORTS, getSportIcon } from "@/lib/sports-data"
@@ -151,10 +150,7 @@ export default function ResultsPage() {
       : "0"
 
   return (
-    <div className="flex">
-      <SidebarNew selectedSportId={selectedSport} onSelectSport={setSelectedSport} />
-
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-3 md:px-5 md:py-4">
           {/* Compact header */}
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
@@ -298,7 +294,6 @@ export default function ResultsPage() {
           )}
         </div>
       </div>
-    </div>
   )
 }
 

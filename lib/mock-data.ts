@@ -208,7 +208,7 @@ export const mockUsers: (User & { tipster_profile?: TipsterProfile })[] = [
     email: 'admin@betcheza.co.ke',
     phone: '+254700000000',
     country_code: 'KE',
-    password_hash: '$2a$12$dummy',
+    password_hash: '$2b$12$fn8QymGU0VzVj.ASGNTz6uylDzCA8Eu3DV/tMgksL3jGQebfdZHJW',
     google_id: null,
     username: 'admin',
     display_name: 'Admin',

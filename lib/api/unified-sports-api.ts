@@ -2443,7 +2443,28 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
   return index;
 }
 
+// Global-level cache for getAllMatches — shared across all concurrent requests.
+// This prevents the "thundering herd" where 5+ SWR hooks all hit the external
+// APIs simultaneously on page load, making the homepage feel slow.
+const ALLMATCHES_CACHE_TTL = 20 * 1000; // 20 seconds
+const g_allMatchesCache: { data: UnifiedMatch[] | null; ts: number; promise: Promise<UnifiedMatch[]> | null } = { data: null, ts: 0, promise: null };
+
 export async function getAllMatches(): Promise<UnifiedMatch[]> {
+  // Return cached result if fresh
+  if (g_allMatchesCache.data && Date.now() - g_allMatchesCache.ts < ALLMATCHES_CACHE_TTL) {
+    return g_allMatchesCache.data;
+  }
+  // Deduplicate concurrent requests — return the same in-flight promise
+  if (g_allMatchesCache.promise) return g_allMatchesCache.promise;
+
+  const fetchPromise = _fetchAllMatches().finally(() => {
+    g_allMatchesCache.promise = null;
+  });
+  g_allMatchesCache.promise = fetchPromise;
+  return fetchPromise;
+}
+
+async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   const allMatches: UnifiedMatch[] = [];
   const seenMatchKeys = new Set<string>();
 
@@ -2537,7 +2558,28 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
     persistMatchEntities(allMatches);
   } catch { /* swallow */ }
 
-  return sortMatchesWithPriority(allMatches);
+  // Limit to a 5-day window: yesterday (for results) + today + 3 days ahead.
+  // This prevents thousands of fixtures far in the future from bloating the list.
+  const now = new Date();
+  const windowStart = new Date(now);
+  windowStart.setDate(windowStart.getDate() - 1); // include yesterday's results
+  windowStart.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(now);
+  windowEnd.setDate(windowEnd.getDate() + 3); // today + 3 days ahead
+  windowEnd.setHours(23, 59, 59, 999);
+
+  const windowed = allMatches.filter(m => {
+    const t = new Date(m.kickoffTime).getTime();
+    return t >= windowStart.getTime() && t <= windowEnd.getTime();
+  });
+
+  const sorted = sortMatchesWithPriority(windowed.length > 0 ? windowed : allMatches);
+
+  // Update the global cache
+  g_allMatchesCache.data = sorted;
+  g_allMatchesCache.ts = Date.now();
+
+  return sorted;
 }
 
 export async function getMatchesBySport(sportId: number): Promise<UnifiedMatch[]> {

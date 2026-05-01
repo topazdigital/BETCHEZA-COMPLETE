@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { SidebarNew } from "@/components/layout/sidebar-new"
 import {
   Sparkles, Brain, Target, TrendingUp, Loader2, AlertTriangle, Trophy, Zap,
   Clock, Activity, Crosshair, ChevronDown, History, HelpCircle,
@@ -153,9 +152,7 @@ export default function MatchPredictorPage() {
         : "from-rose-500/20 to-rose-500/5 border-rose-500/30"
 
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1">
+    <div className="flex-1">
         <div className="px-3 py-4 md:px-4 md:py-6">
           {/* Hero */}
           <div className="mb-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-3.5">
@@ -476,7 +473,6 @@ export default function MatchPredictorPage() {
           </section>
         </div>
       </div>
-    </div>
   )
 }
 

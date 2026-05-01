@@ -4,7 +4,6 @@ import { useState, useMemo } from "react"
 import { Radio, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { SidebarNew } from "@/components/layout/sidebar-new"
 import { Spinner } from "@/components/ui/spinner"
 import { MatchCardNew } from "@/components/matches/match-card-new"
 import { ALL_SPORTS, getSportIcon } from "@/lib/sports-data"
@@ -67,13 +66,10 @@ export default function LivePage() {
 
   if (isLoading) {
     return (
-      <div className="flex">
-        <SidebarNew />
-        <div className="flex-1 flex h-96 items-center justify-center">
-          <div className="flex items-center gap-3">
-            <Spinner className="h-8 w-8" />
-            <span className="text-muted-foreground">Loading live matches…</span>
-          </div>
+      <div className="flex-1 flex h-96 items-center justify-center">
+        <div className="flex items-center gap-3">
+          <Spinner className="h-8 w-8" />
+          <span className="text-muted-foreground">Loading live matches…</span>
         </div>
       </div>
     )
@@ -81,13 +77,10 @@ export default function LivePage() {
 
   if (error) {
     return (
-      <div className="flex">
-        <SidebarNew />
-        <div className="flex-1 p-8 text-center">
-          <Radio className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h1 className="text-xl font-bold">Unable to load live matches</h1>
-          <p className="text-muted-foreground mt-2">Please try again later</p>
-        </div>
+      <div className="flex-1 p-8 text-center">
+        <Radio className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+        <h1 className="text-xl font-bold">Unable to load live matches</h1>
+        <p className="text-muted-foreground mt-2">Please try again later</p>
       </div>
     )
   }
@@ -97,10 +90,7 @@ export default function LivePage() {
   const totalWatching = totalPredictions * 10
 
   return (
-    <div className="flex">
-      <SidebarNew selectedSportId={selectedSport} onSelectSport={setSelectedSport} />
-
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-3 md:px-5 md:py-4">
           {/* Compact Header */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -203,6 +193,5 @@ export default function LivePage() {
           )}
         </div>
       </div>
-    </div>
   )
 }

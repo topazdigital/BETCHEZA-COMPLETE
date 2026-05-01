@@ -15,8 +15,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { SportsFilter } from '@/components/sports/sports-filter';
+import { BestBetsPanel } from '@/components/home/best-bets-panel';
 import { MatchCardNew } from '@/components/matches/match-card-new';
 import { SportIcon, LeagueFlag } from '@/components/ui/team-logo';
 import { Spinner } from '@/components/ui/spinner';
@@ -190,9 +190,7 @@ function MatchesContent() {
 
   return (
     <div className="flex">
-      <SidebarNew selectedSportId={selectedSportId} onSelectSport={setSelectedSportId} />
-      
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-w-0">
         {/* Sports Filter Bar */}
         <div className="border-b border-border bg-card/50 px-4 py-2">
           <SportsFilter 
@@ -398,6 +396,13 @@ function MatchesContent() {
           )}
         </div>
       </div>
+
+      {/* Right sidebar — best bets panel on xl+ screens */}
+      <aside className="hidden xl:block w-72 shrink-0 border-l border-border">
+        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
+          <BestBetsPanel matches={filteredMatches.slice(0, 20)} />
+        </div>
+      </aside>
     </div>
   );
 }

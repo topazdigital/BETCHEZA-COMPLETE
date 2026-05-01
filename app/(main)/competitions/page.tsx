@@ -13,7 +13,6 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FlagIcon } from '@/components/ui/flag-icon';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { ALL_LEAGUES, getSportIcon } from '@/lib/sports-data';
@@ -82,9 +81,7 @@ export default function CompetitionsPage() {
   const stats = compsData?.stats;
 
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-2.5">
           {/* Header */}
           <div className="mb-2.5 flex items-center justify-between">
@@ -176,7 +173,6 @@ export default function CompetitionsPage() {
           </Tabs>
         </div>
       </div>
-    </div>
   );
 }
 

@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { SidebarNew } from "@/components/layout/sidebar-new"
 import { MatchCardNew } from "@/components/matches/match-card-new"
 import { KnockoutBracket } from "@/components/leagues/knockout-bracket"
 import { Spinner } from "@/components/ui/spinner"
@@ -188,20 +187,15 @@ export default function LeaguePage({ params }: PageProps) {
     // Still loading? Show spinner instead of "not found".
     if (matchesLoading) {
       return (
-        <div className="flex">
-          <SidebarNew />
-          <div className="flex-1 flex h-96 items-center justify-center">
-            <Spinner className="h-8 w-8" />
-          </div>
+        <div className="flex-1 flex h-96 items-center justify-center">
+          <Spinner className="h-8 w-8" />
         </div>
       )
     }
 
     // No matches and unknown slug — show a soft empty state.
     return (
-      <div className="flex">
-        <SidebarNew />
-        <div className="flex-1 p-8 text-center">
+      <div className="flex-1 p-8 text-center">
           <Trophy className="mx-auto h-12 w-12 text-muted-foreground/60" />
           <h1 className="mt-4 text-2xl font-bold">{titleCase(normalisedSlug)}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -211,7 +205,6 @@ export default function LeaguePage({ params }: PageProps) {
             <Link href="/matches">Browse all matches</Link>
           </Button>
         </div>
-      </div>
     )
   }
 
@@ -228,10 +221,7 @@ export default function LeaguePage({ params }: PageProps) {
   const sportIcon = getSportIcon(SPORT_ICON_BY_ID[league.sportId] || 'football')
 
   return (
-    <div className="flex">
-      <SidebarNew />
-
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-3 md:px-4 md:py-4">
           {/* Back Button */}
           <Button variant="ghost" size="sm" className="mb-2 h-7 text-xs px-2" asChild>
@@ -639,6 +629,5 @@ export default function LeaguePage({ params }: PageProps) {
           </div>
         </div>
       </div>
-    </div>
   )
 }

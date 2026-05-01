@@ -233,7 +233,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
-    let apiMatches: UnifiedMatch[] = [];
+    // International competition league IDs (matches layout.tsx + sidebar-new.tsx)
+  const INTL_LEAGUE_IDS = new Set([9, 10, 26, 102, 24, 29, 30, 31, 104, 111, 109, 80, 25]);
+  const category = searchParams.get('category');
+  const limit = searchParams.get('limit');
+
+  let apiMatches: UnifiedMatch[] = [];
     if (sportId) {
       apiMatches = await getMatchesBySport(parseInt(sportId));
     } else if (leagueId) {
@@ -245,6 +250,22 @@ export async function GET(request: NextRequest) {
     } else {
       apiMatches = await getAllMatches();
     }
+
+  // Filter by category if specified
+  if (category === 'international') {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+    apiMatches = apiMatches.filter(m => {
+      const t = new Date(m.kickoffTime).getTime();
+      return INTL_LEAGUE_IDS.has(m.leagueId) && t >= today.getTime() && t <= todayEnd.getTime();
+    });
+  }
+
+  if (limit) {
+    apiMatches = apiMatches.slice(0, parseInt(limit, 10));
+  }
 
     matches = apiMatches.map(convertToMatchData);
     const sources = new Set(apiMatches.map(m => m.source));

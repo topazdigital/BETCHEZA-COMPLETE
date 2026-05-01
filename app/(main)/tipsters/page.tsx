@@ -13,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
@@ -102,9 +101,7 @@ export default function TipstersPage() {
     : null;
 
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-2.5 pb-24">
           {/* Header */}
           <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -114,7 +111,7 @@ export default function TipstersPage() {
                 Browse and follow expert tipsters from across Africa
               </p>
             </div>
-            <Button variant="outline" size="sm" h-7 className="text-xs" asChild>
+            <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
               <Link href="/tipsters/compare">
                 <GitCompare className="mr-1.5 h-3.5 w-3.5" />
                 Compare tipsters
@@ -343,6 +340,5 @@ export default function TipstersPage() {
           </div>
         )}
       </div>
-    </div>
   );
 }

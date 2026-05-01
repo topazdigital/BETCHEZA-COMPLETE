@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
 
@@ -99,9 +98,8 @@ function ComparePageInner() {
   }, [selected]);
 
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1 overflow-hidden">
+    <>
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-2.5 pb-24">
           <Button variant="ghost" size="sm" asChild className="mb-2 h-7 text-xs">
             <Link href="/tipsters"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Back to tipsters</Link>
@@ -262,7 +260,7 @@ function ComparePageInner() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

@@ -36,6 +36,13 @@ Key architectural decisions and features include:
 -   **Affiliate Management**: Tracks affiliate clicks, sign-ups, and deposits through a conversion funnel, with a dedicated admin dashboard for monitoring.
 -   **UI/UX Enhancements**: Features infinite scroll for match listings, sport-aware live timers, fuzzy logic for form sidebar logos, and a redesigned brand identity.
 -   **Persistence**: Critical settings and user data (e.g., wallet, tipster applications, email templates, user profiles, admin settings) are persisted to local files (`.local/state/`) for development resilience and to MySQL for production.
+-   **3-Column Homepage Layout**: Homepage uses a 3-column flex layout — left sidebar (lg+) shows Live Now/Up Next + Favorited Tips, center shows hero/matches, right panel (xl+) shows Featured Matches + Today's Best Bets.
+-   **Dark Menu Removed**: `SidebarNew` (dark secondary sidebar) has been removed from all pages (bookmakers, competitions, leagues, leaderboard, live, predictor, results, stats, tipsters, tipsters/compare). All pages now use the full content width.
+-   **Match Caching**: `getAllMatches()` in `lib/api/unified-sports-api.ts` uses an in-process 20s TTL cache with promise deduplication to avoid duplicate API calls. A 5-day date window prevents the 2616-match bloat.
+-   **Fake Votes System**: `/api/cron/fake-votes` endpoint seeds realistic vote distributions (home/draw/away) for upcoming matches. Votes are stored in `globalThis.__matchVotes`.
+-   **Loading States**: `loading.tsx` skeleton files added for main, matches, feed, live, tipsters, and leaderboard pages to eliminate blank-screen navigation lag.
+-   **GitHub Actions Deploy**: `.github/workflows/deploy.yml` configured for SSH-based auto-deployment on push to main.
+-   **Health Check API**: `/api/health` returns uptime and timestamp for deployment health checks.
 
 ## External Dependencies
 

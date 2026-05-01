@@ -7,7 +7,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { FlagIcon } from '@/components/ui/flag-icon';
 import { JoinCompetitionButton } from '@/components/competitions/join-competition-button';
 import { getCompetitionBySlug } from '@/lib/competitions-store';
@@ -46,9 +45,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
   const fillPct = Math.min(100, Math.round((comp.participants.length / comp.maxParticipants) * 100));
 
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-2.5">
           <Button variant="ghost" size="sm" className="mb-2 h-7 text-xs" asChild>
             <Link href="/competitions"><ArrowLeft className="mr-1 h-3.5 w-3.5" />All competitions</Link>
@@ -236,6 +233,5 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           </div>
         </div>
       </div>
-    </div>
   );
 }

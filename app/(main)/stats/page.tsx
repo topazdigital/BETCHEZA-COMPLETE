@@ -2,7 +2,6 @@
 
 import useSWR from 'swr';
 import Link from 'next/link';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TeamLogo } from '@/components/ui/team-logo';
@@ -131,9 +130,7 @@ function ScorersTable({ leagueId }: { leagueId: number }) {
 
 export default function StatsPage() {
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1 overflow-x-hidden">
+    <div className="flex-1 overflow-x-hidden">
         <div className="space-y-4 p-3 lg:p-4">
           <header className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -185,6 +182,5 @@ export default function StatsPage() {
           </Tabs>
         </div>
       </div>
-    </div>
   );
 }

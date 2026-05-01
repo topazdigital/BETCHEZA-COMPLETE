@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SidebarNew } from '@/components/layout/sidebar-new';
 import { cn } from '@/lib/utils';
 
 interface BookmakerRow {
@@ -88,9 +87,7 @@ export default function BookmakersPage() {
     }), [bookmakers, search, regionFilter, sortBy]);
 
   return (
-    <div className="flex">
-      <SidebarNew />
-      <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden">
         <div className="px-3 py-3">
           <div className="mb-4">
             <h1 className="flex items-center gap-1.5 text-lg font-bold text-foreground">
@@ -298,6 +295,5 @@ export default function BookmakersPage() {
           )}
         </div>
       </div>
-    </div>
   );
 }

@@ -517,8 +517,8 @@ export default function FeedPage() {
 
   return (
     <div className="overflow-x-hidden">
-      <div className="mx-auto max-w-7xl">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px] xl:grid-cols-[260px_minmax(0,1fr)_300px] p-3 md:p-4">
+      <div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)_260px] xl:grid-cols-[240px_minmax(0,1fr)_300px] p-3 md:p-4">
             {/* LEFT RAIL */}
             <aside className="hidden lg:block space-y-3">
               <RecommendedTipstersRail />
