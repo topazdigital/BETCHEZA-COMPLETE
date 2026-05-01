@@ -21,8 +21,10 @@ async function getTransporter(): Promise<{ cfg: EmailConfig; transporter: Transp
   const transporter = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
-    secure: cfg.secure,
+    secure: cfg.secure,           // true = SMTPS (port 465), false = STARTTLS (port 587)
+    requireTLS: !cfg.secure,      // force STARTTLS upgrade when not using SSL
     auth: { user: cfg.username, pass: cfg.password },
+    tls: { rejectUnauthorized: false }, // accept self-signed certs on VPS servers
   });
   cached = { cfg, transporter };
   return cached;

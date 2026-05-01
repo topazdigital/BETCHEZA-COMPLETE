@@ -237,9 +237,19 @@ export default function AdminEmailConfigPage() {
                 placeholder={cfg.passwordSet && !passwordChanged ? '••••••••' : 'app password'}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={cfg.secure} onCheckedChange={(v) => update('secure', v)} />
-              <span className="text-xs">Use SSL/TLS (port 465)</span>
+            <div className="space-y-1 md:col-span-2">
+              <div className="flex items-center gap-2">
+                <Switch checked={cfg.secure} onCheckedChange={(v) => update('secure', v)} />
+                <span className="text-xs">
+                  {cfg.secure ? 'SSL/TLS — port 465 (direct encrypted)' : 'STARTTLS — port 587 (recommended)'}
+                </span>
+              </div>
+              {cfg.secure && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 pl-0.5">
+                  Port 465 (SSL) is often blocked by cloud hosting providers. If you get
+                  &quot;Greeting never received&quot; or a timeout, switch to STARTTLS (port 587).
+                </p>
+              )}
             </div>
           </div>
 
