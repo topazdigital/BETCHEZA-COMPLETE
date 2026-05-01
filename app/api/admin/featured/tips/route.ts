@@ -53,7 +53,6 @@ function bestTipFor(matchId: string) {
   return best!;
 }
 
-).role !== 'admin') return null;
 interface AdminTipItem {
   matchId: string;
   pinned: boolean;

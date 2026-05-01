@@ -4,7 +4,6 @@ import { getFeaturedConfig, saveFeaturedConfig, DEFAULT_FEATURED_CONFIG } from '
 
 export const dynamic = 'force-dynamic';
 
-).role !== 'admin') return null;
 export async function GET() {
   const user = await requireAdmin();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
