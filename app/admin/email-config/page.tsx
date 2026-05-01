@@ -101,9 +101,9 @@ export default function AdminEmailConfigPage() {
         body.password = cfg.password;
       }
       const res = await fetch('/api/admin/email-config', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ action: 'save', ...body }),
       });
       let d: { config?: Cfg; error?: string } = {};
       try { d = await res.json(); } catch { /* non-JSON body */ }
