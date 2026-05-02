@@ -78,19 +78,161 @@ function PlayerRow({ player, bench }: { player: Player; bench?: boolean }) {
   )
 }
 
-// Parse a formation string like "4-3-3", "4-2-3-1", "3-4-3" or "4-4-2"
-// into an array of row sizes (defence → attack), excluding the goalkeeper.
-function parseFormation(formation?: string): number[] {
-  if (!formation) return [];
-  const parts = formation.split(/[-\s]/).map(s => parseInt(s, 10)).filter(n => Number.isFinite(n) && n > 0);
-  return parts;
+// ── Player role classification ────────────────────────────────────────────────
+// Granular role bucket so we can map each formation line to the right players
+// (e.g. CDMs go in the DM row, LW/RW wingers go in the WING row, etc.) rather
+// than relying on the coarse GK/DF/MF/FW sort that previously caused CBs to
+// appear on the wings in 3-back systems.
+type Role = 'GK' | 'DEF' | 'DM' | 'CM' | 'AM' | 'WING' | 'FW'
+
+// ESPN encodes lateral position as a dash-suffix: "CD-L", "CM-R", "CF-L" etc.
+function espnSuffix(pos: string): 'L' | 'R' | 'C' {
+  if (pos.endsWith('-L')) return 'L'
+  if (pos.endsWith('-R')) return 'R'
+  return 'C'
+}
+
+function classifyPlayer(p: Player): Role {
+  const pos = (p.position || '').toUpperCase().trim()
+  if (!pos) return 'CM'
+  if (pos === 'G' || pos === 'GK' || pos.startsWith('GOAL')) return 'GK'
+  if (/CDM|DMF|^DM\b|DEFENSIVE\s*MID/.test(pos)) return 'DM'
+  // ESPN uses bare "AM" for attacking midfielder
+  if (/CAM|AMF|^AM$|ATTACK.*MID|SS\b|SECONDARY/.test(pos)) return 'AM'
+  // Wide midfielders / wingers — LM/RM in ESPN = wide midfielders
+  if (/^LW\b|^RW\b|WING|^LM\b|^RM\b|LWF|RWF/.test(pos)) return 'WING'
+  // Central midfielders — ESPN: CM, CM-L, CM-R, MF, M
+  if (/^CM\b|^MC|MIDFIELD|^M\b|^MF\b/.test(pos)) return 'CM'
+  // Forwards — ESPN: CF, CF-L, CF-R, ST, FW, F
+  if (/^CF\b|^ST\b|^FW\b|^F\b|STRIK|FORWARD/.test(pos)) return 'FW'
+  // Defenders — ESPN uses CD (Center Defender) not CB for centre-backs
+  if (/^CB\b|^CD\b|^LB\b|^RB\b|^LWB|^RWB|^SW\b|DEFEND|BACK|^D\b|^DF\b/.test(pos)) return 'DEF'
+  return 'CM'
+}
+
+// L → C → R so each row reads left-flank to right-flank.
+// ESPN encodes side as a dash-suffix ("CD-L", "CM-R") not a leading letter,
+// so check the suffix first then fall back to leading letter for classic
+// abbreviations (LB, RB, LW, RW …).
+function sideRank(p: Player): number {
+  const pos = (p.position || '').toUpperCase()
+  const suffix = espnSuffix(pos)
+  if (suffix === 'L') return 0
+  if (suffix === 'R') return 2
+  if (pos.startsWith('L')) return 0
+  if (pos.startsWith('R')) return 2
+  return 1
+}
+
+// For a formation with `n` lines (excluding GK), what preferred role does
+// each line represent from defence to attack?
+function rolesForLines(n: number): Role[] {
+  if (n <= 1) return ['CM']
+  if (n === 2) return ['DEF', 'FW']
+  if (n === 3) return ['DEF', 'CM', 'FW']
+  if (n === 4) return ['DEF', 'DM', 'AM', 'FW']
+  if (n === 5) return ['DEF', 'DM', 'CM', 'AM', 'FW']
+  const out: Role[] = ['DEF']
+  for (let i = 0; i < n - 2; i++) out.push('CM')
+  out.push('FW')
+  return out
+}
+
+// Priority for filling the DEF row: pure centre-backs (CB / CD in ESPN) are
+// preferred over fullbacks/wing-backs so that in a 3-back formation the three
+// CBs fill the defensive line and the fullbacks overflow to midfield.
+function defPriority(p: Player): number {
+  const pos = (p.position || '').toUpperCase()
+  if (/^CB\b|^CD\b/.test(pos)) return 0  // Centre-backs: highest priority
+  if (/^LWB|^RWB/.test(pos)) return 2    // Wing-backs: lowest (play as mids)
+  return 1                                 // Full-backs: middle
+}
+
+// Fallback buckets: when a row's preferred bucket is short, try neighbours.
+const FALLBACK: Record<Role, Role[]> = {
+  GK:   ['GK'],
+  DEF:  ['DEF', 'DM'],
+  DM:   ['DM', 'CM', 'DEF'],
+  CM:   ['CM', 'AM', 'DM', 'WING'],
+  AM:   ['AM', 'CM', 'WING'],
+  WING: ['WING', 'AM', 'FW', 'CM'],
+  FW:   ['FW', 'WING', 'AM'],
+}
+
+function parseFormation(f?: string): number[] {
+  if (!f) return [4, 4, 2]
+  const parts = f.split(/[-\s]/).map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n > 0)
+  return parts.length ? parts : [4, 4, 2]
+}
+
+// Build an array of rows (GK row first, then defence → attack) with players
+// correctly classified and ordered left-to-right within each row.
+function buildFormationRows(roster: TeamRoster): Player[][] {
+  const starters = roster.starting.slice(0, 11)
+  if (starters.length === 0) return []
+
+  const formation = parseFormation(roster.formation)
+
+  // Fill role buckets.
+  const buckets: Record<Role, Player[]> = {
+    GK: [], DEF: [], DM: [], CM: [], AM: [], WING: [], FW: [],
+  }
+  for (const p of starters) buckets[classifyPlayer(p)].push(p)
+  // Pre-sort each bucket. For DEF: sort CBs before fullbacks/wing-backs so a
+  // 3-back formation always fills its DEF row with the three centre-backs
+  // rather than letting fullbacks displace a CB to the wing.
+  for (const k of Object.keys(buckets) as Role[]) {
+    if (k === 'DEF') {
+      buckets[k].sort((a, b) => {
+        const pd = defPriority(a) - defPriority(b)
+        if (pd !== 0) return pd
+        return sideRank(a) - sideRank(b)
+      })
+    } else {
+      buckets[k].sort((a, b) => sideRank(a) - sideRank(b))
+    }
+  }
+
+  const lineRoles = rolesForLines(formation.length)
+  const roles: Role[] = ['GK', ...lineRoles]
+  const counts: number[] = [1, ...formation]
+
+  const rows: Player[][] = roles.map(() => [])
+
+  // First pass: fill each row from its preferred bucket (+ fallbacks).
+  for (let i = 0; i < roles.length; i++) {
+    const need = counts[i]
+    for (const fb of FALLBACK[roles[i]]) {
+      while (rows[i].length < need && buckets[fb].length) {
+        rows[i].push(buckets[fb].shift()!)
+      }
+      if (rows[i].length >= need) break
+    }
+  }
+
+  // Second pass: dump any leftover players into the row with the most slack.
+  const leftovers = (Object.keys(buckets) as Role[]).flatMap(k => buckets[k])
+  for (const p of leftovers) {
+    let best = -1, bestSlack = 0
+    for (let i = 1; i < counts.length; i++) {
+      const slack = counts[i] - rows[i].length
+      if (slack > bestSlack) { best = i; bestSlack = slack }
+    }
+    if (best === -1) best = rows.length - 1
+    rows[best].push(p)
+  }
+
+  // Re-sort every non-GK row by side after fallback fills.
+  for (let i = 1; i < rows.length; i++) {
+    rows[i].sort((a, b) => sideRank(a) - sideRank(b))
+  }
+
+  return rows
 }
 
 function PitchPlayer({ player, isHome }: { player: Player; isHome: boolean }) {
   const Wrapper: React.ElementType = player.id ? Link : 'div';
   const wrapperProps = player.id ? { href: playerHref(player.fullName || player.name, player.id) } : {};
-  // Show last name only on the pitch — saves space and matches every TV
-  // graphic punters are used to.
   const lastName = (player.fullName || player.name).split(/\s+/).slice(-1)[0];
   return (
     <Wrapper
@@ -119,55 +261,19 @@ function PitchPlayer({ player, isHome }: { player: Player; isHome: boolean }) {
 }
 
 function FormationPitch({ roster, isHome }: { roster: TeamRoster; isHome: boolean }) {
-  const starters = roster.starting.slice(0, 11);
-  if (starters.length === 0) return null;
+  // rows[0] = GK, rows[1] = defence, …, rows[last] = attack
+  const rows = buildFormationRows(roster)
+  if (rows.length === 0) return null
 
-  // Goalkeeper is the first player after the GK→FW sort done server-side.
-  const gk = starters[0];
-  const outfield = starters.slice(1);
-
-  // Use the formation string when available, otherwise infer 4-3-3.
-  const formationRows = parseFormation(roster.formation);
-  // Sanity-check: rows must sum to the outfielders we actually have. If
-  // they don't (e.g. ESPN reports "4-3-3" but only sent 9 outfielders),
-  // fall back to even chunks so every player still gets a position.
-  const totalRowPlayers = formationRows.reduce((a, b) => a + b, 0);
-  let rows: number[];
-  if (totalRowPlayers === outfield.length && formationRows.length > 0) {
-    rows = formationRows;
-  } else {
-    // Default to 4-3-3 / 4-4-2 / 4-3 / etc. depending on outfield count.
-    if (outfield.length === 10) rows = [4, 3, 3];
-    else if (outfield.length === 9) rows = [4, 3, 2];
-    else if (outfield.length === 8) rows = [4, 3, 1];
-    else if (outfield.length >= 11) rows = [4, 3, 3];
-    else rows = [outfield.length];
-  }
-
-  // Slice outfielders into rows.
-  const slicedRows: Player[][] = [];
-  let cursor = 0;
-  for (const n of rows) {
-    slicedRows.push(outfield.slice(cursor, cursor + n));
-    cursor += n;
-  }
-
-  // Render the pitch so the GK is at the bottom (own goal) and the most
-  // advanced row is at the top (attacking goal). For the away team we flip
-  // it so the two halves of the screen feel symmetrical when stacked.
-  const orderedRows = isHome ? [...slicedRows].reverse() : slicedRows;
-  const gkRow = (
-    <div key="gk" className="flex items-center justify-center">
-      <PitchPlayer player={gk} isHome={isHome} />
-    </div>
-  );
+  // For the home team: GK at bottom → attack at top.
+  // For the away team: GK at top → attack at bottom.
+  // buildFormationRows always returns [GK, DEF, …, FW] so we reverse for home.
+  const displayRows = isHome ? [...rows].reverse() : rows
 
   return (
     <div
       className={cn(
         'relative isolate overflow-hidden rounded-lg p-3',
-        // Pitch background — green gradient with subtle stripes and a
-        // centre line / penalty boxes so it actually looks like a pitch.
         'bg-gradient-to-b from-emerald-700 via-emerald-600 to-emerald-700',
       )}
       style={{
@@ -182,29 +288,13 @@ function FormationPitch({ roster, isHome }: { roster: TeamRoster; isHome: boolea
       <div className="pointer-events-none absolute top-0 left-1/2 h-12 w-2/3 -translate-x-1/2 rounded-b-md border-x border-b border-white/40" />
 
       <div className="relative z-10 flex flex-col gap-3 py-2">
-        {isHome ? (
-          <>
-            {orderedRows.map((row, i) => (
-              <div key={i} className="flex items-center justify-around">
-                {row.map((p, j) => (
-                  <PitchPlayer key={`${i}-${j}`} player={p} isHome={isHome} />
-                ))}
-              </div>
+        {displayRows.map((row, i) => (
+          <div key={i} className="flex items-center justify-around">
+            {row.map((p, j) => (
+              <PitchPlayer key={`${i}-${j}`} player={p} isHome={isHome} />
             ))}
-            {gkRow}
-          </>
-        ) : (
-          <>
-            {gkRow}
-            {orderedRows.map((row, i) => (
-              <div key={i} className="flex items-center justify-around">
-                {row.map((p, j) => (
-                  <PitchPlayer key={`${i}-${j}`} player={p} isHome={isHome} />
-                ))}
-              </div>
-            ))}
-          </>
-        )}
+          </div>
+        ))}
       </div>
     </div>
   );

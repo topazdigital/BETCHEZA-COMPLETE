@@ -326,23 +326,32 @@ function useLiveMinute(storedMinute: number | undefined, status: string, sportSl
 // shape.
 type Role = 'GK' | 'DEF' | 'DM' | 'CM' | 'AM' | 'WING' | 'FW'
 
+// ESPN encodes lateral position as a dash-suffix: "CD-L", "CM-R", "CF-L" etc.
+// Extract it so the rest of the logic can stay position-agnostic.
+function espnSuffix(pos: string): 'L' | 'R' | 'C' {
+  if (pos.endsWith('-L')) return 'L'
+  if (pos.endsWith('-R')) return 'R'
+  return 'C'
+}
+
 function classifyPlayer(p: Player): Role {
   const pos = (p.position || '').toUpperCase().trim()
   if (!pos) return 'CM'
 
   if (pos === 'G' || pos === 'GK' || pos.startsWith('GOAL')) return 'GK'
 
-  // Specific midfield sub-roles before generic "M" matches.
+  // Defensive midfielders
   if (/CDM|DMF|^DM\b|DEFENSIVE\s*MID/.test(pos)) return 'DM'
-  if (/CAM|AMF|^AM\b|ATTACK.*MID|SS\b|SECONDARY/.test(pos)) return 'AM'
-  // Wide players (LW/RW + LM/RM) — treated as wingers so they end up in the
-  // attacking band of 4-3-3 / 3-4-3, not in the central midfield row.
+  // Attacking midfielders — ESPN uses bare "AM" for this role
+  if (/CAM|AMF|^AM$|ATTACK.*MID|SS\b|SECONDARY/.test(pos)) return 'AM'
+  // Wide players / wing-midfielders (LM/RM in ESPN = wide midfielders)
   if (/^LW\b|^RW\b|WING|^LM\b|^RM\b|LWF|RWF/.test(pos)) return 'WING'
-
-  if (/^CM|^MC|MIDFIELD|^M\b|^MF\b/.test(pos)) return 'CM'
-
-  if (/^CB|^LB|^RB|^LWB|^RWB|^SW|DEFEND|BACK|^D\b|^DF\b/.test(pos)) return 'DEF'
-  if (/^ST|^CF|^FW|^F\b|STRIK|FORWARD/.test(pos)) return 'FW'
+  // Central midfielders — ESPN: CM, CM-L, CM-R, MF, M
+  if (/^CM\b|^MC|MIDFIELD|^M\b|^MF\b/.test(pos)) return 'CM'
+  // Forwards — ESPN: CF, CF-L, CF-R, ST, FW, F
+  if (/^CF\b|^ST\b|^FW\b|^F\b|STRIK|FORWARD/.test(pos)) return 'FW'
+  // Defenders — ESPN uses both CB *and* CD (Center Defender) for centre-backs
+  if (/^CB\b|^CD\b|^LB\b|^RB\b|^LWB|^RWB|^SW\b|DEFEND|BACK|^D\b|^DF\b/.test(pos)) return 'DEF'
   return 'CM'
 }
 
@@ -374,13 +383,28 @@ const FALLBACK: Record<Role, Role[]> = {
   FW:   ['FW', 'WING', 'AM'],
 }
 
-// L → C → R, so when the column is rendered top-to-bottom it reads as left
-// flank to right flank. Centre players end up in the middle of the column.
+// L → C → R so a row reads left-flank to right-flank.
+// ESPN encodes side as a dash-suffix ("CD-L", "CM-R") rather than a prefix,
+// so we check the suffix first and fall back to leading-letter for classic
+// abbreviations (LB, RB, LW, RW …).
 function sideRank(p: Player): number {
   const pos = (p.position || '').toUpperCase()
+  const suffix = espnSuffix(pos)
+  if (suffix === 'L') return 0
+  if (suffix === 'R') return 2
   if (pos.startsWith('L')) return 0
   if (pos.startsWith('R')) return 2
   return 1
+}
+
+// Priority for filling the DEF row: pure centre-backs (CB / CD in ESPN) are
+// preferred over fullbacks and wing-backs so that in a 3-back formation the
+// three CBs fill the defensive line and fullbacks overflow to midfield.
+function defPriority(p: Player): number {
+  const pos = (p.position || '').toUpperCase()
+  if (/^CB\b|^CD\b/.test(pos)) return 0  // Centre-backs: highest priority
+  if (/^LWB|^RWB/.test(pos)) return 2    // Wing-backs: lowest (play as mids)
+  return 1                                 // Full-backs: middle
 }
 
 function parseFormation(f?: string): number[] {
@@ -406,7 +430,17 @@ function buildPitchData(roster: TeamRoster | null): PitchData | null {
   }
   for (const p of starters) buckets[classifyPlayer(p)].push(p)
   for (const k of Object.keys(buckets) as Role[]) {
-    buckets[k].sort((a, b) => sideRank(a) - sideRank(b))
+    if (k === 'DEF') {
+      // Sort DEF bucket by CB-priority first so that in a 3-back formation
+      // the centre-backs fill the row before fullbacks/wing-backs do.
+      buckets[k].sort((a, b) => {
+        const pd = defPriority(a) - defPriority(b)
+        if (pd !== 0) return pd
+        return sideRank(a) - sideRank(b)
+      })
+    } else {
+      buckets[k].sort((a, b) => sideRank(a) - sideRank(b))
+    }
   }
 
   const lineRoles = rolesForLines(formation.length)
