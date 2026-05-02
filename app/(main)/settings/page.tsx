@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
+import { useUserSettings } from '@/contexts/user-settings-context';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +23,8 @@ import { toast } from 'sonner';
 export default function SettingsPage() {
   const { user, isLoading: loading, logout } = useAuth();
   const { open } = useAuthModal();
+  // Use the global settings context — changing odds format here updates the whole app instantly
+  const { settings: globalSettings, setOddsFormat: setGlobalOddsFormat, setTimezone: setGlobalTimezone } = useUserSettings();
 
   // Profile fields
   const [displayName, setDisplayName] = useState('');
@@ -30,9 +33,9 @@ export default function SettingsPage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
 
-  // Display prefs
-  const [oddsFormat, setOddsFormat] = useState<'decimal' | 'fractional' | 'american'>('decimal');
-  const [timezone, setTimezone] = useState('Africa/Nairobi');
+  // Display prefs — mirror from global context so they start populated correctly
+  const [oddsFormat, setOddsFormat] = useState<'decimal' | 'fractional' | 'american'>(globalSettings.oddsFormat);
+  const [timezone, setTimezone] = useState(globalSettings.timezone || 'Africa/Nairobi');
   const [notifMatches, setNotifMatches] = useState(true);
   const [notifTipsters, setNotifTipsters] = useState(true);
   const [notifPromos, setNotifPromos] = useState(false);
@@ -63,18 +66,19 @@ export default function SettingsPage() {
       })
       .catch(() => {});
 
-    // Load local preferences
+    // Sync local prefs state from global context + bz_prefs for notification flags only
+    setOddsFormat(globalSettings.oddsFormat);
+    setTimezone(globalSettings.timezone);
     try {
       const raw = localStorage.getItem('bz_prefs');
       if (raw) {
         const p = JSON.parse(raw);
-        if (p.oddsFormat) setOddsFormat(p.oddsFormat);
-        if (p.timezone) setTimezone(p.timezone);
         if (typeof p.notifMatches === 'boolean') setNotifMatches(p.notifMatches);
         if (typeof p.notifTipsters === 'boolean') setNotifTipsters(p.notifTipsters);
         if (typeof p.notifPromos === 'boolean') setNotifPromos(p.notifPromos);
       }
     } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const handleSaveProfile = async () => {
@@ -102,11 +106,16 @@ export default function SettingsPage() {
 
   const handleSavePreferences = () => {
     try {
+      // Push odds format + timezone into the global context — this syncs the header and all match displays
+      setGlobalOddsFormat(oddsFormat);
+      setGlobalTimezone(timezone);
+      // Save notification flags to bz_prefs (not yet server-synced)
+      const raw = localStorage.getItem('bz_prefs');
+      const prev = raw ? JSON.parse(raw) : {};
       localStorage.setItem('bz_prefs', JSON.stringify({
+        ...prev,
         oddsFormat, timezone, notifMatches, notifTipsters, notifPromos,
       }));
-      // Dispatch event so other components pick up the change immediately
-      window.dispatchEvent(new StorageEvent('storage', { key: 'bz_prefs' }));
       setPrefSaved(true);
       setTimeout(() => setPrefSaved(false), 2000);
       toast.success('Preferences saved');

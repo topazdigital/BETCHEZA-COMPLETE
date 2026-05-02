@@ -119,9 +119,9 @@ export async function followTeam(userId: number, team: Omit<FollowedTeam, 'follo
         `INSERT INTO team_follows
          (user_id, team_id, team_name, team_logo, league_id, league_slug, league_name, sport_slug, country_code, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON CONFLICT (user_id, team_id) DO UPDATE SET
-           team_name = EXCLUDED.team_name,
-           team_logo = EXCLUDED.team_logo`,
+         ON DUPLICATE KEY UPDATE
+           team_name = VALUES(team_name),
+           team_logo = VALUES(team_logo)`,
         [userId, entry.teamId, entry.teamName, entry.teamLogo || null, entry.leagueId || null,
          entry.leagueSlug || null, entry.leagueName || null, entry.sportSlug || null, entry.countryCode || null]
       );
@@ -165,7 +165,7 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
   if (hasDb()) {
     try {
       await query(
-        `INSERT INTO follows (follower_id, following_id) VALUES (?, ?) ON CONFLICT (follower_id, following_id) DO NOTHING`,
+        `INSERT IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`,
         [userId, tipsterId]
       );
     } catch (e) {

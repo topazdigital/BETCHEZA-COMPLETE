@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   try {
     await execute(
       `INSERT INTO user_bookmarks (user_id, entity_type, entity_id, created_at)
-       VALUES (?, ?, ?, NOW()) ON CONFLICT (user_id, entity_type, entity_id) DO NOTHING`,
+       VALUES (?, ?, ?, NOW())`,
       [userId, ent.type, ent.id],
     );
     return NextResponse.json({ ok: true });

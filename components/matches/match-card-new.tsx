@@ -8,6 +8,7 @@ import { TeamLogo, SportIcon, LeagueFlag } from '@/components/ui/team-logo';
 import { getBrowserTimezone, formatTime, formatDate, isToday, isTomorrow } from '@/lib/utils/timezone';
 import { liveStatusLabel } from '@/lib/utils/live-status';
 import { matchToSlug } from '@/lib/utils/match-url';
+import { getTeamCategoryBadge } from '@/lib/utils/team-category';
 
 // Match type from our API
 interface Match {
@@ -72,6 +73,15 @@ const NO_DRAW_SPORTS = new Set([
   'american-football', 'ice-hockey', // OT means binary outcome for betting markets
 ]);
 
+// Tiny inline badge for women's / youth fixtures
+function CategoryBadge({ label }: { label: string }) {
+  return (
+    <span className="ml-1 inline-flex shrink-0 items-center rounded bg-primary/10 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-primary">
+      {label}
+    </span>
+  );
+}
+
 export function MatchCardNew({ 
   match, 
   variant = 'default',
@@ -83,6 +93,12 @@ export function MatchCardNew({
   const isHalftime = match.status === 'halftime';
   const isFinished = match.status === 'finished';
   const isTwoWay = NO_DRAW_SPORTS.has(match.sport.slug);
+
+  // Detect women's / age-group league — compute once for both teams
+  const homeBadge = getTeamCategoryBadge(match.homeTeam.name, match.league.name, match.league.slug);
+  const awayBadge = getTeamCategoryBadge(match.awayTeam.name, match.league.name, match.league.slug);
+  const homeBadgeLabel = homeBadge.youthLabel || (homeBadge.isWomens ? 'W' : null);
+  const awayBadgeLabel = awayBadge.youthLabel || (awayBadge.isWomens ? 'W' : null);
 
   // Use browser timezone for display
   const timezone = getBrowserTimezone();
@@ -143,6 +159,7 @@ export function MatchCardNew({
               )}>
                 {match.homeTeam.name}
               </span>
+              {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
             </div>
             {(isLive || isFinished) && match.homeScore !== null && (
               <span className={cn('font-mono text-sm font-bold', isLive && 'text-live')}>
@@ -160,6 +177,7 @@ export function MatchCardNew({
               )}>
                 {match.awayTeam.name}
               </span>
+              {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
             </div>
             {(isLive || isFinished) && match.awayScore !== null && (
               <span className={cn('font-mono text-sm font-bold', isLive && 'text-live')}>
@@ -254,11 +272,12 @@ export function MatchCardNew({
               <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport.slug} size="sm" />
               <div className="min-w-0 flex-1">
                 <span className={cn(
-                  'block truncate text-sm font-semibold',
+                  'inline-flex items-center truncate text-sm font-semibold',
                   isFinished && match.homeScore !== null && match.awayScore !== null && 
                   match.homeScore > match.awayScore && 'text-success'
                 )}>
                   {match.homeTeam.name}
+                  {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
                 </span>
                 {match.homeTeam.form && !isLive && !isFinished && (
                   <FormDots form={match.homeTeam.form} />
@@ -281,11 +300,12 @@ export function MatchCardNew({
               <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport.slug} size="sm" />
               <div className="min-w-0 flex-1">
                 <span className={cn(
-                  'block truncate text-sm font-semibold',
+                  'inline-flex items-center truncate text-sm font-semibold',
                   isFinished && match.homeScore !== null && match.awayScore !== null && 
                   match.awayScore > match.homeScore && 'text-success'
                 )}>
                   {match.awayTeam.name}
+                  {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
                 </span>
                 {match.awayTeam.form && !isLive && !isFinished && (
                   <FormDots form={match.awayTeam.form} />

@@ -87,10 +87,11 @@ export default function HomePage() {
     return counts;
   }, [allMatches]);
 
-  // Get featured/upcoming matches
+  // Get featured/upcoming matches — sorted by kickoff time ascending (soonest first)
   const upcomingMatches = useMemo(() => {
     return matches
       .filter(m => m.status === 'scheduled')
+      .sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime())
       .slice(0, 12);
   }, [matches]);
 
@@ -580,7 +581,10 @@ function LiveSidePanel({
   upcomingMatches: SidePanelMatch[];
 }) {
   const hasLive = liveMatches.length > 0;
+  // When there are live matches, show ONLY live — never mix in upcoming
   const displayMatches = hasLive ? liveMatches.slice(0, 8) : upcomingMatches.slice(0, 8);
+  const label = hasLive ? 'Live Now' : 'Up Next';
+  const allHref = hasLive ? '/matches?status=live' : '/matches?status=scheduled';
 
   return (
     <div>
@@ -595,11 +599,11 @@ function LiveSidePanel({
             hasLive ? 'bg-live' : 'bg-muted-foreground/60',
           )}></span>
         </span>
-        <h3 className="text-xs font-bold text-foreground">{hasLive ? 'Live Now' : 'Up Next'}</h3>
+        <h3 className="text-xs font-bold text-foreground">{label}</h3>
         <Badge variant={hasLive ? 'destructive' : 'secondary'} className="h-4 px-1 text-[9px]">
           {displayMatches.length}
         </Badge>
-        <Link href="/matches?status=live" className="ml-auto text-[10px] text-primary hover:underline">
+        <Link href={allHref} className="ml-auto text-[10px] text-primary hover:underline">
           All
         </Link>
       </div>

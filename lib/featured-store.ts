@@ -105,7 +105,7 @@ export async function saveFeaturedConfig(patch: Partial<FeaturedConfig>): Promis
     try {
       await query(
         `INSERT INTO featured_config (id, config_json) VALUES (1, ?)
-         ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json`,
+         ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)`,
         [JSON.stringify(next)]
       );
     } catch (e) {

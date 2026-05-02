@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import type { OddsFormat } from '@/lib/types';
 import { getBrowserTimezone } from '@/lib/utils/timezone';
 
@@ -27,76 +27,90 @@ const defaultSettings: UserSettings = {
 const UserSettingsContext = createContext<UserSettingsContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'betcheza_settings';
+const LEGACY_KEY = 'bz_prefs';
 
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load settings from localStorage on mount
+  // Load settings from localStorage on mount — merge both keys so legacy prefs are respected
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setSettings({
-          ...defaultSettings,
-          ...parsed,
-        });
-      } catch {
-        // Invalid JSON, use defaults
+    let loaded: Partial<UserSettings> = {};
+    try {
+      const main = localStorage.getItem(STORAGE_KEY);
+      if (main) loaded = { ...loaded, ...JSON.parse(main) };
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy) {
+        const lp = JSON.parse(legacy);
+        if (lp.oddsFormat && !loaded.oddsFormat) loaded.oddsFormat = lp.oddsFormat;
+        if (lp.timezone && !loaded.timezone) loaded.timezone = lp.timezone;
       }
-    } else {
-      // Auto-detect timezone
-      const browserTimezone = getBrowserTimezone();
-      setSettings(prev => ({ ...prev, timezone: browserTimezone }));
-    }
+    } catch { /* ignore */ }
+
+    const browserTimezone = getBrowserTimezone();
+    setSettings({
+      ...defaultSettings,
+      timezone: browserTimezone,
+      ...loaded,
+    });
     setIsLoaded(true);
   }, []);
 
-  // Save settings to localStorage whenever they change
+  // Save to STORAGE_KEY + keep bz_prefs in sync whenever settings change
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    }
+    if (!isLoaded) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    try {
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || '{}');
+      localStorage.setItem(LEGACY_KEY, JSON.stringify({
+        ...legacy,
+        oddsFormat: settings.oddsFormat,
+        timezone: settings.timezone,
+      }));
+    } catch { /* ignore */ }
+    window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
   }, [settings, isLoaded]);
+
+  // Listen for storage events so multiple tabs + settings page stay in sync
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY && e.key !== LEGACY_KEY) return;
+      if (!e.newValue) return;
+      try {
+        const parsed = JSON.parse(e.newValue);
+        setSettings(prev => ({ ...prev, ...parsed }));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, []);
 
   // Apply theme
   useEffect(() => {
     if (!isLoaded) return;
-
     const root = document.documentElement;
-    const theme = settings.theme;
-
-    if (theme === 'system') {
+    if (settings.theme === 'system') {
       const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       root.classList.toggle('dark', systemDark);
     } else {
-      root.classList.toggle('dark', theme === 'dark');
+      root.classList.toggle('dark', settings.theme === 'dark');
     }
   }, [settings.theme, isLoaded]);
 
-  const setTimezone = (timezone: string) => {
+  const setTimezone = useCallback((timezone: string) => {
     setSettings(prev => ({ ...prev, timezone }));
-  };
+  }, []);
 
-  const setOddsFormat = (oddsFormat: OddsFormat) => {
+  const setOddsFormat = useCallback((oddsFormat: OddsFormat) => {
     setSettings(prev => ({ ...prev, oddsFormat }));
-  };
+  }, []);
 
-  const setTheme = (theme: 'light' | 'dark' | 'system') => {
+  const setTheme = useCallback((theme: 'light' | 'dark' | 'system') => {
     setSettings(prev => ({ ...prev, theme }));
-  };
+  }, []);
 
   return (
-    <UserSettingsContext.Provider
-      value={{
-        settings,
-        setTimezone,
-        setOddsFormat,
-        setTheme,
-        isLoaded,
-      }}
-    >
+    <UserSettingsContext.Provider value={{ settings, setTimezone, setOddsFormat, setTheme, isLoaded }}>
       {children}
     </UserSettingsContext.Provider>
   );

@@ -89,12 +89,12 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
     await query(
       `INSERT INTO user_profiles (user_id, display_name, username, phone, bio, avatar_url)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET
-         display_name = EXCLUDED.display_name,
-         username = EXCLUDED.username,
-         phone = EXCLUDED.phone,
-         bio = EXCLUDED.bio,
-         avatar_url = EXCLUDED.avatar_url,
+       ON DUPLICATE KEY UPDATE
+         display_name = VALUES(display_name),
+         username = VALUES(username),
+         phone = VALUES(phone),
+         bio = VALUES(bio),
+         avatar_url = VALUES(avatar_url),
          updated_at = CURRENT_TIMESTAMP`,
       [
         userId,

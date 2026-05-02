@@ -1,16 +1,18 @@
-import { Pool } from 'pg';
+import mysql from 'mysql2/promise';
 
-let pool: Pool | null = null;
+let pool: mysql.Pool | null = null;
 
-export function getPool(): Pool | null {
-  const url = process.env.DATABASE_URL;
+export function getPool(): mysql.Pool | null {
+  const url = process.env.MYSQL_URL;
   if (!url) return null;
 
   if (!pool) {
-    pool = new Pool({
-      connectionString: url,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: 10,
+    pool = mysql.createPool({
+      uri: url,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      timezone: '+00:00',
     });
   }
 
@@ -22,21 +24,14 @@ export interface QueryResult<T> {
   affectedRows?: number;
 }
 
-// Convert MySQL ? placeholders to PostgreSQL $1, $2, ... placeholders
-function convertPlaceholders(sql: string): string {
-  let i = 0;
-  return sql.replace(/\?/g, () => `$${++i}`);
-}
-
 export async function query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
   const p = getPool();
   if (!p) {
-    console.warn('[db] No PostgreSQL connection, returning empty result');
+    console.warn('[db] No MySQL connection (MYSQL_URL not set), returning empty result');
     return { rows: [] };
   }
-  const converted = convertPlaceholders(sql);
-  const result = await p.query(converted, params as unknown[]);
-  return { rows: result.rows as T[], affectedRows: result.rowCount ?? undefined };
+  const [rows] = await p.execute(sql, params as mysql.QueryOptions['values']);
+  return { rows: rows as T[], affectedRows: undefined };
 }
 
 export async function queryOne<T>(sql: string, params?: unknown[]): Promise<T | null> {
@@ -52,43 +47,34 @@ export interface ExecuteResult {
 export async function execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
   const p = getPool();
   if (!p) {
-    throw new Error('No PostgreSQL database connection available');
+    throw new Error('No MySQL database connection available (MYSQL_URL not set)');
   }
-  // Automatically add RETURNING id for INSERT statements so insertId works
-  let sqlToRun = sql.trim();
-  const isInsert = /^INSERT\s/i.test(sqlToRun);
-  if (isInsert && !/RETURNING/i.test(sqlToRun)) {
-    sqlToRun = `${sqlToRun} RETURNING id`;
-  }
-  const converted = convertPlaceholders(sqlToRun);
-  const result = await p.query(converted, params as unknown[]);
-  const insertId = result.rows[0]?.id ?? 0;
-  return { insertId: Number(insertId), affectedRows: result.rowCount ?? 0 };
+  const [result] = await p.execute(sql, params as mysql.QueryOptions['values']);
+  const res = result as mysql.ResultSetHeader;
+  return { insertId: res.insertId ?? 0, affectedRows: res.affectedRows ?? 0 };
 }
 
-// Transaction helper
 export async function withTransaction<T>(
-  callback: (client: import('pg').PoolClient) => Promise<T>
+  callback: (conn: mysql.PoolConnection) => Promise<T>
 ): Promise<T> {
   const p = getPool();
   if (!p) {
-    throw new Error('No PostgreSQL database connection available');
+    throw new Error('No MySQL database connection available (MYSQL_URL not set)');
   }
-  const client = await p.connect();
+  const conn = await p.getConnection();
   try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
+    await conn.beginTransaction();
+    const result = await callback(conn);
+    await conn.commit();
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await conn.rollback();
     throw error;
   } finally {
-    client.release();
+    conn.release();
   }
 }
 
-// Close pool on app shutdown
 export async function closePool(): Promise<void> {
   if (pool) {
     await pool.end();
