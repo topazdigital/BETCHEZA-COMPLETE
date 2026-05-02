@@ -76,6 +76,12 @@ Key architectural decisions and features include:
 -   **Post-as-Tip Modal Auto-Open**: Match detail page (`app/(main)/matches/[id]/page.tsx`) now reads `?action=tip` via `useSearchParams` and auto-opens the tip modal. Bet slip "Post as Tip" navigates to `/matches/[slug]?action=tip`.
 -   **Live Sounds**: `components/live/use-live-sounds.ts` provides synthesized Web Audio API sounds — goal roar, follow-team goal (louder), yellow card, whistle, kickoff. `LiveSoundWatcher` in `app/(main)/live/page.tsx` detects score changes each SWR poll and plays the appropriate tone. A mute/unmute toggle appears in the Live page header.
 -   **Clickable Scorer + Assister Names**: `ScorersList` in match detail hero section now renders `PlayerLink` components — clicking a scorer/assister name navigates to `/players/[espnId]` (or `/search?q=name` fallback). Own-goal emoji changed to 🔴. Assist names shown below scorer with ↪ arrow. Player IDs (`playerId`, `assistId`, `playerOutId`) now extracted from ESPN participants in `app/api/matches/[id]/details/route.ts`.
+-   **Player Follow System**: `lib/follows-store.ts` extended with `FollowedPlayer` CRUD functions; `/api/players/[id]/follow` GET/POST/DELETE route (uses `getCurrentUser()`); `FollowPlayerButton` client component; player profile page rewritten with follow button, position color coding (GK=amber, DEF=sky, MID=emerald, FWD=rose), expanded stats, and follow CTA banner.
+-   **Hot Streaks Leaderboard**: `app/(main)/leaderboard/page.tsx` has Rankings / Hot Streaks tab switcher. Hot Streaks tab shows tipsters on 2+ win streaks with podium cards and animated progress bars. Challenges CTA button in header links to `/challenges`.
+-   **H2H Predictor**: `app/(main)/predictor/h2h/page.tsx` — team search boxes, matchup analysis (deterministic mock data seeded by team names), odds cards, goal averages, last-5-meetings table. Linked from AI Predictor page.
+-   **Tipster Challenges**: `app/(main)/challenges/page.tsx` — live/upcoming/finished tabs, VS cards with live progress bars. Linked from Leaderboard and sidebar navigation.
+-   **Live Scoreboard Widget**: `components/live/live-scoreboard-widget.tsx` — floating bottom-right panel polling `/api/matches?status=live&limit=10` every 30s, collapse/dismiss controls. Added to main layout.
+-   **Challenges in Sidebar Nav**: "Challenges" link (Swords icon, red) added to `NAV_ITEMS` in `app/(main)/layout.tsx` between Leaderboard and Competitions.
 
 ## External Dependencies
 

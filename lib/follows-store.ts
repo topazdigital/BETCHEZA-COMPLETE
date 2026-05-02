@@ -236,6 +236,124 @@ export async function listFollowersOfTeam(teamId: string): Promise<number[]> {
 /** Alias for getFollowedTeams — used by the match-reminder cron job */
 export const listFollowedTeams = getFollowedTeams;
 
+// ─── PLAYERS ──────────────────────────────────────────────────────────────────
+export interface FollowedPlayer {
+  playerId: string;
+  playerName: string;
+  playerHeadshot?: string;
+  teamId?: string;
+  teamName?: string;
+  teamLogo?: string;
+  sportSlug?: string;
+  followedAt: string;
+}
+
+interface PlayerFollowsStore { players: Map<number, Map<string, FollowedPlayer>> }
+const gp = globalThis as { __playerFollowsStore?: PlayerFollowsStore };
+if (!gp.__playerFollowsStore) {
+  const saved = fileStoreGet<{ players: Record<number, Record<string, FollowedPlayer>> }>(
+    'player-follows', { players: {} }
+  );
+  gp.__playerFollowsStore = {
+    players: new Map(
+      Object.entries(saved.players || {}).map(([k, v]) => [
+        Number(k), new Map(Object.entries(v || {}))
+      ])
+    ),
+  };
+}
+const pStores = gp.__playerFollowsStore;
+
+function persistPlayersToDisk() {
+  try {
+    const out = {
+      players: Object.fromEntries(
+        Array.from(pStores.players.entries()).map(([uid, m]) => [uid, Object.fromEntries(m)])
+      ),
+    };
+    fileStoreSet('player-follows', out);
+  } catch {}
+}
+
+export async function getFollowedPlayers(userId: number): Promise<FollowedPlayer[]> {
+  if (hasDb()) {
+    try {
+      const r = await query<{
+        player_id: string; player_name: string; player_headshot: string | null;
+        team_id: string | null; team_name: string | null; team_logo: string | null;
+        sport_slug: string | null; created_at: string;
+      }>(
+        `SELECT player_id, player_name, player_headshot, team_id, team_name, team_logo,
+                sport_slug, created_at
+         FROM player_follows WHERE user_id = ? ORDER BY created_at DESC`,
+        [userId]
+      );
+      if (r.rows.length > 0) {
+        return r.rows.map(row => ({
+          playerId: row.player_id,
+          playerName: row.player_name,
+          playerHeadshot: row.player_headshot ?? undefined,
+          teamId: row.team_id ?? undefined,
+          teamName: row.team_name ?? undefined,
+          teamLogo: row.team_logo ?? undefined,
+          sportSlug: row.sport_slug ?? undefined,
+          followedAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
+        }));
+      }
+    } catch {}
+  }
+  const m = pStores.players.get(userId);
+  return m ? Array.from(m.values()).sort((a, b) => b.followedAt.localeCompare(a.followedAt)) : [];
+}
+
+export async function followPlayer(userId: number, player: Omit<FollowedPlayer, 'followedAt'>): Promise<FollowedPlayer> {
+  const entry: FollowedPlayer = { ...player, followedAt: new Date().toISOString() };
+  if (hasDb()) {
+    try {
+      await query(
+        `INSERT INTO player_follows
+         (user_id, player_id, player_name, player_headshot, team_id, team_name, team_logo, sport_slug, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+           player_name = VALUES(player_name),
+           player_headshot = VALUES(player_headshot),
+           team_id = VALUES(team_id),
+           team_name = VALUES(team_name),
+           team_logo = VALUES(team_logo)`,
+        [userId, entry.playerId, entry.playerName, entry.playerHeadshot || null,
+         entry.teamId || null, entry.teamName || null, entry.teamLogo || null, entry.sportSlug || null]
+      );
+    } catch {}
+  }
+  if (!pStores.players.has(userId)) pStores.players.set(userId, new Map());
+  pStores.players.get(userId)!.set(entry.playerId, entry);
+  persistPlayersToDisk();
+  return entry;
+}
+
+export async function unfollowPlayer(userId: number, playerId: string): Promise<void> {
+  if (hasDb()) {
+    try {
+      await query(`DELETE FROM player_follows WHERE user_id = ? AND player_id = ?`, [userId, playerId]);
+    } catch {}
+  }
+  pStores.players.get(userId)?.delete(playerId);
+  persistPlayersToDisk();
+}
+
+export async function isFollowingPlayer(userId: number, playerId: string): Promise<boolean> {
+  if (hasDb()) {
+    try {
+      const r = await query<{ c: string }>(
+        `SELECT COUNT(*) AS c FROM player_follows WHERE user_id = ? AND player_id = ?`,
+        [userId, playerId]
+      );
+      return Number(r.rows[0]?.c) > 0;
+    } catch {}
+  }
+  return pStores.players.get(userId)?.has(playerId) ?? false;
+}
+
 export async function getFollowerCount(tipsterId: number): Promise<number> {
   if (hasDb()) {
     try {

@@ -8,8 +8,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import {
   Sparkles, Brain, Target, TrendingUp, Loader2, AlertTriangle, Trophy, Zap,
-  Clock, Activity, Crosshair, ChevronDown, History, HelpCircle, Search, X,
+  Clock, Activity, Crosshair, ChevronDown, History, HelpCircle, Search, X, Swords,
 } from "lucide-react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 
 interface AltMarket {
@@ -210,6 +211,18 @@ export default function MatchPredictorPage() {
           <StatTile icon={Sparkles} value="1,284" label="AI calls today" tone="warning" />
           <StatTile icon={Clock} value="<3s" label="Avg response" tone="muted" />
         </div>
+
+        {/* H2H shortcut */}
+        <Link href="/predictor/h2h" className="mb-3 flex items-center gap-3 rounded-xl border border-red-500/30 bg-gradient-to-r from-red-500/10 to-transparent p-3 hover:border-red-500/60 hover:bg-red-500/15 transition-colors group">
+          <div className="rounded-lg bg-red-500/20 p-2 group-hover:bg-red-500/30 transition-colors">
+            <Swords className="h-4 w-4 text-red-400" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold leading-tight">Head-to-Head Predictor</p>
+            <p className="text-xs text-muted-foreground leading-snug">Compare two teams directly — historical stats, odds, and AI matchup analysis.</p>
+          </div>
+          <span className="text-xs font-medium text-red-400 shrink-0">Try it →</span>
+        </Link>
 
         <div className="grid gap-3 md:grid-cols-5">
           {/* Form */}

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings
+  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -25,6 +25,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { Footer } from "@/components/layout/footer"
 import { CookieBanner } from "@/components/layout/cookie-banner"
+import { LiveScoreboardWidget } from "@/components/live/live-scoreboard-widget"
 import { useMatchStats } from "@/lib/hooks/use-matches"
 import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
 import { FlagIcon } from "@/components/ui/flag-icon"
@@ -82,6 +83,7 @@ const mainNavItems: NavItem[] = [
   { href: "/feed", label: "Community Feed", icon: MessageSquare, color: "text-teal-500", activeColor: "bg-teal-500" },
   { href: "/tipsters", label: "Tipsters", icon: Users, color: "text-orange-500", activeColor: "bg-orange-500" },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-yellow-500", activeColor: "bg-yellow-500" },
+  { href: "/challenges", label: "Challenges", icon: Swords, color: "text-red-500", activeColor: "bg-red-500" },
   { href: "/competitions", label: "Competitions", icon: Star, color: "text-pink-500", activeColor: "bg-pink-500" },
   { href: "/results", label: "Results", icon: BarChart3, color: "text-slate-400", activeColor: "bg-slate-500" },
   { href: "/become-tipster", label: "Become a Tipster", icon: UserPlus, color: "text-indigo-500", activeColor: "bg-indigo-500" },
@@ -514,6 +516,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <Footer />
         <BottomNav />
         <CookieBanner />
+        <LiveScoreboardWidget />
       </div>
     </div>
   )

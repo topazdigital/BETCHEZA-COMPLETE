@@ -430,13 +430,13 @@ async function fetchTeamCoach(sport: string, league: string, teamId: string): Pr
   // ESPN coaches endpoint isn't always available, but worth trying for soccer/NFL/NBA.
   const url = `https://sports.core.api.espn.com/v2/sports/${sport}/leagues/${league}/teams/${teamId}/coaches?lang=en`;
   try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } });
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!r.ok) return undefined;
     type CoachIndex = { items?: Array<{ $ref?: string }> };
     const data = (await r.json()) as CoachIndex;
     const ref = data.items?.[0]?.$ref;
     if (!ref) return undefined;
-    const sub = await fetch(ref, { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } });
+    const sub = await fetch(ref, { headers: { Accept: 'application/json' }, cache: 'no-store' });
     if (!sub.ok) return undefined;
     type CoachDetail = { firstName?: string; lastName?: string; displayName?: string };
     const c = (await sub.json()) as CoachDetail;
