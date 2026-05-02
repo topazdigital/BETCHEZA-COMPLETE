@@ -281,12 +281,11 @@ export function useMatches(filters?: MatchFilters) {
     url,
     matchesFetcher,
     {
-      refreshInterval: 30000, // Refresh every 30 seconds
+      refreshInterval: 60000,      // Refresh every 60 seconds (server caches for 3 min anyway)
       revalidateOnFocus: false,
-      dedupingInterval: 10000,
-      // Keep showing the previous matches list while a background refresh
-      // is in flight so the UI doesn't flash empty states between polls.
-      keepPreviousData: true,
+      dedupingInterval: 30000,     // Deduplicate requests within 30s window
+      keepPreviousData: true,      // Never flash empty state during background refresh
+      revalidateIfStale: false,    // Don't refetch on mount if we already have data
     }
   );
 

@@ -647,10 +647,10 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
 // ============================================
 
 const CACHE_DURATION = {
-  live: 15 * 1000, // 15 seconds for live data
-  upcoming: 2 * 60 * 1000, // 2 minutes for upcoming
-  standings: 15 * 60 * 1000, // 15 minutes for standings
-  outrights: 30 * 60 * 1000, // 30 minutes for outrights
+  live: 30 * 1000,           // 30 seconds for live data
+  upcoming: 5 * 60 * 1000,  // 5 minutes for upcoming
+  standings: 30 * 60 * 1000, // 30 minutes for standings
+  outrights: 60 * 60 * 1000, // 60 minutes for outrights
 };
 
 const cache = new Map<string, { data: unknown; timestamp: number }>();
@@ -2912,15 +2912,52 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
 // Global-level cache for getAllMatches — shared across all concurrent requests.
 // This prevents the "thundering herd" where 5+ SWR hooks all hit the external
 // APIs simultaneously on page load, making the homepage feel slow.
-const ALLMATCHES_CACHE_TTL = 20 * 1000; // 20 seconds
+const ALLMATCHES_CACHE_TTL   = 3 * 60 * 1000;  // 3 min — fresh, return immediately
+const ALLMATCHES_STALE_TTL   = 10 * 60 * 1000; // 10 min — stale-while-revalidate window
+const ALLMATCHES_PERSIST_FILE = '/tmp/betcheza_matches_cache.json';
+
 const g_allMatchesCache: { data: UnifiedMatch[] | null; ts: number; promise: Promise<UnifiedMatch[]> | null } = { data: null, ts: 0, promise: null };
 
+// Load persistent cache from disk on startup so first request after PM2 restart is instant.
+(async () => {
+  try {
+    const { readFile } = await import('fs/promises');
+    const raw = await readFile(ALLMATCHES_PERSIST_FILE, 'utf8');
+    const parsed: { ts: number; data: UnifiedMatch[] } = JSON.parse(raw);
+    // Accept persisted data up to 30 minutes old — users see data instantly
+    if (parsed?.data?.length && Date.now() - parsed.ts < 30 * 60 * 1000) {
+      g_allMatchesCache.data = parsed.data;
+      g_allMatchesCache.ts   = parsed.ts;
+    }
+  } catch { /* no file yet — first run */ }
+})();
+
+async function _persistCache(data: UnifiedMatch[]): Promise<void> {
+  try {
+    const { writeFile } = await import('fs/promises');
+    await writeFile(ALLMATCHES_PERSIST_FILE, JSON.stringify({ ts: Date.now(), data }), 'utf8');
+  } catch { /* non-fatal */ }
+}
+
 export async function getAllMatches(): Promise<UnifiedMatch[]> {
-  // Return cached result if fresh
-  if (g_allMatchesCache.data && Date.now() - g_allMatchesCache.ts < ALLMATCHES_CACHE_TTL) {
+  const age = Date.now() - g_allMatchesCache.ts;
+
+  // 1. Fresh cache — return immediately
+  if (g_allMatchesCache.data && age < ALLMATCHES_CACHE_TTL) {
     return g_allMatchesCache.data;
   }
-  // Deduplicate concurrent requests — return the same in-flight promise
+
+  // 2. Stale-while-revalidate — return stale data instantly, refresh in background
+  if (g_allMatchesCache.data && age < ALLMATCHES_STALE_TTL) {
+    if (!g_allMatchesCache.promise) {
+      g_allMatchesCache.promise = _fetchAllMatches().finally(() => {
+        g_allMatchesCache.promise = null;
+      });
+    }
+    return g_allMatchesCache.data; // return stale immediately
+  }
+
+  // 3. No usable cache — must wait for fresh data (cold start or very stale)
   if (g_allMatchesCache.promise) return g_allMatchesCache.promise;
 
   const fetchPromise = _fetchAllMatches().finally(() => {
@@ -3047,9 +3084,10 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
 
   const sorted = sortMatchesWithPriority(windowed.length > 0 ? windowed : allMatches);
 
-  // Update the global cache
+  // Update the global cache and persist to disk
   g_allMatchesCache.data = sorted;
   g_allMatchesCache.ts = Date.now();
+  void _persistCache(sorted);
 
   return sorted;
 }

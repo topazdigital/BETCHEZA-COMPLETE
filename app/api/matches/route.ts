@@ -11,7 +11,7 @@ import {
 } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 15;
+export const revalidate = 60;
 
 // Sport priority - Football always first
 const SPORT_PRIORITY: Record<number, number> = {
@@ -341,12 +341,16 @@ export async function GET(request: NextRequest) {
       finished: 0,
     };
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       matches,
       stats,
       source: apiSource,
       timestamp: new Date().toISOString(),
     });
+    // stale-while-revalidate: browser can serve cached response for 60s,
+    // then serve stale for up to 5 min while revalidating in background
+    res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    return res;
   } catch (error) {
     console.error('[Matches API] Error:', error);
     return NextResponse.json(

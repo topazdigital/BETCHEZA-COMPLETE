@@ -241,9 +241,36 @@ export default function HomePage() {
 
         {/* CENTER — main content */}
         <div className="flex-1 min-w-0 overflow-hidden px-4 py-3">
-          {isLoading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Spinner className="h-8 w-8" />
+          {isLoading && matches.length === 0 ? (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card/60 p-3 animate-pulse">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-20 rounded bg-muted" />
+                        <div className="h-3 w-14 rounded bg-muted/60" />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="h-6 w-6 rounded-full bg-muted" />
+                          <div className="h-4 w-24 rounded bg-muted" />
+                        </div>
+                        <div className="h-5 w-8 rounded bg-muted/60" />
+                        <div className="flex items-center gap-2">
+                          <div className="h-4 w-24 rounded bg-muted" />
+                          <div className="h-6 w-6 rounded-full bg-muted" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="h-8 w-12 rounded bg-muted/60" />
+                      <div className="h-8 w-12 rounded bg-muted/60" />
+                      <div className="h-8 w-12 rounded bg-muted/60" />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <>
