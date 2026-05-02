@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut, Save, CheckCircle2,
+  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut, Save, CheckCircle2, KeyRound, Eye, EyeOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,7 +25,6 @@ export default function SettingsPage() {
 
   // Profile fields
   const [displayName, setDisplayName] = useState('');
-  const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -39,11 +38,18 @@ export default function SettingsPage() {
   const [notifPromos, setNotifPromos] = useState(false);
   const [prefSaved, setPrefSaved] = useState(false);
 
+  // Password change
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
+
   // Load saved profile + prefs on mount
   useEffect(() => {
     if (!user) return;
     setDisplayName(user.displayName ?? '');
-    setUsername(user.username ?? '');
 
     // Load profile overrides from server
     fetch('/api/users/me')
@@ -51,12 +57,11 @@ export default function SettingsPage() {
       .then(d => {
         if (d.profile) {
           if (d.profile.displayName) setDisplayName(d.profile.displayName);
-          if (d.profile.username) setUsername(d.profile.username);
           if (d.profile.phone) setPhone(d.profile.phone);
           if (d.profile.bio) setBio(d.profile.bio);
         }
       })
-      .catch(() => { /* ignore */ });
+      .catch(() => {});
 
     // Load local preferences
     try {
@@ -69,7 +74,7 @@ export default function SettingsPage() {
         if (typeof p.notifTipsters === 'boolean') setNotifTipsters(p.notifTipsters);
         if (typeof p.notifPromos === 'boolean') setNotifPromos(p.notifPromos);
       }
-    } catch { /* ignore */ }
+    } catch {}
   }, [user]);
 
   const handleSaveProfile = async () => {
@@ -78,7 +83,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/users/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName: displayName.trim(), username: username.trim(), phone: phone.trim(), bio: bio.trim() }),
+        body: JSON.stringify({ displayName: displayName.trim(), phone: phone.trim(), bio: bio.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -100,10 +105,48 @@ export default function SettingsPage() {
       localStorage.setItem('bz_prefs', JSON.stringify({
         oddsFormat, timezone, notifMatches, notifTipsters, notifPromos,
       }));
+      // Dispatch event so other components pick up the change immediately
+      window.dispatchEvent(new StorageEvent('storage', { key: 'bz_prefs' }));
       setPrefSaved(true);
       setTimeout(() => setPrefSaved(false), 2000);
       toast.success('Preferences saved');
-    } catch { /* ignore */ }
+    } catch {}
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('Please fill in all password fields');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return;
+    }
+    setPwSaving(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to change password');
+        return;
+      }
+      toast.success('Password changed successfully');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch {
+      toast.error('Network error — please try again');
+    } finally {
+      setPwSaving(false);
+    }
   };
 
   if (loading) {
@@ -150,7 +193,7 @@ export default function SettingsPage() {
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4 text-primary" /> Account
           </CardTitle>
-          <CardDescription>Update your display name, username, phone and bio.</CardDescription>
+          <CardDescription>Update your display name, phone and bio.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -168,12 +211,12 @@ export default function SettingsPage() {
               <Label htmlFor="username" className="text-xs">Username</Label>
               <Input
                 id="username"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder="username"
-                maxLength={50}
+                value={user.username ?? ''}
+                readOnly
+                disabled
+                className="opacity-60 cursor-not-allowed"
               />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Letters, numbers and underscores only</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Username cannot be changed. Contact support if needed.</p>
             </div>
             <div>
               <Label htmlFor="phone" className="text-xs">Phone number</Label>
@@ -213,6 +256,76 @@ export default function SettingsPage() {
               </span>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Change Password */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-primary" /> Change Password
+          </CardTitle>
+          <CardDescription>Set a new password for your account.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label htmlFor="current-pw" className="text-xs">Current password</Label>
+              <div className="relative">
+                <Input
+                  id="current-pw"
+                  type={showCurrent ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowCurrent(v => !v)}
+                  tabIndex={-1}
+                >
+                  {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="new-pw" className="text-xs">New password</Label>
+              <div className="relative">
+                <Input
+                  id="new-pw"
+                  type={showNew ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Min 8 characters"
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowNew(v => !v)}
+                  tabIndex={-1}
+                >
+                  {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="confirm-pw" className="text-xs">Confirm new password</Label>
+              <Input
+                id="confirm-pw"
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="Repeat new password"
+              />
+            </div>
+          </div>
+          <Button size="sm" onClick={handleChangePassword} disabled={pwSaving}>
+            {pwSaving ? <Spinner className="h-3.5 w-3.5 mr-1" /> : <KeyRound className="h-3.5 w-3.5 mr-1" />}
+            Change password
+          </Button>
         </CardContent>
       </Card>
 

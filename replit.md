@@ -52,6 +52,17 @@ Key architectural decisions and features include:
 -   **Loading States**: `loading.tsx` skeleton files added for main, matches, feed, live, tipsters, and leaderboard pages to eliminate blank-screen navigation lag.
 -   **GitHub Actions Deploy**: `.github/workflows/deploy.yml` configured for SSH-based auto-deployment on push to main.
 -   **Health Check API**: `/api/health` returns uptime and timestamp for deployment health checks.
+-   **Match Hero Timeline (T001)**: `HeroTimeline` component added inside the match score hero card — a horizontal bar (0–90') with emoji event markers (⚽ goals, 🟨 cards, 🟥 red cards) positioned by minute, shown for live/finished matches only.
+-   **Settings (T002)**: Username is now read-only. Password change form with currentPassword/newPassword/confirmPassword + eye-toggle visibility connects to `app/api/auth/change-password/route.ts` which verifies bcrypt hash before updating.
+-   **Notification Preferences (T004)**: `lib/notification-store.ts` persists preferences to `.local/state/` via `fileStoreGet`/`fileStoreSet` so they survive server restarts.
+-   **Popular Leagues Icons (T005)**: Globe2 / 🌐 emoji replaces Trophy icon in the Popular Leagues sidebar section.
+-   **Add Tip Button (T006)**: Hidden for finished/FT matches in the hero CTA and the Tips tab; replaced by an info note.
+-   **Team Logos (T007)**: ESPN CDN URL in `components/ui/team-logo.tsx` is now sport-aware (`/nba/`, `/nfl/`, `/mlb/`, `/nhl/` sub-paths) based on `sportSlug` prop.
+-   **Duplicate Teams (T008)**: `getMatchKey()` in `lib/api/unified-sports-api.ts` now strips common club suffixes (FC, AFC, SC, City, United, Town, Rovers, etc.) so "Derby County" and "Derby County FC" deduplicate to the same key.
+-   **AI Predictor (T009)**: Autofill from upcoming fixtures + W/L/D/push result badges already complete.
+-   **Payment Gateways (T010)**: New `GET /api/wallet/methods` endpoint returns admin-enabled gateways. `DepositForm` in wallet page fetches this and shows only active gateway types; falls back to the default M-Pesa/Card/Bank/Crypto list when none are configured.
+-   **Comment Templates (T011/T012)**: `lib/tip-engagement-store.ts` COMMENT_TEMPLATES rewritten — all HTML entities (`&apos;`) replaced with real apostrophes, 15 new comment templates added (analyst/hype/sceptic/stake voices).
+-   **Winner Vote Draw Button (T013)**: Draw "X" button in `components/matches/winner-vote.tsx` enlarged to h-8 w-8, border-2, bold font — same visual size as team logos. Highlights in primary colour when selected.
 
 ## External Dependencies
 

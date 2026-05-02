@@ -182,7 +182,12 @@ export function WinnerVote({
 
               <div className="relative z-10 flex flex-col items-center gap-1">
                 {pick === "draw" ? (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-muted text-[10px] font-bold text-muted-foreground">
+                  <div className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full border-2 font-black text-base",
+                    isMine
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-muted text-muted-foreground group-hover:border-primary group-hover:text-primary",
+                  )}>
                     X
                   </div>
                 ) : (

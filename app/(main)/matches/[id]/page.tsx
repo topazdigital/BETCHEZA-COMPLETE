@@ -680,6 +680,72 @@ function PitchPlayer({ player, color: _color }: { player: Player; color: string 
   return inner
 }
 
+// ---- Compact Hero Timeline Bar ----
+// Shows a horizontal progress bar (0–90+ min) with event markers for goals,
+// cards and substitutions so users can see the match rhythm at a glance.
+function HeroTimeline({ events }: { events: MatchEvent[] }) {
+  if (events.length === 0) return null
+  // Parse minute string like "45'", "45+2'" → numeric minute for positioning
+  function parseMins(min: string | undefined): number {
+    if (!min) return 0
+    const m = min.replace(/'/g, '').replace(/\+\d+$/, '')
+    return Math.max(0, Math.min(95, parseInt(m, 10) || 0))
+  }
+  const maxMin = 90
+  function pct(min: number) { return `${Math.min(100, (min / maxMin) * 100)}%` }
+
+  const eventIcon = (type: string, side: 'home' | 'away') => {
+    if (type === 'goal' || type === 'penalty_goal') return '⚽'
+    if (type === 'own_goal') return '🔴'
+    if (type === 'yellow_card') return '🟨'
+    if (type === 'red_card' || type === 'yellow_red_card') return '🟥'
+    if (type === 'substitution') return side === 'home' ? '↕' : '↕'
+    return '•'
+  }
+
+  return (
+    <div className="px-3 pb-2">
+      <div className="relative h-6 w-full">
+        {/* Track */}
+        <div className="absolute inset-y-[11px] left-0 right-0 h-[2px] rounded-full bg-white/10" />
+        {/* Half-time marker */}
+        <div className="absolute inset-y-0 flex flex-col items-center justify-center" style={{ left: pct(45) }}>
+          <div className="h-3 w-[1px] bg-white/20" />
+        </div>
+        {/* Event markers */}
+        {events.map((ev, i) => {
+          const min = parseMins(ev.minute)
+          const isGoal = ev.type === 'goal' || ev.type === 'own_goal' || ev.type === 'penalty_goal'
+          const icon = eventIcon(ev.type, ev.side)
+          const isHome = ev.side === 'home'
+          return (
+            <div
+              key={ev.id || i}
+              className="absolute flex flex-col items-center"
+              style={{ left: pct(min), transform: 'translateX(-50%)' }}
+              title={`${ev.minute} ${ev.playerName || ''} (${ev.type.replace(/_/g, ' ')})`}
+            >
+              <span className={cn(
+                "text-[8px] leading-none select-none",
+                isGoal ? "text-base" : "text-[10px]",
+                isHome ? "-translate-y-1" : "translate-y-1",
+              )}>
+                {icon}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      {/* Minute labels */}
+      <div className="flex justify-between text-[8px] text-white/25 mt-0.5 px-0.5">
+        <span>0&apos;</span>
+        <span>45&apos;</span>
+        <span>90&apos;</span>
+      </div>
+    </div>
+  )
+}
+
 // ---- Match Events Timeline ----
 function EventsTimeline({ events, homeName, awayName }: { events: MatchEvent[]; homeName: string; awayName: string }) {
   if (events.length === 0) {
@@ -1201,6 +1267,11 @@ export default function MatchDetailPage({ params }: PageProps) {
             </div>
           </div>
 
+          {/* Compact hero timeline — shows for live/finished games with events */}
+          {(isLive || isFinished) && matchEvents.length > 0 && (
+            <HeroTimeline events={matchEvents} />
+          )}
+
           {/* Odds bar — always shown */}
           {match.odds && (
             <div className="px-3 pb-3">
@@ -1258,31 +1329,32 @@ export default function MatchDetailPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* ─── PROMINENT "ADD TIP" CTA — sits right under the hero so the
-            primary action is impossible to miss. ─── */}
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent px-2.5 py-1.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" />
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold leading-tight">
-                {tips.length > 0
-                  ? `${tips.length} tipster${tips.length === 1 ? '' : 's'} have already posted`
-                  : 'Be the first to post a tip on this match'}
-              </p>
-              <p className="text-[9px] text-muted-foreground leading-tight">
-                Pick from 25+ markets — 1X2, Asian Handicap, BTTS, Over/Under, HT/FT…
-              </p>
+        {/* ─── PROMINENT "ADD TIP" CTA — hidden for finished matches ─── */}
+        {!isFinished && (
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent px-2.5 py-1.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold leading-tight">
+                  {tips.length > 0
+                    ? `${tips.length} tipster${tips.length === 1 ? '' : 's'} have already posted`
+                    : 'Be the first to post a tip on this match'}
+                </p>
+                <p className="text-[9px] text-muted-foreground leading-tight">
+                  Pick from 25+ markets — 1X2, Asian Handicap, BTTS, Over/Under, HT/FT…
+                </p>
+              </div>
             </div>
+            <Button
+              size="sm"
+              className="h-7 gap-1 px-2 text-[11px] bg-amber-500 text-amber-950 hover:bg-amber-400 font-bold shadow-sm"
+              onClick={() => setTipModalOpen(true)}
+            >
+              <Star className="h-3 w-3" />
+              Add Tip
+            </Button>
           </div>
-          <Button
-            size="sm"
-            className="h-7 gap-1 px-2 text-[11px] bg-amber-500 text-amber-950 hover:bg-amber-400 font-bold shadow-sm"
-            onClick={() => setTipModalOpen(true)}
-          >
-            <Star className="h-3 w-3" />
-            Add Tip
-          </Button>
-        </div>
+        )}
 
         {/* ─── TABS — 5 tabs: Tips | Match | Analysis | Table | News ─── */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -1565,23 +1637,30 @@ export default function MatchDetailPage({ params }: PageProps) {
 
           {/* ══ TIPS ══ */}
           <TabsContent value="tips" className="mt-0 space-y-4">
-            {/* Top "Add a Tip" CTA inside the Tips tab */}
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-              <div className="min-w-0">
-                <p className="text-sm font-bold leading-tight">Got a strong read on this game?</p>
-                <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                  Pick a market, post your prediction with the real odds, share with the community.
-                </p>
+            {/* Top "Add a Tip" CTA inside the Tips tab — hidden for finished matches */}
+            {!isFinished ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold leading-tight">Got a strong read on this game?</p>
+                  <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                    Pick a market, post your prediction with the real odds, share with the community.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5 bg-amber-500 text-amber-950 hover:bg-amber-400 font-bold shrink-0"
+                  onClick={() => setTipModalOpen(true)}
+                >
+                  <Star className="h-3.5 w-3.5" />
+                  Add Tip
+                </Button>
               </div>
-              <Button
-                size="sm"
-                className="h-8 gap-1.5 bg-amber-500 text-amber-950 hover:bg-amber-400 font-bold shrink-0"
-                onClick={() => setTipModalOpen(true)}
-              >
-                <Star className="h-3.5 w-3.5" />
-                Add Tip
-              </Button>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                This match has finished. Tips posted before kick-off are shown below.
+              </div>
+            )}
 
             {/* Tips Header Stats */}
             {tips.length > 0 && (

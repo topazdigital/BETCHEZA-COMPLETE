@@ -197,6 +197,37 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
 
+  // Fetch active admin-configured gateways to know which methods to surface.
+  // Falls back to the default DEPOSIT_METHODS list when none are configured.
+  interface ActiveGateway { id: string; name: string; type: string; supportsPayouts: boolean }
+  const { data: methodsData } = useSWR<{ gateways: ActiveGateway[] }>(
+    '/api/wallet/methods',
+    fetcher,
+    { revalidateOnFocus: false },
+  );
+  const activeGateways = methodsData?.gateways ?? [];
+
+  // Map gateway types → deposit method IDs. Multiple gateways of the same
+  // type (e.g. "mpesa-payhero" and "mpesa-pesapal") collapse to one tile.
+  const visibleMethods: typeof DEPOSIT_METHODS = (() => {
+    if (activeGateways.length === 0) return DEPOSIT_METHODS;
+    const seenIds = new Set<DepositMethod>();
+    const result: typeof DEPOSIT_METHODS = [];
+    for (const gw of activeGateways) {
+      let id: DepositMethod | null = null;
+      if (gw.type === 'mobile_money' || gw.id.startsWith('mpesa')) id = 'mpesa';
+      else if (gw.type === 'card') id = 'card';
+      else if (gw.type === 'bank') id = 'bank';
+      else if (gw.type === 'crypto') id = 'crypto';
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        result.push(DEPOSIT_METHODS.find(m => m.id === id)!);
+      }
+    }
+    // Always show fallback tile set if mapping produced nothing
+    return result.length > 0 ? result : DEPOSIT_METHODS;
+  })();
+
   const submit = useCallback(async () => {
     setStatus(null);
     const amt = parseFloat(amount);
@@ -245,9 +276,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
         <CardDescription className="text-xs">Funds settle instantly for in-platform spend.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 px-4 pb-4">
-        {/* Method picker */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {DEPOSIT_METHODS.map((m) => {
+        {/* Method picker — derived from admin-active gateways or default list */}
+        <div className={`grid grid-cols-2 gap-2 ${visibleMethods.length > 2 ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
+          {visibleMethods.map((m) => {
             const Icon = m.icon;
             const active = method === m.id;
             return (

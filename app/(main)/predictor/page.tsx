@@ -424,7 +424,7 @@ export default function MatchPredictorPage() {
             </h2>
             {recent.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-card p-4 text-center text-[11px] text-muted-foreground">
-                No predictions yet. Run one above and it&apos;ll appear here.
+                No predictions yet. Run one above and it will appear here.
               </div>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

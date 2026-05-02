@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings
+  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Globe2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -275,7 +275,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             className="flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
             <span className="flex items-center gap-1.5">
-              <Trophy className="h-3 w-3 text-yellow-500" /> Popular Leagues
+              <Globe2 className="h-3 w-3 text-blue-400" /> Popular Leagues
             </span>
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showLeagues && "rotate-180")} />
           </button>
@@ -292,7 +292,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                   >
                     {isCountry
                       ? <span className="text-sm">🏠</span>
-                      : <span className="text-sm">🏆</span>
+                      : <span className="text-sm">🌐</span>
                     }
                     <span className="truncate">{league.name}</span>
                     {isCountry && idx === 0 && (

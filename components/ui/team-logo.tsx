@@ -291,8 +291,19 @@ export function TeamLogo({
   //   3. ESPN CDN guess by team id (covers most soccer/NBA/NFL teams the
   //      curated map doesn't list — works because ESPN serves logos at
   //      a deterministic path keyed by team id).
+  // Build sport-aware ESPN CDN URL: the subfolder varies by sport slug.
+  const espnSportFolder = (() => {
+    if (!sportSlug) return 'soccer'
+    const s = sportSlug.toLowerCase()
+    if (s === 'basketball' || s === 'nba') return 'nba'
+    if (s === 'american-football' || s === 'nfl') return 'nfl'
+    if (s === 'baseball' || s === 'mlb') return 'mlb'
+    if (s === 'ice-hockey' || s === 'hockey' || s === 'nhl') return 'nhl'
+    if (s === 'tennis') return 'tennis'
+    return 'soccer'
+  })()
   const cdnGuessUrl = teamId
-    ? `https://a.espncdn.com/i/teamlogos/soccer/500/${teamId}.png`
+    ? `https://a.espncdn.com/i/teamlogos/${espnSportFolder}/500/${teamId}.png`
     : undefined
   const logoUrl = providedLogoUrl || TEAM_LOGOS[teamName] || cdnGuessUrl
   // Auto-pick athlete variant for individual sports.

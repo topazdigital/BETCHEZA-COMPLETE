@@ -2576,8 +2576,14 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   const seenMatchKeys = new Set<string>();
 
   const getMatchKey = (match: UnifiedMatch): string => {
-    const homeNorm = match.homeTeam.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const awayNorm = match.awayTeam.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Strip common club suffixes (FC, AFC, SC, CF, United → utd, City → city, etc.)
+    // so "Derby County" and "Derby County FC" deduplicate to the same key.
+    const stripSuffixes = (n: string) =>
+      n.toLowerCase()
+        .replace(/\b(fc|afc|cfc|sc|cf|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur)\b/g, '')
+        .replace(/[^a-z0-9]/g, '');
+    const homeNorm = stripSuffixes(match.homeTeam.name);
+    const awayNorm = stripSuffixes(match.awayTeam.name);
     const dateKey = new Date(match.kickoffTime).toISOString().split('T')[0];
     return `${homeNorm}_${awayNorm}_${dateKey}`;
   };

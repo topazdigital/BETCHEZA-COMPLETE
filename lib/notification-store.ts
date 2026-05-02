@@ -1,4 +1,5 @@
 import { query, execute } from './db';
+import { fileStoreGet, fileStoreSet } from './file-store';
 
 export type NotificationChannel = 'inapp' | 'email' | 'push';
 export type NotificationType =
@@ -94,6 +95,41 @@ const stores = g.__notifStore;
 const hasDb = () => !!process.env.DATABASE_URL;
 
 // ─── PREFERENCES ─────────────────────────────────
+
+const PREFS_FILE_KEY = 'notification-preferences';
+
+function loadPrefsFromFile(): Map<number, NotificationPreferences> {
+  const raw = fileStoreGet<Record<string, NotificationPreferences>>(PREFS_FILE_KEY, {});
+  const map = new Map<number, NotificationPreferences>();
+  for (const [k, v] of Object.entries(raw)) {
+    map.set(Number(k), v);
+  }
+  return map;
+}
+
+function savePrefsToFile(map: Map<number, NotificationPreferences>) {
+  const obj: Record<string, NotificationPreferences> = {};
+  for (const [k, v] of map.entries()) {
+    obj[String(k)] = v;
+  }
+  fileStoreSet(PREFS_FILE_KEY, obj);
+}
+
+// Bootstrap in-memory store from file on first use (survives HMR).
+let _prefsLoaded = false;
+function ensurePrefsLoaded() {
+  if (_prefsLoaded) return;
+  _prefsLoaded = true;
+  try {
+    const fileMap = loadPrefsFromFile();
+    for (const [k, v] of fileMap.entries()) {
+      if (!stores.preferences.has(k)) {
+        stores.preferences.set(k, v);
+      }
+    }
+  } catch {}
+}
+
 export async function getPreferences(userId: number): Promise<NotificationPreferences> {
   if (hasDb()) {
     try {
@@ -116,6 +152,7 @@ export async function getPreferences(userId: number): Promise<NotificationPrefer
       }
     } catch {}
   }
+  ensurePrefsLoaded();
   return stores.preferences.get(userId) || { ...DEFAULT_PREFS };
 }
 
@@ -155,6 +192,8 @@ export async function setPreferences(userId: number, prefs: Partial<Notification
     } catch {}
   }
   stores.preferences.set(userId, merged);
+  // Persist to file so prefs survive server restarts
+  try { savePrefsToFile(stores.preferences); } catch {}
   return merged;
 }
 
