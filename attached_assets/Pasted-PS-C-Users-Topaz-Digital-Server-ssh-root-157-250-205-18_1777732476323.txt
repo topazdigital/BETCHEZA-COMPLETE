@@ -1,0 +1,182 @@
+PS C:\Users\Topaz Digital Server> ssh root@157.250.205.180
+root@157.250.205.180's password:
+
+--
+The default directadmin username is admin
+Directadmin defaults to installing CSF firewall - failed logins may be temp blocked in /etc/csf/csf.deny
+--
+Last failed login: Sat May  2 10:02:47 EDT 2026 from 43.129.183.9 on ssh:notty
+There were 2 failed login attempts since the last successful login.
+Last login: Sat May  2 09:37:50 2026 from 102.207.191.80
+[root@mail ~]# chown -R admin:admin /home/admin/apps/betcheza
+[root@mail ~]# su - admin
+etcheza
+git pull origin mainLast login: Sat May  2 10:30:30 EDT 2026 from 102.207.191.80 on pts/0
+[admin@mail ~]$ cd /home/admin/apps/betcheza
+[admin@mail betcheza]$ git pull origin main
+remote: Enumerating objects: 571, done.
+remote: Counting objects: 100% (571/571), done.
+remote: Compressing objects: 100% (162/162), done.
+remote: Total 476 (delta 309), reused 415 (delta 248), pack-reused 0 (from 0)
+Receiving objects: 100% (476/476), 17.26 MiB | 23.95 MiB/s, done.
+Resolving deltas: 100% (309/309), completed with 65 local objects.
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+   990ae4b..5e887b8  main       -> origin/main
+Updating 990ae4b..5e887b8
+Fast-forward
+ app/(main)/challenges/page.tsx                                              |  613 +++++
+ app/(main)/dashboard/wallet/page.tsx                                        |   37 +-
+ app/(main)/layout.tsx                                                       |   31 +-
+ app/(main)/leaderboard/page.tsx                                             |  499 ++--
+ app/(main)/live/page.tsx                                                    |   51 +-
+ app/(main)/matches/[id]/page.tsx                                            |  479 +++-
+ app/(main)/page.tsx                                                         |   75 +-
+ app/(main)/players/[id]/page.tsx                                            |  336 ++-
+ app/(main)/predictor/h2h/page.tsx                                           |  319 +++
+ app/(main)/predictor/page.tsx                                               |  707 ++---
+ app/(main)/settings/page.tsx                                                |  321 ++-
+ app/api/admin/feed/[id]/route.ts                                            |    7 +-
+ app/api/admin/matches/route.ts                                              |  202 +-
+ app/api/admin/payment-gateways/route.ts                                     |  344 +--
+ app/api/admin/seo/route.ts                                                  |  187 +-
+ app/api/admin/settings/route.ts                                             |   63 +-
+ app/api/admin/teams/route.ts                                                |  104 +-
+ app/api/auth/change-password/route.ts                                       |   43 +
+ app/api/auth/check-availability/route.ts                                    |    8 +-
+ app/api/bookmarks/route.ts                                                  |    7 +-
+ app/api/challenges/[id]/route.ts                                            |   37 +
+ app/api/challenges/[id]/watch/route.ts                                      |   10 +
+ app/api/challenges/route.ts                                                 |   62 +
+ app/api/cron/match-reminders/route.ts                                       |    3 +-
+ app/api/dashboard/route.ts                                                  |    2 +-
+ app/api/matches/[id]/details/route.ts                                       |   33 +-
+ app/api/players/[id]/follow/route.ts                                        |   45 +
+ app/api/search/route.ts                                                     |  293 +-
+ app/api/teams/[id]/route.ts                                                 |    4 +-
+ app/api/tipsters/route.ts                                                   |  147 +-
+ app/api/wallet/methods/route.ts                                             |   37 +
+ app/layout.tsx                                                              |    5 +
+ ...phpMyAdmin-SQL-Dump-version-5-2-3-https-www-phpmyadmin_1777731117239.txt | 5155 +++++++++++++++++++++++++++++++++++
+ ...-In-settings-all-changes-should-be-effective-even-when_1777703223362.txt |   23 +
+ ...-In-settings-all-changes-should-be-effective-even-when_1777704273852.txt |   23 +
+ attached_assets/download_(2)_1777724996238.png                              |  Bin 0 -> 453801 bytes
+ attached_assets/download_(3)_1777724996239.png                              |  Bin 0 -> 538287 bytes
+ attached_assets/download_(4)_1777724996240.png                              |  Bin 0 -> 259154 bytes
+ attached_assets/download_(5)_1777724996241.png                              |  Bin 0 -> 330457 bytes
+ attached_assets/image_1777703213277.png                                     |  Bin 0 -> 774949 bytes
+ attached_assets/image_1777703311374.png                                     |  Bin 0 -> 279500 bytes
+ attached_assets/image_1777708416920.png                                     |  Bin 0 -> 365068 bytes
+ attached_assets/image_1777708505786.png                                     |  Bin 0 -> 274284 bytes
+ attached_assets/image_1777710753646.png                                     |  Bin 0 -> 899312 bytes
+ attached_assets/image_1777710921311.png                                     |  Bin 0 -> 869966 bytes
+ attached_assets/image_1777711039767.png                                     |  Bin 0 -> 413552 bytes
+ attached_assets/image_1777711138366.png                                     |  Bin 0 -> 511803 bytes
+ attached_assets/image_1777713531081.png                                     |  Bin 0 -> 389212 bytes
+ attached_assets/image_1777713924311.png                                     |  Bin 0 -> 712514 bytes
+ attached_assets/image_1777713999711.png                                     |  Bin 0 -> 566011 bytes
+ attached_assets/image_1777714038867.png                                     |  Bin 0 -> 442800 bytes
+ attached_assets/image_1777714061615.png                                     |  Bin 0 -> 348135 bytes
+ attached_assets/image_1777714123823.png                                     |  Bin 0 -> 436267 bytes
+ attached_assets/image_1777714154630.png                                     |  Bin 0 -> 840227 bytes
+ attached_assets/image_1777716064783.png                                     |  Bin 0 -> 463078 bytes
+ attached_assets/image_1777716134105.png                                     |  Bin 0 -> 368551 bytes
+ attached_assets/image_1777716573579.png                                     |  Bin 0 -> 755637 bytes
+ attached_assets/image_1777716666363.png                                     |  Bin 0 -> 275998 bytes
+ attached_assets/image_1777717196808.png                                     |  Bin 0 -> 403381 bytes
+ attached_assets/image_1777717218948.png                                     |  Bin 0 -> 406929 bytes
+ attached_assets/image_1777717363758.png                                     |  Bin 0 -> 870008 bytes
+ attached_assets/image_1777725175431.png                                     |  Bin 0 -> 867304 bytes
+ attached_assets/image_1777726162168.png                                     |  Bin 0 -> 853840 bytes
+ attached_assets/image_1777726237975.png                                     |  Bin 0 -> 979933 bytes
+ attached_assets/image_1777727472632.png                                     |  Bin 0 -> 774553 bytes
+ attached_assets/image_1777727529244.png                                     |  Bin 0 -> 519400 bytes
+ attached_assets/image_1777728283729.png                                     |  Bin 0 -> 312404 bytes
+ attached_assets/image_1777729615320.png                                     |  Bin 0 -> 354577 bytes
+ attached_assets/image_1777729744034.png                                     |  Bin 0 -> 523057 bytes
+ components/bet-slip/bet-slip-panel.tsx                                      |  216 ++
+ components/layout/header-search.tsx                                         |    2 +-
+ components/layout/header.tsx                                                |    8 +-
+ components/live/live-scoreboard-widget.tsx                                  |  131 +
+ components/live/use-live-sounds.ts                                          |  171 ++
+ components/matches/lineups.tsx                                              |  236 +-
+ components/matches/match-card-new.tsx                                       |  352 ++-
+ components/matches/winner-vote.tsx                                          |    7 +-
+ components/players/follow-player-button.tsx                                 |  126 +
+ components/ui/team-logo.tsx                                                 |   13 +-
+ contexts/bet-slip-context.tsx                                               |   80 +
+ contexts/user-settings-context.tsx                                          |   96 +-
+ lib/api/unified-sports-api.ts                                               |  473 +++-
+ lib/challenges-store.ts                                                     |  322 +++
+ lib/data/team-catalog.ts                                                    |    2 +-
+ lib/db.ts                                                                   |   30 +-
+ lib/db/sync.ts                                                              |    7 +-
+ lib/email-config-store.ts                                                   |    8 +-
+ lib/featured-store.ts                                                       |   26 +-
+ lib/feed-store.ts                                                           |  362 +--
+ lib/follows-store.ts                                                        |  353 ++-
+ lib/notification-store.ts                                                   |  289 +-
+ lib/oauth-config-store.ts                                                   |    4 +-
+ lib/sports-data.ts                                                          |    6 +-
+ lib/static-pages-store.ts                                                   |  280 +-
+ lib/tip-engagement-store.ts                                                 |  386 +--
+ lib/user-profile-store.ts                                                   |   98 +-
+ lib/utils/team-category.ts                                                  |   52 +
+ lib/votes-store.ts                                                          |   37 +-
+ package-lock.json                                                           |  139 +-
+ package.json                                                                |    2 +-
+ replit.md                                                                   |   32 +-
+ 101 files changed, 11209 insertions(+), 3449 deletions(-)
+ create mode 100644 app/(main)/challenges/page.tsx
+ create mode 100644 app/(main)/predictor/h2h/page.tsx
+ create mode 100644 app/api/auth/change-password/route.ts
+ create mode 100644 app/api/challenges/[id]/route.ts
+ create mode 100644 app/api/challenges/[id]/watch/route.ts
+ create mode 100644 app/api/challenges/route.ts
+ create mode 100644 app/api/players/[id]/follow/route.ts
+ create mode 100644 app/api/wallet/methods/route.ts
+ create mode 100644 attached_assets/Pasted--phpMyAdmin-SQL-Dump-version-5-2-3-https-www-phpmyadmin_1777731117239.txt
+ create mode 100644 attached_assets/Pasted-1-In-settings-all-changes-should-be-effective-even-when_1777703223362.txt
+ create mode 100644 attached_assets/Pasted-1-In-settings-all-changes-should-be-effective-even-when_1777704273852.txt
+ create mode 100644 attached_assets/download_(2)_1777724996238.png
+ create mode 100644 attached_assets/download_(3)_1777724996239.png
+ create mode 100644 attached_assets/download_(4)_1777724996240.png
+ create mode 100644 attached_assets/download_(5)_1777724996241.png
+ create mode 100644 attached_assets/image_1777703213277.png
+ create mode 100644 attached_assets/image_1777703311374.png
+ create mode 100644 attached_assets/image_1777708416920.png
+ create mode 100644 attached_assets/image_1777708505786.png
+ create mode 100644 attached_assets/image_1777710753646.png
+ create mode 100644 attached_assets/image_1777710921311.png
+ create mode 100644 attached_assets/image_1777711039767.png
+ create mode 100644 attached_assets/image_1777711138366.png
+ create mode 100644 attached_assets/image_1777713531081.png
+ create mode 100644 attached_assets/image_1777713924311.png
+ create mode 100644 attached_assets/image_1777713999711.png
+ create mode 100644 attached_assets/image_1777714038867.png
+ create mode 100644 attached_assets/image_1777714061615.png
+ create mode 100644 attached_assets/image_1777714123823.png
+ create mode 100644 attached_assets/image_1777714154630.png
+ create mode 100644 attached_assets/image_1777716064783.png
+ create mode 100644 attached_assets/image_1777716134105.png
+ create mode 100644 attached_assets/image_1777716573579.png
+ create mode 100644 attached_assets/image_1777716666363.png
+ create mode 100644 attached_assets/image_1777717196808.png
+ create mode 100644 attached_assets/image_1777717218948.png
+ create mode 100644 attached_assets/image_1777717363758.png
+ create mode 100644 attached_assets/image_1777725175431.png
+ create mode 100644 attached_assets/image_1777726162168.png
+ create mode 100644 attached_assets/image_1777726237975.png
+ create mode 100644 attached_assets/image_1777727472632.png
+ create mode 100644 attached_assets/image_1777727529244.png
+ create mode 100644 attached_assets/image_1777728283729.png
+ create mode 100644 attached_assets/image_1777729615320.png
+ create mode 100644 attached_assets/image_1777729744034.png
+ create mode 100644 components/bet-slip/bet-slip-panel.tsx
+ create mode 100644 components/live/live-scoreboard-widget.tsx
+ create mode 100644 components/live/use-live-sounds.ts
+ create mode 100644 components/players/follow-player-button.tsx
+ create mode 100644 contexts/bet-slip-context.tsx
+ create mode 100644 lib/challenges-store.ts
+ create mode 100644 lib/utils/team-category.ts
+[admin@mail betcheza]$
