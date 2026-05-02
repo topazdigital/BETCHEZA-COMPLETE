@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     if (pageType && pageId) {
       const result = await query(`
         SELECT * FROM seo_metadata
-        WHERE page_type = ? AND page_id = ?
+        WHERE page_type = $1 AND page_id = $2
       `, [pageType, pageId]);
       const rows = result.rows as Array<Record<string, unknown>>;
       if (rows.length > 0) {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       }
       const presetResult = await query(`
         SELECT * FROM seo_presets
-        WHERE page_type = ? AND is_default = true
+        WHERE page_type = $1 AND is_default = true
         LIMIT 1
       `, [pageType]);
       const presets = presetResult.rows as Array<Record<string, unknown>>;
@@ -50,15 +50,15 @@ export async function POST(request: NextRequest) {
         page_type, page_id, title, description, og_image,
         keywords, canonical_url, no_index, structured_data
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        title = VALUES(title),
-        description = VALUES(description),
-        og_image = VALUES(og_image),
-        keywords = VALUES(keywords),
-        canonical_url = VALUES(canonical_url),
-        no_index = VALUES(no_index),
-        structured_data = VALUES(structured_data)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (page_type, page_id) DO UPDATE SET
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        og_image = EXCLUDED.og_image,
+        keywords = EXCLUDED.keywords,
+        canonical_url = EXCLUDED.canonical_url,
+        no_index = EXCLUDED.no_index,
+        structured_data = EXCLUDED.structured_data
     `, [
       pageType, pageId || null, title || null, description || null,
       ogImage || null, keywords || null, canonicalUrl || null,
@@ -84,17 +84,18 @@ export async function PUT(request: NextRequest) {
     const updates: string[] = [];
     const params: (string | number | boolean | null)[] = [];
 
-    if (titleTemplate !== undefined) { updates.push('title_template = ?'); params.push(titleTemplate); }
-    if (descriptionTemplate !== undefined) { updates.push('description_template = ?'); params.push(descriptionTemplate); }
-    if (keywordsTemplate !== undefined) { updates.push('keywords_template = ?'); params.push(keywordsTemplate); }
-    if (isDefault !== undefined) { updates.push('is_default = ?'); params.push(isDefault); }
+    let paramCount = 1;
+    if (titleTemplate !== undefined) { updates.push(`title_template = $${paramCount++}`); params.push(titleTemplate); }
+    if (descriptionTemplate !== undefined) { updates.push(`description_template = $${paramCount++}`); params.push(descriptionTemplate); }
+    if (keywordsTemplate !== undefined) { updates.push(`keywords_template = $${paramCount++}`); params.push(keywordsTemplate); }
+    if (isDefault !== undefined) { updates.push(`is_default = $${paramCount++}`); params.push(isDefault); }
 
     if (updates.length === 0) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
     params.push(id);
-    await query(`UPDATE seo_presets SET ${updates.join(', ')} WHERE id = ?`, params);
+    await query(`UPDATE seo_presets SET ${updates.join(', ')} WHERE id = $${paramCount}`, params);
 
     return NextResponse.json({ success: true, message: 'SEO preset updated successfully' });
   } catch (error) {
@@ -114,9 +115,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (pageId) {
-      await query('DELETE FROM seo_metadata WHERE page_type = ? AND page_id = ?', [pageType, pageId]);
+      await query('DELETE FROM seo_metadata WHERE page_type = $1 AND page_id = $2', [pageType, pageId]);
     } else {
-      await query('DELETE FROM seo_metadata WHERE page_type = ? AND page_id IS NULL', [pageType]);
+      await query('DELETE FROM seo_metadata WHERE page_type = $1 AND page_id IS NULL', [pageType]);
     }
 
     return NextResponse.json({ success: true, message: 'SEO metadata deleted successfully' });

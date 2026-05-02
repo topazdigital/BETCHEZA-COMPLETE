@@ -88,14 +88,14 @@ export async function getPreferences(userId: number): Promise<NotificationPrefer
   if (hasDb()) {
     try {
       const r = await query<{
-        inapp_team_updates: number; inapp_tipster_updates: number;
-        email_team_updates: number; email_tipster_updates: number; email_daily_digest: number;
-        push_team_updates: number; push_tipster_updates: number; push_odds_alerts: number;
+        inapp_team_updates: boolean; inapp_tipster_updates: boolean;
+        email_team_updates: boolean; email_tipster_updates: boolean; email_daily_digest: boolean;
+        push_team_updates: boolean; push_tipster_updates: boolean; push_odds_alerts: boolean;
       }>(
         `SELECT inapp_team_updates, inapp_tipster_updates,
                 email_team_updates, email_tipster_updates, email_daily_digest,
                 push_team_updates, push_tipster_updates, push_odds_alerts
-         FROM notification_preferences WHERE user_id = ? LIMIT 1`,
+         FROM notification_preferences WHERE user_id = $1 LIMIT 1`,
         [userId]
       );
       if (r.rows[0]) {
@@ -126,27 +126,27 @@ export async function setPreferences(userId: number, prefs: Partial<Notification
           (user_id, inapp_team_updates, inapp_tipster_updates,
            email_team_updates, email_tipster_updates, email_daily_digest,
            push_team_updates, push_tipster_updates, push_odds_alerts, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE
-           inapp_team_updates = VALUES(inapp_team_updates),
-           inapp_tipster_updates = VALUES(inapp_tipster_updates),
-           email_team_updates = VALUES(email_team_updates),
-           email_tipster_updates = VALUES(email_tipster_updates),
-           email_daily_digest = VALUES(email_daily_digest),
-           push_team_updates = VALUES(push_team_updates),
-           push_tipster_updates = VALUES(push_tipster_updates),
-           push_odds_alerts = VALUES(push_odds_alerts),
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           inapp_team_updates = EXCLUDED.inapp_team_updates,
+           inapp_tipster_updates = EXCLUDED.inapp_tipster_updates,
+           email_team_updates = EXCLUDED.email_team_updates,
+           email_tipster_updates = EXCLUDED.email_tipster_updates,
+           email_daily_digest = EXCLUDED.email_daily_digest,
+           push_team_updates = EXCLUDED.push_team_updates,
+           push_tipster_updates = EXCLUDED.push_tipster_updates,
+           push_odds_alerts = EXCLUDED.push_odds_alerts,
            updated_at = NOW()`,
         [
           userId,
-          merged.inappTeamUpdates ? 1 : 0,
-          merged.inappTipsterUpdates ? 1 : 0,
-          merged.emailTeamUpdates ? 1 : 0,
-          merged.emailTipsterUpdates ? 1 : 0,
-          merged.emailDailyDigest ? 1 : 0,
-          merged.pushTeamUpdates ? 1 : 0,
-          merged.pushTipsterUpdates ? 1 : 0,
-          merged.pushOddsAlerts ? 1 : 0,
+          merged.inappTeamUpdates,
+          merged.inappTipsterUpdates,
+          merged.emailTeamUpdates,
+          merged.emailTipsterUpdates,
+          merged.emailDailyDigest,
+          merged.pushTeamUpdates,
+          merged.pushTipsterUpdates,
+          merged.pushOddsAlerts,
         ]
       );
     } catch {}
@@ -161,14 +161,14 @@ export async function listNotifications(userId: number, opts: { limit?: number; 
   const { limit = 50, unreadOnly = false } = opts;
   if (hasDb()) {
     try {
-      const where = unreadOnly ? 'AND is_read = 0' : '';
+      const where = unreadOnly ? 'AND is_read = false' : '';
       const r = await query<{
         id: number; user_id: number; type: string; title: string; content: string;
-        link: string | null; channel: string; is_read: number; created_at: string;
+        link: string | null; channel: string; is_read: boolean; created_at: string;
       }>(
         `SELECT id, user_id, type, title, content, link, channel, is_read, created_at
-         FROM notifications WHERE user_id = ? ${where}
-         ORDER BY created_at DESC LIMIT ?`,
+         FROM notifications WHERE user_id = $1 ${where}
+         ORDER BY created_at DESC LIMIT $2`,
         [userId, limit]
       );
       if (r.rows.length > 0) {
@@ -203,7 +203,7 @@ export async function createNotification(input: Omit<NotificationRow, 'id' | 'is
     try {
       const res = await execute(
         `INSERT INTO notifications (user_id, type, title, content, link, channel, is_read)
-         VALUES (?, ?, ?, ?, ?, ?, 0)`,
+         VALUES ($1, $2, $3, $4, $5, $6, false) RETURNING id`,
         [row.userId, row.type, row.title, row.content, row.link || null, row.channel || 'inapp']
       );
       if (res.insertId) row.id = res.insertId;
@@ -219,15 +219,15 @@ export async function markNotificationsRead(userId: number, ids?: number[]): Pro
   if (hasDb()) {
     try {
       if (ids && ids.length > 0) {
-        const placeholders = ids.map(() => '?').join(',');
+        const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
         const r = await query(
-          `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND id IN (${placeholders})`,
+          `UPDATE notifications SET is_read = true WHERE user_id = $1 AND id IN (${placeholders})`,
           [userId, ...ids]
         );
         count = r.affectedRows ?? 0;
       } else {
         const r = await query(
-          `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0`,
+          `UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false`,
           [userId]
         );
         count = r.affectedRows ?? 0;
@@ -246,7 +246,7 @@ export async function getUnreadCount(userId: number): Promise<number> {
   if (hasDb()) {
     try {
       const r = await query<{ c: string }>(
-        `SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0`,
+        `SELECT COUNT(*) AS c FROM notifications WHERE user_id = $1 AND is_read = false`,
         [userId]
       );
       return Number(r.rows[0]?.c ?? 0);
@@ -264,8 +264,8 @@ export async function savePushSubscription(input: Omit<PushSubscriptionRow, 'id'
       await query(
         `INSERT INTO push_subscriptions
           (id, user_id, endpoint, p256dh, auth, topics, country_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE topics = VALUES(topics)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (endpoint) DO UPDATE SET topics = EXCLUDED.topics`,
         [id, row.userId, row.endpoint, row.p256dh, row.auth, JSON.stringify(row.topics), row.countryCode || null]
       );
     } catch {}
@@ -281,7 +281,7 @@ export async function listPushSubscriptions(userId?: number): Promise<PushSubscr
   if (hasDb()) {
     try {
       const sql = userId
-        ? 'SELECT * FROM push_subscriptions WHERE user_id = ?'
+        ? 'SELECT * FROM push_subscriptions WHERE user_id = $1'
         : 'SELECT * FROM push_subscriptions';
       const r = await query<{ id: string; user_id: number; endpoint: string; p256dh: string; auth: string; topics: string; country_code: string | null }>(
         sql, userId ? [userId] : []
@@ -306,7 +306,7 @@ export async function listPushSubscriptions(userId?: number): Promise<PushSubscr
 export async function deletePushSubscription(endpoint: string): Promise<void> {
   if (hasDb()) {
     try {
-      await query('DELETE FROM push_subscriptions WHERE endpoint = ?', [endpoint]);
+      await query('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
     } catch {}
   }
   stores.pushSubs.delete(endpoint);
@@ -325,8 +325,8 @@ export async function saveEmailSubscriber(input: Omit<EmailSubscriberRow, 'id'>)
       await query(
         `INSERT INTO email_subscribers
           (id, email, topics, country_code, unsubscribe_token, active, created_at)
-         VALUES (?, ?, ?, ?, ?, 1, NOW())
-         ON DUPLICATE KEY UPDATE topics = VALUES(topics), active = 1, country_code = VALUES(country_code)`,
+         VALUES ($1, $2, $3, $4, $5, true, NOW())
+         ON CONFLICT (email) DO UPDATE SET topics = EXCLUDED.topics, active = true, country_code = EXCLUDED.country_code`,
         [id, row.email, JSON.stringify(row.topics), row.countryCode || null, row.unsubscribeToken]
       );
     } catch {}
@@ -345,10 +345,10 @@ export async function listEmailSubscribers(topic?: string): Promise<EmailSubscri
   if (hasDb()) {
     try {
       const sql = topic
-        ? `SELECT * FROM email_subscribers WHERE active = 1 AND topics LIKE ?`
-        : `SELECT * FROM email_subscribers WHERE active = 1`;
+        ? `SELECT * FROM email_subscribers WHERE active = true AND topics::text LIKE $1`
+        : `SELECT * FROM email_subscribers WHERE active = true`;
       const params = topic ? [`%${topic}%`] : [];
-      const r = await query<{ id: string; email: string; topics: string; country_code: string | null; unsubscribe_token: string; active: number }>(sql, params);
+      const r = await query<{ id: string; email: string; topics: string; country_code: string | null; unsubscribe_token: string; active: boolean }>(sql, params);
       if (r.rows.length > 0) {
         return r.rows.map(x => ({
           id: x.id,
@@ -369,7 +369,7 @@ export async function unsubscribeEmail(token: string): Promise<boolean> {
   if (hasDb()) {
     try {
       const r = await query(
-        `UPDATE email_subscribers SET active = 0 WHERE unsubscribe_token = ?`,
+        `UPDATE email_subscribers SET active = false WHERE unsubscribe_token = $1`,
         [token]
       );
       return (r.affectedRows ?? 0) > 0;

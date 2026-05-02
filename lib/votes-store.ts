@@ -32,12 +32,12 @@ async function ensureTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS match_votes (
-        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        id BIGSERIAL PRIMARY KEY,
         match_id VARCHAR(191) NOT NULL,
         voter_id VARCHAR(191) NOT NULL,
         pick VARCHAR(10) NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_match_voter (match_id, voter_id)
+        UNIQUE (match_id, voter_id)
       )
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_match_votes_match ON match_votes (match_id)`).catch(() => {});
@@ -56,7 +56,7 @@ export async function getVoteTotals(matchId: string): Promise<VoteTotals> {
     await ensureTable();
     try {
       const r = await query<{ pick: VotePick; c: string }>(
-        `SELECT pick, COUNT(*) AS c FROM match_votes WHERE match_id = ? GROUP BY pick`,
+        `SELECT pick, COUNT(*) AS c FROM match_votes WHERE match_id = $1 GROUP BY pick`,
         [matchId],
       );
       const t = emptyTotals();
@@ -86,7 +86,7 @@ export async function getUserVote(matchId: string, voterId: string): Promise<Vot
     await ensureTable();
     try {
       const r = await query<{ pick: VotePick }>(
-        `SELECT pick FROM match_votes WHERE match_id = ? AND voter_id = ? LIMIT 1`,
+        `SELECT pick FROM match_votes WHERE match_id = $1 AND voter_id = $2 LIMIT 1`,
         [matchId, voterId],
       );
       return r.rows[0]?.pick ?? null;
@@ -113,7 +113,7 @@ export async function castVote(
     await ensureTable();
     try {
       await execute(
-        `INSERT IGNORE INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?)`,
+        `INSERT INTO match_votes (match_id, voter_id, pick) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
         [matchId, voterId, pick],
       );
       const totals = await getVoteTotals(matchId);

@@ -67,7 +67,7 @@ async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
   fileStoreSet('payment-gateways', gateways);
   try {
     await query(
-      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration') ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payment_gateways', $1, 'json', 'Payment gateway configuration') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
       [JSON.stringify(gateways)]
     );
   } catch {}
@@ -93,7 +93,7 @@ async function savePayoutSettings(settings: PayoutSettings): Promise<void> {
   fileStoreSet('payout-settings', settings);
   try {
     await query(
-      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payout_settings', ?, 'json', 'Tipster payout configuration') ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payout_settings', $1, 'json', 'Tipster payout configuration') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
       [JSON.stringify(settings)]
     );
   } catch {}

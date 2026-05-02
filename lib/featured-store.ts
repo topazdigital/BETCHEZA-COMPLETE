@@ -39,7 +39,7 @@ async function ensureTable(): Promise<void> {
       CREATE TABLE IF NOT EXISTS featured_config (
         id INT NOT NULL DEFAULT 1 PRIMARY KEY,
         config_json TEXT NOT NULL,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
   } catch (e) {
@@ -85,8 +85,8 @@ export async function saveFeaturedConfig(patch: Partial<FeaturedConfig>): Promis
     await ensureTable();
     try {
       await query(
-        `INSERT INTO featured_config (id, config_json) VALUES (1, ?)
-         ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)`,
+        `INSERT INTO featured_config (id, config_json) VALUES (1, $1)
+         ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json`,
         [JSON.stringify(next)]
       );
     } catch (e) {

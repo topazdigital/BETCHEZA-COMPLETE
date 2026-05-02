@@ -1,6 +1,6 @@
 /**
  * Persistent user profile overrides.
- * MySQL-first, file-based fallback for dev/no-DB environments.
+ * PostgreSQL-first, file-based fallback for dev/no-DB environments.
  */
 import { query, getPool } from './db';
 import { fileStoreGet, fileStoreSet } from './file-store';
@@ -42,7 +42,7 @@ async function ensureTable(): Promise<void> {
         phone VARCHAR(30),
         bio TEXT,
         avatar_url VARCHAR(500),
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
     tableReady = true;
@@ -55,7 +55,7 @@ export async function getProfile(userId: number): Promise<StoredProfile | null> 
       await ensureTable();
       const r = await query<{
         user_id: number; display_name: string; username: string; phone: string; bio: string; avatar_url: string; updated_at: string;
-      }>('SELECT * FROM user_profiles WHERE user_id = ? LIMIT 1', [userId]);
+      }>('SELECT * FROM user_profiles WHERE user_id = $1 LIMIT 1', [userId]);
       if (r.rows[0]) {
         const row = r.rows[0];
         return {
@@ -91,13 +91,13 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
       await ensureTable();
       await query(
         `INSERT INTO user_profiles (user_id, display_name, username, phone, bio, avatar_url)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           display_name = VALUES(display_name),
-           username = VALUES(username),
-           phone = VALUES(phone),
-           bio = VALUES(bio),
-           avatar_url = VALUES(avatar_url)`,
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_id) DO UPDATE SET
+           display_name = EXCLUDED.display_name,
+           username = EXCLUDED.username,
+           phone = EXCLUDED.phone,
+           bio = EXCLUDED.bio,
+           avatar_url = EXCLUDED.avatar_url`,
         [
           userId,
           merged.displayName ?? null,
