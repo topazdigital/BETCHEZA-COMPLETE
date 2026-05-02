@@ -6,6 +6,7 @@ export interface OAuthProviderConfig {
   enabled: boolean;
   clientId: string;
   clientSecret: string;
+  /** Apple needs a JWT private key + key ID + team ID. We keep it generic. */
   extra?: Record<string, string>;
 }
 
@@ -62,11 +63,21 @@ function fromEnv(): OAuthAllConfig {
   return cfg;
 }
 
+/**
+ * Optional production "Site URL" override. When set (e.g. `https://betcheza.com`)
+ * we use it to build OAuth callback URLs and to display the callback URI in the
+ * admin panel — so admins can configure providers from any environment (Replit
+ * dev, staging, etc.) and still register the production redirect URI.
+ *
+ * Stored alongside the OAuth provider config in `admin_settings` (key
+ * `oauth_site_url`) and falls back to in-memory + the OAUTH_SITE_URL env var.
+ */
 const gs = globalThis as { __oauthSiteUrl?: string };
 
 function normalizeSiteUrl(raw: string | null | undefined): string {
   const v = (raw || '').trim();
   if (!v) return '';
+  // Strip trailing slashes — we always append the path ourselves.
   return v.replace(/\/+$/, '');
 }
 
@@ -76,7 +87,8 @@ export async function getOAuthSiteUrl(): Promise<string> {
       const result = await query<{ value: string }>(
         "SELECT value FROM admin_settings WHERE name = 'oauth_site_url' LIMIT 1"
       );
-      const rows = result.rows;
+      const rows = (result as unknown as { rows?: { value: string }[] }).rows
+        ?? (result as unknown as { value: string }[]) ?? [];
       if (rows.length > 0) return normalizeSiteUrl(rows[0].value);
     } catch {
       // table missing — fall through
@@ -93,8 +105,8 @@ export async function setOAuthSiteUrl(value: string): Promise<string> {
     try {
       await query(
         `INSERT INTO admin_settings (name, value, type, description)
-         VALUES ('oauth_site_url', $1, 'string', 'Public site URL used for OAuth callback URLs')
-         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+         VALUES ('oauth_site_url', ?, 'string', 'Public site URL used for OAuth callback URLs')
+         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
         [normalized]
       );
     } catch {
@@ -110,7 +122,7 @@ export async function getOAuthConfig(): Promise<OAuthAllConfig> {
       const result = await query<{ name: string; value: string }>(
         "SELECT name, value FROM admin_settings WHERE name LIKE 'oauth_%'"
       );
-      const rows = result.rows;
+      const rows = (result as unknown as { rows?: { name: string; value: string }[] }).rows ?? (result as unknown as { name: string; value: string }[]) ?? [];
       if (rows.length > 0) {
         const cfg = JSON.parse(JSON.stringify(DEFAULTS)) as OAuthAllConfig;
         const m = new Map(rows.map((r) => [r.name, r.value]));
@@ -145,6 +157,7 @@ export async function saveOAuthConfig(patch: Partial<OAuthAllConfig>): Promise<O
     merged[p] = {
       ...merged[p],
       ...incoming,
+      // Don't overwrite a stored secret with empty string (allows partial updates)
       clientSecret: incoming.clientSecret || merged[p].clientSecret,
       extra: incoming.extra ? { ...(merged[p].extra || {}), ...incoming.extra } : merged[p].extra,
     };
@@ -167,8 +180,8 @@ export async function saveOAuthConfig(patch: Partial<OAuthAllConfig>): Promise<O
       for (const [name, value] of entries) {
         await query(
           `INSERT INTO admin_settings (name, value, type, description)
-           VALUES ($1, $2, 'string', 'OAuth provider config')
-           ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+           VALUES (?, ?, 'string', 'OAuth provider config')
+           ON DUPLICATE KEY UPDATE value = VALUES(value)`,
           [name, value]
         );
       }

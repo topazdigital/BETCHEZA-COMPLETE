@@ -1,4 +1,4 @@
-// Community feed store — PostgreSQL-backed with in-memory fallback.
+// Community feed store — MySQL-backed with in-memory fallback.
 
 import { query, getPool } from './db';
 import { dispatchNotification, dispatchToMany } from './notification-dispatcher';
@@ -60,15 +60,15 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
                  match_id, match_title, pick, odds, image_url,
                  likes, comment_count, created_at
           FROM feed_posts
-          ORDER BY created_at DESC LIMIT $1`,
+          ORDER BY created_at DESC LIMIT ?`,
         [limit]);
       if (r.rows.length > 0) {
         const ids = r.rows.map(p => p.id);
         let likedSet = new Set<string>();
         if (viewerId && ids.length > 0) {
-          const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
+          const placeholders = ids.map(() => '?').join(',');
           const lr = await query<{ post_id: string }>(
-            `SELECT post_id FROM feed_post_likes WHERE user_id = $1 AND post_id IN (${placeholders})`,
+            `SELECT post_id FROM feed_post_likes WHERE user_id = ? AND post_id IN (${placeholders})`,
             [viewerId, ...ids],
           );
           likedSet = new Set(lr.rows.map(x => x.post_id));
@@ -95,7 +95,7 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
         `INSERT INTO feed_posts
           (id, user_id, author_name, author_avatar, content, match_id, match_title,
            pick, odds, image_url, likes, comment_count, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NOW())`,
         [post.id, post.userId, post.authorName, post.authorAvatar || null, post.content,
          post.matchId || null, post.matchTitle || null, post.pick || null, post.odds || null, post.imageUrl || null],
       );
@@ -116,9 +116,9 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
 export async function deletePost(postId: string): Promise<void> {
   if (hasDb()) {
     try {
-      await query(`DELETE FROM feed_post_likes WHERE post_id = $1`, [postId]);
-      await query(`DELETE FROM feed_comments WHERE post_id = $1`, [postId]);
-      await query(`DELETE FROM feed_posts WHERE id = $1`, [postId]);
+      await query(`DELETE FROM feed_post_likes WHERE post_id = ?`, [postId]);
+      await query(`DELETE FROM feed_comments WHERE post_id = ?`, [postId]);
+      await query(`DELETE FROM feed_posts WHERE id = ?`, [postId]);
     } catch (e) { console.warn('[feed] db deletePost failed', e); }
   }
   s.posts.delete(postId);
@@ -133,17 +133,17 @@ export async function toggleLike(postId: string, userId: number, likerName?: str
   if (hasDb()) {
     try {
       const existing = await query<{ id: number }>(
-        `SELECT id FROM feed_post_likes WHERE post_id = $1 AND user_id = $2 LIMIT 1`, [postId, userId]);
+        `SELECT id FROM feed_post_likes WHERE post_id = ? AND user_id = ? LIMIT 1`, [postId, userId]);
       if (existing.rows.length > 0) {
-        await query(`DELETE FROM feed_post_likes WHERE post_id = $1 AND user_id = $2`, [postId, userId]);
-        await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = $1`, [postId]);
+        await query(`DELETE FROM feed_post_likes WHERE post_id = ? AND user_id = ?`, [postId, userId]);
+        await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
         liked = false;
       } else {
-        await query(`INSERT INTO feed_post_likes (post_id, user_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`, [postId, userId]);
-        await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = $1`, [postId]);
+        await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
+        await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
         liked = true;
       }
-      const r = await query<{ likes: number }>(`SELECT likes FROM feed_posts WHERE id = $1 LIMIT 1`, [postId]);
+      const r = await query<{ likes: number }>(`SELECT likes FROM feed_posts WHERE id = ? LIMIT 1`, [postId]);
       likes = r.rows[0]?.likes ?? 0;
     } catch (e) { console.warn('[feed] db toggleLike failed', e); }
   }
@@ -168,7 +168,7 @@ export async function listComments(postId: string): Promise<FeedComment[]> {
         author_avatar: string | null; content: string; created_at: string;
       }>(
         `SELECT id, post_id, user_id, author_name, author_avatar, content, created_at
-         FROM feed_comments WHERE post_id = $1 ORDER BY created_at ASC LIMIT 100`,
+         FROM feed_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT 100`,
         [postId]
       );
       if (r.rows.length > 0) {
@@ -190,10 +190,10 @@ export async function addComment(input: Omit<FeedComment, 'id' | 'createdAt'>): 
     try {
       await query(
         `INSERT INTO feed_comments (id, post_id, user_id, author_name, author_avatar, content, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [comment.id, comment.postId, comment.userId, comment.authorName, comment.authorAvatar || null, comment.content]
       );
-      await query(`UPDATE feed_posts SET comment_count = comment_count + 1 WHERE id = $1`, [comment.postId]);
+      await query(`UPDATE feed_posts SET comment_count = comment_count + 1 WHERE id = ?`, [comment.postId]);
     } catch (e) { console.warn('[feed] db addComment failed', e); }
   }
   const list = s.comments.get(comment.postId) ?? [];

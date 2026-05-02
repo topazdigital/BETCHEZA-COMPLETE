@@ -69,8 +69,8 @@ export async function getLikeCount(tipId: string, viewerId?: number): Promise<{ 
     try {
       const r = await query<{ c: string; liked: string }>(
         `SELECT COUNT(*) AS c,
-                SUM(CASE WHEN user_id = $1 THEN 1 ELSE 0 END) AS liked
-         FROM tip_likes WHERE tip_id = $2`,
+                SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS liked
+         FROM tip_likes WHERE tip_id = ?`,
         [viewerId ?? 0, tipId]
       );
       const dbCount = Number(r.rows[0]?.c ?? 0);
@@ -87,7 +87,7 @@ export async function getLikeCount(tipId: string, viewerId?: number): Promise<{ 
 export async function likeTip(tipId: string, userId: number): Promise<{ count: number; liked: boolean }> {
   if (hasDb()) {
     try {
-      await execute(`INSERT INTO tip_likes (tip_id, user_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`, [tipId, userId]);
+      await execute(`INSERT IGNORE INTO tip_likes (tip_id, user_id, created_at) VALUES (?, ?, NOW())`, [tipId, userId]);
       return getLikeCount(tipId, userId);
     } catch { /* fall through */ }
   }
@@ -100,7 +100,7 @@ export async function likeTip(tipId: string, userId: number): Promise<{ count: n
 export async function unlikeTip(tipId: string, userId: number): Promise<{ count: number; liked: boolean }> {
   if (hasDb()) {
     try {
-      await execute(`DELETE FROM tip_likes WHERE tip_id = $1 AND user_id = $2`, [tipId, userId]);
+      await execute(`DELETE FROM tip_likes WHERE tip_id = ? AND user_id = ?`, [tipId, userId]);
       return getLikeCount(tipId, userId);
     } catch { /* fall through */ }
   }
@@ -124,7 +124,7 @@ export async function getComments(tipId: string): Promise<TipCommentRow[]> {
         author_avatar: string | null; content: string; created_at: string;
       }>(
         `SELECT id, tip_id, user_id, author_name, author_avatar, content, created_at
-         FROM tip_comments WHERE tip_id = $1 ORDER BY created_at ASC LIMIT 100`,
+         FROM tip_comments WHERE tip_id = ? ORDER BY created_at ASC LIMIT 100`,
         [tipId]
       );
       if (r.rows.length > 0) {
@@ -147,7 +147,7 @@ export async function getCommentCount(tipId: string): Promise<number> {
   if (hasDb()) {
     try {
       const r = await query<{ c: string }>(
-        `SELECT COUNT(*) AS c FROM tip_comments WHERE tip_id = $1`,
+        `SELECT COUNT(*) AS c FROM tip_comments WHERE tip_id = ?`,
         [tipId]
       );
       return Number(r.rows[0]?.c ?? 0);
@@ -163,7 +163,7 @@ export async function addComment(tipId: string, userId: number, authorName: stri
     try {
       await execute(
         `INSERT INTO tip_comments (id, tip_id, user_id, author_name, author_avatar, content, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [id, tipId, userId, authorName, authorAvatar || null, content]
       );
     } catch { /* fall through */ }
