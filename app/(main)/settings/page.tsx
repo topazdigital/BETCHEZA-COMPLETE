@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { useUserSettings } from '@/contexts/user-settings-context';
@@ -16,24 +17,46 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut, Save, CheckCircle2, KeyRound, Eye, EyeOff,
+  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut, Save, CheckCircle2, KeyRound, Eye, EyeOff, Camera,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+
+// Predefined avatars using DiceBear — a set with distinct styles
+const PRESET_AVATARS = [
+  { id: 'betz1',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz1&backgroundColor=b6e3f4'  },
+  { id: 'betz2',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz2&backgroundColor=c0aede'  },
+  { id: 'betz3',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz3&backgroundColor=d1d4f9'  },
+  { id: 'betz4',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz4&backgroundColor=ffd5dc'  },
+  { id: 'betz5',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz5&backgroundColor=ffdfbf'  },
+  { id: 'betz6',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz6&backgroundColor=b6e3f4'  },
+  { id: 'betz7',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz7&backgroundColor=c0aede'  },
+  { id: 'betz8',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz8&backgroundColor=d1d4f9'  },
+  { id: 'betz9',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz9&backgroundColor=ffd5dc'  },
+  { id: 'betz10', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz10&backgroundColor=ffdfbf' },
+  { id: 'betz11', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz11&backgroundColor=b6e3f4' },
+  { id: 'betz12', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz12&backgroundColor=c0aede' },
+  { id: 'betz13', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz13&backgroundColor=d1d4f9' },
+  { id: 'betz14', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz14&backgroundColor=ffd5dc' },
+  { id: 'betz15', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz15&backgroundColor=ffdfbf' },
+  { id: 'betz16', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz16&backgroundColor=b6e3f4' },
+];
 
 export default function SettingsPage() {
   const { user, isLoading: loading, logout } = useAuth();
   const { open } = useAuthModal();
-  // Use the global settings context — changing odds format here updates the whole app instantly
   const { settings: globalSettings, setOddsFormat: setGlobalOddsFormat, setTimezone: setGlobalTimezone } = useUserSettings();
 
   // Profile fields
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [avatarSaving, setAvatarSaving] = useState(false);
 
-  // Display prefs — mirror from global context so they start populated correctly
+  // Display prefs
   const [oddsFormat, setOddsFormat] = useState<'decimal' | 'fractional' | 'american'>(globalSettings.oddsFormat);
   const [timezone, setTimezone] = useState(globalSettings.timezone || 'Africa/Nairobi');
   const [notifMatches, setNotifMatches] = useState(true);
@@ -49,12 +72,10 @@ export default function SettingsPage() {
   const [showNew, setShowNew] = useState(false);
   const [pwSaving, setPwSaving] = useState(false);
 
-  // Load saved profile + prefs on mount
   useEffect(() => {
     if (!user) return;
     setDisplayName(user.displayName ?? '');
 
-    // Load profile overrides from server
     fetch('/api/users/me')
       .then(r => r.json())
       .then(d => {
@@ -62,11 +83,11 @@ export default function SettingsPage() {
           if (d.profile.displayName) setDisplayName(d.profile.displayName);
           if (d.profile.phone) setPhone(d.profile.phone);
           if (d.profile.bio) setBio(d.profile.bio);
+          if (d.profile.avatarUrl) setAvatarUrl(d.profile.avatarUrl);
         }
       })
       .catch(() => {});
 
-    // Sync local prefs state from global context + bz_prefs for notification flags only
     setOddsFormat(globalSettings.oddsFormat);
     setTimezone(globalSettings.timezone);
     try {
@@ -104,12 +125,31 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSelectAvatar = async (url: string) => {
+    setAvatarUrl(url);
+    setAvatarSaving(true);
+    try {
+      const res = await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatarUrl: url }),
+      });
+      if (!res.ok) {
+        toast.error('Failed to save avatar');
+      } else {
+        toast.success('Profile photo updated');
+      }
+    } catch {
+      toast.error('Network error — please try again');
+    } finally {
+      setAvatarSaving(false);
+    }
+  };
+
   const handleSavePreferences = () => {
     try {
-      // Push odds format + timezone into the global context — this syncs the header and all match displays
       setGlobalOddsFormat(oddsFormat);
       setGlobalTimezone(timezone);
-      // Save notification flags to bz_prefs (not yet server-synced)
       const raw = localStorage.getItem('bz_prefs');
       const prev = raw ? JSON.parse(raw) : {};
       localStorage.setItem('bz_prefs', JSON.stringify({
@@ -195,6 +235,73 @@ export default function SettingsPage() {
           Account, display preferences, notifications and security.
         </p>
       </div>
+
+      {/* Profile Photo */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Camera className="h-4 w-4 text-primary" /> Profile Photo
+          </CardTitle>
+          <CardDescription>Choose your avatar. It will appear on your tips and profile.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Current avatar preview */}
+          <div className="flex items-center gap-4">
+            <div className="relative h-16 w-16 shrink-0 rounded-full overflow-hidden border-2 border-primary/30 bg-muted">
+              {avatarUrl ? (
+                <Image src={avatarUrl} alt="Your avatar" fill className="object-cover" unoptimized />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center text-2xl font-bold text-primary/50">
+                  {(user.displayName ?? user.email ?? 'U').slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              {avatarSaving && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <Spinner className="h-5 w-5 text-white" />
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-medium">Current photo</p>
+              <p className="text-xs text-muted-foreground">Pick one from the options below</p>
+            </div>
+          </div>
+
+          {/* Avatar grid */}
+          <div className="grid grid-cols-8 gap-2">
+            {PRESET_AVATARS.map((av) => (
+              <button
+                key={av.id}
+                onClick={() => handleSelectAvatar(av.url)}
+                disabled={avatarSaving}
+                className={cn(
+                  'relative rounded-full overflow-hidden border-2 transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary',
+                  avatarUrl === av.url
+                    ? 'border-primary shadow-md shadow-primary/20 scale-110'
+                    : 'border-transparent hover:border-primary/40',
+                )}
+                title="Select avatar"
+              >
+                <div className="aspect-square w-full">
+                  <Image
+                    src={av.url}
+                    alt="Avatar option"
+                    width={64}
+                    height={64}
+                    className="w-full h-full object-cover"
+                    unoptimized
+                  />
+                </div>
+                {avatarUrl === av.url && (
+                  <div className="absolute inset-0 bg-primary/15 flex items-center justify-center">
+                    <CheckCircle2 className="h-4 w-4 text-primary drop-shadow" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Account */}
       <Card>

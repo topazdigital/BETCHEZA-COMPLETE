@@ -34,7 +34,8 @@ interface MatchLite {
 async function fetchAllUsers(): Promise<Array<{ userId: number; email?: string | null }>> {
   // When DB is configured, pull every user that has at least one followed
   // team. Otherwise rely on the in-memory follows store keys.
-  if (process.env.DATABASE_URL) {
+  const { getPool } = await import('@/lib/db');
+  if (getPool()) {
     try {
       const r = await query<{ user_id: number; email: string | null }>(
         `SELECT DISTINCT u.id AS user_id, u.email

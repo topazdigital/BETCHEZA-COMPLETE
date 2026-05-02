@@ -1,8 +1,8 @@
 /**
  * Persistent user profile overrides.
- * PostgreSQL-first, file-based fallback for dev/no-DB environments.
+ * MySQL-first, file-based fallback for dev/no-DB environments.
  */
-import { query, execute } from './db';
+import { query, getPool } from './db';
 import { fileStoreGet, fileStoreSet } from './file-store';
 
 export interface ProfilePatch {
@@ -26,6 +26,10 @@ function cache(): Record<number, StoredProfile> {
   return g.__userProfiles;
 }
 
+function hasDb(): boolean {
+  return !!getPool();
+}
+
 let tableReady = false;
 async function ensureTable(): Promise<void> {
   if (tableReady) return;
@@ -38,7 +42,7 @@ async function ensureTable(): Promise<void> {
         phone VARCHAR(30),
         bio TEXT,
         avatar_url VARCHAR(500),
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
     tableReady = true;
@@ -46,26 +50,26 @@ async function ensureTable(): Promise<void> {
 }
 
 export async function getProfile(userId: number): Promise<StoredProfile | null> {
-  // 1. Try MySQL
-  try {
-    await ensureTable();
-    const r = await query<{
-      user_id: number; display_name: string; username: string; phone: string; bio: string; avatar_url: string; updated_at: string;
-    }>('SELECT * FROM user_profiles WHERE user_id = ? LIMIT 1', [userId]);
-    if (r.rows[0]) {
-      const row = r.rows[0];
-      return {
-        userId,
-        displayName: row.display_name ?? undefined,
-        username: row.username ?? undefined,
-        phone: row.phone ?? undefined,
-        bio: row.bio ?? undefined,
-        avatarUrl: row.avatar_url ?? undefined,
-        updatedAt: typeof row.updated_at === 'string' ? row.updated_at : new Date(row.updated_at).toISOString(),
-      };
-    }
-  } catch { /* no DB */ }
-  // 2. File-based cache
+  if (hasDb()) {
+    try {
+      await ensureTable();
+      const r = await query<{
+        user_id: number; display_name: string; username: string; phone: string; bio: string; avatar_url: string; updated_at: string;
+      }>('SELECT * FROM user_profiles WHERE user_id = ? LIMIT 1', [userId]);
+      if (r.rows[0]) {
+        const row = r.rows[0];
+        return {
+          userId,
+          displayName: row.display_name ?? undefined,
+          username: row.username ?? undefined,
+          phone: row.phone ?? undefined,
+          bio: row.bio ?? undefined,
+          avatarUrl: row.avatar_url ?? undefined,
+          updatedAt: typeof row.updated_at === 'string' ? row.updated_at : new Date(row.updated_at).toISOString(),
+        };
+      }
+    } catch { /* no DB */ }
+  }
   return cache()[userId] ?? null;
 }
 
@@ -78,34 +82,33 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
     updatedAt: new Date().toISOString(),
   };
 
-  // Always persist to file cache
   const c = cache();
   c[userId] = merged;
   fileStoreSet('user-profiles', c);
 
-  // Also persist to MySQL
-  try {
-    await ensureTable();
-    await query(
-      `INSERT INTO user_profiles (user_id, display_name, username, phone, bio, avatar_url)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET
-         display_name = EXCLUDED.display_name,
-         username = EXCLUDED.username,
-         phone = EXCLUDED.phone,
-         bio = EXCLUDED.bio,
-         avatar_url = EXCLUDED.avatar_url,
-         updated_at = CURRENT_TIMESTAMP`,
-      [
-        userId,
-        merged.displayName ?? null,
-        merged.username ?? null,
-        merged.phone ?? null,
-        merged.bio ?? null,
-        merged.avatarUrl ?? null,
-      ]
-    );
-  } catch { /* ignore — file fallback saved */ }
+  if (hasDb()) {
+    try {
+      await ensureTable();
+      await query(
+        `INSERT INTO user_profiles (user_id, display_name, username, phone, bio, avatar_url)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           display_name = VALUES(display_name),
+           username = VALUES(username),
+           phone = VALUES(phone),
+           bio = VALUES(bio),
+           avatar_url = VALUES(avatar_url)`,
+        [
+          userId,
+          merged.displayName ?? null,
+          merged.username ?? null,
+          merged.phone ?? null,
+          merged.bio ?? null,
+          merged.avatarUrl ?? null,
+        ]
+      );
+    } catch { /* ignore — file fallback saved */ }
+  }
 
   return merged;
 }

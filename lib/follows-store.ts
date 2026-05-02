@@ -1,85 +1,66 @@
-import { query } from './db';
-import fs from 'fs';
-import path from 'path';
+import { query, getPool } from './db';
+import { fileStoreGet, fileStoreSet } from './file-store';
 
 export interface FollowedTeam {
   teamId: string;
   teamName: string;
-  teamLogo?: string | null;
-  leagueId?: number | null;
-  leagueSlug?: string | null;
-  leagueName?: string | null;
-  sportSlug?: string | null;
-  countryCode?: string | null;
+  teamLogo?: string;
+  leagueId?: number;
+  leagueSlug?: string;
+  leagueName?: string;
+  sportSlug?: string;
+  countryCode?: string;
   followedAt: string;
 }
 
-export interface FollowedTipster {
-  tipsterId: number;
-  followedAt: string;
-}
-
-interface Stores {
+interface FollowsStores {
   teams: Map<number, Map<string, FollowedTeam>>;
   tipsters: Map<number, Map<number, string>>;
-  loaded: boolean;
 }
 
-const FOLLOWS_FILE = path.join(process.cwd(), '.local', 'state', 'follows.json');
+const g = globalThis as { __followsStores?: FollowsStores };
+if (!g.__followsStores) {
+  const saved = fileStoreGet<{
+    teams: Record<number, Record<string, FollowedTeam>>;
+    tipsters: Record<number, Record<number, string>>;
+  }>('follows', { teams: {}, tipsters: {} });
+  g.__followsStores = {
+    teams: new Map(
+      Object.entries(saved.teams || {}).map(([k, v]) => [
+        Number(k),
+        new Map(Object.entries(v || {})),
+      ])
+    ),
+    tipsters: new Map(
+      Object.entries(saved.tipsters || {}).map(([k, v]) => [
+        Number(k),
+        new Map(Object.entries(v || {}).map(([tk, ts]) => [Number(tk), ts as string])),
+      ])
+    ),
+  };
+}
+const stores = g.__followsStores;
 
-function ensureDir(p: string) {
-  try { fs.mkdirSync(path.dirname(p), { recursive: true }); } catch {}
+function hasDb(): boolean {
+  return !!getPool();
 }
 
 function persistToDisk() {
   try {
-    ensureDir(FOLLOWS_FILE);
-    const teams: Record<string, FollowedTeam[]> = {};
-    for (const [uid, m] of stores.teams) teams[String(uid)] = Array.from(m.values());
-    const tipsters: Record<string, Array<{ tipsterId: number; followedAt: string }>> = {};
-    for (const [uid, m] of stores.tipsters)
-      tipsters[String(uid)] = Array.from(m.entries()).map(([tipsterId, followedAt]) => ({ tipsterId, followedAt }));
-    fs.writeFileSync(FOLLOWS_FILE, JSON.stringify({ teams, tipsters }, null, 2));
-  } catch (e) {
-    console.warn('[follows] persist failed', e);
-  }
-}
-
-function loadFromDisk() {
-  if (stores.loaded) return;
-  stores.loaded = true;
-  try {
-    if (!fs.existsSync(FOLLOWS_FILE)) return;
-    const raw = JSON.parse(fs.readFileSync(FOLLOWS_FILE, 'utf8')) as {
-      teams?: Record<string, FollowedTeam[]>;
-      tipsters?: Record<string, Array<{ tipsterId: number; followedAt: string }>>;
+    const out = {
+      teams: Object.fromEntries(
+        Array.from(stores.teams.entries()).map(([uid, m]) => [uid, Object.fromEntries(m)])
+      ),
+      tipsters: Object.fromEntries(
+        Array.from(stores.tipsters.entries()).map(([uid, m]) => [uid, Object.fromEntries(m)])
+      ),
     };
-    for (const [uid, arr] of Object.entries(raw.teams || {})) {
-      const m = new Map<string, FollowedTeam>();
-      for (const t of arr) m.set(t.teamId, t);
-      stores.teams.set(Number(uid), m);
-    }
-    for (const [uid, arr] of Object.entries(raw.tipsters || {})) {
-      const m = new Map<number, string>();
-      for (const t of arr) m.set(t.tipsterId, t.followedAt);
-      stores.tipsters.set(Number(uid), m);
-    }
-  } catch (e) {
-    console.warn('[follows] load failed', e);
-  }
+    fileStoreSet('follows', out);
+  } catch {}
 }
 
-const g = globalThis as { __followsStore?: Stores };
-g.__followsStore = g.__followsStore || { teams: new Map(), tipsters: new Map(), loaded: false };
-const stores = g.__followsStore;
-loadFromDisk();
-
-function hasDb(): boolean {
-  return !!process.env.DATABASE_URL;
-}
-
-// ─── TEAMS ───────────────────────────────────────
-export async function listFollowedTeams(userId: number): Promise<FollowedTeam[]> {
+// ─── TEAMS ────────────────────────────────────────
+export async function getFollowedTeams(userId: number): Promise<FollowedTeam[]> {
   if (hasDb()) {
     try {
       const r = await query<{
@@ -92,17 +73,19 @@ export async function listFollowedTeams(userId: number): Promise<FollowedTeam[]>
          FROM team_follows WHERE user_id = ? ORDER BY created_at DESC`,
         [userId]
       );
-      return r.rows.map(row => ({
-        teamId: row.team_id,
-        teamName: row.team_name,
-        teamLogo: row.team_logo,
-        leagueId: row.league_id,
-        leagueSlug: row.league_slug,
-        leagueName: row.league_name,
-        sportSlug: row.sport_slug,
-        countryCode: row.country_code,
-        followedAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
-      }));
+      if (r.rows.length > 0) {
+        return r.rows.map(row => ({
+          teamId: row.team_id,
+          teamName: row.team_name,
+          teamLogo: row.team_logo ?? undefined,
+          leagueId: row.league_id ?? undefined,
+          leagueSlug: row.league_slug ?? undefined,
+          leagueName: row.league_name ?? undefined,
+          sportSlug: row.sport_slug ?? undefined,
+          countryCode: row.country_code ?? undefined,
+          followedAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
+        }));
+      }
     } catch (e) {
       console.warn('[follows] db read failed, falling back to memory:', e);
     }
@@ -119,9 +102,9 @@ export async function followTeam(userId: number, team: Omit<FollowedTeam, 'follo
         `INSERT INTO team_follows
          (user_id, team_id, team_name, team_logo, league_id, league_slug, league_name, sport_slug, country_code, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON CONFLICT (user_id, team_id) DO UPDATE SET
-           team_name = EXCLUDED.team_name,
-           team_logo = EXCLUDED.team_logo`,
+         ON DUPLICATE KEY UPDATE
+           team_name = VALUES(team_name),
+           team_logo = VALUES(team_logo)`,
         [userId, entry.teamId, entry.teamName, entry.teamLogo || null, entry.leagueId || null,
          entry.leagueSlug || null, entry.leagueName || null, entry.sportSlug || null, entry.countryCode || null]
       );
@@ -165,7 +148,7 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
   if (hasDb()) {
     try {
       await query(
-        `INSERT INTO follows (follower_id, following_id) VALUES (?, ?) ON CONFLICT DO NOTHING`,
+        `INSERT IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`,
         [userId, tipsterId]
       );
     } catch (e) {
@@ -181,7 +164,9 @@ export async function unfollowTipster(userId: number, tipsterId: number): Promis
   if (hasDb()) {
     try {
       await query(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`, [userId, tipsterId]);
-    } catch {}
+    } catch (e) {
+      console.warn('[follows tipster] db write failed:', e);
+    }
   }
   stores.tipsters.get(userId)?.delete(tipsterId);
   persistToDisk();
@@ -200,23 +185,18 @@ export async function isFollowingTipster(userId: number, tipsterId: number): Pro
   return stores.tipsters.get(userId)?.has(tipsterId) ?? false;
 }
 
-export function getFollowedTipsterEntries(userId: number): Array<{ tipsterId: number; followedAt: string }> {
-  const m = stores.tipsters.get(userId);
-  if (!m) return [];
-  return Array.from(m.entries()).map(([tipsterId, followedAt]) => ({ tipsterId, followedAt }));
-}
-
-export async function listFollowedTipsters(userId: number): Promise<number[]> {
+export async function getFollowedTipsters(userId: number): Promise<number[]> {
   if (hasDb()) {
     try {
       const r = await query<{ following_id: number }>(
         `SELECT following_id FROM follows WHERE follower_id = ?`,
         [userId]
       );
-      return r.rows.map(x => x.following_id);
+      if (r.rows.length > 0) return r.rows.map(x => x.following_id);
     } catch {}
   }
-  return Array.from((stores.tipsters.get(userId) || new Map()).keys());
+  const m = stores.tipsters.get(userId);
+  return m ? Array.from(m.keys()) : [];
 }
 
 export async function listFollowersOfTipster(tipsterId: number): Promise<number[]> {
@@ -226,14 +206,14 @@ export async function listFollowersOfTipster(tipsterId: number): Promise<number[
         `SELECT follower_id FROM follows WHERE following_id = ?`,
         [tipsterId]
       );
-      return r.rows.map(x => x.follower_id);
+      if (r.rows.length > 0) return r.rows.map(x => x.follower_id);
     } catch {}
   }
-  const out: number[] = [];
-  for (const [uid, m] of stores.tipsters) {
-    if (m.has(tipsterId)) out.push(uid);
+  const followers: number[] = [];
+  for (const [uid, m] of stores.tipsters.entries()) {
+    if (m.has(tipsterId)) followers.push(uid);
   }
-  return out;
+  return followers;
 }
 
 export async function listFollowersOfTeam(teamId: string): Promise<number[]> {
@@ -243,12 +223,32 @@ export async function listFollowersOfTeam(teamId: string): Promise<number[]> {
         `SELECT user_id FROM team_follows WHERE team_id = ?`,
         [teamId]
       );
-      return r.rows.map(x => x.user_id);
+      if (r.rows.length > 0) return r.rows.map(x => x.user_id);
     } catch {}
   }
-  const out: number[] = [];
-  for (const [uid, m] of stores.teams) {
-    if (m.has(teamId)) out.push(uid);
+  const followers: number[] = [];
+  for (const [uid, m] of stores.teams.entries()) {
+    if (m.has(teamId)) followers.push(uid);
   }
-  return out;
+  return followers;
+}
+
+/** Alias for getFollowedTeams — used by the match-reminder cron job */
+export const listFollowedTeams = getFollowedTeams;
+
+export async function getFollowerCount(tipsterId: number): Promise<number> {
+  if (hasDb()) {
+    try {
+      const r = await query<{ c: string }>(
+        `SELECT COUNT(*) AS c FROM follows WHERE following_id = ?`,
+        [tipsterId]
+      );
+      return Number(r.rows[0]?.c ?? 0);
+    } catch {}
+  }
+  let count = 0;
+  for (const m of stores.tipsters.values()) {
+    if (m.has(tipsterId)) count++;
+  }
+  return count;
 }

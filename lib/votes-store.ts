@@ -32,15 +32,15 @@ async function ensureTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS match_votes (
-        id BIGSERIAL PRIMARY KEY,
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         match_id VARCHAR(191) NOT NULL,
         voter_id VARCHAR(191) NOT NULL,
-        pick VARCHAR(10) NOT NULL CHECK (pick IN ('home','draw','away')),
+        pick VARCHAR(10) NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (match_id, voter_id)
+        UNIQUE KEY uq_match_voter (match_id, voter_id)
       )
     `);
-    await query(`CREATE INDEX IF NOT EXISTS idx_match_votes_match ON match_votes (match_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_match_votes_match ON match_votes (match_id)`).catch(() => {});
     tableReady = true;
   } catch (e) {
     console.warn('[votes-store] ensureTable failed:', e);
@@ -112,8 +112,8 @@ export async function castVote(
   if (hasDb()) {
     await ensureTable();
     try {
-      await query(
-        `INSERT INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
+      await execute(
+        `INSERT IGNORE INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?)`,
         [matchId, voterId, pick],
       );
       const totals = await getVoteTotals(matchId);

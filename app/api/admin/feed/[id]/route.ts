@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { requireAdmin } from '@/lib/admin-auth';
-import { query } from '@/lib/db';
+import { query, getPool } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,11 +11,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const { id } = await params;
-  if (process.env.DATABASE_URL) {
+  if (getPool()) {
     try {
-      await query(`DELETE FROM feed_post_likes WHERE post_id = $1`, [id]);
-      await query(`DELETE FROM feed_comments WHERE post_id = $1`, [id]);
-      await query(`DELETE FROM feed_posts WHERE id = $1`, [id]);
+      await query(`DELETE FROM feed_post_likes WHERE post_id = ?`, [id]);
+      await query(`DELETE FROM feed_comments WHERE post_id = ?`, [id]);
+      await query(`DELETE FROM feed_posts WHERE id = ?`, [id]);
     } catch (e) { console.warn('[admin feed] delete failed', e); }
   }
   const g = globalThis as { __feedStore?: { posts: Map<string, unknown>; comments: Map<string, unknown[]>; likes: Map<string, Set<number>> } };

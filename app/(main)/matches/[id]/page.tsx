@@ -12,7 +12,7 @@ import {
   Star, ThumbsUp, ThumbsDown, MessageCircle, Lock, ChevronRight,
   Calendar,
 } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -2429,8 +2429,14 @@ function MatchInfoRail({
       })
     )
   }
-  const homeStanding = findStanding(match.homeTeam.name)
-  const awayStanding = findStanding(match.awayTeam.name)
+  const homeStandingRaw = findStanding(match.homeTeam.name)
+  const awayStandingRaw = findStanding(match.awayTeam.name)
+  const homeStanding = homeStandingRaw
+    ? { ...homeStandingRaw, teamLogo: homeStandingRaw.teamLogo || match.homeTeam.logo }
+    : undefined
+  const awayStanding = awayStandingRaw
+    ? { ...awayStandingRaw, teamLogo: awayStandingRaw.teamLogo || match.awayTeam.logo }
+    : undefined
   const last3H2H = Array.isArray(h2h) ? h2h.slice(0, 3) : []
 
   return (
@@ -3451,6 +3457,7 @@ function TipCard({ tip }: { tip: MatchTip }) {
       )}>
         <Link href={tipsterUrl} className="flex items-center gap-2 hover:opacity-80 min-w-0 flex-1">
           <Avatar className="h-7 w-7 shrink-0 border border-primary/20">
+            {tip.tipster.avatar && <AvatarImage src={tip.tipster.avatar} alt={tip.tipster.displayName} />}
             <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
               {tip.tipster.displayName.slice(0, 2).toUpperCase()}
             </AvatarFallback>
@@ -3536,9 +3543,26 @@ function TipCard({ tip }: { tip: MatchTip }) {
             <MessageCircle className="h-3 w-3" />{commentCount}
           </Button>
         </div>
-        <span className="text-[10px] text-muted-foreground">
-          {new Date(tip.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {tip.status === 'won' && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-600 border border-emerald-500/20">
+              <CheckCircle2 className="h-2.5 w-2.5" />WON
+            </span>
+          )}
+          {tip.status === 'lost' && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-500 border border-rose-500/20">
+              ✕ LOST
+            </span>
+          )}
+          {tip.status === 'void' && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground border border-border">
+              VOID
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            {new Date(tip.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
       </div>
 
       {/* Comment thread */}

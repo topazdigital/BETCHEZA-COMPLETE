@@ -1,4 +1,4 @@
-import { query } from './db';
+import { query, getPool } from './db';
 
 export interface FeaturedConfig {
   enabled: boolean;
@@ -29,7 +29,7 @@ export const DEFAULT_FEATURED_CONFIG: FeaturedConfig = {
 const g = globalThis as { __featuredConfig?: FeaturedConfig };
 
 function hasDb(): boolean {
-  return !!process.env.DATABASE_URL;
+  return !!getPool();
 }
 
 async function ensureTable(): Promise<void> {
@@ -37,9 +37,9 @@ async function ensureTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS featured_config (
-        id INT PRIMARY KEY DEFAULT 1,
+        id INT NOT NULL DEFAULT 1 PRIMARY KEY,
         config_json TEXT NOT NULL,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
   } catch (e) {
@@ -86,7 +86,7 @@ export async function saveFeaturedConfig(patch: Partial<FeaturedConfig>): Promis
     try {
       await query(
         `INSERT INTO featured_config (id, config_json) VALUES (1, ?)
-         ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json`,
+         ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)`,
         [JSON.stringify(next)]
       );
     } catch (e) {

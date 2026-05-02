@@ -66,6 +66,12 @@ Key architectural decisions and features include:
 -   **Payment Gateways (T010)**: New `GET /api/wallet/methods` endpoint returns admin-enabled gateways. `DepositForm` in wallet page fetches this and shows only active gateway types; falls back to the default M-Pesa/Card/Bank/Crypto list when none are configured.
 -   **Comment Templates (T011/T012)**: `lib/tip-engagement-store.ts` COMMENT_TEMPLATES rewritten — all HTML entities (`&apos;`) replaced with real apostrophes, 15 new comment templates added (analyst/hype/sceptic/stake voices).
 -   **Winner Vote Draw Button (T013)**: Draw "X" button in `components/matches/winner-vote.tsx` enlarged to h-8 w-8, border-2, bold font — same visual size as team logos. Highlights in primary colour when selected.
+-   **MySQL-Only Compliance**: ALL remaining PostgreSQL syntax eliminated — `lib/static-pages-store.ts`, `lib/email-config-store.ts`, `lib/oauth-config-store.ts`, `app/api/admin/settings/route.ts`, `app/api/admin/seo/route.ts`, `app/api/admin/payment-gateways/route.ts`, `app/api/admin/matches/route.ts` all converted to `ON DUPLICATE KEY UPDATE`, `?` placeholders, `insertId`.
+-   **Profile Photo Picker**: `app/(main)/settings/page.tsx` has a 16-avatar DiceBear grid (seeds betz1–betz16). Clicking an avatar saves it instantly via `PATCH /api/users/me` (`avatarUrl` field). Live preview above the grid. Avatar shown on tipster cards and profile.
+-   **Tip Result Badges**: `TipCard` in `app/(main)/matches/[id]/page.tsx` shows WON (emerald), LOST (rose), VOID (muted) badges in the footer based on `tip.status`. Tipster avatar (`tip.tipster.avatar`) is displayed with `AvatarImage`.
+-   **Form Logos Fallback**: Right sidebar standings FORM section now falls back to `match.homeTeam.logo` / `match.awayTeam.logo` when `standingRow.teamLogo` is missing (`homeStandingRaw/awayStandingRaw` pattern).
+-   **League ID Alignment**: Ghana (9026→252), Tanzania (9028→256) in `lib/sports-data.ts` now match ESPN config `leagueId` values — league pages for these now correctly show matches.
+-   **Missing Exports Fixed**: `listFollowedTeams` alias added to `lib/follows-store.ts`; `setBaselineLikes()` and `getCommentCount()` added to `lib/tip-engagement-store.ts`; `process.env.DATABASE_URL` guard in cron route replaced with `getPool()` check.
 
 ## External Dependencies
 
