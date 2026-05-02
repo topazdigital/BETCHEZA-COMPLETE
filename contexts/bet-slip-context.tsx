@@ -6,6 +6,7 @@ export interface BetSelection {
   id: string
   matchId: string
   matchName: string
+  matchSlug: string
   marketKey: string
   marketName: string
   outcomeName: string

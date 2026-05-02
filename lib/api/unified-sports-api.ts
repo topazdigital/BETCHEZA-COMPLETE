@@ -652,11 +652,11 @@ async function fetchESPN(
   const base = `${ESPN_BASE_URL}/${sport}/${league}/${endpoint}`;
   const url = dates ? `${base}?dates=${dates}` : base;
 
-  // ESPN tennis (ATP/WTA) and golf scoreboards are huge (often >2MB) and exceed
+  // ESPN tennis, golf and baseball scoreboards are huge (often >2MB) and exceed
   // Next.js's data-cache item limit, which spams "Failed to set fetch cache"
   // warnings. Skip the data cache for those endpoints — our in-memory cache
   // (setCache/getCache) already handles dedupe + TTL upstream.
-  const skipDataCache = sport === 'tennis' || sport === 'golf';
+  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball' || league === 'mlb';
 
   try {
     const response = await fetch(url, {
@@ -699,10 +699,10 @@ const GLOBAL_SPORT_TYPES: Array<{ sport: string; sportType: ESPNLeagueConfig['sp
   { sport: 'baseball', sportType: 'baseball', sportId: 6 },
   { sport: 'hockey', sportType: 'hockey', sportId: 7 },
   { sport: 'rugby', sportType: 'rugby', sportId: 8 },
-  { sport: 'cricket', sportType: 'cricket', sportId: 26 },
+  { sport: 'cricket', sportType: 'cricket', sportId: 4 },
   { sport: 'mma', sportType: 'mma', sportId: 27 },
-  { sport: 'golf', sportType: 'golf', sportId: 9 },
-  { sport: 'racing', sportType: 'racing', sportId: 12 },
+  { sport: 'golf', sportType: 'golf', sportId: 17 },
+  { sport: 'racing', sportType: 'racing', sportId: 29 },
 ];
 
 // Cache resolved league info: ESPN league id (numeric) → { name, slug, country }
@@ -845,10 +845,10 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   const end = new Date(now); end.setUTCDate(end.getUTCDate() + 6);
   const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
   const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}`;
-  // Same caveat as fetchESPN: tennis & golf payloads exceed Next.js's
-  // data-cache item limit; skip data cache for them and rely on our
-  // in-memory setCache/getCache below.
-  const skipDataCache = sport === 'tennis' || sport === 'golf';
+  // Same caveat as fetchESPN: tennis, golf and baseball payloads exceed
+  // Next.js's data-cache item limit; skip data cache for them and rely on
+  // our in-memory setCache/getCache below.
+  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball';
   let data: ESPNScoreboardResponseFull | null = null;
   try {
     const r = await fetch(url, {
@@ -2340,20 +2340,20 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
   const cached = getCached<UnifiedMatch[]>(cacheKey, CACHE_DURATION.live);
   if (cached) return cached;
 
-  // Fetch yesterday + next 14 days for EVERY league (not just priority ones)
-  // so smaller sports always surface their upcoming fixtures, not just live.
+  // Fetch yesterday + next 8 days for every league — matches the 7-day
+  // display window plus a small buffer. Keeping this tight prevents huge
+  // payloads (MLB with a 28-day window exceeds 2MB) while still surfacing
+  // all upcoming fixtures in the rolling window.
   const isPriority = PRIORITY_LEAGUE_KEYS.has(config.league);
   let data: ESPNScoreboardResponseFull | null = null;
   const now = new Date();
   const start = new Date(now);
   start.setUTCDate(start.getUTCDate() - 1);
   const end = new Date(now);
-  // Priority leagues get a 28-day window so the next ~4 weeks of fixtures are
-  // always visible (was 21 — bumped to match oddspedia/freesupertips, which
-  // typically show "next 4 weeks" of league action without paging). Smaller
-  // / less-frequent leagues get a 60-day window so even a sparsely-played
-  // cup competition still surfaces fixtures well in advance.
-  end.setUTCDate(end.getUTCDate() + (isPriority ? 28 : 60));
+  // Priority leagues (top-tier with daily fixtures): 8 days.
+  // Smaller / cup competitions (sporadic fixtures): 14 days so we catch the
+  // next match even if it's two weeks away.
+  end.setUTCDate(end.getUTCDate() + (isPriority ? 8 : 14));
   const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
   data = await fetchESPN(config.sport, config.league, 'scoreboard', range);
   // Fall back to the default endpoint if range request fails or returns nothing.
@@ -2790,7 +2790,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     // so "Derby County" and "Derby County FC" deduplicate to the same key.
     const stripSuffixes = (n: string) =>
       n.toLowerCase()
-        .replace(/\b(fc|afc|cfc|sc|cf|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur)\b/g, '')
+        .replace(/\b(fc|afc|cfc|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|münchen|munchen|munich|real|atletico|deportivo|sporting|union|inter)\b/g, '')
         .replace(/[^a-z0-9]/g, '');
     const homeNorm = stripSuffixes(match.homeTeam.name);
     const awayNorm = stripSuffixes(match.awayTeam.name);
@@ -2888,7 +2888,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   windowStart.setDate(windowStart.getDate() - 1); // include yesterday's results
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(now);
-  windowEnd.setDate(windowEnd.getDate() + 3); // today + 3 days ahead
+  windowEnd.setDate(windowEnd.getDate() + 7); // today + 7 days ahead
   windowEnd.setHours(23, 59, 59, 999);
 
   const windowed = allMatches.filter(m => {

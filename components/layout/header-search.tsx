@@ -77,7 +77,7 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
       } finally {
         setLoading(false);
       }
-    }, 150);
+    }, 80);
     return () => {
       ctrl.abort();
       clearTimeout(t);
