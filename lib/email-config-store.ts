@@ -136,7 +136,7 @@ export async function saveEmailConfig(cfg: Partial<EmailConfig>): Promise<EmailC
       await query(
         `INSERT INTO admin_settings (name, value, type, description)
          VALUES (?, ?, 'string', 'SMTP configuration')
-         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
         [name, value]
       );
     }

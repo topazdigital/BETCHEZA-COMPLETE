@@ -60,6 +60,7 @@ async function ensureTable(): Promise<void> {
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // no-op — PostgreSQL syntax is fine
   } catch (e) {
     console.warn('[featured-store] ensureTable failed:', e);
   }
@@ -104,7 +105,7 @@ export async function saveFeaturedConfig(patch: Partial<FeaturedConfig>): Promis
     try {
       await query(
         `INSERT INTO featured_config (id, config_json) VALUES (1, ?)
-         ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)`,
+         ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json`,
         [JSON.stringify(next)]
       );
     } catch (e) {

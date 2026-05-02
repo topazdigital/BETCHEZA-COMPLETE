@@ -65,7 +65,7 @@ export async function getLikeCount(tipId: string, viewerId?: number | null): Pro
 export async function likeTip(tipId: string, userId: number): Promise<{ count: number; liked: boolean }> {
   if (hasDb()) {
     try {
-      await execute(`INSERT IGNORE INTO tip_likes (tip_id, user_id, created_at) VALUES (?, ?, NOW())`, [tipId, userId]);
+      await execute(`INSERT INTO tip_likes (tip_id, user_id, created_at) VALUES (?, ?, NOW()) ON CONFLICT (tip_id, user_id) DO NOTHING`, [tipId, userId]);
       return getLikeCount(tipId, userId);
     } catch { /* fall through */ }
   }
