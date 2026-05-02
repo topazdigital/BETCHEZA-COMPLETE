@@ -20,6 +20,7 @@ import {
 import { BetchezaBackBanner } from '@/components/home/betcheza-back-banner';
 import { SportsFilter } from '@/components/sports/sports-filter';
 import { MatchCardNew } from '@/components/matches/match-card-new';
+import { TeamLogo } from '@/components/ui/team-logo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -302,11 +303,20 @@ export default function HomePage() {
                               href={`/matches/${matchToSlug(m.id, m.homeTeam.name, m.awayTeam.name)}`}
                               className="group flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 transition-colors hover:border-primary/50"
                             >
-                              <div className="min-w-0">
-                                <p className="truncate text-xs font-medium text-foreground group-hover:text-primary">
-                                  {m.homeTeam.name} vs {m.awayTeam.name}
-                                </p>
-                                <p className="truncate text-[10px] text-muted-foreground">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <TeamLogo teamName={m.homeTeam.name} logoUrl={m.homeTeam.logo} sportSlug={m.sport?.slug} size="xs" />
+                                  <span className="truncate text-[11px] font-medium text-foreground group-hover:text-primary">
+                                    {m.homeTeam.name}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 truncate mt-0.5">
+                                  <TeamLogo teamName={m.awayTeam.name} logoUrl={m.awayTeam.logo} sportSlug={m.sport?.slug} size="xs" />
+                                  <span className="truncate text-[11px] font-medium text-foreground group-hover:text-primary">
+                                    {m.awayTeam.name}
+                                  </span>
+                                </div>
+                                <p className="truncate text-[9px] text-muted-foreground mt-0.5">
                                   {m.league?.name || m.sport?.name}
                                 </p>
                               </div>
@@ -494,11 +504,17 @@ export default function HomePage() {
                               className="block rounded-lg bg-muted/50 p-2 transition-colors hover:bg-muted"
                             >
                               <div className="flex items-center justify-between text-[11px]">
-                                <span className="truncate font-medium">{match.homeTeam.name}</span>
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport?.slug} size="xs" />
+                                  <span className="truncate font-medium">{match.homeTeam.name}</span>
+                                </div>
                                 <span className="ml-2 shrink-0 font-mono text-primary">{match.odds?.home.toFixed(2)}</span>
                               </div>
                               <div className="flex items-center justify-between text-[11px]">
-                                <span className="truncate font-medium">{match.awayTeam.name}</span>
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport?.slug} size="xs" />
+                                  <span className="truncate font-medium">{match.awayTeam.name}</span>
+                                </div>
                                 <span className="ml-2 shrink-0 font-mono text-primary">{match.odds?.away.toFixed(2)}</span>
                               </div>
                             </Link>
@@ -619,9 +635,17 @@ function LiveSidePanel({
               className="group flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-[11px] transition-colors hover:border-primary/50"
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-foreground group-hover:text-primary">
-                  {m.homeTeam.shortName || m.homeTeam.name} <span className="text-muted-foreground">vs</span> {m.awayTeam.shortName || m.awayTeam.name}
-                </p>
+                <div className="flex items-center gap-1 truncate">
+                  <TeamLogo teamName={m.homeTeam.name} logoUrl={m.homeTeam.logo} sportSlug={m.sport?.slug} size="xs" />
+                  <span className="truncate font-medium text-foreground group-hover:text-primary">
+                    {m.homeTeam.shortName || m.homeTeam.name}
+                  </span>
+                  <span className="text-muted-foreground mx-0.5">vs</span>
+                  <TeamLogo teamName={m.awayTeam.name} logoUrl={m.awayTeam.logo} sportSlug={m.sport?.slug} size="xs" />
+                  <span className="truncate font-medium text-foreground group-hover:text-primary">
+                    {m.awayTeam.shortName || m.awayTeam.name}
+                  </span>
+                </div>
                 <p className="truncate text-[9px] text-muted-foreground">{m.league?.name || m.sport?.name}</p>
               </div>
               <div className="shrink-0 text-right">
@@ -780,11 +804,17 @@ function LiveSlide({ matches, totalCount }: { matches: CarouselMatch[]; totalCou
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="truncate text-sm font-medium">{match.homeTeam.name}</span>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport?.slug} size="xs" />
+                  <span className="truncate text-sm font-medium">{match.homeTeam.name}</span>
+                </div>
                 <span className="ml-2 shrink-0 font-mono text-lg font-bold text-live">{match.homeScore ?? 0}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="truncate text-sm font-medium">{match.awayTeam.name}</span>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport?.slug} size="xs" />
+                  <span className="truncate text-sm font-medium">{match.awayTeam.name}</span>
+                </div>
                 <span className="ml-2 shrink-0 font-mono text-lg font-bold text-live">{match.awayScore ?? 0}</span>
               </div>
             </Link>

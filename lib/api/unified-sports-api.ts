@@ -780,11 +780,12 @@ async function fetchESPN(
   const base = `${ESPN_BASE_URL}/${sport}/${league}/${endpoint}`;
   const url = dates ? `${base}?dates=${dates}` : base;
 
-  // ESPN tennis, golf and baseball scoreboards are huge (often >2MB) and exceed
-  // Next.js's data-cache item limit, which spams "Failed to set fetch cache"
-  // warnings. Skip the data cache for those endpoints — our in-memory cache
-  // (setCache/getCache) already handles dedupe + TTL upstream.
-  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball' || league === 'mlb';
+  // ESPN tennis, golf, baseball, basketball and hockey scoreboards with wide date
+  // ranges are huge (often >2MB, NHL can be 17MB) and exceed Next.js's data-cache
+  // item limit. Skip the data cache for those — our in-memory cache handles TTL.
+  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball'
+    || sport === 'basketball' || sport === 'hockey'
+    || league === 'mlb' || league === 'nba' || league === 'nhl';
 
   try {
     const response = await fetch(url, {
@@ -964,19 +965,20 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   const cached = getCached<UnifiedMatch[]>(cacheKey, CACHE_DURATION.live);
   if (cached) return cached;
 
-  // Pull a 7-day window (yesterday → +6 days) so multi-day tournaments
+  // Pull a 60-day window (30 back → +30 ahead) so multi-day tournaments
   // (tennis Slams, cricket Tests, golf majors) and weekend-heavy sports
-  // always surface their full Today / Upcoming coverage even when ESPN's
-  // default response would only return the next single matchday.
+  // always surface their full Today / Upcoming coverage AND historical
+  // results going back a month — essential for form/standings context.
   const now = new Date();
-  const start = new Date(now); start.setUTCDate(start.getUTCDate() - 1);
-  const end = new Date(now); end.setUTCDate(end.getUTCDate() + 6);
+  const start = new Date(now); start.setUTCDate(start.getUTCDate() - 30);
+  const end = new Date(now); end.setUTCDate(end.getUTCDate() + 30);
   const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
   const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}`;
-  // Same caveat as fetchESPN: tennis, golf and baseball payloads exceed
-  // Next.js's data-cache item limit; skip data cache for them and rely on
-  // our in-memory setCache/getCache below.
-  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball';
+  // Same caveat as fetchESPN: tennis, golf, baseball, basketball and hockey
+  // payloads with wide date ranges exceed the 2MB Next.js data-cache limit.
+  // Skip the data cache and rely on our in-memory setCache/getCache.
+  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball'
+    || sport === 'basketball' || sport === 'hockey';
   let data: ESPNScoreboardResponseFull | null = null;
   try {
     const r = await fetch(url, {
@@ -2476,9 +2478,15 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
   let data: ESPNScoreboardResponseFull | null = null;
   const now = new Date();
   const start = new Date(now);
-  start.setUTCDate(start.getUTCDate() - 1);
+  // High-frequency sports (NBA, NHL, MLB) produce huge payloads over wide
+  // ranges — cap them to 14 days back. Other priority leagues (EPL, La Liga
+  // etc.) have fewer games per day so 60 days back is safe. Smaller leagues
+  // get 14 days back (they have sparse data anyway).
+  const isHighFreq = ['nba', 'nhl', 'mlb', 'nfl'].includes(config.league);
+  const pastDays = isHighFreq ? 14 : isPriority ? 60 : 14;
+  start.setUTCDate(start.getUTCDate() - pastDays);
   const end = new Date(now);
-  // Priority leagues (top-tier with daily fixtures): 30 days.
+  // Priority leagues (top-tier with daily fixtures): 30 days ahead.
   // Smaller / cup competitions (sporadic fixtures): 90 days so we surface
   // fixtures far in the future — tipsters need months-ahead visibility.
   end.setUTCDate(end.getUTCDate() + (isPriority ? 30 : 90));
@@ -3009,11 +3017,11 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     persistMatchEntities(allMatches);
   } catch { /* swallow */ }
 
-  // Display window: yesterday (for results) + today + 200 days ahead.
-  // The expanded fetch windows above mean we actually have data this far out.
+  // Display window: up to 365 days back (historical results) + 200 days ahead.
+  // The expanded fetch windows above mean we have real ESPN data this far back.
   const now = new Date();
   const windowStart = new Date(now);
-  windowStart.setDate(windowStart.getDate() - 1); // include yesterday's results
+  windowStart.setDate(windowStart.getDate() - 365); // up to 1 year of history
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(now);
   windowEnd.setDate(windowEnd.getDate() + 200); // today + 200 days ahead

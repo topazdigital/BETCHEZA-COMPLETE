@@ -11,6 +11,8 @@ export interface BetSelection {
   marketName: string
   outcomeName: string
   price: number
+  bookmakerUrl?: string
+  bookmakerName?: string
 }
 
 interface BetSlipContextType {

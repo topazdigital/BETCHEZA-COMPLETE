@@ -1,8 +1,11 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { X, Trash2, ChevronDown, ChevronUp, Ticket, ExternalLink, Lightbulb } from 'lucide-react'
 import { useBetSlip } from '@/contexts/bet-slip-context'
+import { useAuth } from '@/contexts/auth-context'
+import { useAuthModal } from '@/contexts/auth-modal-context'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,8 +17,41 @@ export function BetSlipPanel() {
     removeSelection, clearAll,
     accumOdds, stake, setStake, potentialReturn,
   } = useBetSlip()
+  const { isAuthenticated } = useAuth()
+  const { open: openAuthModal } = useAuthModal()
+  const [defaultBookmakerUrl, setDefaultBookmakerUrl] = useState<string | null>(null)
+  const [defaultBookmakerName, setDefaultBookmakerName] = useState<string>('Bookmaker')
+
+  useEffect(() => {
+    fetch('/api/bookmakers')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.bookmakers?.length) {
+          const bk = data.bookmakers[0]
+          setDefaultBookmakerUrl(bk.affiliateUrl || null)
+          setDefaultBookmakerName(bk.name || 'Bookmaker')
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   if (selections.length === 0) return null
+
+  const handlePostAsTip = (e: React.MouseEvent, href: string) => {
+    if (!isAuthenticated) {
+      e.preventDefault()
+      openAuthModal('login')
+    }
+  }
+
+  const handlePlaceBet = () => {
+    const url = selections[0]?.bookmakerUrl || defaultBookmakerUrl
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } else if (selections[0]?.matchSlug) {
+      window.open(`/matches/${selections[0].matchSlug}#bookmakers`, '_self')
+    }
+  }
 
   return (
     <div className="fixed bottom-4 right-2 sm:right-4 z-50 w-[calc(100vw-1rem)] max-w-xs shadow-2xl rounded-xl border border-border bg-background overflow-hidden animate-in slide-in-from-bottom-4">
@@ -67,11 +103,12 @@ export function BetSlipPanel() {
                       className="flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-600 transition-colors"
                     >
                       <ExternalLink className="h-3 w-3" />
-                      Go to Bookmaker
+                      Compare Odds
                     </Link>
                     <span className="text-border">·</span>
                     <Link
-                      href={`/matches/${s.matchSlug}?action=tip`}
+                      href={isAuthenticated ? `/matches/${s.matchSlug}?action=tip` : '#'}
+                      onClick={(e) => handlePostAsTip(e, `/matches/${s.matchSlug}?action=tip`)}
                       className="flex items-center gap-1 text-[10px] text-amber-500 hover:text-amber-600 transition-colors"
                     >
                       <Lightbulb className="h-3 w-3" />
@@ -130,14 +167,23 @@ export function BetSlipPanel() {
               ))}
             </div>
 
-            <Button size="sm" className="w-full font-bold text-sm h-9">
-              Place Bet
+            {/* Place Bet — redirects to bookmaker affiliate */}
+            <Button
+              size="sm"
+              className="w-full font-bold text-sm h-9 gap-1.5"
+              onClick={handlePlaceBet}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Place Bet on {selections[0]?.bookmakerName || defaultBookmakerName}
             </Button>
 
             {/* Post as Tip */}
             {selections.length === 1 && selections[0].matchSlug && (
               <Link
-                href={`/matches/${selections[0].matchSlug}?action=tip&outcome=${encodeURIComponent(selections[0].outcomeName)}&odds=${selections[0].price}`}
+                href={isAuthenticated
+                  ? `/matches/${selections[0].matchSlug}?action=tip&outcome=${encodeURIComponent(selections[0].outcomeName)}&odds=${selections[0].price}`
+                  : '#'}
+                onClick={(e) => handlePostAsTip(e, `/matches/${selections[0].matchSlug}?action=tip&outcome=${encodeURIComponent(selections[0].outcomeName)}&odds=${selections[0].price}`)}
                 className="w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors"
               >
                 <Lightbulb className="h-3.5 w-3.5" />
@@ -146,7 +192,8 @@ export function BetSlipPanel() {
             )}
             {selections.length > 1 && (
               <Link
-                href="/tips/new"
+                href={isAuthenticated ? '/tips/new' : '#'}
+                onClick={(e) => handlePostAsTip(e, '/tips/new')}
                 className="w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors"
               >
                 <Lightbulb className="h-3.5 w-3.5" />
