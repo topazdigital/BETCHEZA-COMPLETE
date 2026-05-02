@@ -52,8 +52,8 @@ export async function GET(req: NextRequest) {
   }
   try {
     const sql = type
-      ? 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = ? AND entity_type = ? ORDER BY created_at DESC'
-      : 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = ? ORDER BY created_at DESC';
+      ? 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = $1 AND entity_type = $2 ORDER BY created_at DESC'
+      : 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = $1 ORDER BY created_at DESC';
     const params = type ? [userId, type] : [userId];
     const r = await query(sql, params);
     return NextResponse.json({ bookmarks: r.rows });
@@ -79,8 +79,8 @@ export async function POST(req: NextRequest) {
   }
   try {
     await execute(
-      `INSERT IGNORE INTO user_bookmarks (user_id, entity_type, entity_id, created_at)
-       VALUES (?, ?, ?, NOW())`,
+      `INSERT INTO user_bookmarks (user_id, entity_type, entity_id, created_at)
+       VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING`,
       [userId, ent.type, ent.id],
     );
     return NextResponse.json({ ok: true });
@@ -104,7 +104,7 @@ export async function DELETE(req: NextRequest) {
   if (pool) {
     try {
       await execute(
-        'DELETE FROM user_bookmarks WHERE user_id = ? AND entity_type = ? AND entity_id = ?',
+        'DELETE FROM user_bookmarks WHERE user_id = $1 AND entity_type = $2 AND entity_id = $3',
         [userId, ent.type, ent.id],
       );
     } catch { /* fall through to memory cleanup */ }

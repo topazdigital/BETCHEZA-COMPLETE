@@ -19,17 +19,17 @@ export async function GET(request: NextRequest) {
     const params: (string | number)[] = [];
     
     if (sportId && sportId !== 'all') {
-      conditions.push('t.sport_id = ?');
+      conditions.push(`t.sport_id = $${params.length + 1}`);
       params.push(parseInt(sportId));
     }
     
     if (leagueId && leagueId !== 'all') {
-      conditions.push('t.league_id = ?');
+      conditions.push(`t.league_id = $${params.length + 1}`);
       params.push(parseInt(leagueId));
     }
     
     if (search) {
-      conditions.push('t.name LIKE ?');
+      conditions.push(`t.name ILIKE $${params.length + 1}`);
       params.push(`%${search}%`);
     }
     
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN sports s ON t.sport_id = s.id
       WHERE ${whereClause}
       ORDER BY t.name
-      LIMIT ? OFFSET ?
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, limit, offset]);
     
     const countResult = await query(`
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     
     const result = await execute(
-      `INSERT INTO teams (name, slug, sport_id, country_id, logo_url) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO teams (name, slug, sport_id, country_id, logo_url) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [name, slug, sportId, countryId, logoUrl || null]
     );
     
@@ -151,7 +151,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
     }
     
-    await query('DELETE FROM teams WHERE id = ?', [id]);
+    await query('DELETE FROM teams WHERE id = $1', [id]);
     
     return NextResponse.json({ success: true, message: 'Team deleted successfully' });
   } catch (error) {

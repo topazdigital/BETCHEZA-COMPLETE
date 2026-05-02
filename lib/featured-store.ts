@@ -5,7 +5,7 @@ import { query } from './db';
  * on the homepage when there are very few live games.
  *
  * Two storage layers:
- *   1. MySQL (when DATABASE_URL is set) via the `featured_config` table.
+ *   1. PostgreSQL (when DATABASE_URL is set) via the `featured_config` table.
  *   2. In-memory fallback on globalThis so dev installs without a DB still
  *      persist within the running process.
  */
@@ -103,8 +103,8 @@ export async function saveFeaturedConfig(patch: Partial<FeaturedConfig>): Promis
     await ensureTable();
     try {
       await query(
-        `INSERT INTO featured_config (id, config_json) VALUES (1, ?)
-         ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)`,
+        `INSERT INTO featured_config (id, config_json) VALUES (1, $1)
+         ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json`,
         [JSON.stringify(next)]
       );
     } catch (e) {

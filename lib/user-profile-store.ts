@@ -1,6 +1,6 @@
 /**
  * Persistent user profile overrides.
- * MySQL-first, file-based fallback for dev/no-DB environments.
+ * PostgreSQL-first, file-based fallback for dev/no-DB environments.
  */
 import { query, execute } from './db';
 import { fileStoreGet, fileStoreSet } from './file-store';
@@ -32,26 +32,26 @@ async function ensureTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS user_profiles (
-        user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        user_id INT NOT NULL PRIMARY KEY,
         display_name VARCHAR(100),
         username VARCHAR(50),
         phone VARCHAR(30),
         bio TEXT,
         avatar_url VARCHAR(500),
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
     `);
     tableReady = true;
-  } catch { /* ignore — no MySQL */ }
+  } catch { /* ignore — no DB */ }
 }
 
 export async function getProfile(userId: number): Promise<StoredProfile | null> {
-  // 1. Try MySQL
+  // 1. Try PostgreSQL
   try {
     await ensureTable();
     const r = await query<{
       user_id: number; display_name: string; username: string; phone: string; bio: string; avatar_url: string; updated_at: string;
-    }>('SELECT * FROM user_profiles WHERE user_id = ? LIMIT 1', [userId]);
+    }>('SELECT * FROM user_profiles WHERE user_id = $1 LIMIT 1', [userId]);
     if (r.rows[0]) {
       const row = r.rows[0];
       return {
@@ -61,7 +61,7 @@ export async function getProfile(userId: number): Promise<StoredProfile | null> 
         phone: row.phone ?? undefined,
         bio: row.bio ?? undefined,
         avatarUrl: row.avatar_url ?? undefined,
-        updatedAt: row.updated_at,
+        updatedAt: typeof row.updated_at === 'string' ? row.updated_at : new Date(row.updated_at).toISOString(),
       };
     }
   } catch { /* no DB */ }
@@ -83,18 +83,19 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
   c[userId] = merged;
   fileStoreSet('user-profiles', c);
 
-  // Also persist to MySQL
+  // Also persist to PostgreSQL
   try {
     await ensureTable();
-    await execute(
+    await query(
       `INSERT INTO user_profiles (user_id, display_name, username, phone, bio, avatar_url)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         display_name = VALUES(display_name),
-         username = VALUES(username),
-         phone = VALUES(phone),
-         bio = VALUES(bio),
-         avatar_url = VALUES(avatar_url)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id) DO UPDATE SET
+         display_name = EXCLUDED.display_name,
+         username = EXCLUDED.username,
+         phone = EXCLUDED.phone,
+         bio = EXCLUDED.bio,
+         avatar_url = EXCLUDED.avatar_url,
+         updated_at = CURRENT_TIMESTAMP`,
       [
         userId,
         merged.displayName ?? null,

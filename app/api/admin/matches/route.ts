@@ -36,10 +36,10 @@ export async function GET(request: NextRequest) {
       const offset = (page - 1) * limit;
       const conditions: string[] = ['1=1'];
       const params: (string | number)[] = [];
-      if (status && status !== 'all') { conditions.push('m.status = ?'); params.push(status); }
-      if (sportId && sportId !== 'all') { conditions.push('l.sport_id = ?'); params.push(parseInt(sportId)); }
+      if (status && status !== 'all') { conditions.push(`m.status = $${params.length + 1}`); params.push(status); }
+      if (sportId && sportId !== 'all') { conditions.push(`l.sport_id = $${params.length + 1}`); params.push(parseInt(sportId)); }
       if (search) {
-        conditions.push('(ht.name LIKE ? OR at.name LIKE ?)');
+        conditions.push(`(ht.name ILIKE $${params.length + 1} OR at.name ILIKE $${params.length + 2})`);
         params.push(`%${search}%`, `%${search}%`);
       }
       const whereClause = conditions.join(' AND ');
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
           JOIN sports s ON l.sport_id = s.id
          WHERE ${whereClause}
          ORDER BY m.kickoff_time DESC
-         LIMIT ? OFFSET ?
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
       `, [...params, limit, offset]);
       const countResult = await query(
         `SELECT COUNT(*) as total FROM matches m JOIN leagues l ON m.league_id = l.id JOIN teams ht ON m.home_team_id = ht.id JOIN teams at ON m.away_team_id = at.id WHERE ${whereClause}`,
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     
     const result = await execute(
       `INSERT INTO matches (league_id, home_team_id, away_team_id, kickoff_time, status)
-       VALUES (?, ?, ?, ?, 'scheduled')`,
+       VALUES ($1, $2, $3, $4, 'scheduled') RETURNING id`,
       [leagueId, homeTeamId, awayTeamId, kickoffTime]
     );
     
@@ -153,9 +153,9 @@ export async function POST(request: NextRequest) {
         await query(`
           INSERT INTO odds (match_id, bookmaker_id, market_id, selection, value)
           VALUES 
-            (?, ?, ?, 'home', ?),
-            (?, ?, ?, 'draw', ?),
-            (?, ?, ?, 'away', ?)
+            ($1, $2, $3, 'home', $4),
+            ($5, $6, $7, 'draw', $8),
+            ($9, $10, $11, 'away', $12)
         `, [
           matchId, bookmakerId, marketId, homeOdds,
           matchId, bookmakerId, marketId, drawOdds || 3.0,
@@ -214,7 +214,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Match ID is required' }, { status: 400 });
     }
     
-    await query('DELETE FROM matches WHERE id = ?', [id]);
+    await query('DELETE FROM matches WHERE id = $1', [id]);
     
     return NextResponse.json({ success: true, message: 'Match deleted successfully' });
   } catch (error) {

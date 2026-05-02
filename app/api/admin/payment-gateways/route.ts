@@ -301,8 +301,8 @@ async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
   try {
     await query(
       `INSERT INTO admin_settings (name, value, type, description)
-       VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration')
-       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+       VALUES ('payment_gateways', $1, 'json', 'Payment gateway configuration')
+       ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
       [JSON.stringify(gateways)]
     );
   } catch { /* ignore — file-based fallback already saved */ }
@@ -337,8 +337,8 @@ async function savePayoutSettings(settings: PayoutSettings): Promise<void> {
   try {
     await query(
       `INSERT INTO admin_settings (name, value, type, description)
-       VALUES ('payout_settings', ?, 'json', 'Tipster payout configuration')
-       ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+       VALUES ('payout_settings', $1, 'json', 'Tipster payout configuration')
+       ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
       [JSON.stringify(settings)]
     );
   } catch { /* ignore */ }

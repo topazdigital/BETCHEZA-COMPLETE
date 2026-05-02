@@ -17,7 +17,7 @@ async function isEmailTaken(email: string): Promise<boolean> {
   // MySQL — covers production
   try {
     const row = await queryOne<{ id: number }>(
-      'SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1',
+      'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1',
       [lower],
     );
     if (row) return true;
@@ -32,7 +32,7 @@ async function isUsernameTaken(username: string): Promise<boolean> {
   if (mockUsers.some((u) => u.username.toLowerCase() === lower)) return true;
   try {
     const row = await queryOne<{ id: number }>(
-      'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1',
+      'SELECT id FROM users WHERE LOWER(username) = $1 LIMIT 1',
       [lower],
     );
     if (row) return true;

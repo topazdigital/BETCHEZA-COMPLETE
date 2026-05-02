@@ -87,11 +87,11 @@ export async function listFollowedTeams(userId: number): Promise<FollowedTeam[]>
   if (hasDb()) {
     try {
       const r = await query<FollowedTeam & { followed_at: string }>(
-        `SELECT team_id AS teamId, team_name AS teamName, team_logo AS teamLogo,
-                league_id AS leagueId, league_slug AS leagueSlug, league_name AS leagueName,
-                sport_slug AS sportSlug, country_code AS countryCode,
-                created_at AS followedAt
-         FROM team_follows WHERE user_id = ? ORDER BY created_at DESC`,
+        `SELECT team_id AS "teamId", team_name AS "teamName", team_logo AS "teamLogo",
+                league_id AS "leagueId", league_slug AS "leagueSlug", league_name AS "leagueName",
+                sport_slug AS "sportSlug", country_code AS "countryCode",
+                created_at AS "followedAt"
+         FROM team_follows WHERE user_id = $1 ORDER BY created_at DESC`,
         [userId]
       );
       // DB is the source of truth — always return its result, even when empty.
@@ -111,8 +111,10 @@ export async function followTeam(userId: number, team: Omit<FollowedTeam, 'follo
       await query(
         `INSERT INTO team_follows
          (user_id, team_id, team_name, team_logo, league_id, league_slug, league_name, sport_slug, country_code, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE team_name = VALUES(team_name), team_logo = VALUES(team_logo)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         ON CONFLICT (user_id, team_id) DO UPDATE SET
+           team_name = EXCLUDED.team_name,
+           team_logo = EXCLUDED.team_logo`,
         [
           userId,
           entry.teamId,
@@ -138,7 +140,7 @@ export async function followTeam(userId: number, team: Omit<FollowedTeam, 'follo
 export async function unfollowTeam(userId: number, teamId: string): Promise<void> {
   if (hasDb()) {
     try {
-      await query(`DELETE FROM team_follows WHERE user_id = ? AND team_id = ?`, [userId, teamId]);
+      await query(`DELETE FROM team_follows WHERE user_id = $1 AND team_id = $2`, [userId, teamId]);
     } catch (e) {
       console.warn('[follows] db delete failed:', e);
     }
@@ -150,11 +152,11 @@ export async function unfollowTeam(userId: number, teamId: string): Promise<void
 export async function isFollowingTeam(userId: number, teamId: string): Promise<boolean> {
   if (hasDb()) {
     try {
-      const r = await query<{ c: number }>(
-        `SELECT COUNT(*) AS c FROM team_follows WHERE user_id = ? AND team_id = ?`,
+      const r = await query<{ c: string }>(
+        `SELECT COUNT(*) AS c FROM team_follows WHERE user_id = $1 AND team_id = $2`,
         [userId, teamId]
       );
-      return !!(r.rows[0]?.c);
+      return Number(r.rows[0]?.c) > 0;
     } catch {}
   }
   return stores.teams.get(userId)?.has(teamId) ?? false;
@@ -165,7 +167,7 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
   if (hasDb()) {
     try {
       await query(
-        `INSERT INTO follows (follower_id, following_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE follower_id = follower_id`,
+        `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
         [userId, tipsterId]
       );
     } catch (e) {
@@ -181,7 +183,7 @@ export async function unfollowTipster(userId: number, tipsterId: number): Promis
   if (hasDb()) {
     try {
       await query(
-        `DELETE FROM follows WHERE follower_id = ? AND following_id = ?`,
+        `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
         [userId, tipsterId]
       );
     } catch {}
@@ -193,11 +195,11 @@ export async function unfollowTipster(userId: number, tipsterId: number): Promis
 export async function isFollowingTipster(userId: number, tipsterId: number): Promise<boolean> {
   if (hasDb()) {
     try {
-      const r = await query<{ c: number }>(
-        `SELECT COUNT(*) AS c FROM follows WHERE follower_id = ? AND following_id = ?`,
+      const r = await query<{ c: string }>(
+        `SELECT COUNT(*) AS c FROM follows WHERE follower_id = $1 AND following_id = $2`,
         [userId, tipsterId]
       );
-      return !!(r.rows[0]?.c);
+      return Number(r.rows[0]?.c) > 0;
     } catch {}
   }
   return stores.tipsters.get(userId)?.has(tipsterId) ?? false;
@@ -216,7 +218,7 @@ export async function listFollowedTipsters(userId: number): Promise<number[]> {
   if (hasDb()) {
     try {
       const r = await query<{ following_id: number }>(
-        `SELECT following_id FROM follows WHERE follower_id = ?`,
+        `SELECT following_id FROM follows WHERE follower_id = $1`,
         [userId]
       );
       return r.rows.map(x => x.following_id);
@@ -230,7 +232,7 @@ export async function listFollowersOfTipster(tipsterId: number): Promise<number[
   if (hasDb()) {
     try {
       const r = await query<{ follower_id: number }>(
-        `SELECT follower_id FROM follows WHERE following_id = ?`,
+        `SELECT follower_id FROM follows WHERE following_id = $1`,
         [tipsterId]
       );
       return r.rows.map(x => x.follower_id);
@@ -248,7 +250,7 @@ export async function listFollowersOfTeam(teamId: string): Promise<number[]> {
   if (hasDb()) {
     try {
       const r = await query<{ user_id: number }>(
-        `SELECT user_id FROM team_follows WHERE team_id = ?`,
+        `SELECT user_id FROM team_follows WHERE team_id = $1`,
         [teamId]
       );
       return r.rows.map(x => x.user_id);

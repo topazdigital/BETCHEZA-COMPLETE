@@ -103,10 +103,10 @@ export async function setOAuthSiteUrl(value: string): Promise<string> {
   gs.__oauthSiteUrl = normalized;
   if (getPool()) {
     try {
-      await execute(
+      await query(
         `INSERT INTO admin_settings (name, value, type, description)
-         VALUES ('oauth_site_url', ?, 'string', 'Public site URL used for OAuth callback URLs')
-         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+         VALUES ('oauth_site_url', $1, 'string', 'Public site URL used for OAuth callback URLs')
+         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
         [normalized]
       );
     } catch {
@@ -178,10 +178,10 @@ export async function saveOAuthConfig(patch: Partial<OAuthAllConfig>): Promise<O
         entries.push(['oauth_apple_private_key', merged.apple.extra.privateKey || '']);
       }
       for (const [name, value] of entries) {
-        await execute(
+        await query(
           `INSERT INTO admin_settings (name, value, type, description)
-           VALUES (?, ?, 'string', 'OAuth provider config')
-           ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+           VALUES ($1, $2, 'string', 'OAuth provider config')
+           ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
           [name, value]
         );
       }

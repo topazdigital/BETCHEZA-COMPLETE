@@ -66,7 +66,7 @@ function mergeWithEnv(base: EmailConfig): EmailConfig {
 }
 
 export async function getEmailConfig(): Promise<EmailConfig> {
-  // 1. Try MySQL DB
+  // 1. Try PostgreSQL DB
   try {
     const result = await query<{ name: string; value: string }>(
       "SELECT name, value FROM admin_settings WHERE name LIKE 'smtp_%'"
@@ -96,7 +96,7 @@ export async function getEmailConfig(): Promise<EmailConfig> {
   // 2. In-memory cache (set after a save)
   if (g.__emailCfg) return g.__emailCfg;
 
-  // 3. File-based persistence (survives restarts without MySQL)
+  // 3. File-based persistence (survives restarts without DB)
   const stored = fileStoreGet<EmailConfig | null>('email-config', null);
   if (stored && (stored.host || stored.username)) {
     const merged = mergeWithEnv(stored);
@@ -116,10 +116,10 @@ export async function saveEmailConfig(cfg: Partial<EmailConfig>): Promise<EmailC
   const merged: EmailConfig = { ...current, ...cfg };
   // Always update in-memory cache
   g.__emailCfg = merged;
-  // Always persist to file (works without MySQL)
+  // Always persist to file (works without DB)
   fileStoreSet('email-config', merged);
 
-  // Also persist into admin_settings table when MySQL is available
+  // Also persist into admin_settings table when PostgreSQL is available
   try {
     const entries: Array<[string, string]> = [
       ['smtp_enabled', String(merged.enabled)],
@@ -135,8 +135,8 @@ export async function saveEmailConfig(cfg: Partial<EmailConfig>): Promise<EmailC
     for (const [name, value] of entries) {
       await query(
         `INSERT INTO admin_settings (name, value, type, description)
-         VALUES (?, ?, 'string', 'SMTP configuration')
-         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+         VALUES ($1, $2, 'string', 'SMTP configuration')
+         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
         [name, value]
       );
     }

@@ -15,9 +15,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   if (process.env.DATABASE_URL) {
     try {
-      await query(`DELETE FROM feed_post_likes WHERE post_id = ?`, [id]);
-      await query(`DELETE FROM feed_comments WHERE post_id = ?`, [id]);
-      await query(`DELETE FROM feed_posts WHERE id = ?`, [id]);
+      await query(`DELETE FROM feed_post_likes WHERE post_id = $1`, [id]);
+      await query(`DELETE FROM feed_comments WHERE post_id = $1`, [id]);
+      await query(`DELETE FROM feed_posts WHERE id = $1`, [id]);
     } catch (e) { console.warn('[admin feed] delete failed', e); }
   }
   // Also wipe from in-memory store.

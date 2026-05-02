@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       // Get specific SEO entry
       const result = await query(`
         SELECT * FROM seo_metadata
-        WHERE page_type = ? AND page_id = ?
+        WHERE page_type = $1 AND page_id = $2
       `, [pageType, pageId]);
       
       const rows = result.rows as Array<Record<string, unknown>>;
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       // Return default preset if no custom SEO
       const presetResult = await query(`
         SELECT * FROM seo_presets
-        WHERE page_type = ? AND is_default = 1
+        WHERE page_type = $1 AND is_default = true
         LIMIT 1
       `, [pageType]);
       
@@ -92,15 +92,15 @@ export async function POST(request: NextRequest) {
         page_type, page_id, title, description, og_image, 
         keywords, canonical_url, no_index, structured_data
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        title = VALUES(title),
-        description = VALUES(description),
-        og_image = VALUES(og_image),
-        keywords = VALUES(keywords),
-        canonical_url = VALUES(canonical_url),
-        no_index = VALUES(no_index),
-        structured_data = VALUES(structured_data)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (page_type, page_id) DO UPDATE SET
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        og_image = EXCLUDED.og_image,
+        keywords = EXCLUDED.keywords,
+        canonical_url = EXCLUDED.canonical_url,
+        no_index = EXCLUDED.no_index,
+        structured_data = EXCLUDED.structured_data
     `, [
       pageType,
       pageId || null,
@@ -206,12 +206,12 @@ export async function DELETE(request: NextRequest) {
     
     if (pageId) {
       await query(
-        'DELETE FROM seo_metadata WHERE page_type = ? AND page_id = ?',
+        'DELETE FROM seo_metadata WHERE page_type = $1 AND page_id = $2',
         [pageType, pageId]
       );
     } else {
       await query(
-        'DELETE FROM seo_metadata WHERE page_type = ? AND page_id IS NULL',
+        'DELETE FROM seo_metadata WHERE page_type = $1 AND page_id IS NULL',
         [pageType]
       );
     }

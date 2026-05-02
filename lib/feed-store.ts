@@ -68,15 +68,15 @@ export async function listPosts(opts: { limit?: number; viewerId?: number | null
                  match_id, match_title, pick, odds, image_url,
                  likes, comment_count, created_at
           FROM feed_posts
-          ORDER BY created_at DESC LIMIT ?`,
+          ORDER BY created_at DESC LIMIT $1`,
         [limit]);
       if (r.rows.length > 0) {
         const ids = r.rows.map(p => p.id);
         let likedSet = new Set<string>();
         if (viewerId && ids.length > 0) {
-          const placeholders = ids.map(() => '?').join(',');
+          const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
           const lr = await query<{ post_id: string }>(
-            `SELECT post_id FROM feed_post_likes WHERE user_id = ? AND post_id IN (${placeholders})`,
+            `SELECT post_id FROM feed_post_likes WHERE user_id = $1 AND post_id IN (${placeholders})`,
             [viewerId, ...ids],
           );
           likedSet = new Set(lr.rows.map(x => x.post_id));
@@ -123,7 +123,7 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
         `INSERT INTO feed_posts
           (id, user_id, author_name, author_avatar, content, match_id, match_title,
            pick, odds, image_url, likes, comment_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NOW())`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, NOW())`,
         [post.id, post.userId, post.authorName, post.authorAvatar || null, post.content,
          post.matchId || null, post.matchTitle || null, post.pick || null, post.odds || null,
          post.imageUrl || null],
@@ -157,19 +157,19 @@ export async function toggleLike(postId: string, userId: number, likerName?: str
   if (hasDb()) {
     try {
       const existing = await query<{ id: number }>(
-        `SELECT id FROM feed_post_likes WHERE post_id = ? AND user_id = ? LIMIT 1`,
+        `SELECT id FROM feed_post_likes WHERE post_id = $1 AND user_id = $2 LIMIT 1`,
         [postId, userId],
       );
       if (existing.rows.length > 0) {
-        await query(`DELETE FROM feed_post_likes WHERE post_id = ? AND user_id = ?`, [postId, userId]);
-        await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
+        await query(`DELETE FROM feed_post_likes WHERE post_id = $1 AND user_id = $2`, [postId, userId]);
+        await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = $1`, [postId]);
         liked = false;
       } else {
-        await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
-        await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
+        await query(`INSERT INTO feed_post_likes (post_id, user_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`, [postId, userId]);
+        await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = $1`, [postId]);
         liked = true;
       }
-      const r = await query<{ likes: number }>(`SELECT likes FROM feed_posts WHERE id = ? LIMIT 1`, [postId]);
+      const r = await query<{ likes: number }>(`SELECT likes FROM feed_posts WHERE id = $1 LIMIT 1`, [postId]);
       likes = r.rows[0]?.likes ?? 0;
     } catch (e) {
       console.warn('[feed] db toggleLike failed', e);
@@ -211,7 +211,7 @@ export async function listComments(postId: string, limit = 100): Promise<FeedCom
         id: string; post_id: string; user_id: number; author_name: string;
         author_avatar: string | null; content: string; created_at: string;
       }>(`SELECT id, post_id, user_id, author_name, author_avatar, content, created_at
-          FROM feed_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT ?`,
+          FROM feed_comments WHERE post_id = $1 ORDER BY created_at ASC LIMIT $2`,
         [postId, limit]);
       if (r.rows.length > 0) {
         return r.rows.map(x => ({
@@ -241,10 +241,10 @@ export async function createComment(input: Omit<FeedComment, 'id' | 'createdAt'>
     try {
       await query(
         `INSERT INTO feed_comments (id, post_id, user_id, author_name, author_avatar, content, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
         [c.id, c.postId, c.userId, c.authorName, c.authorAvatar || null, c.content],
       );
-      await query(`UPDATE feed_posts SET comment_count = comment_count + 1 WHERE id = ?`, [c.postId]);
+      await query(`UPDATE feed_posts SET comment_count = comment_count + 1 WHERE id = $1`, [c.postId]);
     } catch (e) {
       console.warn('[feed] db insert comment failed', e);
     }
@@ -293,7 +293,7 @@ export async function listAllComments(limit = 200): Promise<Array<FeedComment & 
                  p.match_title AS post_match_title, p.author_name AS post_author_name
             FROM feed_comments c
             LEFT JOIN feed_posts p ON p.id = c.post_id
-           ORDER BY c.created_at DESC LIMIT ?`, [limit]);
+           ORDER BY c.created_at DESC LIMIT $1`, [limit]);
       if (r.rows.length > 0) {
         return r.rows.map(x => ({
           id: x.id,
@@ -326,11 +326,11 @@ export async function listAllComments(limit = 200): Promise<Array<FeedComment & 
 export async function deleteComment(commentId: string): Promise<boolean> {
   if (hasDb()) {
     try {
-      const row = await query<{ post_id: string }>(`SELECT post_id FROM feed_comments WHERE id = ?`, [commentId]);
+      const row = await query<{ post_id: string }>(`SELECT post_id FROM feed_comments WHERE id = $1`, [commentId]);
       const postId = row.rows[0]?.post_id;
-      await query(`DELETE FROM feed_comments WHERE id = ?`, [commentId]);
+      await query(`DELETE FROM feed_comments WHERE id = $1`, [commentId]);
       if (postId) {
-        await query(`UPDATE feed_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = ?`, [postId]);
+        await query(`UPDATE feed_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = $1`, [postId]);
       }
     } catch (e) {
       console.warn('[feed] db deleteComment failed', e);

@@ -125,12 +125,12 @@ export async function GET(request: NextRequest) {
   const params: unknown[] = [];
 
   if (search) {
-    where.push('(u.username LIKE ? OR u.display_name LIKE ?)');
+    where.push(`(u.username ILIKE $${params.length + 1} OR u.display_name ILIKE $${params.length + 2})`);
     params.push(`%${search}%`, `%${search}%`);
   }
-  if (filter === 'pro') where.push('t.is_pro = 1');
-  else if (filter === 'free') where.push('(t.is_pro = 0 OR t.is_pro IS NULL)');
-  else if (filter === 'verified') where.push('u.is_verified = 1');
+  if (filter === 'pro') where.push('t.is_pro = true');
+  else if (filter === 'free') where.push('(t.is_pro = false OR t.is_pro IS NULL)');
+  else if (filter === 'verified') where.push('u.is_verified = true');
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
          LEFT JOIN tipster_profiles t ON t.user_id = u.id
          ${whereClause}
          ORDER BY ${orderBy}
-         LIMIT ? OFFSET ?`,
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     );
     rows = (list as unknown as { rows?: DbTipster[] }).rows ?? (list as unknown as DbTipster[]);
