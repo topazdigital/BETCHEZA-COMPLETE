@@ -69,4 +69,17 @@ export async function register() {
 
   const { startCron } = await import('./lib/cron');
   startCron();
+
+  // Pre-warm the matches cache immediately on startup so the very first
+  // user request is served from cache instead of waiting for external APIs.
+  // Fire-and-forget — never blocks the server from becoming ready.
+  setTimeout(async () => {
+    try {
+      const { getAllMatches } = await import('./lib/api/unified-sports-api');
+      await getAllMatches();
+      console.log('[instrumentation] matches cache warmed on startup');
+    } catch (e) {
+      console.warn('[instrumentation] matches cache warm-up failed:', e);
+    }
+  }, 500);
 }
