@@ -19,9 +19,8 @@ interface AdminMatchRow {
   kickoff_time: string;
 }
 
-const hasDb = () => !!process.env.DATABASE_URL;
+const hasDb = () => !!(process.env.DATABASE_URL || process.env.MYSQL_URL);
 
-// Get all matches for admin
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const page = parseInt(searchParams.get('page') || '1');
@@ -30,16 +29,15 @@ export async function GET(request: NextRequest) {
   const sportId = searchParams.get('sportId');
   const search = searchParams.get('search');
 
-  // Try DB first when configured.
   if (hasDb()) {
     try {
       const offset = (page - 1) * limit;
       const conditions: string[] = ['1=1'];
       const params: (string | number)[] = [];
-      if (status && status !== 'all') { conditions.push(`m.status = $${params.length + 1}`); params.push(status); }
-      if (sportId && sportId !== 'all') { conditions.push(`l.sport_id = $${params.length + 1}`); params.push(parseInt(sportId)); }
+      if (status && status !== 'all') { conditions.push('m.status = ?'); params.push(status); }
+      if (sportId && sportId !== 'all') { conditions.push('l.sport_id = ?'); params.push(parseInt(sportId)); }
       if (search) {
-        conditions.push(`(ht.name ILIKE $${params.length + 1} OR at.name ILIKE $${params.length + 2})`);
+        conditions.push('(ht.name LIKE ? OR at.name LIKE ?)');
         params.push(`%${search}%`, `%${search}%`);
       }
       const whereClause = conditions.join(' AND ');
@@ -56,7 +54,7 @@ export async function GET(request: NextRequest) {
           JOIN sports s ON l.sport_id = s.id
          WHERE ${whereClause}
          ORDER BY m.kickoff_time DESC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+         LIMIT ? OFFSET ?
       `, [...params, limit, offset]);
       const countResult = await query(
         `SELECT COUNT(*) as total FROM matches m JOIN leagues l ON m.league_id = l.id JOIN teams ht ON m.home_team_id = ht.id JOIN teams at ON m.away_team_id = at.id WHERE ${whereClause}`,
@@ -75,7 +73,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Fallback to live unified ESPN feed so admin always sees real matches.
   try {
     const all = await getAllMatches();
     const lc = (s?: string) => (s || '').toLowerCase();
@@ -113,57 +110,43 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     console.error('[Admin API] live matches feed failed', e);
     return NextResponse.json({
-      source: 'error',
-      matches: [],
+      source: 'error', matches: [],
       pagination: { page: 1, limit, total: 0, totalPages: 0 },
       error: 'Failed to fetch matches',
     }, { status: 200 });
   }
 }
 
-// Create a new match
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { leagueId, homeTeamId, awayTeamId, kickoffTime, homeOdds, drawOdds, awayOdds } = body;
-    
+
     if (!leagueId || !homeTeamId || !awayTeamId || !kickoffTime) {
-      return NextResponse.json(
-        { error: 'Missing required fields: leagueId, homeTeamId, awayTeamId, kickoffTime' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    
+
     const result = await execute(
       `INSERT INTO matches (league_id, home_team_id, away_team_id, kickoff_time, status)
-       VALUES ($1, $2, $3, $4, 'scheduled') RETURNING id`,
+       VALUES (?, ?, ?, ?, 'scheduled')`,
       [leagueId, homeTeamId, awayTeamId, kickoffTime]
     );
-    
+
     const matchId = result.insertId;
-    
+
     if (homeOdds && awayOdds) {
       const bookmakerResult = await query(`SELECT id FROM bookmakers LIMIT 1`);
       const bookmakerId = (bookmakerResult.rows as Array<{ id: number }>)[0]?.id;
-      
       if (bookmakerId) {
         const marketResult = await query(`SELECT id FROM markets WHERE slug = 'h2h' LIMIT 1`);
         const marketId = (marketResult.rows as Array<{ id: number }>)[0]?.id || 1;
-        
         await query(`
           INSERT INTO odds (match_id, bookmaker_id, market_id, selection, value)
-          VALUES 
-            ($1, $2, $3, 'home', $4),
-            ($5, $6, $7, 'draw', $8),
-            ($9, $10, $11, 'away', $12)
-        `, [
-          matchId, bookmakerId, marketId, homeOdds,
-          matchId, bookmakerId, marketId, drawOdds || 3.0,
-          matchId, bookmakerId, marketId, awayOdds
-        ]);
+          VALUES (?, ?, ?, 'home', ?), (?, ?, ?, 'draw', ?), (?, ?, ?, 'away', ?)
+        `, [matchId, bookmakerId, marketId, homeOdds, matchId, bookmakerId, marketId, drawOdds || 3.0, matchId, bookmakerId, marketId, awayOdds]);
       }
     }
-    
+
     return NextResponse.json({ success: true, matchId, message: 'Match created successfully' });
   } catch (error) {
     console.error('[Admin API] Failed to create match:', error);
@@ -171,32 +154,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Update match
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, status, homeScore, awayScore, minute } = body;
-    
-    if (!id) {
-      return NextResponse.json({ error: 'Match ID is required' }, { status: 400 });
-    }
-    
+
+    if (!id) return NextResponse.json({ error: 'Match ID is required' }, { status: 400 });
+
     const updates: string[] = [];
     const params: (string | number)[] = [];
-    
-    if (status !== undefined) { updates.push(`status = $${params.length + 1}`); params.push(status); }
-    if (homeScore !== undefined) { updates.push(`home_score = $${params.length + 1}`); params.push(homeScore); }
-    if (awayScore !== undefined) { updates.push(`away_score = $${params.length + 1}`); params.push(awayScore); }
-    if (minute !== undefined) { updates.push(`minute = $${params.length + 1}`); params.push(minute); }
-    
-    if (updates.length === 0) {
-      return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
-    }
-    
+
+    if (status !== undefined) { updates.push('status = ?'); params.push(status); }
+    if (homeScore !== undefined) { updates.push('home_score = ?'); params.push(homeScore); }
+    if (awayScore !== undefined) { updates.push('away_score = ?'); params.push(awayScore); }
+    if (minute !== undefined) { updates.push('minute = ?'); params.push(minute); }
+
+    if (updates.length === 0) return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
+
     params.push(id);
-    
-    await query(`UPDATE matches SET ${updates.join(', ')} WHERE id = $${params.length}`, params);
-    
+    await query(`UPDATE matches SET ${updates.join(', ')} WHERE id = ?`, params);
+
     return NextResponse.json({ success: true, message: 'Match updated successfully' });
   } catch (error) {
     console.error('[Admin API] Failed to update match:', error);
@@ -204,18 +181,12 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// Delete match
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    
-    if (!id) {
-      return NextResponse.json({ error: 'Match ID is required' }, { status: 400 });
-    }
-    
-    await query('DELETE FROM matches WHERE id = $1', [id]);
-    
+    if (!id) return NextResponse.json({ error: 'Match ID is required' }, { status: 400 });
+    await query('DELETE FROM matches WHERE id = ?', [id]);
     return NextResponse.json({ success: true, message: 'Match deleted successfully' });
   } catch (error) {
     console.error('[Admin API] Failed to delete match:', error);

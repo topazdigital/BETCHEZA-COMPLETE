@@ -1,17 +1,5 @@
 import { query, getPool, execute } from './db';
 
-/**
- * Match "Who Will Win?" votes.
- *
- * One vote per user/device per match (enforced via cookie + optional userId).
- * Logged-out users can still vote — we just key off a long-lived cookie.
- *
- * Storage:
- *   1. PostgreSQL when DATABASE_URL is set (table `match_votes`).
- *   2. In-memory fallback on globalThis so dev installs without a DB still
- *      persist within the running process.
- */
-
 export type VotePick = 'home' | 'draw' | 'away';
 
 export interface VoteTotals {
@@ -44,12 +32,12 @@ async function ensureTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS match_votes (
-        id BIGSERIAL PRIMARY KEY,
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         match_id VARCHAR(191) NOT NULL,
         voter_id VARCHAR(191) NOT NULL,
-        pick VARCHAR(10) NOT NULL CHECK (pick IN ('home','draw','away')),
+        pick ENUM('home','draw','away') NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (match_id, voter_id)
+        UNIQUE KEY uq_match_voter (match_id, voter_id)
       )
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_match_votes_match ON match_votes (match_id)`);
@@ -68,7 +56,7 @@ export async function getVoteTotals(matchId: string): Promise<VoteTotals> {
     await ensureTable();
     try {
       const r = await query<{ pick: VotePick; c: string }>(
-        `SELECT pick, COUNT(*) AS c FROM match_votes WHERE match_id = $1 GROUP BY pick`,
+        `SELECT pick, COUNT(*) AS c FROM match_votes WHERE match_id = ? GROUP BY pick`,
         [matchId],
       );
       const t = emptyTotals();
@@ -93,15 +81,12 @@ export async function getVoteTotals(matchId: string): Promise<VoteTotals> {
   return t;
 }
 
-export async function getUserVote(
-  matchId: string,
-  voterId: string,
-): Promise<VotePick | null> {
+export async function getUserVote(matchId: string, voterId: string): Promise<VotePick | null> {
   if (hasDb()) {
     await ensureTable();
     try {
       const r = await query<{ pick: VotePick }>(
-        `SELECT pick FROM match_votes WHERE match_id = $1 AND voter_id = $2 LIMIT 1`,
+        `SELECT pick FROM match_votes WHERE match_id = ? AND voter_id = ? LIMIT 1`,
         [matchId, voterId],
       );
       return r.rows[0]?.pick ?? null;
@@ -109,16 +94,10 @@ export async function getUserVote(
       console.warn('[votes-store] getUserVote failed:', e);
     }
   }
-  const v = memory().find(
-    (m) => m.matchId === matchId && m.voterId === voterId,
-  );
+  const v = memory().find(m => m.matchId === matchId && m.voterId === voterId);
   return v?.pick ?? null;
 }
 
-/**
- * Casts a vote. Returns `{ ok: false, reason: 'already_voted' }` if this voter
- * already picked something for this match (no overwrite — one vote per device).
- */
 export async function castVote(
   matchId: string,
   voterId: string,
@@ -134,7 +113,7 @@ export async function castVote(
     await ensureTable();
     try {
       await query(
-        `INSERT INTO match_votes (match_id, voter_id, pick) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        `INSERT IGNORE INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?)`,
         [matchId, voterId, pick],
       );
       const totals = await getVoteTotals(matchId);

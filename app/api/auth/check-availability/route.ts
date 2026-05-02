@@ -12,17 +12,15 @@ const RESERVED_USERNAMES = new Set([
 
 async function isEmailTaken(email: string): Promise<boolean> {
   const lower = email.toLowerCase();
-  // mockUsers (in-memory fallback) — covers Replit dev
   if (mockUsers.some((u) => u.email.toLowerCase() === lower)) return true;
-  // MySQL — covers production
   try {
     const row = await queryOne<{ id: number }>(
-      'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1',
+      'SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1',
       [lower],
     );
     if (row) return true;
   } catch {
-    // DB unavailable — only mock-data check above applies
+    // DB unavailable
   }
   return false;
 }
@@ -32,13 +30,11 @@ async function isUsernameTaken(username: string): Promise<boolean> {
   if (mockUsers.some((u) => u.username.toLowerCase() === lower)) return true;
   try {
     const row = await queryOne<{ id: number }>(
-      'SELECT id FROM users WHERE LOWER(username) = $1 LIMIT 1',
+      'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1',
       [lower],
     );
     if (row) return true;
-  } catch {
-    // ignore
-  }
+  } catch {}
   return false;
 }
 

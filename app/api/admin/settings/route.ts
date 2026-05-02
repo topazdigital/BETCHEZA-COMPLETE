@@ -6,9 +6,6 @@ import { requireAdmin } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
-// In-memory storage for development mode when no database. Exposed on
-// globalThis so the public site-settings reader picks up admin updates
-// even when no DB is configured.
 const DEFAULT_SETTINGS: Record<string, string> = {
   site_name: 'Betcheza',
   site_description: 'Your trusted betting tips community. Get expert predictions, track your performance, and compete with other tipsters.',
@@ -41,17 +38,11 @@ const DEFAULT_SETTINGS: Record<string, string> = {
 };
 
 const g = globalThis as { __memorySettings?: Record<string, string> };
-// Initialize from file store (survives restarts) then fall back to defaults
 const memorySettings: Record<string, string> = g.__memorySettings ?? (g.__memorySettings = {
   ...DEFAULT_SETTINGS,
   ...fileStoreGet<Record<string, string>>('site-settings', {}),
 });
 
-// Map of admin-panel keys to the matching environment-variable name.
-// When the admin opens the settings page, any key that's blank in the DB
-// but present in process.env is auto-filled from the env so the admin
-// doesn't have to copy-paste it back in. Saving the form persists the
-// value to the DB, after which the env var is no longer needed.
 const ENV_BACKED_SETTINGS: Record<string, string> = {
   the_odds_api_key: 'THE_ODDS_API_KEY',
   sportsgameodds_api_key: 'SPORTSGAMEODDS_API_KEY',
@@ -61,11 +52,7 @@ const ENV_BACKED_SETTINGS: Record<string, string> = {
   vapid_subject: 'VAPID_SUBJECT',
   google_analytics_id: 'GOOGLE_ANALYTICS_ID',
   facebook_pixel_id: 'FACEBOOK_PIXEL_ID',
-  // Football-data.org is also wired up in code but not yet surfaced in the
-  // admin UI — list it here anyway so future tabs pick it up automatically.
   football_data_api_key: 'FOOTBALL_DATA_API_KEY',
-  // Captcha — admin can paste these in the Security tab (preferred) but if
-  // they're already set in env vars we'll show them prefilled.
   turnstile_site_key: 'NEXT_PUBLIC_TURNSTILE_SITE_KEY',
   turnstile_secret_key: 'TURNSTILE_SECRET_KEY',
   recaptcha_site_key: 'NEXT_PUBLIC_RECAPTCHA_SITE_KEY',
@@ -80,8 +67,6 @@ function fillFromEnv(settings: Record<string, string>): Record<string, string> {
       const envValue = (process.env[envName] || '').trim();
       if (envValue) {
         settings[key] = envValue;
-        // Also push into the shared memory store so getSiteSettings() / getApiKey()
-        // can read this value without requiring a database or an explicit admin save.
         if (!memorySettings[key] || !String(memorySettings[key]).trim()) {
           memorySettings[key] = envValue;
           didFill = true;
@@ -89,22 +74,17 @@ function fillFromEnv(settings: Record<string, string>): Record<string, string> {
       }
     }
   }
-  // Persist to file store so env-backed keys survive process restarts even
-  // before the admin opens the settings page.
   if (didFill) {
     fileStoreSet('site-settings', memorySettings);
   }
   return settings;
 }
 
-// Get all settings
 export async function GET() {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const pool = getPool();
 
-  // If no database, return memory settings (still backfilled from env so the
-  // admin sees the API keys that are already wired up in code).
   if (!pool) {
     return NextResponse.json({
       settings: fillFromEnv({ ...memorySettings }),
@@ -119,26 +99,15 @@ export async function GET() {
       ORDER BY setting_key
     `);
 
-    // Convert to object format
     const settings: Record<string, string> = { ...memorySettings };
-
     result.rows.forEach(row => {
       settings[row.setting_key] = row.setting_value;
     });
-
-    // Backfill any blank API-key field from the matching env var so the
-    // admin can see "this is already set in code" without having to
-    // re-paste it every time they open the page.
     fillFromEnv(settings);
 
-    return NextResponse.json({
-      settings,
-      source: 'database',
-    });
+    return NextResponse.json({ settings, source: 'database' });
   } catch (error) {
     console.error('[Admin API] Failed to get settings:', error);
-
-    // Return default settings on error
     return NextResponse.json({
       settings: fillFromEnv({ ...memorySettings }),
       source: 'memory',
@@ -146,15 +115,11 @@ export async function GET() {
   }
 }
 
-// Update settings
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const pool = getPool();
 
-  // Parse body ONCE — re-reading after the body is consumed throws and used
-  // to surface as the misleading "Failed to save settings" toast on the
-  // Social Links tab.
   let settings: Record<string, unknown> | undefined;
   try {
     const body = await request.json();
@@ -167,34 +132,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid settings data' }, { status: 400 });
   }
 
-  // Always update in-memory copy so non-DB readers + cache reflect change
-  // immediately, regardless of whether DB write succeeds.
   Object.assign(memorySettings, settings);
-  // Persist to file so settings survive process restarts
   fileStoreSet('site-settings', memorySettings);
   invalidateSiteSettingsCache();
 
-  // If no database configured, file + memory store are the source of truth.
   if (!pool) {
-    return NextResponse.json({
-      success: true,
-      message: 'Settings saved successfully',
-      source: 'file',
-    });
+    return NextResponse.json({ success: true, message: 'Settings saved successfully', source: 'file' });
   }
 
-  // Upsert each setting. If any individual upsert fails (DB unreachable,
-  // missing column, etc) we still consider the save successful because the
-  // change is already live in memory + cache. We surface the warning so an
-  // admin can investigate, but the UI doesn't show a scary error toast.
   let dbFailures = 0;
   let lastError: unknown = null;
   for (const [key, value] of Object.entries(settings)) {
     try {
       await execute(
         `INSERT INTO site_settings (setting_key, setting_value)
-         VALUES ($1, $2)
-         ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value`,
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
         [key, String(value ?? '')],
       );
     } catch (err) {
@@ -204,18 +157,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (dbFailures === 0) {
-    return NextResponse.json({
-      success: true,
-      message: 'Settings saved to database',
-      source: 'database',
-    });
+    return NextResponse.json({ success: true, message: 'Settings saved to database', source: 'database' });
   }
 
-  console.warn(
-    `[Admin API] settings: ${dbFailures} of ${Object.keys(settings).length} writes failed; ` +
-    `kept memory copy. Last error:`,
-    lastError,
-  );
+  console.warn(`[Admin API] settings: ${dbFailures} of ${Object.keys(settings).length} writes failed; kept memory copy. Last error:`, lastError);
   return NextResponse.json({
     success: true,
     message: 'Settings saved (database currently unreachable — kept in memory)',

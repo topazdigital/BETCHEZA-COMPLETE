@@ -19,21 +19,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Try database first
     const r = await query<{ id: number; password_hash: string }>(
-      'SELECT id, password_hash FROM users WHERE id = $1 LIMIT 1',
+      'SELECT id, password_hash FROM users WHERE id = ? LIMIT 1',
       [payload.userId]
     );
     if (r.rows[0]) {
       const ok = await verifyPassword(currentPassword, r.rows[0].password_hash);
       if (!ok) return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 });
       const newHash = await hashPassword(newPassword);
-      await execute('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, payload.userId]);
+      await execute('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, payload.userId]);
       return NextResponse.json({ ok: true });
     }
   } catch {}
 
-  // File-based fallback
   const users = fileStoreGet<Array<{ id: number; passwordHash: string }>>('users', []);
   const user = users.find(u => u.id === payload.userId);
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });

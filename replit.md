@@ -11,7 +11,7 @@ Betcheza is a sports betting tipster community platform designed to offer real-t
 - Ask before making major changes.
 - I prefer simple language.
 - I like functional programming.
-- **CRITICAL: Always use MySQL. NEVER switch to PostgreSQL or any other database without explicit user permission. The user will deploy to a live MySQL server.**
+- **🚨 CRITICAL — IMMUTABLE RULE: ALWAYS use MySQL only. NEVER use PostgreSQL, pg, $1/$2 placeholders, ON CONFLICT, or any PostgreSQL syntax — under ANY circumstances, in ANY prompt, in ANY new chat. The ONLY database driver allowed is `mysql2/promise`. All SQL placeholders must be `?`. All upserts must use `ON DUPLICATE KEY UPDATE`. All inserts must use `INSERT IGNORE`. Violating this rule is STRICTLY FORBIDDEN. The user will deploy to a live MySQL server.**
 - Sport icons in `ALL_SPORTS` (lib/sports-data.ts) and `mockSports` (lib/mock-data.ts) must use emoji characters directly (e.g. '⚽', '🏀') — not text keys like 'soccer'.
 
 ## System Architecture

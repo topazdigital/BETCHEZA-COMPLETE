@@ -21,8 +21,8 @@ async function ensureSport(id: number, name: string, slug: string): Promise<numb
   try {
     await execute(
       `INSERT INTO sports (id, name, slug, icon, is_active)
-       VALUES ($1, $2, $3, $4, TRUE)
-       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+       VALUES (?, ?, ?, ?, TRUE)
+       ON DUPLICATE KEY UPDATE name = VALUES(name)`,
       [id, name, slug, slug]
     );
     return id;
@@ -38,19 +38,18 @@ async function ensureLeague(
   const slug = slugify(name);
   try {
     const existing = await queryOne<{ id: number }>(
-      `SELECT id FROM leagues WHERE slug = $1 OR (api_id = $2 AND api_id IS NOT NULL) LIMIT 1`,
+      `SELECT id FROM leagues WHERE slug = ? OR (api_id = ? AND api_id IS NOT NULL) LIMIT 1`,
       [slug, apiId]
     );
     if (existing) return existing.id;
     const result = await execute(
       `INSERT INTO leagues (sport_id, country_id, name, slug, api_id, is_active)
-       VALUES ($1, $2, $3, $4, $5, TRUE)
-       ON CONFLICT (slug) DO UPDATE SET api_id = EXCLUDED.api_id
-       RETURNING id`,
+       VALUES (?, ?, ?, ?, ?, TRUE)
+       ON DUPLICATE KEY UPDATE api_id = VALUES(api_id)`,
       [sportId, countryId, name, slug, apiId]
     );
     if (result.insertId) return result.insertId;
-    const found = await queryOne<{ id: number }>(`SELECT id FROM leagues WHERE slug = $1 LIMIT 1`, [slug]);
+    const found = await queryOne<{ id: number }>(`SELECT id FROM leagues WHERE slug = ? LIMIT 1`, [slug]);
     return found?.id ?? null;
   } catch (e) { logOnce(e); return null; }
 }
@@ -59,14 +58,14 @@ async function ensureCountry(name: string | undefined, code: string | undefined)
   const country = name || 'World';
   const countryCode = (code || 'XX').toUpperCase();
   try {
-    const existing = await queryOne<{ id: number }>(`SELECT id FROM countries WHERE code = $1 LIMIT 1`, [countryCode]);
+    const existing = await queryOne<{ id: number }>(`SELECT id FROM countries WHERE code = ? LIMIT 1`, [countryCode]);
     if (existing) return existing.id;
     const result = await execute(
-      `INSERT INTO countries (name, code) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id`,
+      `INSERT IGNORE INTO countries (name, code) VALUES (?, ?)`,
       [country, countryCode]
     );
     if (result.insertId) return result.insertId;
-    const found = await queryOne<{ id: number }>(`SELECT id FROM countries WHERE code = $1 LIMIT 1`, [countryCode]);
+    const found = await queryOne<{ id: number }>(`SELECT id FROM countries WHERE code = ? LIMIT 1`, [countryCode]);
     return found?.id ?? null;
   } catch (e) { logOnce(e); return null; }
 }
@@ -85,25 +84,25 @@ async function upsertTeam(t: TeamPayload): Promise<void> {
   const slug = slugify(t.name);
   try {
     const byApi = await queryOne<{ id: number }>(
-      `SELECT id FROM teams WHERE api_id = $1 AND api_id IS NOT NULL LIMIT 1`,
+      `SELECT id FROM teams WHERE api_id = ? AND api_id IS NOT NULL LIMIT 1`,
       [t.apiId]
     );
     if (byApi) {
       await execute(
-        `UPDATE teams SET name = $1, logo_url = COALESCE($2, logo_url),
-         short_name = COALESCE($3, short_name), league_id = COALESCE($4, league_id),
-         country_id = COALESCE($5, country_id) WHERE id = $6`,
+        `UPDATE teams SET name = ?, logo_url = COALESCE(?, logo_url),
+         short_name = COALESCE(?, short_name), league_id = COALESCE(?, league_id),
+         country_id = COALESCE(?, country_id) WHERE id = ?`,
         [t.name, t.logo || null, t.shortName || null, t.leagueId, t.countryId, byApi.id]
       );
       return;
     }
     await execute(
       `INSERT INTO teams (sport_id, country_id, league_id, name, slug, short_name, logo_url, api_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (slug) DO UPDATE SET
-         logo_url = COALESCE(EXCLUDED.logo_url, teams.logo_url),
-         api_id   = COALESCE(EXCLUDED.api_id, teams.api_id),
-         league_id = COALESCE(EXCLUDED.league_id, teams.league_id)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         logo_url = COALESCE(VALUES(logo_url), logo_url),
+         api_id   = COALESCE(VALUES(api_id), api_id),
+         league_id = COALESCE(VALUES(league_id), league_id)`,
       [t.sportId, t.countryId, t.leagueId, t.name, slug, t.shortName || null, t.logo || null, t.apiId]
     );
   } catch (e) { logOnce(e); }
@@ -111,7 +110,7 @@ async function upsertTeam(t: TeamPayload): Promise<void> {
 
 /**
  * Best-effort persistence of teams + leagues from a batch of matches.
- * Silently no-ops when no PostgreSQL pool is configured.
+ * Silently no-ops when no MySQL pool is configured.
  * Runs FULLY ASYNC — never blocks the caller, never throws.
  */
 export function persistMatchEntities(matches: UnifiedMatch[]): void {

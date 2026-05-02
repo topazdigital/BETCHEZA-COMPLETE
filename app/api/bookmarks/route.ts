@@ -4,8 +4,6 @@ import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-// In-memory fallback so bookmarks "work" even when the DB isn't reachable.
-// Keyed by `${userId}:${entityType}:${entityId}`.
 const g = globalThis as { __bookmarkMem?: Map<string, { entity_type: string; entity_id: string; created_at: string }> };
 const mem = g.__bookmarkMem ?? (g.__bookmarkMem = new Map());
 
@@ -36,7 +34,6 @@ function resolveEntity(body: BookmarkBody): { type: string; id: string } | null 
   return null;
 }
 
-// GET /api/bookmarks?type=match — list current user's bookmarks (optionally filtered by entity type).
 export async function GET(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ bookmarks: [] }, { status: 200 });
@@ -52,8 +49,8 @@ export async function GET(req: NextRequest) {
   }
   try {
     const sql = type
-      ? 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = $1 AND entity_type = $2 ORDER BY created_at DESC'
-      : 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = $1 ORDER BY created_at DESC';
+      ? 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = ? AND entity_type = ? ORDER BY created_at DESC'
+      : 'SELECT entity_type, entity_id, created_at FROM user_bookmarks WHERE user_id = ? ORDER BY created_at DESC';
     const params = type ? [userId, type] : [userId];
     const r = await query(sql, params);
     return NextResponse.json({ bookmarks: r.rows });
@@ -62,7 +59,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/bookmarks { matchId } — save bookmark.
 export async function POST(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: 'Sign in to save bookmarks' }, { status: 401 });
@@ -79,8 +75,8 @@ export async function POST(req: NextRequest) {
   }
   try {
     await execute(
-      `INSERT INTO user_bookmarks (user_id, entity_type, entity_id, created_at)
-       VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING`,
+      `INSERT IGNORE INTO user_bookmarks (user_id, entity_type, entity_id, created_at)
+       VALUES (?, ?, ?, NOW())`,
       [userId, ent.type, ent.id],
     );
     return NextResponse.json({ ok: true });
@@ -92,7 +88,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE /api/bookmarks { matchId } — remove bookmark.
 export async function DELETE(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: 'Sign in to manage bookmarks' }, { status: 401 });
@@ -104,7 +99,7 @@ export async function DELETE(req: NextRequest) {
   if (pool) {
     try {
       await execute(
-        'DELETE FROM user_bookmarks WHERE user_id = $1 AND entity_type = $2 AND entity_id = $3',
+        'DELETE FROM user_bookmarks WHERE user_id = ? AND entity_type = ? AND entity_id = ?',
         [userId, ent.type, ent.id],
       );
     } catch { /* fall through to memory cleanup */ }

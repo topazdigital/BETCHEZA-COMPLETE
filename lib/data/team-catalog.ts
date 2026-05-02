@@ -43,7 +43,7 @@ export const SENIOR_FOOTBALL_TEAMS: CatalogTeam[] = [
   { id: '368',  name: 'Everton',                aliases: ['toffees'],                  league: 'Premier League', country: 'England' },
   { id: '370',  name: 'Fulham',                                                        league: 'Premier League', country: 'England' },
   { id: '364',  name: 'Liverpool',              aliases: ['reds', 'lfc'],              league: 'Premier League', country: 'England' },
-  { id: '378',  name: 'Leeds United',           aliases: ['leeds'],                    league: 'Premier League', country: 'England' },
+  { id: '357',  name: 'Leeds United',           aliases: ['leeds'],                    league: 'Championship', country: 'England' },
   { id: '382',  name: 'Manchester City',        aliases: ['man city', 'mcfc', 'city'], league: 'Premier League', country: 'England' },
   { id: '360',  name: 'Manchester United',      aliases: ['man utd', 'man u', 'mufc', 'united'], league: 'Premier League', country: 'England' },
   { id: '361',  name: 'Newcastle United',       aliases: ['newcastle', 'nufc', 'magpies'], league: 'Premier League', country: 'England' },

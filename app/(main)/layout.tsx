@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Globe2
+  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -27,6 +27,7 @@ import { Footer } from "@/components/layout/footer"
 import { CookieBanner } from "@/components/layout/cookie-banner"
 import { useMatchStats } from "@/lib/hooks/use-matches"
 import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
+import { FlagIcon } from "@/components/ui/flag-icon"
 
 const POPULAR_LEAGUE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const INTERNATIONAL_LEAGUE_IDS = [9, 10, 26, 102, 24, 29, 30, 31];
@@ -275,7 +276,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             className="flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
             <span className="flex items-center gap-1.5">
-              <Globe2 className="h-3 w-3 text-blue-400" /> Popular Leagues
+              <Trophy className="h-3 w-3 text-primary" /> Popular Leagues
             </span>
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showLeagues && "rotate-180")} />
           </button>
@@ -290,10 +291,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                     onClick={() => setSidebarOpen(false)}
                     className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
-                    {isCountry
-                      ? <span className="text-sm">🏠</span>
-                      : <span className="text-sm">🌐</span>
-                    }
+                    <FlagIcon countryCode={league.countryCode} size="xs" />
                     <span className="truncate">{league.name}</span>
                     {isCountry && idx === 0 && (
                       <span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-primary">Local</span>
@@ -344,7 +342,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                   onClick={() => setSidebarOpen(false)}
                   className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
-                  <span className="text-sm">🌍</span>
+                  <FlagIcon countryCode={league.countryCode} size="xs" />
                   <span className="truncate">{league.name}</span>
                 </Link>
               ))}

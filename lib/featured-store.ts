@@ -47,7 +47,7 @@ export const DEFAULT_FEATURED_CONFIG: FeaturedConfig = {
 const g = globalThis as { __featuredConfig?: FeaturedConfig };
 
 function hasDb(): boolean {
-  return !!process.env.DATABASE_URL;
+  return !!(process.env.DATABASE_URL || process.env.MYSQL_URL);
 }
 
 async function ensureTable(): Promise<void> {
@@ -103,8 +103,8 @@ export async function saveFeaturedConfig(patch: Partial<FeaturedConfig>): Promis
     await ensureTable();
     try {
       await query(
-        `INSERT INTO featured_config (id, config_json) VALUES (1, $1)
-         ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json`,
+        `INSERT INTO featured_config (id, config_json) VALUES (1, ?)
+         ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)`,
         [JSON.stringify(next)]
       );
     } catch (e) {

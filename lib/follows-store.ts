@@ -70,32 +70,39 @@ function loadFromDisk() {
 }
 
 const g = globalThis as { __followsStore?: Stores };
-g.__followsStore = g.__followsStore || {
-  teams: new Map(),
-  tipsters: new Map(),
-  loaded: false,
-};
+g.__followsStore = g.__followsStore || { teams: new Map(), tipsters: new Map(), loaded: false };
 const stores = g.__followsStore;
 loadFromDisk();
 
 function hasDb(): boolean {
-  return !!process.env.DATABASE_URL;
+  return !!process.env.DATABASE_URL || !!process.env.MYSQL_URL;
 }
 
 // ─── TEAMS ───────────────────────────────────────
 export async function listFollowedTeams(userId: number): Promise<FollowedTeam[]> {
   if (hasDb()) {
     try {
-      const r = await query<FollowedTeam & { followed_at: string }>(
-        `SELECT team_id AS "teamId", team_name AS "teamName", team_logo AS "teamLogo",
-                league_id AS "leagueId", league_slug AS "leagueSlug", league_name AS "leagueName",
-                sport_slug AS "sportSlug", country_code AS "countryCode",
-                created_at AS "followedAt"
-         FROM team_follows WHERE user_id = $1 ORDER BY created_at DESC`,
+      const r = await query<{
+        team_id: string; team_name: string; team_logo: string | null;
+        league_id: number | null; league_slug: string | null; league_name: string | null;
+        sport_slug: string | null; country_code: string | null; created_at: string;
+      }>(
+        `SELECT team_id, team_name, team_logo, league_id, league_slug, league_name,
+                sport_slug, country_code, created_at
+         FROM team_follows WHERE user_id = ? ORDER BY created_at DESC`,
         [userId]
       );
-      // DB is the source of truth — always return its result, even when empty.
-      return r.rows;
+      return r.rows.map(row => ({
+        teamId: row.team_id,
+        teamName: row.team_name,
+        teamLogo: row.team_logo,
+        leagueId: row.league_id,
+        leagueSlug: row.league_slug,
+        leagueName: row.league_name,
+        sportSlug: row.sport_slug,
+        countryCode: row.country_code,
+        followedAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
+      }));
     } catch (e) {
       console.warn('[follows] db read failed, falling back to memory:', e);
     }
@@ -111,21 +118,12 @@ export async function followTeam(userId: number, team: Omit<FollowedTeam, 'follo
       await query(
         `INSERT INTO team_follows
          (user_id, team_id, team_name, team_logo, league_id, league_slug, league_name, sport_slug, country_code, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-         ON CONFLICT (user_id, team_id) DO UPDATE SET
-           team_name = EXCLUDED.team_name,
-           team_logo = EXCLUDED.team_logo`,
-        [
-          userId,
-          entry.teamId,
-          entry.teamName,
-          entry.teamLogo || null,
-          entry.leagueId || null,
-          entry.leagueSlug || null,
-          entry.leagueName || null,
-          entry.sportSlug || null,
-          entry.countryCode || null,
-        ]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+           team_name = VALUES(team_name),
+           team_logo = VALUES(team_logo)`,
+        [userId, entry.teamId, entry.teamName, entry.teamLogo || null, entry.leagueId || null,
+         entry.leagueSlug || null, entry.leagueName || null, entry.sportSlug || null, entry.countryCode || null]
       );
     } catch (e) {
       console.warn('[follows] db write failed:', e);
@@ -140,7 +138,7 @@ export async function followTeam(userId: number, team: Omit<FollowedTeam, 'follo
 export async function unfollowTeam(userId: number, teamId: string): Promise<void> {
   if (hasDb()) {
     try {
-      await query(`DELETE FROM team_follows WHERE user_id = $1 AND team_id = $2`, [userId, teamId]);
+      await query(`DELETE FROM team_follows WHERE user_id = ? AND team_id = ?`, [userId, teamId]);
     } catch (e) {
       console.warn('[follows] db delete failed:', e);
     }
@@ -153,7 +151,7 @@ export async function isFollowingTeam(userId: number, teamId: string): Promise<b
   if (hasDb()) {
     try {
       const r = await query<{ c: string }>(
-        `SELECT COUNT(*) AS c FROM team_follows WHERE user_id = $1 AND team_id = $2`,
+        `SELECT COUNT(*) AS c FROM team_follows WHERE user_id = ? AND team_id = ?`,
         [userId, teamId]
       );
       return Number(r.rows[0]?.c) > 0;
@@ -167,7 +165,7 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
   if (hasDb()) {
     try {
       await query(
-        `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        `INSERT IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`,
         [userId, tipsterId]
       );
     } catch (e) {
@@ -182,10 +180,7 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
 export async function unfollowTipster(userId: number, tipsterId: number): Promise<void> {
   if (hasDb()) {
     try {
-      await query(
-        `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
-        [userId, tipsterId]
-      );
+      await query(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`, [userId, tipsterId]);
     } catch {}
   }
   stores.tipsters.get(userId)?.delete(tipsterId);
@@ -196,7 +191,7 @@ export async function isFollowingTipster(userId: number, tipsterId: number): Pro
   if (hasDb()) {
     try {
       const r = await query<{ c: string }>(
-        `SELECT COUNT(*) AS c FROM follows WHERE follower_id = $1 AND following_id = $2`,
+        `SELECT COUNT(*) AS c FROM follows WHERE follower_id = ? AND following_id = ?`,
         [userId, tipsterId]
       );
       return Number(r.rows[0]?.c) > 0;
@@ -205,9 +200,6 @@ export async function isFollowingTipster(userId: number, tipsterId: number): Pro
   return stores.tipsters.get(userId)?.has(tipsterId) ?? false;
 }
 
-// When a fake tipster catalogue id (>= 1000) was followed, the user's `follows`
-// list will store that id. The dashboard endpoint surfaces these via
-// listFollowedTipsters. This is a small helper used by other modules.
 export function getFollowedTipsterEntries(userId: number): Array<{ tipsterId: number; followedAt: string }> {
   const m = stores.tipsters.get(userId);
   if (!m) return [];
@@ -218,7 +210,7 @@ export async function listFollowedTipsters(userId: number): Promise<number[]> {
   if (hasDb()) {
     try {
       const r = await query<{ following_id: number }>(
-        `SELECT following_id FROM follows WHERE follower_id = $1`,
+        `SELECT following_id FROM follows WHERE follower_id = ?`,
         [userId]
       );
       return r.rows.map(x => x.following_id);
@@ -227,12 +219,11 @@ export async function listFollowedTipsters(userId: number): Promise<number[]> {
   return Array.from((stores.tipsters.get(userId) || new Map()).keys());
 }
 
-// Returns follower userIds for a given tipster (reverse lookup).
 export async function listFollowersOfTipster(tipsterId: number): Promise<number[]> {
   if (hasDb()) {
     try {
       const r = await query<{ follower_id: number }>(
-        `SELECT follower_id FROM follows WHERE following_id = $1`,
+        `SELECT follower_id FROM follows WHERE following_id = ?`,
         [tipsterId]
       );
       return r.rows.map(x => x.follower_id);
@@ -245,12 +236,11 @@ export async function listFollowersOfTipster(tipsterId: number): Promise<number[
   return out;
 }
 
-// Returns userIds of everyone following the given team.
 export async function listFollowersOfTeam(teamId: string): Promise<number[]> {
   if (hasDb()) {
     try {
       const r = await query<{ user_id: number }>(
-        `SELECT user_id FROM team_follows WHERE team_id = $1`,
+        `SELECT user_id FROM team_follows WHERE team_id = ?`,
         [teamId]
       );
       return r.rows.map(x => x.user_id);
