@@ -2909,62 +2909,151 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
   return index;
 }
 
-// Global-level cache for getAllMatches — shared across all concurrent requests.
-// This prevents the "thundering herd" where 5+ SWR hooks all hit the external
-// APIs simultaneously on page load, making the homepage feel slow.
-const ALLMATCHES_CACHE_TTL   = 3 * 60 * 1000;  // 3 min — fresh, return immediately
-const ALLMATCHES_STALE_TTL   = 10 * 60 * 1000; // 10 min — stale-while-revalidate window
+// ─── MULTI-LAYER MATCH CACHE ──────────────────────────────────────────────────
+// Layer 1: In-memory (sub-ms)
+// Layer 2: MySQL table `match_cache` (< 50ms, survives PM2 restarts)
+// Layer 3: File on disk (fallback when DB not available)
+// Layer 4: Live external API fetch (slow — only when all caches miss)
+//
+// This means after the first ever warm-up, every subsequent request — including
+// after PM2 restarts — serves data in < 50ms.
+
+const ALLMATCHES_CACHE_TTL  = 3 * 60 * 1000;   // 3 min  — serve from memory
+const ALLMATCHES_STALE_TTL  = 15 * 60 * 1000;  // 15 min — stale-while-revalidate
 const ALLMATCHES_PERSIST_FILE = '/tmp/betcheza_matches_cache.json';
 
-const g_allMatchesCache: { data: UnifiedMatch[] | null; ts: number; promise: Promise<UnifiedMatch[]> | null } = { data: null, ts: 0, promise: null };
+const g_allMatchesCache: {
+  data: UnifiedMatch[] | null;
+  ts: number;
+  promise: Promise<UnifiedMatch[]> | null;
+} = { data: null, ts: 0, promise: null };
 
-// Load persistent cache from disk on startup so first request after PM2 restart is instant.
-(async () => {
+// ── MySQL helpers ──────────────────────────────────────────────────────────────
+async function _ensureMatchCacheTable(): Promise<void> {
+  try {
+    const { query } = await import('../db');
+    await query(
+      `CREATE TABLE IF NOT EXISTS match_cache (
+         cache_key  VARCHAR(100) PRIMARY KEY,
+         cached_at  BIGINT       NOT NULL,
+         payload    LONGTEXT     NOT NULL
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+    );
+  } catch { /* DB unavailable — graceful fallback */ }
+}
+
+async function _readDbCache(): Promise<{ data: UnifiedMatch[]; ts: number } | null> {
+  try {
+    const { query } = await import('../db');
+    const r = await query<{ cached_at: number; payload: string }>(
+      `SELECT cached_at, payload FROM match_cache WHERE cache_key = 'all_matches' LIMIT 1`
+    );
+    if (!r.rows.length) return null;
+    const row = r.rows[0];
+    const data: UnifiedMatch[] = JSON.parse(row.payload);
+    if (!data?.length) return null;
+    return { data, ts: Number(row.cached_at) };
+  } catch { return null; }
+}
+
+async function _writeDbCache(data: UnifiedMatch[]): Promise<void> {
+  try {
+    const { query } = await import('../db');
+    const payload = JSON.stringify(data);
+    const now = Date.now();
+    await query(
+      `INSERT INTO match_cache (cache_key, cached_at, payload)
+       VALUES ('all_matches', ?, ?)
+       ON DUPLICATE KEY UPDATE cached_at = VALUES(cached_at), payload = VALUES(payload)`,
+      [now, payload]
+    );
+  } catch { /* non-fatal */ }
+}
+
+// ── File cache helpers ─────────────────────────────────────────────────────────
+async function _readFileCache(): Promise<{ data: UnifiedMatch[]; ts: number } | null> {
   try {
     const { readFile } = await import('fs/promises');
     const raw = await readFile(ALLMATCHES_PERSIST_FILE, 'utf8');
     const parsed: { ts: number; data: UnifiedMatch[] } = JSON.parse(raw);
-    // Accept persisted data up to 30 minutes old — users see data instantly
-    if (parsed?.data?.length && Date.now() - parsed.ts < 30 * 60 * 1000) {
-      g_allMatchesCache.data = parsed.data;
-      g_allMatchesCache.ts   = parsed.ts;
-    }
-  } catch { /* no file yet — first run */ }
-})();
+    if (!parsed?.data?.length) return null;
+    return { data: parsed.data, ts: parsed.ts };
+  } catch { return null; }
+}
 
-async function _persistCache(data: UnifiedMatch[]): Promise<void> {
+async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
   try {
     const { writeFile } = await import('fs/promises');
     await writeFile(ALLMATCHES_PERSIST_FILE, JSON.stringify({ ts: Date.now(), data }), 'utf8');
   } catch { /* non-fatal */ }
 }
 
+// On startup: ensure the table exists, then try to warm in-memory cache from DB
+// so the first request is already served from memory.
+(async () => {
+  await _ensureMatchCacheTable();
+  // Try DB first, then file
+  const dbResult = await _readDbCache();
+  if (dbResult && Date.now() - dbResult.ts < ALLMATCHES_STALE_TTL) {
+    g_allMatchesCache.data = dbResult.data;
+    g_allMatchesCache.ts   = dbResult.ts;
+    return;
+  }
+  const fileResult = await _readFileCache();
+  if (fileResult && Date.now() - fileResult.ts < ALLMATCHES_STALE_TTL) {
+    g_allMatchesCache.data = fileResult.data;
+    g_allMatchesCache.ts   = fileResult.ts;
+  }
+})();
+
+function _triggerBackgroundRefresh() {
+  if (g_allMatchesCache.promise) return;
+  g_allMatchesCache.promise = _fetchAllMatches().finally(() => {
+    g_allMatchesCache.promise = null;
+  });
+}
+
 export async function getAllMatches(): Promise<UnifiedMatch[]> {
   const age = Date.now() - g_allMatchesCache.ts;
 
-  // 1. Fresh cache — return immediately
+  // Layer 1: In-memory fresh — return immediately (sub-ms)
   if (g_allMatchesCache.data && age < ALLMATCHES_CACHE_TTL) {
     return g_allMatchesCache.data;
   }
 
-  // 2. Stale-while-revalidate — return stale data instantly, refresh in background
+  // Layer 2: In-memory stale — return immediately, refresh in background
   if (g_allMatchesCache.data && age < ALLMATCHES_STALE_TTL) {
-    if (!g_allMatchesCache.promise) {
-      g_allMatchesCache.promise = _fetchAllMatches().finally(() => {
-        g_allMatchesCache.promise = null;
-      });
-    }
-    return g_allMatchesCache.data; // return stale immediately
+    _triggerBackgroundRefresh();
+    return g_allMatchesCache.data;
   }
 
-  // 3. No usable cache — must wait for fresh data (cold start or very stale)
-  if (g_allMatchesCache.promise) return g_allMatchesCache.promise;
+  // Layer 3: Memory empty — try MySQL (< 50ms, survives restarts)
+  const dbResult = await _readDbCache();
+  if (dbResult) {
+    g_allMatchesCache.data = dbResult.data;
+    g_allMatchesCache.ts   = dbResult.ts;
+    // If stale trigger background refresh, but return DB data instantly
+    if (Date.now() - dbResult.ts > ALLMATCHES_CACHE_TTL) {
+      _triggerBackgroundRefresh();
+    }
+    return dbResult.data;
+  }
 
-  const fetchPromise = _fetchAllMatches().finally(() => {
+  // Layer 4: Try file cache (no DB available)
+  const fileResult = await _readFileCache();
+  if (fileResult) {
+    g_allMatchesCache.data = fileResult.data;
+    g_allMatchesCache.ts   = fileResult.ts;
+    _triggerBackgroundRefresh();
+    return fileResult.data;
+  }
+
+  // Layer 5: True cold start — must wait for external APIs (first run only)
+  if (g_allMatchesCache.promise) return g_allMatchesCache.promise;
+  g_allMatchesCache.promise = _fetchAllMatches().finally(() => {
     g_allMatchesCache.promise = null;
   });
-  g_allMatchesCache.promise = fetchPromise;
-  return fetchPromise;
+  return g_allMatchesCache.promise;
 }
 
 async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
@@ -3084,10 +3173,11 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
 
   const sorted = sortMatchesWithPriority(windowed.length > 0 ? windowed : allMatches);
 
-  // Update the global cache and persist to disk
+  // Update all cache layers
   g_allMatchesCache.data = sorted;
   g_allMatchesCache.ts = Date.now();
-  void _persistCache(sorted);
+  void _writeDbCache(sorted);
+  void _writeFileCache(sorted);
 
   return sorted;
 }
