@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Radio, Users } from "lucide-react"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react"
+import { Radio, Users, Volume2, VolumeX } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -10,10 +10,53 @@ import { ALL_SPORTS, getSportIcon } from "@/lib/sports-data"
 import { useLiveMatches } from "@/lib/hooks/use-matches"
 import { FlagIcon } from "@/components/ui/flag-icon"
 import { BestBetsPanel } from "@/components/home/best-bets-panel"
+import { useLiveMatchSounds, useLiveSound } from "@/components/live/use-live-sounds"
 
 // Priority order for sports (football first, then by popularity)
 const SPORT_PRIORITY: Record<number, number> = {
   1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 27: 8, 26: 9, 29: 10, 33: 11,
+}
+
+function SoundToggle() {
+  const { setEnabled, isEnabled } = useLiveSound()
+  const [on, setOn] = useState(true)
+  const toggle = useCallback(() => {
+    const next = !on
+    setOn(next)
+    setEnabled(next)
+  }, [on, setEnabled])
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={toggle}
+      title={on ? "Mute live sounds" : "Enable live sounds"}
+      className="h-7 w-7 p-0 rounded-full text-muted-foreground hover:text-foreground"
+    >
+      {on ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+    </Button>
+  )
+}
+
+function LiveSoundWatcher({ matches }: { matches: ReturnType<typeof useLiveMatches>['matches'] }) {
+  // Get followed team IDs from localStorage
+  const [followedIds, setFollowedIds] = useState<string[]>([])
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('betcheza:followed-teams') || '[]'
+      setFollowedIds(JSON.parse(raw))
+    } catch { /* ignore */ }
+  }, [])
+  const simplified = useMemo(() => matches.map(m => ({
+    id: m.id,
+    status: m.status,
+    homeScore: m.homeScore,
+    awayScore: m.awayScore,
+    homeTeam: { id: m.homeTeam?.espnTeamId || '', name: m.homeTeam?.name || '' },
+    awayTeam: { id: m.awayTeam?.espnTeamId || '', name: m.awayTeam?.name || '' },
+  })), [matches])
+  useLiveMatchSounds(simplified, followedIds)
+  return null
 }
 
 export default function LivePage() {
@@ -71,6 +114,9 @@ export default function LivePage() {
 
   return (
     <div className="flex min-h-0 flex-1">
+      {/* Sound watcher — detects goal/card events and plays tones */}
+      <LiveSoundWatcher matches={matches} />
+
       {/* MAIN CONTENT */}
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="px-3 py-3 md:px-5 md:py-4">
@@ -89,6 +135,7 @@ export default function LivePage() {
               <span className="tabular-nums">{totalWatching.toLocaleString()} watching</span>
               <span className="hidden sm:inline">·</span>
               <span className="hidden sm:inline tabular-nums">{totalPredictions} tips</span>
+              <SoundToggle />
             </div>
           </div>
 

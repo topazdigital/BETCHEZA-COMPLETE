@@ -625,8 +625,11 @@ export interface MatchEvent {
   type: MatchEventType;
   side: 'home' | 'away';
   playerName?: string;
+  playerId?: string;
   playerOut?: string;
+  playerOutId?: string;
   assistName?: string;
+  assistId?: string;
   homeScore?: number;
   awayScore?: number;
   description?: string;
@@ -691,7 +694,9 @@ function buildMatchEvents(summary: ESPNSummaryResponse, homeTeamId?: string, awa
         type: eventType === 'other' ? 'goal' : eventType,
         side,
         playerName: scorer?.athlete?.displayName || scorer?.athlete?.shortName,
+        playerId: scorer?.athlete?.id,
         assistName: assister?.athlete?.displayName || assister?.athlete?.shortName,
+        assistId: assister?.athlete?.id,
         homeScore: play.homeScore,
         awayScore: play.awayScore,
         description: play.text,
@@ -724,7 +729,9 @@ function buildMatchEvents(summary: ESPNSummaryResponse, homeTeamId?: string, awa
           type: 'substitution',
           side,
           playerName: playerIn?.athlete?.displayName || playerIn?.athlete?.shortName,
+          playerId: playerIn?.athlete?.id,
           playerOut: playerOut?.athlete?.displayName || playerOut?.athlete?.shortName,
+          playerOutId: playerOut?.athlete?.id,
           homeScore: play.homeScore,
           awayScore: play.awayScore,
           period: play.period?.number,
@@ -737,6 +744,7 @@ function buildMatchEvents(summary: ESPNSummaryResponse, homeTeamId?: string, awa
           type: eventType,
           side,
           playerName: player?.athlete?.displayName || player?.athlete?.shortName,
+          playerId: player?.athlete?.id,
           homeScore: play.homeScore,
           awayScore: play.awayScore,
           period: play.period?.number,

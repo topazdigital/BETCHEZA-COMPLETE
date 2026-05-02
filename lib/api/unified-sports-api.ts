@@ -987,6 +987,19 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     });
     if (r.ok) data = await r.json() as ESPNScoreboardResponseFull;
   } catch { /* fall through */ }
+  // Fallback: if the date-range request returns nothing, try the default
+  // endpoint (no date parameter). This is common for tennis/golf where ESPN
+  // only exposes the currently-running or most-recent tournament in scoreboard.
+  if (!data?.events?.length) {
+    try {
+      const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard`;
+      const r2 = await fetch(defaultUrl, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store' as const,
+      });
+      if (r2.ok) data = await r2.json() as ESPNScoreboardResponseFull;
+    } catch { /* fall through */ }
+  }
   if (!data?.events?.length) {
     setCache(cacheKey, []);
     return [];

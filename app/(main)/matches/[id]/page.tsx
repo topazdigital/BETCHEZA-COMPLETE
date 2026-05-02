@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, use, useEffect, useRef, useCallback } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import useSWR from "swr"
@@ -121,8 +122,11 @@ interface MatchEvent {
   type: 'goal' | 'own_goal' | 'penalty_goal' | 'yellow_card' | 'red_card' | 'yellow_red_card' | 'substitution' | 'var' | 'other'
   side: 'home' | 'away'
   playerName?: string
+  playerId?: string
   playerOut?: string
+  playerOutId?: string
   assistName?: string
+  assistId?: string
   homeScore?: number
   awayScore?: number
   description?: string
@@ -932,16 +936,36 @@ function SegmentBreakdownGrid({
 }
 
 // ---- Scorers inline display for hero ----
+function PlayerLink({ name, id }: { name?: string; id?: string }) {
+  if (!name) return <span className="italic text-white/40">?</span>
+  const href = id ? `/players/${id}` : `/search?q=${encodeURIComponent(name)}`
+  return (
+    <Link href={href} className="hover:underline hover:text-white transition-colors" onClick={e => e.stopPropagation()}>
+      {name}
+    </Link>
+  )
+}
+
 function ScorersList({ events, side }: { events: MatchEvent[]; side: 'home' | 'away' }) {
   const goals = events.filter(e => e.side === side && (e.type === 'goal' || e.type === 'own_goal' || e.type === 'penalty_goal'))
   if (goals.length === 0) return null
   return (
     <div className={cn("flex flex-col gap-0.5 mt-2", side === 'home' ? "items-end" : "items-start")}>
       {goals.map((g, i) => (
-        <span key={i} className="flex items-center gap-1 text-[11px] text-white/80">
-          <span>⚽</span>
-          <span>{g.playerName || '?'}</span>
-          <span className="text-white/50">{g.minute}</span>
+        <span key={i} className={cn("flex items-center gap-1 text-[11px] text-white/80", side === 'home' ? "flex-row-reverse" : "flex-row")}>
+          <span>{g.type === 'own_goal' ? '🔴' : '⚽'}</span>
+          <span className="flex flex-col" style={{ alignItems: side === 'home' ? 'flex-end' : 'flex-start' }}>
+            <span className="flex items-center gap-1">
+              <PlayerLink name={g.playerName} id={g.playerId} />
+              <span className="text-white/50">{g.minute}</span>
+            </span>
+            {g.assistName && (
+              <span className="text-[10px] text-white/45 flex items-center gap-0.5">
+                <span>↪</span>
+                <PlayerLink name={g.assistName} id={g.assistId} />
+              </span>
+            )}
+          </span>
         </span>
       ))}
     </div>
@@ -961,6 +985,15 @@ export default function MatchDetailPage({ params }: PageProps) {
   // INSIDE the modal so they never miss it (the old inline form pushed the
   // CTA below the fold).
   const [tipModalOpen, setTipModalOpen] = useState(false)
+  const searchParams = useSearchParams()
+
+  // Auto-open the tip modal when ?action=tip is in the URL
+  // This is used by the bet slip "Post as Tip" button
+  useEffect(() => {
+    if (searchParams?.get('action') === 'tip') {
+      setTipModalOpen(true)
+    }
+  }, [searchParams])
 
   // Hydrate the bookmark state from localStorage on mount so the icon
   // reflects whether THIS match is already saved. We persist locally

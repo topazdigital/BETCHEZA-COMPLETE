@@ -72,6 +72,10 @@ Key architectural decisions and features include:
 -   **Form Logos Fallback**: Right sidebar standings FORM section now falls back to `match.homeTeam.logo` / `match.awayTeam.logo` when `standingRow.teamLogo` is missing (`homeStandingRaw/awayStandingRaw` pattern).
 -   **League ID Alignment**: Ghana (9026→252), Tanzania (9028→256) in `lib/sports-data.ts` now match ESPN config `leagueId` values — league pages for these now correctly show matches.
 -   **Missing Exports Fixed**: `listFollowedTeams` alias added to `lib/follows-store.ts`; `setBaselineLikes()` and `getCommentCount()` added to `lib/tip-engagement-store.ts`; `process.env.DATABASE_URL` guard in cron route replaced with `getPool()` check.
+-   **Tennis Fallback Fetch**: `fetchESPNGlobalSport` in `lib/api/unified-sports-api.ts` now falls back to the date-less `/all/scoreboard` endpoint when the date-range request returns 0 events (common for tennis/golf between majors).
+-   **Post-as-Tip Modal Auto-Open**: Match detail page (`app/(main)/matches/[id]/page.tsx`) now reads `?action=tip` via `useSearchParams` and auto-opens the tip modal. Bet slip "Post as Tip" navigates to `/matches/[slug]?action=tip`.
+-   **Live Sounds**: `components/live/use-live-sounds.ts` provides synthesized Web Audio API sounds — goal roar, follow-team goal (louder), yellow card, whistle, kickoff. `LiveSoundWatcher` in `app/(main)/live/page.tsx` detects score changes each SWR poll and plays the appropriate tone. A mute/unmute toggle appears in the Live page header.
+-   **Clickable Scorer + Assister Names**: `ScorersList` in match detail hero section now renders `PlayerLink` components — clicking a scorer/assister name navigates to `/players/[espnId]` (or `/search?q=name` fallback). Own-goal emoji changed to 🔴. Assist names shown below scorer with ↪ arrow. Player IDs (`playerId`, `assistId`, `playerOutId`) now extracted from ESPN participants in `app/api/matches/[id]/details/route.ts`.
 
 ## External Dependencies
 
