@@ -236,6 +236,9 @@ export async function listFollowersOfTeam(teamId: string): Promise<number[]> {
 /** Alias for getFollowedTeams — used by the match-reminder cron job */
 export const listFollowedTeams = getFollowedTeams;
 
+/** Alias for getFollowedTipsters — used by dashboard route */
+export const listFollowedTipsters = getFollowedTipsters;
+
 // ─── PLAYERS ──────────────────────────────────────────────────────────────────
 export interface FollowedPlayer {
   playerId: string;

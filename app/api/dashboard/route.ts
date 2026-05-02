@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { listFollowedTeams, listFollowedTipsters } from '@/lib/follows-store';
+import { listFollowedTeams, getFollowedTipsters as listFollowedTipsters } from '@/lib/follows-store';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
