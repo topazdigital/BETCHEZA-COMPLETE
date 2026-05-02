@@ -22,24 +22,74 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// Predefined avatars using DiceBear — a set with distinct styles
+// Predefined avatars using DiceBear — multiple styles for variety
 const PRESET_AVATARS = [
-  { id: 'betz1',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz1&backgroundColor=b6e3f4'  },
-  { id: 'betz2',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz2&backgroundColor=c0aede'  },
-  { id: 'betz3',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz3&backgroundColor=d1d4f9'  },
-  { id: 'betz4',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz4&backgroundColor=ffd5dc'  },
-  { id: 'betz5',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz5&backgroundColor=ffdfbf'  },
-  { id: 'betz6',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz6&backgroundColor=b6e3f4'  },
-  { id: 'betz7',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz7&backgroundColor=c0aede'  },
-  { id: 'betz8',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz8&backgroundColor=d1d4f9'  },
-  { id: 'betz9',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz9&backgroundColor=ffd5dc'  },
-  { id: 'betz10', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz10&backgroundColor=ffdfbf' },
-  { id: 'betz11', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz11&backgroundColor=b6e3f4' },
-  { id: 'betz12', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz12&backgroundColor=c0aede' },
-  { id: 'betz13', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz13&backgroundColor=d1d4f9' },
-  { id: 'betz14', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz14&backgroundColor=ffd5dc' },
-  { id: 'betz15', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz15&backgroundColor=ffdfbf' },
-  { id: 'betz16', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=betz16&backgroundColor=b6e3f4' },
+  // ── Avataaars (illustrated portraits) ──────────────────────────────
+  { id: 'av1',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4' },
+  { id: 'av2',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka&backgroundColor=c0aede' },
+  { id: 'av3',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mia&backgroundColor=d1d4f9' },
+  { id: 'av4',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Leo&backgroundColor=ffd5dc' },
+  { id: 'av5',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Zoe&backgroundColor=ffdfbf' },
+  { id: 'av6',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kai&backgroundColor=b6e3f4' },
+  { id: 'av7',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sam&backgroundColor=c0aede' },
+  { id: 'av8',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex&backgroundColor=d1d4f9' },
+  { id: 'av9',  url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan&backgroundColor=ffd5dc' },
+  { id: 'av10', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Taylor&backgroundColor=ffdfbf' },
+  { id: 'av11', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Morgan&backgroundColor=b6e3f4' },
+  { id: 'av12', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=River&backgroundColor=c0aede' },
+  { id: 'av13', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sage&backgroundColor=d1d4f9' },
+  { id: 'av14', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Quinn&backgroundColor=ffd5dc' },
+  { id: 'av15', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Blake&backgroundColor=ffdfbf' },
+  { id: 'av16', url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Reese&backgroundColor=b6e3f4' },
+  // ── Bottts (robots) ────────────────────────────────────────────────
+  { id: 'bt1',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo1&backgroundColor=b6e3f4' },
+  { id: 'bt2',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo2&backgroundColor=c0aede' },
+  { id: 'bt3',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo3&backgroundColor=d1d4f9' },
+  { id: 'bt4',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo4&backgroundColor=ffd5dc' },
+  { id: 'bt5',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo5&backgroundColor=ffdfbf' },
+  { id: 'bt6',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo6&backgroundColor=b6e3f4' },
+  { id: 'bt7',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo7&backgroundColor=c0aede' },
+  { id: 'bt8',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo8&backgroundColor=d1d4f9' },
+  { id: 'bt9',  url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo9&backgroundColor=ffd5dc' },
+  { id: 'bt10', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Robo10&backgroundColor=ffdfbf' },
+  // ── Pixel-art ──────────────────────────────────────────────────────
+  { id: 'px1',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix1&backgroundColor=b6e3f4' },
+  { id: 'px2',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix2&backgroundColor=c0aede' },
+  { id: 'px3',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix3&backgroundColor=d1d4f9' },
+  { id: 'px4',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix4&backgroundColor=ffd5dc' },
+  { id: 'px5',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix5&backgroundColor=ffdfbf' },
+  { id: 'px6',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix6&backgroundColor=b6e3f4' },
+  { id: 'px7',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix7&backgroundColor=c0aede' },
+  { id: 'px8',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix8&backgroundColor=d1d4f9' },
+  { id: 'px9',  url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix9&backgroundColor=ffd5dc' },
+  { id: 'px10', url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix10&backgroundColor=ffdfbf' },
+  // ── Lorelei (illustrated faces) ────────────────────────────────────
+  { id: 'lo1',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore1&backgroundColor=b6e3f4' },
+  { id: 'lo2',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore2&backgroundColor=c0aede' },
+  { id: 'lo3',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore3&backgroundColor=d1d4f9' },
+  { id: 'lo4',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore4&backgroundColor=ffd5dc' },
+  { id: 'lo5',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore5&backgroundColor=ffdfbf' },
+  { id: 'lo6',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore6&backgroundColor=b6e3f4' },
+  { id: 'lo7',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore7&backgroundColor=c0aede' },
+  { id: 'lo8',  url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore8&backgroundColor=d1d4f9' },
+  // ── Fun-emoji ──────────────────────────────────────────────────────
+  { id: 'em1',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji1&backgroundColor=b6e3f4' },
+  { id: 'em2',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji2&backgroundColor=c0aede' },
+  { id: 'em3',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji3&backgroundColor=d1d4f9' },
+  { id: 'em4',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji4&backgroundColor=ffd5dc' },
+  { id: 'em5',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji5&backgroundColor=ffdfbf' },
+  { id: 'em6',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji6&backgroundColor=b6e3f4' },
+  { id: 'em7',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji7&backgroundColor=c0aede' },
+  { id: 'em8',  url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji8&backgroundColor=d1d4f9' },
+  // ── Thumbs ─────────────────────────────────────────────────────────
+  { id: 'th1',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb1&backgroundColor=b6e3f4&shapeColor=0a5b83,1c799f,69d2e7' },
+  { id: 'th2',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb2&backgroundColor=c0aede&shapeColor=6b4c8e,9b59b6,d8a9f7' },
+  { id: 'th3',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb3&backgroundColor=d1d4f9&shapeColor=3b5bdb,4263eb,74c0fc' },
+  { id: 'th4',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb4&backgroundColor=ffd5dc&shapeColor=c92a2a,e03131,ff6b6b' },
+  { id: 'th5',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb5&backgroundColor=ffdfbf&shapeColor=e67700,f08c00,fcc419' },
+  { id: 'th6',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb6&backgroundColor=b6e3f4&shapeColor=2b8a3e,2f9e44,8ce99a' },
+  { id: 'th7',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb7&backgroundColor=c0aede&shapeColor=5f3dc4,7048e8,b197fc' },
+  { id: 'th8',  url: 'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb8&backgroundColor=d1d4f9&shapeColor=1864ab,1971c2,74c0fc' },
 ];
 
 export default function SettingsPage() {
@@ -268,7 +318,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Avatar grid */}
-          <div className="grid grid-cols-8 gap-2">
+          <div className="grid grid-cols-8 gap-2 max-h-72 overflow-y-auto pr-1">
             {PRESET_AVATARS.map((av) => (
               <button
                 key={av.id}

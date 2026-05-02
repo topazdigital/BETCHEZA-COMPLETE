@@ -2528,6 +2528,46 @@ function MatchInfoRail({
         </Card>
       )}
 
+      {/* Betting markets */}
+      {match.markets && match.markets.length > 0 && (() => {
+        const MARKET_PRIORITY = ['btts', 'totals_2_5', 'totals', 'double_chance', 'draw_no_bet', 'dnb']
+        const orderedMarkets = [
+          ...MARKET_PRIORITY.map(k => match.markets!.find(m => m.key === k)).filter(Boolean),
+          ...match.markets.filter(m => !MARKET_PRIORITY.includes(m.key) && !['h2h', 'spreads'].includes(m.key)),
+        ] as typeof match.markets
+        const displayMarkets = orderedMarkets.slice(0, 5)
+        if (displayMarkets.length === 0) return null
+        return (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <TrendingUp className="h-3.5 w-3.5" />
+                Betting Markets
+              </h3>
+              {displayMarkets.map((mkt) => (
+                <div key={mkt.key} className="space-y-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{mkt.name}</p>
+                  <div className={cn(
+                    'grid gap-1',
+                    mkt.outcomes.length === 2 ? 'grid-cols-2' : mkt.outcomes.length === 3 ? 'grid-cols-3' : 'grid-cols-2',
+                  )}>
+                    {mkt.outcomes.slice(0, mkt.outcomes.length <= 6 ? mkt.outcomes.length : 6).map((o, oi) => (
+                      <div
+                        key={oi}
+                        className="flex flex-col items-center rounded-lg bg-muted/40 border border-border/50 px-1.5 py-1.5 text-center hover:bg-muted/70 transition-colors cursor-default"
+                      >
+                        <span className="text-[9px] text-muted-foreground truncate w-full text-center leading-tight">{o.name}</span>
+                        <span className="text-sm font-black tabular-nums text-foreground mt-0.5">{o.price.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       {/* Standings snapshot */}
       {(homeStanding || awayStanding) && (
         <Card>

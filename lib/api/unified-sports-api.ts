@@ -328,6 +328,14 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'alg.1', sportId: 1, leagueId: 100, leagueName: 'Algerian Ligue 1', country: 'Algeria', countryCode: 'DZ', sportType: 'soccer' },
   { sport: 'soccer', league: 'caf.cl', sportId: 1, leagueId: 102, leagueName: 'CAF Champions League', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
   { sport: 'soccer', league: 'caf.cc', sportId: 1, leagueId: 103, leagueName: 'CAF Confederation Cup', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  // SOCCER - East Africa (explicit entries so match IDs resolve correctly)
+  { sport: 'soccer', league: 'ken.1', sportId: 1, leagueId: 9022, leagueName: 'Kenya Premier League', country: 'Kenya', countryCode: 'KE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uga.1', sportId: 1, leagueId: 14059, leagueName: 'Uganda Premier League', country: 'Uganda', countryCode: 'UG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tza.1', sportId: 1, leagueId: 11587, leagueName: 'Tanzania Premier League', country: 'Tanzania', countryCode: 'TZ', sportType: 'soccer' },
+  { sport: 'soccer', league: 'nga.1', sportId: 1, leagueId: 11584, leagueName: 'Nigerian Professional League', country: 'Nigeria', countryCode: 'NG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'gha.1', sportId: 1, leagueId: 11585, leagueName: 'Ghana Premier League', country: 'Ghana', countryCode: 'GH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eth.1', sportId: 1, leagueId: 11586, leagueName: 'Ethiopian Premier League', country: 'Ethiopia', countryCode: 'ET', sportType: 'soccer' },
+  { sport: 'soccer', league: 'zam.1', sportId: 1, leagueId: 11583, leagueName: 'Zambia Super League', country: 'Zambia', countryCode: 'ZM', sportType: 'soccer' },
 
   // SOCCER - Asia (Cup competitions)
   { sport: 'soccer', league: 'afc.champions', sportId: 1, leagueId: 104, leagueName: 'AFC Champions League', country: 'Asia', countryCode: 'AS', sportType: 'soccer' },

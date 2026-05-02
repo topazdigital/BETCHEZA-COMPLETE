@@ -146,8 +146,12 @@ export function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
-                      {user.displayName.charAt(0).toUpperCase()}
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground overflow-hidden">
+                      {user.avatarUrl ? (
+                        <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        user.displayName.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <span className="hidden sm:inline">{user.displayName}</span>
                     <ChevronDown className="h-3 w-3" />
