@@ -1,0 +1,23 @@
+1. In settings, all changes should be effective, even when changing odds, time zone, and user details. Users should not be able to change username. Add a place where they can change password if they want.
+
+2. In dashboard, the tipsters they follow should also appear, not just the teams. Following should be effective as well, just like how following teams is effective.
+
+3. In notifications, I tried turning something on and when I refreshed, it was turned off again. Fix this and make everything effective. When a user does anything on their profile, it should reflect the changes.
+
+4. Make all available payment gateways available for users as well, and they should connect with each other. So when admin sets the API keys in admin panel, they work as well. If not set, they should not work.
+
+5. Popular leagues in the main menu should show flags of their respective countries and not trophies.
+
+6. Add tip should not be there after a game finishes or is about to finish. If a game is live, it should show live odds, which should not be computerized but real odds. Add tip to only show real live odds when a game is live.
+
+7. In voting, I see “X” being ignored. Only a few people place a draw game, but not so popular. I keep seeing 1 (home) or 2 (away) being voted for.
+
+8. Fix all team logos in every page they show, and all player faces in every page they show.
+
+9. Remove all instances of double teams, e.g. I see Derby County and Derby County FC, Hull City and Hull City FC, etc. This should not be like that. Fix that and assign all teams to their respective leagues, and all leagues to their respective countries. If I type a team in AI predictor, it starts guessing and the match is not an upcoming match. I typed Arsenal vs Man City and it gave results which should not be possible as they are not playing.
+
+10. Autofill team name in the AI Prediction section. Team name is only autofilled when there is a match, or we can make the section choose matches by typing instead of team name. So an upcoming event is crawled, and the user types either of the team names, selects, and it gives prediction.
+
+11. In the recent predictions under AI Predictor, let’s have past results shown as well so users can track everything.
+
+12. There are no comments on the fixed section. We can make fake tipsters comment as well, and the comments should be realistic, not looking like AI (avoid hyphens in statements). I noticed that in tips section too, with some characters like that@#$s instead of that's. Fix that and fix everything without leaving any of my queries.
