@@ -206,6 +206,7 @@ export default function HomePage() {
                   <HeroCarousel
                     liveMatches={liveMatches.slice(0, 3)}
                     featuredMatches={upcomingMatches.slice(0, 3)}
+                    isLoading={isLoading}
                   />
                 </div>
               </div>
@@ -652,9 +653,11 @@ type CarouselMatch = ReturnType<typeof useMatches>['matches'][number];
 function HeroCarousel({
   liveMatches,
   featuredMatches,
+  isLoading,
 }: {
   liveMatches: CarouselMatch[];
   featuredMatches: CarouselMatch[];
+  isLoading?: boolean;
 }) {
   // Slides we actually have content for
   const slides = useMemo(() => {
@@ -681,6 +684,14 @@ function HeroCarousel({
   }, [slides.length]);
 
   if (slides.length === 0) {
+    if (isLoading) {
+      return (
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 p-6 text-center shadow-xl">
+          <div className="mx-auto h-8 w-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+          <p className="mt-3 text-sm font-semibold text-muted-foreground">Loading matches…</p>
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-dashed border-border bg-card/50 p-6 text-center shadow-xl">
         <Clock className="mx-auto h-8 w-8 text-muted-foreground/60" />

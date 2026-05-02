@@ -371,12 +371,16 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                   className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
                   <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm border border-border bg-white">
-                    <img
-                      src={bk.logo}
-                      alt={bk.name}
-                      className="h-4 w-4 object-contain"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
+                    {bk.logo ? (
+                      <img
+                        src={bk.logo}
+                        alt={bk.name}
+                        className="h-4 w-4 object-contain"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : (
+                      <span className="text-[7px] font-bold text-muted-foreground leading-none">{bk.name.slice(0, 2).toUpperCase()}</span>
+                    )}
                   </div>
                   <span className="truncate">{bk.name}</span>
                 </Link>

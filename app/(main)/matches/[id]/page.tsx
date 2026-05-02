@@ -27,7 +27,7 @@ import { teamHref, playerHref, tipsterHref } from "@/lib/utils/slug"
 import { formatTime, formatDate, getBrowserTimezone, getDayLabel } from "@/lib/utils/timezone"
 import { FlagIcon } from "@/components/ui/flag-icon"
 import { liveStatusLabel } from "@/lib/utils/live-status"
-import { matchIdToSlug } from "@/lib/utils/match-url"
+import { matchIdToSlug, matchToSlug } from "@/lib/utils/match-url"
 import { AIMatchPrediction } from "@/components/ai/ai-match-prediction"
 import { AIMultiMarket } from "@/components/ai/ai-multi-market"
 import { AddTipForm } from "@/components/matches/add-tip-form"
@@ -1038,6 +1038,8 @@ export default function MatchDetailPage({ params }: PageProps) {
     }
   }, [match])
 
+  const { addSelection, isSelected } = useBetSlip()
+
   const isLive = match && (match.status === 'live' || match.status === 'halftime' || match.status === 'extra_time' || match.status === 'penalties')
   const isFinished = match?.status === 'finished'
   const isHalftime = match?.status === 'halftime'
@@ -1278,11 +1280,53 @@ export default function MatchDetailPage({ params }: PageProps) {
             <div className="px-3 pb-3">
               <div className="rounded-lg bg-white/5 border border-white/10 p-2.5">
                 <div className="grid grid-cols-3 gap-2 mb-2">
-                  <OddsButton label="1" sublabel={match.homeTeam.name.split(' ')[0]} value={match.odds.home} />
+                  <OddsButton
+                    label="1"
+                    sublabel={match.homeTeam.name.split(' ')[0]}
+                    value={match.odds.home}
+                    selected={isSelected(match.id, 'h2h', match.homeTeam.name)}
+                    onClick={() => addSelection({
+                      matchId: match.id,
+                      matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                      marketKey: 'h2h',
+                      marketName: 'Match Winner',
+                      outcomeName: match.homeTeam.name,
+                      price: match.odds.home,
+                      matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                    })}
+                  />
                   {match.odds.draw !== undefined ? (
-                    <OddsButton label="X" sublabel="Draw" value={match.odds.draw} />
+                    <OddsButton
+                      label="X"
+                      sublabel="Draw"
+                      value={match.odds.draw}
+                      selected={isSelected(match.id, 'h2h', 'Draw')}
+                      onClick={() => addSelection({
+                        matchId: match.id,
+                        matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                        marketKey: 'h2h',
+                        marketName: 'Match Winner',
+                        outcomeName: 'Draw',
+                        price: match.odds.draw!,
+                        matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                      })}
+                    />
                   ) : <div />}
-                  <OddsButton label="2" sublabel={match.awayTeam.name.split(' ')[0]} value={match.odds.away} />
+                  <OddsButton
+                    label="2"
+                    sublabel={match.awayTeam.name.split(' ')[0]}
+                    value={match.odds.away}
+                    selected={isSelected(match.id, 'h2h', match.awayTeam.name)}
+                    onClick={() => addSelection({
+                      matchId: match.id,
+                      matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                      marketKey: 'h2h',
+                      marketName: 'Match Winner',
+                      outcomeName: match.awayTeam.name,
+                      price: match.odds.away,
+                      matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                    })}
+                  />
                 </div>
                 <OddsProbBar home={match.odds.home} draw={match.odds.draw} away={match.odds.away} />
                 <div className="flex items-center justify-between mt-1.5">
@@ -2469,6 +2513,7 @@ function MarketsSection({ match }: { match: MatchDetails['match'] }) {
                         marketName: mkt.name,
                         outcomeName: o.name,
                         price: o.price,
+                        matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
                       })}
                       className={cn(
                         'flex flex-col items-center rounded-lg border px-1.5 py-1.5 text-center transition-all active:scale-95',
@@ -2739,11 +2784,19 @@ function MatchInfoRail({
 
 // ===== Sub-components =====
 
-function OddsButton({ label, sublabel, value }: { label: string; sublabel: string; value: number }) {
+function OddsButton({ label, sublabel, value, onClick, selected }: { label: string; sublabel: string; value: number; onClick?: () => void; selected?: boolean }) {
   return (
-    <div className="rounded-xl bg-white/8 border border-white/15 p-3 text-center cursor-pointer hover:bg-white/15 hover:border-white/25 transition-all">
+    <div
+      onClick={onClick}
+      className={cn(
+        "rounded-xl border p-3 text-center cursor-pointer transition-all active:scale-95",
+        selected
+          ? "bg-primary/25 border-primary/70"
+          : "bg-white/8 border-white/15 hover:bg-white/15 hover:border-white/25",
+      )}
+    >
       <p className="text-[10px] uppercase tracking-widest text-white/40 font-medium">{label}</p>
-      <p className="text-xl font-black text-white mt-0.5">{value.toFixed(2)}</p>
+      <p className={cn("text-xl font-black mt-0.5", selected ? "text-primary" : "text-white")}>{value.toFixed(2)}</p>
       <p className="text-[9px] text-white/30 truncate mt-0.5">{sublabel}</p>
     </div>
   )

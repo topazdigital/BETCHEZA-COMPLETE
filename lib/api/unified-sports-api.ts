@@ -471,6 +471,134 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'club.friendly', sportId: 1, leagueId: 280, leagueName: 'Club Friendly', country: 'World', countryCode: 'WO', sportType: 'soccer' },
   { sport: 'soccer', league: 'fifa.intercontinental', sportId: 1, leagueId: 281, leagueName: 'FIFA Intercontinental Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
 
+  // SOCCER - Nordic Leagues
+  { sport: 'soccer', league: 'nor.1', sportId: 1, leagueId: 290, leagueName: 'Eliteserien', country: 'Norway', countryCode: 'NO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'nor.cup', sportId: 1, leagueId: 291, leagueName: 'Norway Cup', country: 'Norway', countryCode: 'NO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'swe.1', sportId: 1, leagueId: 292, leagueName: 'Allsvenskan', country: 'Sweden', countryCode: 'SE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'swe.cup', sportId: 1, leagueId: 293, leagueName: 'Svenska Cupen', country: 'Sweden', countryCode: 'SE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'den.1', sportId: 1, leagueId: 294, leagueName: 'Superliga', country: 'Denmark', countryCode: 'DK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'den.cup', sportId: 1, leagueId: 295, leagueName: 'DBU Cup', country: 'Denmark', countryCode: 'DK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fin.1', sportId: 1, leagueId: 296, leagueName: 'Veikkausliiga', country: 'Finland', countryCode: 'FI', sportType: 'soccer' },
+  { sport: 'soccer', league: 'isl.1', sportId: 1, leagueId: 297, leagueName: 'Úrvalsdeild', country: 'Iceland', countryCode: 'IS', sportType: 'soccer' },
+
+  // SOCCER - Eastern Europe / Balkans
+  { sport: 'soccer', league: 'rou.1', sportId: 1, leagueId: 300, leagueName: 'SuperLiga Romania', country: 'Romania', countryCode: 'RO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bul.1', sportId: 1, leagueId: 301, leagueName: 'Bulgarian First League', country: 'Bulgaria', countryCode: 'BG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'srb.1', sportId: 1, leagueId: 302, leagueName: 'Serbian SuperLiga', country: 'Serbia', countryCode: 'RS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hrv.1', sportId: 1, leagueId: 303, leagueName: 'HNL Croatia', country: 'Croatia', countryCode: 'HR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'svn.1', sportId: 1, leagueId: 304, leagueName: 'PrvaLiga Slovenia', country: 'Slovenia', countryCode: 'SI', sportType: 'soccer' },
+  { sport: 'soccer', league: 'svk.1', sportId: 1, leagueId: 305, leagueName: 'Fortuna Liga Slovakia', country: 'Slovakia', countryCode: 'SK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hun.1', sportId: 1, leagueId: 306, leagueName: 'NB I Hungary', country: 'Hungary', countryCode: 'HU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'alb.1', sportId: 1, leagueId: 307, leagueName: 'Kategoria Superiore', country: 'Albania', countryCode: 'AL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mkd.1', sportId: 1, leagueId: 308, leagueName: 'Macedonian Football League', country: 'North Macedonia', countryCode: 'MK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bih.1', sportId: 1, leagueId: 309, leagueName: 'Premier League BiH', country: 'Bosnia & Herzegovina', countryCode: 'BA', sportType: 'soccer' },
+
+  // SOCCER - Baltic / Caucasus / Central Asia
+  { sport: 'soccer', league: 'kaz.1', sportId: 1, leagueId: 320, leagueName: 'Kazakhstan Premier League', country: 'Kazakhstan', countryCode: 'KZ', sportType: 'soccer' },
+  { sport: 'soccer', league: 'geo.1', sportId: 1, leagueId: 321, leagueName: 'Erovnuli Liga', country: 'Georgia', countryCode: 'GE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'arm.1', sportId: 1, leagueId: 322, leagueName: 'Armenian Premier League', country: 'Armenia', countryCode: 'AM', sportType: 'soccer' },
+  { sport: 'soccer', league: 'aze.1', sportId: 1, leagueId: 323, leagueName: 'Azerbaijan Premier League', country: 'Azerbaijan', countryCode: 'AZ', sportType: 'soccer' },
+
+  // SOCCER - More Middle East / North Africa
+  { sport: 'soccer', league: 'egy.1', sportId: 1, leagueId: 330, leagueName: 'Egyptian Premier League', country: 'Egypt', countryCode: 'EG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mar.1', sportId: 1, leagueId: 331, leagueName: 'Botola Pro', country: 'Morocco', countryCode: 'MA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tun.1', sportId: 1, leagueId: 332, leagueName: 'Tunisian Ligue Professionnelle', country: 'Tunisia', countryCode: 'TN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'jor.1', sportId: 1, leagueId: 333, leagueName: 'Jordan Pro League', country: 'Jordan', countryCode: 'JO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'omn.1', sportId: 1, leagueId: 334, leagueName: 'Oman Professional League', country: 'Oman', countryCode: 'OM', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bhr.1', sportId: 1, leagueId: 335, leagueName: 'Bahrain Premier League', country: 'Bahrain', countryCode: 'BH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'kuw.1', sportId: 1, leagueId: 336, leagueName: 'Kuwait Premier League', country: 'Kuwait', countryCode: 'KW', sportType: 'soccer' },
+
+  // SOCCER - More Asia / Pacific
+  { sport: 'soccer', league: 'ind.1', sportId: 1, leagueId: 340, leagueName: 'Indian Super League', country: 'India', countryCode: 'IN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mys.1', sportId: 1, leagueId: 341, leagueName: 'Malaysia Super League', country: 'Malaysia', countryCode: 'MY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tha.1', sportId: 1, leagueId: 342, leagueName: 'Thai League 1', country: 'Thailand', countryCode: 'TH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'nzl.1', sportId: 1, leagueId: 343, leagueName: 'New Zealand Football Championship', country: 'New Zealand', countryCode: 'NZ', sportType: 'soccer' },
+  { sport: 'soccer', league: 'idn.1', sportId: 1, leagueId: 344, leagueName: 'Liga 1 Indonesia', country: 'Indonesia', countryCode: 'ID', sportType: 'soccer' },
+
+  // SOCCER - More South America
+  { sport: 'soccer', league: 'col.1', sportId: 1, leagueId: 350, leagueName: 'Categoría Primera A', country: 'Colombia', countryCode: 'CO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ven.1', sportId: 1, leagueId: 351, leagueName: 'Venezuelan Primera División', country: 'Venezuela', countryCode: 'VE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'per.1', sportId: 1, leagueId: 352, leagueName: 'Liga 1 Peru', country: 'Peru', countryCode: 'PE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ecu.1', sportId: 1, leagueId: 353, leagueName: 'Liga Pro Ecuador', country: 'Ecuador', countryCode: 'EC', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bol.1', sportId: 1, leagueId: 354, leagueName: 'Bolivian División de Fútbol Profesional', country: 'Bolivia', countryCode: 'BO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ury.1', sportId: 1, leagueId: 355, leagueName: 'Uruguayan Primera División', country: 'Uruguay', countryCode: 'UY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'par.1', sportId: 1, leagueId: 356, leagueName: 'División de Honor Paraguay', country: 'Paraguay', countryCode: 'PY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'chl.1', sportId: 1, leagueId: 357, leagueName: 'Chilean Primera División', country: 'Chile', countryCode: 'CL', sportType: 'soccer' },
+
+  // SOCCER - CONCACAF / Caribbean (more)
+  { sport: 'soccer', league: 'concacaf.gold', sportId: 1, leagueId: 360, leagueName: 'CONCACAF Gold Cup', country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'concacaf.nations', sportId: 1, leagueId: 361, leagueName: 'CONCACAF Nations League', country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'conmebol.sudamericana', sportId: 1, leagueId: 362, leagueName: 'Copa Sudamericana', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'conmebol.libertadores', sportId: 1, leagueId: 363, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+
+  // SOCCER - More African Leagues
+  { sport: 'soccer', league: 'rsa.1', sportId: 1, leagueId: 370, leagueName: 'South African Premier Division', country: 'South Africa', countryCode: 'ZA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ang.1', sportId: 1, leagueId: 371, leagueName: 'Girabola', country: 'Angola', countryCode: 'AO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eth.1', sportId: 1, leagueId: 372, leagueName: 'Ethiopian Premier League', country: 'Ethiopia', countryCode: 'ET', sportType: 'soccer' },
+
+  // BASKETBALL - More leagues
+  { sport: 'basketball', league: 'wnba', sportId: 2, leagueId: 140, leagueName: 'WNBA', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'mens-college-basketball', sportId: 2, leagueId: 141, leagueName: 'NCAA Basketball', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'nba.gleague', sportId: 2, leagueId: 142, leagueName: 'NBA G League', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'gre.a1', sportId: 2, leagueId: 143, leagueName: 'Greek A1 Basket League', country: 'Greece', countryCode: 'GR', sportType: 'basketball' },
+  { sport: 'basketball', league: 'rus.vtb', sportId: 2, leagueId: 144, leagueName: 'VTB United League', country: 'Russia', countryCode: 'RU', sportType: 'basketball' },
+  { sport: 'basketball', league: 'pol.plk', sportId: 2, leagueId: 145, leagueName: 'Polska Liga Koszykówki', country: 'Poland', countryCode: 'PL', sportType: 'basketball' },
+  { sport: 'basketball', league: 'fiba.europe', sportId: 2, leagueId: 146, leagueName: 'FIBA EuroBasket', country: 'Europe', countryCode: 'EU', sportType: 'basketball' },
+  { sport: 'basketball', league: 'fiba.americas', sportId: 2, leagueId: 147, leagueName: 'FIBA AmeriCup', country: 'Americas', countryCode: 'SA', sportType: 'basketball' },
+  { sport: 'basketball', league: 'cba', sportId: 2, leagueId: 148, leagueName: 'Chinese Basketball Association', country: 'China', countryCode: 'CN', sportType: 'basketball' },
+
+  // RUGBY - More
+  { sport: 'rugby', league: 'eng.1', sportId: 8, leagueId: 714, leagueName: 'Premiership Rugby', country: 'England', countryCode: 'GB-ENG', sportType: 'rugby' },
+  { sport: 'rugby', league: 'super.rugby', sportId: 8, leagueId: 715, leagueName: 'Super Rugby Pacific', country: 'Oceania', countryCode: 'AU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'nrl', sportId: 8, leagueId: 716, leagueName: 'NRL', country: 'Australia', countryCode: 'AU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'state.of.origin', sportId: 8, leagueId: 717, leagueName: 'State of Origin', country: 'Australia', countryCode: 'AU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'six.nations', sportId: 8, leagueId: 718, leagueName: 'Six Nations', country: 'Europe', countryCode: 'EU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'autumn.nations', sportId: 8, leagueId: 719, leagueName: 'Autumn Nations Series', country: 'Europe', countryCode: 'EU', sportType: 'rugby' },
+
+  // CRICKET - More
+  { sport: 'cricket', league: 'bbl', sportId: 4, leagueId: 314, leagueName: 'Big Bash League', country: 'Australia', countryCode: 'AU', sportType: 'cricket' },
+  { sport: 'cricket', league: 'sa20', sportId: 4, leagueId: 315, leagueName: 'SA20', country: 'South Africa', countryCode: 'ZA', sportType: 'cricket' },
+  { sport: 'cricket', league: 'hundred', sportId: 4, leagueId: 316, leagueName: 'The Hundred', country: 'England', countryCode: 'GB-ENG', sportType: 'cricket' },
+  { sport: 'cricket', league: 'lpl', sportId: 4, leagueId: 317, leagueName: 'Lanka Premier League', country: 'Sri Lanka', countryCode: 'LK', sportType: 'cricket' },
+  { sport: 'cricket', league: 'psl', sportId: 4, leagueId: 318, leagueName: 'Pakistan Super League', country: 'Pakistan', countryCode: 'PK', sportType: 'cricket' },
+  { sport: 'cricket', league: 'champions.trophy', sportId: 4, leagueId: 319, leagueName: 'ICC Champions Trophy', country: 'World', countryCode: 'WO', sportType: 'cricket' },
+
+  // TENNIS - More
+  { sport: 'tennis', league: 'atp.challenger', sportId: 3, leagueId: 930, leagueName: 'ATP Challenger Tour', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'atp.doubles', sportId: 3, leagueId: 931, leagueName: 'ATP Tour Doubles', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'wta.125', sportId: 3, leagueId: 932, leagueName: 'WTA 125 Series', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'itf.world', sportId: 3, leagueId: 933, leagueName: 'ITF World Tennis Tour', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'davis.cup', sportId: 3, leagueId: 934, leagueName: 'Davis Cup', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'billie.jean.king.cup', sportId: 3, leagueId: 935, leagueName: 'Billie Jean King Cup', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+
+  // AMERICAN FOOTBALL - More
+  { sport: 'football', league: 'college-football', sportId: 5, leagueId: 540, leagueName: 'NCAA College Football', country: 'USA', countryCode: 'US', sportType: 'football' },
+  { sport: 'football', league: 'nfl.preseason', sportId: 5, leagueId: 541, leagueName: 'NFL Preseason', country: 'USA', countryCode: 'US', sportType: 'football' },
+  { sport: 'football', league: 'cfl', sportId: 5, leagueId: 542, leagueName: 'CFL', country: 'Canada', countryCode: 'CA', sportType: 'football' },
+
+  // ICE HOCKEY - More
+  { sport: 'hockey', league: 'ahl', sportId: 7, leagueId: 612, leagueName: 'AHL', country: 'USA', countryCode: 'US', sportType: 'hockey' },
+  { sport: 'hockey', league: 'khl', sportId: 7, leagueId: 613, leagueName: 'KHL', country: 'Russia', countryCode: 'RU', sportType: 'hockey' },
+  { sport: 'hockey', league: 'shl', sportId: 7, leagueId: 614, leagueName: 'SHL Sweden', country: 'Sweden', countryCode: 'SE', sportType: 'hockey' },
+  { sport: 'hockey', league: 'liiga', sportId: 7, leagueId: 615, leagueName: 'Liiga Finland', country: 'Finland', countryCode: 'FI', sportType: 'hockey' },
+  { sport: 'hockey', league: 'nl.swiss', sportId: 7, leagueId: 616, leagueName: 'National League Switzerland', country: 'Switzerland', countryCode: 'CH', sportType: 'hockey' },
+  { sport: 'hockey', league: 'del.ger', sportId: 7, leagueId: 617, leagueName: 'Deutsche Eishockey Liga', country: 'Germany', countryCode: 'DE', sportType: 'hockey' },
+
+  // GOLF - More
+  { sport: 'golf', league: 'asian.tour', sportId: 17, leagueId: 1712, leagueName: 'Asian Tour', country: 'Asia', countryCode: 'AS', sportType: 'golf' },
+  { sport: 'golf', league: 'korn.ferry', sportId: 17, leagueId: 1713, leagueName: 'Korn Ferry Tour', country: 'USA', countryCode: 'US', sportType: 'golf' },
+
+  // RACING - More
+  { sport: 'racing', league: 'f3', sportId: 29, leagueId: 2912, leagueName: 'Formula 3', country: 'World', countryCode: 'WO', sportType: 'racing' },
+  { sport: 'racing', league: 'indycar', sportId: 29, leagueId: 2913, leagueName: 'IndyCar Series', country: 'USA', countryCode: 'US', sportType: 'racing' },
+  { sport: 'racing', league: 'nascar', sportId: 31, leagueId: 3111, leagueName: 'NASCAR Cup Series', country: 'USA', countryCode: 'US', sportType: 'racing' },
+  { sport: 'racing', league: 'superbike', sportId: 29, leagueId: 2914, leagueName: 'WorldSBK', country: 'World', countryCode: 'WO', sportType: 'racing' },
+
+  // MMA / BOXING - More
+  { sport: 'mma', league: 'bellator', sportId: 27, leagueId: 2710, leagueName: 'Bellator MMA', country: 'World', countryCode: 'WO', sportType: 'mma' },
+  { sport: 'mma', league: 'one', sportId: 27, leagueId: 2711, leagueName: 'ONE Championship', country: 'Asia', countryCode: 'AS', sportType: 'mma' },
+  { sport: 'boxing', league: 'boxing', sportId: 26, leagueId: 2610, leagueName: 'Professional Boxing', country: 'World', countryCode: 'WO', sportType: 'mma' },
+
   // BASKETBALL - Europe + International
   { sport: 'basketball', league: 'fiba.euroleague', sportId: 2, leagueId: 130, leagueName: 'EuroLeague', country: 'Europe', countryCode: 'EU', sportType: 'basketball' },
   { sport: 'basketball', league: 'fiba.eurocup', sportId: 2, leagueId: 131, leagueName: 'EuroCup', country: 'Europe', countryCode: 'EU', sportType: 'basketball' },
@@ -2350,10 +2478,10 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
   const start = new Date(now);
   start.setUTCDate(start.getUTCDate() - 1);
   const end = new Date(now);
-  // Priority leagues (top-tier with daily fixtures): 8 days.
-  // Smaller / cup competitions (sporadic fixtures): 14 days so we catch the
-  // next match even if it's two weeks away.
-  end.setUTCDate(end.getUTCDate() + (isPriority ? 8 : 14));
+  // Priority leagues (top-tier with daily fixtures): 30 days.
+  // Smaller / cup competitions (sporadic fixtures): 90 days so we surface
+  // fixtures far in the future — tipsters need months-ahead visibility.
+  end.setUTCDate(end.getUTCDate() + (isPriority ? 30 : 90));
   const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
   data = await fetchESPN(config.sport, config.league, 'scoreboard', range);
   // Fall back to the default endpoint if range request fails or returns nothing.
@@ -2881,14 +3009,14 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     persistMatchEntities(allMatches);
   } catch { /* swallow */ }
 
-  // Limit to a 5-day window: yesterday (for results) + today + 3 days ahead.
-  // This prevents thousands of fixtures far in the future from bloating the list.
+  // Display window: yesterday (for results) + today + 200 days ahead.
+  // The expanded fetch windows above mean we actually have data this far out.
   const now = new Date();
   const windowStart = new Date(now);
   windowStart.setDate(windowStart.getDate() - 1); // include yesterday's results
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(now);
-  windowEnd.setDate(windowEnd.getDate() + 7); // today + 7 days ahead
+  windowEnd.setDate(windowEnd.getDate() + 200); // today + 200 days ahead
   windowEnd.setHours(23, 59, 59, 999);
 
   const windowed = allMatches.filter(m => {
