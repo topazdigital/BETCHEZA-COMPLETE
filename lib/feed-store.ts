@@ -206,3 +206,56 @@ export async function addComment(input: Omit<FeedComment, 'id' | 'createdAt'>): 
   }
   return comment;
 }
+
+// ─── ALIASES & EXTRAS ────────────────────────────
+export const createComment = addComment;
+
+export async function deleteComment(commentId: string): Promise<boolean> {
+  if (hasDb()) {
+    try {
+      const r = await query(
+        `DELETE FROM feed_comments WHERE id = ?`, [commentId]
+      );
+      if ((r.affectedRows ?? 0) > 0) {
+        await query(`UPDATE feed_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = (SELECT post_id FROM (SELECT post_id FROM feed_comments WHERE id = ?) t)`, [commentId]).catch(() => {});
+        return true;
+      }
+    } catch (e) { console.warn('[feed] db deleteComment failed', e); }
+  }
+  for (const [postId, list] of s.comments) {
+    const idx = list.findIndex(c => c.id === commentId);
+    if (idx !== -1) {
+      list.splice(idx, 1);
+      s.comments.set(postId, list);
+      const post = s.posts.get(postId);
+      if (post) post.commentCount = list.length;
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function listAllComments(limit = 100): Promise<FeedComment[]> {
+  if (hasDb()) {
+    try {
+      const r = await query<{
+        id: string; post_id: string; user_id: number;
+        author_name: string; author_avatar: string | null;
+        content: string; created_at: string;
+      }>(`SELECT id, post_id, user_id, author_name, author_avatar, content, created_at
+          FROM feed_comments ORDER BY created_at DESC LIMIT ?`, [limit]);
+      return r.rows.map(row => ({
+        id: row.id, postId: row.post_id, userId: row.user_id,
+        authorName: row.author_name, authorAvatar: row.author_avatar,
+        content: row.content, createdAt: row.created_at,
+      }));
+    } catch (e) { console.warn('[feed] db listAllComments failed', e); }
+  }
+  const all: FeedComment[] = [];
+  for (const list of s.comments.values()) all.push(...list);
+  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
+}
+
+export function seedDemoPostsIfEmpty(): void {
+  // No-op: demo seeding handled by createPost calls on first load
+}

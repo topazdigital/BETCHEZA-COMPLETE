@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   seedDemoPostsIfEmpty();
   const user = await getCurrentUser();
   const limit = Number(req.nextUrl.searchParams.get('limit') || 50);
-  const posts = await listPosts({ limit, viewerId: user?.userId ?? null });
+  const posts = await listPosts(limit, user?.userId ?? null);
   return NextResponse.json({ success: true, posts });
 }
 

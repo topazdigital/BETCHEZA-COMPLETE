@@ -380,3 +380,16 @@ export async function unsubscribeEmail(token: string): Promise<boolean> {
   }
   return false;
 }
+
+// ─── ALIASES & EXTRAS ────────────────────────────
+export const subscribeEmail = saveEmailSubscriber;
+
+export async function listAllUserIds(): Promise<number[]> {
+  if (hasDb()) {
+    try {
+      const r = await query<{ id: number }>(`SELECT id FROM users ORDER BY id ASC`);
+      return r.rows.map(row => row.id);
+    } catch (e) { console.warn('[notification] db listAllUserIds failed', e); }
+  }
+  return [];
+}

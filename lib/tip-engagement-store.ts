@@ -202,3 +202,6 @@ export async function seedTipEngagement(tipId: string, count = 3): Promise<void>
   }
   s.comments.set(tipId, fakeComments);
 }
+
+// ─── ALIASES ─────────────────────────────────────
+export const listComments = getComments;
