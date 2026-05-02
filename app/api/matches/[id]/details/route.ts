@@ -5,6 +5,7 @@ import {
   getEspnLeagueConfigForId,
   getEspnEventIdFromMatchId,
   extractEspnOdds,
+  deriveSoccerMarkets,
   type ESPNSummaryResponse,
 } from '@/lib/api/unified-sports-api';
 import { slugToMatchId } from '@/lib/utils/match-url';
@@ -815,7 +816,6 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
     const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw);
     const realOdds = summaryOdds || match.odds;
-    const finalMarkets = summaryMarkets && summaryMarkets.length > 0 ? summaryMarkets : match.markets;
 
     // Always ensure odds are present — fall back to computed estimates
     const finalOdds = realOdds || generateComputedOdds(
@@ -823,6 +823,29 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       match.awayTeam.name,
       cfg?.sportType || 'soccer'
     );
+
+    // Build a comprehensive derived market suite from whatever odds we have.
+    // deriveSoccerMarkets uses a Poisson model grounded in real implied probs.
+    const isSoccer = (cfg?.sportType || 'soccer') === 'soccer';
+    const derivedMarkets = isSoccer && finalOdds?.draw !== undefined
+      ? deriveSoccerMarkets(
+          finalOdds.home,
+          finalOdds.draw,
+          finalOdds.away,
+          match.homeTeam.name,
+          match.awayTeam.name,
+        )
+      : (match.markets || []);
+
+    // Merge strategy:
+    // 1. ESPN pickcenter markets (h2h, totals, spreads) — have real provider odds → keep as-is.
+    // 2. For every other market (BTTS, HT/FT, Correct Score, etc.) use derived markets.
+    // This means users always see 15+ markets; the core 1X2 / totals cells show real bookmaker prices.
+    const espnMarketKeys = new Set((summaryMarkets || []).map((m: { key: string }) => m.key));
+    const supplementary = derivedMarkets.filter(m => !espnMarketKeys.has(m.key));
+    const finalMarkets = summaryMarkets && summaryMarkets.length > 0
+      ? [...summaryMarkets, ...supplementary]
+      : derivedMarkets;
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 

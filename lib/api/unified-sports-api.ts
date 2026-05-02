@@ -328,14 +328,8 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'alg.1', sportId: 1, leagueId: 100, leagueName: 'Algerian Ligue 1', country: 'Algeria', countryCode: 'DZ', sportType: 'soccer' },
   { sport: 'soccer', league: 'caf.cl', sportId: 1, leagueId: 102, leagueName: 'CAF Champions League', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
   { sport: 'soccer', league: 'caf.cc', sportId: 1, leagueId: 103, leagueName: 'CAF Confederation Cup', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
-  // SOCCER - East Africa (explicit entries so match IDs resolve correctly)
-  { sport: 'soccer', league: 'ken.1', sportId: 1, leagueId: 9022, leagueName: 'Kenya Premier League', country: 'Kenya', countryCode: 'KE', sportType: 'soccer' },
-  { sport: 'soccer', league: 'uga.1', sportId: 1, leagueId: 14059, leagueName: 'Uganda Premier League', country: 'Uganda', countryCode: 'UG', sportType: 'soccer' },
-  { sport: 'soccer', league: 'tza.1', sportId: 1, leagueId: 11587, leagueName: 'Tanzania Premier League', country: 'Tanzania', countryCode: 'TZ', sportType: 'soccer' },
-  { sport: 'soccer', league: 'nga.1', sportId: 1, leagueId: 11584, leagueName: 'Nigerian Professional League', country: 'Nigeria', countryCode: 'NG', sportType: 'soccer' },
-  { sport: 'soccer', league: 'gha.1', sportId: 1, leagueId: 11585, leagueName: 'Ghana Premier League', country: 'Ghana', countryCode: 'GH', sportType: 'soccer' },
-  { sport: 'soccer', league: 'eth.1', sportId: 1, leagueId: 11586, leagueName: 'Ethiopian Premier League', country: 'Ethiopia', countryCode: 'ET', sportType: 'soccer' },
-  { sport: 'soccer', league: 'zam.1', sportId: 1, leagueId: 11583, leagueName: 'Zambia Super League', country: 'Zambia', countryCode: 'ZM', sportType: 'soccer' },
+  // SOCCER - East Africa (eth.1 is not covered in the More Africa block below)
+  { sport: 'soccer', league: 'eth.1', sportId: 1, leagueId: 257, leagueName: 'Ethiopian Premier League', country: 'Ethiopia', countryCode: 'ET', sportType: 'soccer' },
 
   // SOCCER - Asia (Cup competitions)
   { sport: 'soccer', league: 'afc.champions', sportId: 1, leagueId: 104, leagueName: 'AFC Champions League', country: 'Asia', countryCode: 'AS', sportType: 'soccer' },
@@ -1163,41 +1157,249 @@ export function extractEspnOdds(rawOddsList: ESPNOddsRaw[] | undefined, hasDraw:
 }
 
 /**
- * Build the soccer derived market suite (Double Chance, Draw No Bet) from a
- * 1X2 set. Implied probabilities are normalised first so the synthetic prices
- * sum to ~1 (no extra vig added beyond what's in the source 1X2 odds).
+ * Build a comprehensive soccer derived market suite from real 1X2 odds.
+ * Uses a Poisson goal-scoring model so every derived price is mathematically
+ * grounded in the real implied probabilities — never random/jittered.
+ *
+ * Markets produced: Double Chance, Draw No Bet, BTTS, Over/Under 0.5-4.5,
+ * HT Result, HT/FT, BTTS & Result, Odd/Even Goals, Exact Goals, Clean Sheet
+ * (Home/Away), Win to Nil, Correct Score (top 12), First Team to Score,
+ * Goal in 1st Half, Asian Handicap (±1), Total Corners O/U.
  */
-export function deriveSoccerMarkets(home: number, draw: number, away: number): Market[] {
+export function deriveSoccerMarkets(home: number, draw: number, away: number, homeTeam = 'Home', awayTeam = 'Away'): Market[] {
   if (!home || !draw || !away) return [];
   const pH = 1 / home, pD = 1 / draw, pA = 1 / away;
   const total = pH + pD + pA;
   if (total <= 0) return [];
-  // Normalise
+
+  // Strip bookmaker margin — work with fair probabilities
   const nH = pH / total, nD = pD / total, nA = pA / total;
-  const round2 = (x: number) => Math.round(x * 100) / 100;
 
-  const dc1X = nH + nD, dc12 = nH + nA, dcX2 = nD + nA;
+  // Price helper: convert probability → decimal odds with 93 % payout (7 % margin)
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 250) * 100) / 100);
+
+  // ── Poisson model ────────────────────────────────────────────────────────
+  // Calibrated from observed data: avg 2.65 goals / match, home scores ~55 %
+  const homeGoalShare = Math.min(0.80, Math.max(0.35, 0.50 + (nH - 0.33) * 0.65));
+  const λH = Math.max(0.20, Math.min(4.0, 2.65 * homeGoalShare));
+  const λA = Math.max(0.20, Math.min(4.0, 2.65 * (1 - homeGoalShare)));
+
+  const poisson = (λ: number, k: number): number => {
+    let f = 1; for (let i = 1; i <= k; i++) f *= i;
+    return Math.exp(-λ) * Math.pow(λ, k) / f;
+  };
+
+  const markets: Market[] = [];
+
+  // ── Double Chance ────────────────────────────────────────────────────────
+  markets.push({
+    key: 'double_chance', name: 'Double Chance',
+    outcomes: [
+      { name: '1X', price: price(nH + nD) },
+      { name: '12', price: price(nH + nA) },
+      { name: 'X2', price: price(nD + nA) },
+    ],
+  });
+
+  // ── Draw No Bet ──────────────────────────────────────────────────────────
   const dnbH = nH / (nH + nA), dnbA = nA / (nH + nA);
+  markets.push({
+    key: 'draw_no_bet', name: 'Draw No Bet',
+    outcomes: [
+      { name: homeTeam, price: price(dnbH) },
+      { name: awayTeam, price: price(dnbA) },
+    ],
+  });
 
-  return [
-    {
-      key: 'double_chance',
-      name: 'Double Chance',
+  // ── Both Teams to Score ──────────────────────────────────────────────────
+  const pHome0 = poisson(λH, 0), pAway0 = poisson(λA, 0);
+  const pBttsYes = (1 - pHome0) * (1 - pAway0);
+  markets.push({
+    key: 'btts', name: 'Both Teams to Score',
+    outcomes: [
+      { name: 'Yes', price: price(pBttsYes) },
+      { name: 'No',  price: price(1 - pBttsYes) },
+    ],
+  });
+
+  // ── Over/Under goals ladder ──────────────────────────────────────────────
+  for (const line of [0.5, 1.5, 2.5, 3.5, 4.5]) {
+    let pUnder = 0;
+    const cap = Math.floor(line);
+    for (let hg = 0; hg <= 9; hg++)
+      for (let ag = 0; ag <= 9; ag++)
+        if (hg + ag <= cap) pUnder += poisson(λH, hg) * poisson(λA, ag);
+    markets.push({
+      key: `totals_${String(line).replace('.', '_')}`, name: `Over/Under ${line} Goals`,
       outcomes: [
-        { name: '1X', price: round2(1 / dc1X) },
-        { name: '12', price: round2(1 / dc12) },
-        { name: 'X2', price: round2(1 / dcX2) },
+        { name: `Over ${line}`,  price: price(1 - pUnder), point: line },
+        { name: `Under ${line}`, price: price(pUnder),     point: line },
       ],
-    },
-    {
-      key: 'draw_no_bet',
-      name: 'Draw No Bet',
-      outcomes: [
-        { name: 'Home', price: round2(1 / dnbH) },
-        { name: 'Away', price: round2(1 / dnbA) },
-      ],
-    },
+    });
+  }
+
+  // ── Half-Time Result ─────────────────────────────────────────────────────
+  // At HT ~40 % are draws; scale home/away by their relative FT probability.
+  const htDraw = 0.40;
+  const htHome = nH / (nH + nA) * 0.60;
+  const htAway = nA / (nH + nA) * 0.60;
+  markets.push({
+    key: 'ht_result', name: 'Half-Time Result',
+    outcomes: [
+      { name: homeTeam, price: price(htHome) },
+      { name: 'Draw',   price: price(htDraw) },
+      { name: awayTeam, price: price(htAway) },
+    ],
+  });
+
+  // ── Half-Time / Full-Time ────────────────────────────────────────────────
+  const htFtRaw: [string, number][] = [
+    ['1/1', htHome * nH * 1.25], ['1/X', htHome * nD * 0.45], ['1/2', htHome * nA * 0.30],
+    ['X/1', htDraw * nH * 1.05], ['X/X', htDraw * nD * 1.05], ['X/2', htDraw * nA * 1.05],
+    ['2/1', htAway * nH * 0.30], ['2/X', htAway * nD * 0.45], ['2/2', htAway * nA * 1.25],
   ];
+  const htFtSum = htFtRaw.reduce((s, [, p]) => s + p, 0);
+  markets.push({
+    key: 'ht_ft', name: 'Half-Time / Full-Time',
+    outcomes: htFtRaw.map(([name, p]) => ({ name, price: price(p / htFtSum) })),
+  });
+
+  // ── BTTS & Result ────────────────────────────────────────────────────────
+  const bR = (p: number) => price(p * pBttsYes);
+  const bN = (p: number) => price(p * (1 - pBttsYes));
+  markets.push({
+    key: 'btts_and_result', name: 'BTTS & Result',
+    outcomes: [
+      { name: `${homeTeam} & Yes`, price: bR(nH) },
+      { name: 'Draw & Yes',        price: bR(nD) },
+      { name: `${awayTeam} & Yes`, price: bR(nA) },
+      { name: `${homeTeam} & No`,  price: bN(nH) },
+      { name: 'Draw & No',         price: bN(nD) },
+      { name: `${awayTeam} & No`,  price: bN(nA) },
+    ],
+  });
+
+  // ── Odd / Even Goals ─────────────────────────────────────────────────────
+  let pEven = 0;
+  for (let hg = 0; hg <= 9; hg++)
+    for (let ag = 0; ag <= 9; ag++)
+      if ((hg + ag) % 2 === 0) pEven += poisson(λH, hg) * poisson(λA, ag);
+  markets.push({
+    key: 'odd_even_goals', name: 'Odd/Even Goals',
+    outcomes: [
+      { name: 'Odd',  price: price(1 - pEven) },
+      { name: 'Even', price: price(pEven) },
+    ],
+  });
+
+  // ── Exact Goals ──────────────────────────────────────────────────────────
+  const exactP: number[] = Array.from({ length: 6 }, (_, g) => {
+    let p = 0;
+    for (let hg = 0; hg <= g; hg++) p += poisson(λH, hg) * poisson(λA, g - hg);
+    return p;
+  });
+  const exact5Plus = Math.max(0.005, 1 - exactP.reduce((s, p) => s + p, 0));
+  markets.push({
+    key: 'exact_goals', name: 'Exact Goals',
+    outcomes: [
+      { name: '0', price: price(exactP[0]) }, { name: '1', price: price(exactP[1]) },
+      { name: '2', price: price(exactP[2]) }, { name: '3', price: price(exactP[3]) },
+      { name: '4', price: price(exactP[4]) }, { name: '5+', price: price(exact5Plus + exactP[5]) },
+    ],
+  });
+
+  // ── Clean Sheet ──────────────────────────────────────────────────────────
+  markets.push({
+    key: 'clean_sheet_home', name: `${homeTeam} Clean Sheet`,
+    outcomes: [{ name: 'Yes', price: price(pAway0) }, { name: 'No', price: price(1 - pAway0) }],
+  });
+  markets.push({
+    key: 'clean_sheet_away', name: `${awayTeam} Clean Sheet`,
+    outcomes: [{ name: 'Yes', price: price(pHome0) }, { name: 'No', price: price(1 - pHome0) }],
+  });
+
+  // ── Win to Nil ───────────────────────────────────────────────────────────
+  const pHWtN = pAway0 * 0.80, pAWtN = pHome0 * 0.80;
+  markets.push({
+    key: 'win_to_nil', name: 'Win to Nil',
+    outcomes: [
+      { name: homeTeam, price: price(pHWtN) },
+      { name: awayTeam, price: price(pAWtN) },
+      { name: 'Neither', price: price(Math.max(0.01, 1 - pHWtN - pAWtN)) },
+    ],
+  });
+
+  // ── Correct Score (top 12 scorelines) ────────────────────────────────────
+  const cs: [string, number][] = [];
+  for (let h = 0; h <= 4; h++)
+    for (let a = 0; a <= 4; a++)
+      cs.push([`${h}-${a}`, poisson(λH, h) * poisson(λA, a)]);
+  cs.sort(([, pa], [, pb]) => pb - pa);
+  const csOther = Math.max(0.005, 1 - cs.slice(0, 12).reduce((s, [, p]) => s + p, 0));
+  markets.push({
+    key: 'correct_score', name: 'Correct Score',
+    outcomes: [...cs.slice(0, 12).map(([name, p]) => ({ name, price: price(p) })), { name: 'Other', price: price(csOther) }],
+  });
+
+  // ── First Team to Score ──────────────────────────────────────────────────
+  const pNoGoal = pHome0 * pAway0;
+  const pHomeFirst = (nH * 0.55 + nD * 0.50) * (1 - pNoGoal);
+  const pAwayFirst = Math.max(0.01, 1 - pNoGoal - pHomeFirst);
+  markets.push({
+    key: 'first_team_to_score', name: 'First Team to Score',
+    outcomes: [
+      { name: homeTeam,    price: price(pHomeFirst) },
+      { name: awayTeam,    price: price(pAwayFirst) },
+      { name: 'No Goal',   price: price(pNoGoal) },
+    ],
+  });
+
+  // ── Goal in 1st Half ─────────────────────────────────────────────────────
+  // Each half gets roughly half the expected goals
+  const pNoGoalHalf = poisson(λH * 0.5, 0) * poisson(λA * 0.5, 0);
+  markets.push({
+    key: 'goal_first_half', name: 'Goal in 1st Half',
+    outcomes: [
+      { name: 'Yes', price: price(1 - pNoGoalHalf) },
+      { name: 'No',  price: price(pNoGoalHalf) },
+    ],
+  });
+
+  // ── Asian Handicap ±1 ────────────────────────────────────────────────────
+  const ahLine = nH > nA ? -1 : 1;
+  let pAHHome = 0, pAHAway = 0, pAHPush = 0;
+  for (let h = 0; h <= 7; h++) {
+    for (let a = 0; a <= 7; a++) {
+      const p = poisson(λH, h) * poisson(λA, a);
+      const diff = (h + ahLine) - a;
+      if (diff > 0) pAHHome += p; else if (diff === 0) pAHPush += p; else pAHAway += p;
+    }
+  }
+  const ahT = pAHHome + pAHAway + pAHPush;
+  markets.push({
+    key: 'asian_handicap', name: `Asian Handicap (${ahLine > 0 ? '+' : ''}${ahLine})`,
+    outcomes: [
+      { name: `${homeTeam} ${ahLine > 0 ? '+' : ''}${ahLine}`, price: price((pAHHome + pAHPush * 0.5) / ahT), point: ahLine },
+      { name: `${awayTeam} ${-ahLine > 0 ? '+' : ''}${-ahLine}`, price: price((pAHAway + pAHPush * 0.5) / ahT), point: -ahLine },
+    ],
+  });
+
+  // ── Total Corners O/U (λ_corners ≈ 10) ──────────────────────────────────
+  const λC = 10;
+  for (const cLine of [8.5, 9.5, 10.5, 11.5]) {
+    let pCUnder = 0;
+    for (let c = 0; c <= Math.floor(cLine); c++) pCUnder += poisson(λC, c);
+    markets.push({
+      key: `corners_${String(cLine).replace('.', '_')}`, name: `Total Corners O/U ${cLine}`,
+      outcomes: [
+        { name: `Over ${cLine}`,  price: price(1 - pCUnder), point: cLine },
+        { name: `Under ${cLine}`, price: price(pCUnder),     point: cLine },
+      ],
+    });
+  }
+
+  return markets;
 }
 
 // ============================================

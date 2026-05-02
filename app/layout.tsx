@@ -9,6 +9,8 @@ import { AuthModalProvider } from '@/contexts/auth-modal-context'
 import { AuthModal } from '@/components/auth/auth-modal'
 import { AIChatButton } from '@/components/ai/ai-chat-button'
 import { InstallPrompt } from '@/components/install-prompt'
+import { BetSlipProvider } from '@/contexts/bet-slip-context'
+import { BetSlipPanel } from '@/components/bet-slip/bet-slip-panel'
 import { getSiteSettings, parseSeoPages, findSeoForPath } from '@/lib/site-settings'
 import './globals.css'
 
@@ -123,12 +125,15 @@ export default function RootLayout({
         >
           <AuthProvider>
             <AuthModalProvider>
+              <BetSlipProvider>
               <UserSettingsProvider>
                 {children}
                 <AuthModal />
                 <AIChatButton />
                 <InstallPrompt />
+                <BetSlipPanel />
               </UserSettingsProvider>
+            </BetSlipProvider>
             </AuthModalProvider>
           </AuthProvider>
         </ThemeProvider>

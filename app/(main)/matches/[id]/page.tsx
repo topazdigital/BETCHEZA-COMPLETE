@@ -35,6 +35,7 @@ import { MatchFacts } from "@/components/matches/match-facts"
 import { WinnerVote } from "@/components/matches/winner-vote"
 import { useAuth } from "@/contexts/auth-context"
 import { useMatches } from "@/lib/hooks/use-matches"
+import { useBetSlip } from "@/contexts/bet-slip-context"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -2389,6 +2390,120 @@ function UpcomingMatchesPanel({
   )
 }
 
+// ===== Betting Markets Section (used inside MatchInfoRail) =====
+
+const MARKET_GROUP_ORDER = [
+  { key: 'totals',          label: 'Total Goals/Points' },
+  { key: 'totals_2_5',      label: 'Over/Under 2.5' },
+  { key: 'btts',            label: 'Both Teams to Score' },
+  { key: 'double_chance',   label: 'Double Chance' },
+  { key: 'draw_no_bet',     label: 'Draw No Bet' },
+  { key: 'spreads',         label: 'Handicap' },
+  { key: 'asian_handicap',  label: 'Asian Handicap' },
+  { key: 'ht_result',       label: 'Half-Time Result' },
+  { key: 'ht_ft',           label: 'HT / Full-Time' },
+  { key: 'btts_and_result', label: 'BTTS & Result' },
+  { key: 'totals_0_5',      label: 'Over/Under 0.5' },
+  { key: 'totals_1_5',      label: 'Over/Under 1.5' },
+  { key: 'totals_3_5',      label: 'Over/Under 3.5' },
+  { key: 'totals_4_5',      label: 'Over/Under 4.5' },
+  { key: 'odd_even_goals',  label: 'Odd/Even Goals' },
+  { key: 'exact_goals',     label: 'Exact Goals' },
+  { key: 'correct_score',   label: 'Correct Score' },
+  { key: 'first_team_to_score', label: 'First Team to Score' },
+  { key: 'goal_first_half', label: 'Goal in 1st Half' },
+  { key: 'win_to_nil',      label: 'Win to Nil' },
+  { key: 'clean_sheet_home', label: 'Home Clean Sheet' },
+  { key: 'clean_sheet_away', label: 'Away Clean Sheet' },
+  { key: 'corners_8_5',     label: 'Total Corners O/U 8.5' },
+  { key: 'corners_9_5',     label: 'Total Corners O/U 9.5' },
+  { key: 'corners_10_5',    label: 'Total Corners O/U 10.5' },
+  { key: 'corners_11_5',    label: 'Total Corners O/U 11.5' },
+]
+
+function MarketsSection({ match }: { match: MatchDetails['match'] }) {
+  const { addSelection, isSelected } = useBetSlip()
+  const [expanded, setExpanded] = useState(false)
+
+  if (!match.markets || match.markets.length === 0) return null
+
+  // Order markets according to priority list, then append any remaining ones
+  const priorityKeys = MARKET_GROUP_ORDER.map(g => g.key)
+  const ordered = [
+    ...priorityKeys.map(k => match.markets!.find(m => m.key === k)).filter(Boolean),
+    ...match.markets.filter(m => !priorityKeys.includes(m.key) && m.key !== 'h2h'),
+  ] as NonNullable<typeof match.markets>
+
+  const INITIAL_SHOW = 8
+  const visibleMarkets = expanded ? ordered : ordered.slice(0, INITIAL_SHOW)
+  const matchName = `${match.homeTeam.name} vs ${match.awayTeam.name}`
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <TrendingUp className="h-3.5 w-3.5" />
+          Betting Markets
+          <span className="ml-auto text-[10px] font-normal normal-case">Tap odds to add to slip</span>
+        </h3>
+
+        {visibleMarkets.map((mkt) => {
+          const cols = mkt.outcomes.length === 2 ? 'grid-cols-2'
+            : mkt.outcomes.length === 3 ? 'grid-cols-3'
+            : 'grid-cols-2'
+          const displayOutcomes = mkt.outcomes.slice(0, Math.min(mkt.outcomes.length, 6))
+
+          return (
+            <div key={mkt.key} className="space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{mkt.name}</p>
+              <div className={cn('grid gap-1', cols)}>
+                {displayOutcomes.map((o, oi) => {
+                  const selected = isSelected(match.id, mkt.key, o.name)
+                  return (
+                    <button
+                      key={oi}
+                      onClick={() => addSelection({
+                        matchId: match.id,
+                        matchName,
+                        marketKey: mkt.key,
+                        marketName: mkt.name,
+                        outcomeName: o.name,
+                        price: o.price,
+                      })}
+                      className={cn(
+                        'flex flex-col items-center rounded-lg border px-1.5 py-1.5 text-center transition-all active:scale-95',
+                        selected
+                          ? 'bg-primary/10 border-primary text-primary'
+                          : 'bg-muted/40 border-border/50 text-foreground hover:bg-muted/70 hover:border-primary/40',
+                      )}
+                    >
+                      <span className="text-[9px] text-muted-foreground truncate w-full text-center leading-tight">{o.name}</span>
+                      <span className={cn('text-sm font-black tabular-nums mt-0.5', selected ? 'text-primary' : '')}>{o.price.toFixed(2)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+
+        {ordered.length > INITIAL_SHOW && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full text-xs text-primary hover:underline flex items-center justify-center gap-1 pt-1"
+          >
+            {expanded ? (
+              <><ChevronUp className="h-3.5 w-3.5" /> Show fewer markets</>
+            ) : (
+              <><ChevronDown className="h-3.5 w-3.5" /> Show {ordered.length - INITIAL_SHOW} more markets</>
+            )}
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ===== Right rail =====
 
 function MatchInfoRail({
@@ -2529,44 +2644,9 @@ function MatchInfoRail({
       )}
 
       {/* Betting markets */}
-      {match.markets && match.markets.length > 0 && (() => {
-        const MARKET_PRIORITY = ['btts', 'totals_2_5', 'totals', 'double_chance', 'draw_no_bet', 'dnb']
-        const orderedMarkets = [
-          ...MARKET_PRIORITY.map(k => match.markets!.find(m => m.key === k)).filter(Boolean),
-          ...match.markets.filter(m => !MARKET_PRIORITY.includes(m.key) && !['h2h', 'spreads'].includes(m.key)),
-        ] as typeof match.markets
-        const displayMarkets = orderedMarkets.slice(0, 5)
-        if (displayMarkets.length === 0) return null
-        return (
-          <Card>
-            <CardContent className="p-4 space-y-3">
-              <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Betting Markets
-              </h3>
-              {displayMarkets.map((mkt) => (
-                <div key={mkt.key} className="space-y-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{mkt.name}</p>
-                  <div className={cn(
-                    'grid gap-1',
-                    mkt.outcomes.length === 2 ? 'grid-cols-2' : mkt.outcomes.length === 3 ? 'grid-cols-3' : 'grid-cols-2',
-                  )}>
-                    {mkt.outcomes.slice(0, mkt.outcomes.length <= 6 ? mkt.outcomes.length : 6).map((o, oi) => (
-                      <div
-                        key={oi}
-                        className="flex flex-col items-center rounded-lg bg-muted/40 border border-border/50 px-1.5 py-1.5 text-center hover:bg-muted/70 transition-colors cursor-default"
-                      >
-                        <span className="text-[9px] text-muted-foreground truncate w-full text-center leading-tight">{o.name}</span>
-                        <span className="text-sm font-black tabular-nums text-foreground mt-0.5">{o.price.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )
-      })()}
+      {match.markets && match.markets.length > 0 && (
+        <MarketsSection match={match} />
+      )}
 
       {/* Standings snapshot */}
       {(homeStanding || awayStanding) && (
