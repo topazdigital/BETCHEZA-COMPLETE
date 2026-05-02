@@ -1,0 +1,146 @@
+[admin@mail betcheza]$ git pull origin main
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+[admin@mail betcheza]$ npm run build
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.4 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 7 errors:
+./app/api/feed/posts/[id]/comments/route.ts:3:1
+Export createComment doesn't exist in target module
+  1 | import { NextRequest, NextResponse } from 'next/server';
+  2 | import { getCurrentUser } from '@/lib/auth';
+> 3 | import { listComments, createComment } from '@/lib/feed-store';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export const dynamic = 'force-dynamic';
+  6 |
+
+The export createComment was not found in module [project]/lib/feed-store.ts [app-route] (ecmascript).
+Did you mean to import createPost?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+./app/api/admin/comments/route.ts:2:1
+Export deleteComment doesn't exist in target module
+  1 | import { NextResponse } from 'next/server';
+> 2 | import { listAllComments, deleteComment } from '@/lib/feed-store';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | export const dynamic = 'force-dynamic';
+  5 |
+
+The export deleteComment was not found in module [project]/lib/feed-store.ts [app-route] (ecmascript).
+Did you mean to import deletePost?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+./app/api/admin/comments/route.ts:2:1
+Export listAllComments doesn't exist in target module
+  1 | import { NextResponse } from 'next/server';
+> 2 | import { listAllComments, deleteComment } from '@/lib/feed-store';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | export const dynamic = 'force-dynamic';
+  5 |
+
+The export listAllComments was not found in module [project]/lib/feed-store.ts [app-route] (ecmascript).
+Did you mean to import listComments?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+./app/api/admin/notifications/broadcast/route.ts:4:1
+Export listAllUserIds doesn't exist in target module
+   2 | import { getCurrentUser } from '@/lib/auth';
+   3 | import { requireAdmin } from '@/lib/admin-auth';
+>  4 | import {
+     | ^^^^^^^
+>  5 |   createNotification,
+     | ^^^^^^^^^^^^^^^^^^^^^
+>  6 |   listEmailSubscribers,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+>  7 |   listPushSubscriptions,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+>  8 |   listAllUserIds,
+     | ^^^^^^^^^^^^^^^^^
+>  9 | } from '@/lib/notification-store';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  10 | import { sendBulkMailBatched, renderTemplate } from '@/lib/mailer';
+  11 | import { getTemplate } from '@/lib/email-templates-store';
+  12 |
+
+The export listAllUserIds was not found in module [project]/lib/notification-store.ts [app-route] (ecmascript).
+Did you mean to import listEmailSubscribers?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+./app/api/tips/[id]/comments/route.ts:3:1
+Export listComments doesn't exist in target module
+  1 | import { NextRequest, NextResponse } from 'next/server';
+  2 | import { getCurrentUser } from '@/lib/auth';
+> 3 | import { listComments, addComment } from '@/lib/tip-engagement-store';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export const dynamic = 'force-dynamic';
+  6 |
+
+The export listComments was not found in module [project]/lib/tip-engagement-store.ts [app-route] (ecmascript).
+Did you mean to import getComments?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+./app/api/feed/posts/route.ts:3:1
+Export seedDemoPostsIfEmpty doesn't exist in target module
+  1 | import { NextRequest, NextResponse } from 'next/server';
+  2 | import { getCurrentUser } from '@/lib/auth';
+> 3 | import { listPosts, createPost, seedDemoPostsIfEmpty } from '@/lib/feed-store';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 |
+  5 | export const dynamic = 'force-dynamic';
+  6 |
+
+The export seedDemoPostsIfEmpty was not found in module [project]/lib/feed-store.ts [app-route] (ecmascript).
+Did you mean to import deletePost?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+./app/api/email/subscribe/route.ts:2:1
+Export subscribeEmail doesn't exist in target module
+  1 | import { NextRequest, NextResponse } from 'next/server';
+> 2 | import { subscribeEmail } from '@/lib/notification-store';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 | import { sendMail, renderTemplate } from '@/lib/mailer';
+  4 | import { getTemplate } from '@/lib/email-templates-store';
+  5 |
+
+The export subscribeEmail was not found in module [project]/lib/notification-store.ts [app-route] (ecmascript).
+Did you mean to import unsubscribeEmail?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+    at <unknown> (./app/api/feed/posts/[id]/comments/route.ts:3:1)
+    at <unknown> (./app/api/admin/comments/route.ts:2:1)
+    at <unknown> (./app/api/admin/comments/route.ts:2:1)
+    at <unknown> (./app/api/admin/notifications/broadcast/route.ts:4:1)
+    at <unknown> (./app/api/tips/[id]/comments/route.ts:3:1)
+    at <unknown> (./app/api/feed/posts/route.ts:3:1)
+    at <unknown> (./app/api/email/subscribe/route.ts:2:1)
+[admin@mail betcheza]$ pm2 restart betcheza
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [betcheza](ids: [ 1 ])
+[PM2] [betcheza](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 7821 │ online    │ 0%       │ 17.5mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 27.2mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[admin@mail betcheza]$
