@@ -1,5 +1,4 @@
-// Community feed store — MySQL-backed with in-memory fallback.
-// All SQL uses ? placeholders (MySQL style).
+// Community feed store — PostgreSQL-backed with in-memory fallback.
 
 import { query } from './db';
 import { dispatchNotification, dispatchToMany } from './notification-dispatcher';
@@ -42,7 +41,7 @@ const g = globalThis as { __feedStore?: Stores };
 g.__feedStore = g.__feedStore || { posts: new Map(), comments: new Map(), likes: new Map() };
 const s = g.__feedStore;
 
-const hasDb = () => !!(process.env.DATABASE_URL || process.env.MYSQL_URL);
+const hasDb = () => !!process.env.DATABASE_URL;
 
 function makeId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -67,9 +66,9 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
         const ids = r.rows.map(p => p.id);
         let likedSet = new Set<string>();
         if (viewerId && ids.length > 0) {
-          const placeholders = ids.map(() => '?').join(',');
+          const placeholders = ids.map((_: string, i: number) => `$${i + 2}`).join(',');
           const lr = await query<{ post_id: string }>(
-            `SELECT post_id FROM feed_post_likes WHERE user_id = ? AND post_id IN (${placeholders})`,
+            `SELECT post_id FROM feed_post_likes WHERE user_id = $1 AND post_id IN (${placeholders})`,
             [viewerId, ...ids],
           );
           likedSet = new Set(lr.rows.map(x => x.post_id));
@@ -140,7 +139,7 @@ export async function toggleLike(postId: string, userId: number, likerName?: str
         await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
         liked = false;
       } else {
-        await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
+        await query(`INSERT INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW()) ON CONFLICT DO NOTHING`, [postId, userId]);
         await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
         liked = true;
       }

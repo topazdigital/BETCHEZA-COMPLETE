@@ -1,6 +1,5 @@
 // Tip engagement store: per-tip likes + comments.
-// Uses MySQL when DATABASE_URL is set, otherwise falls back to in-memory
-// global state (consistent with the rest of the codebase).
+// Uses PostgreSQL when DATABASE_URL is set, otherwise falls back to in-memory.
 
 import { query, execute } from './db';
 
@@ -30,7 +29,7 @@ g.__tipEngagementStore = g.__tipEngagementStore || {
 };
 const s = g.__tipEngagementStore;
 
-const hasDb = () => !!(process.env.DATABASE_URL || process.env.MYSQL_URL);
+const hasDb = () => !!process.env.DATABASE_URL;
 
 function makeId(): string {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -46,7 +45,7 @@ export async function getLikeCount(tipId: string, viewerId?: number | null): Pro
   const baseline = s.baseline.get(tipId) || 0;
   if (hasDb()) {
     try {
-      const r = await query<{ c: number }>(`SELECT COUNT(*) as c FROM tip_likes WHERE tip_id = ?`, [tipId]);
+      const r = await query<{ c: string }>(`SELECT COUNT(*) as c FROM tip_likes WHERE tip_id = ?`, [tipId]);
       const dbCount = Number(r.rows[0]?.c || 0);
       let liked = false;
       if (viewerId) {
@@ -65,7 +64,7 @@ export async function getLikeCount(tipId: string, viewerId?: number | null): Pro
 export async function likeTip(tipId: string, userId: number): Promise<{ count: number; liked: boolean }> {
   if (hasDb()) {
     try {
-      await execute(`INSERT IGNORE INTO tip_likes (tip_id, user_id, created_at) VALUES (?, ?, NOW())`, [tipId, userId]);
+      await execute(`INSERT INTO tip_likes (tip_id, user_id, created_at) VALUES (?, ?, NOW()) ON CONFLICT DO NOTHING`, [tipId, userId]);
       return getLikeCount(tipId, userId);
     } catch { /* fall through */ }
   }
@@ -139,20 +138,17 @@ export async function getCommentCount(tipId: string): Promise<number> {
   const seededN = (s.seededComments.get(tipId) || []).length;
   if (hasDb()) {
     try {
-      const r = await query<{ c: number }>(`SELECT COUNT(*) as c FROM tip_comments WHERE tip_id = ?`, [tipId]);
+      const r = await query<{ c: string }>(`SELECT COUNT(*) as c FROM tip_comments WHERE tip_id = ?`, [tipId]);
       return Number(r.rows[0]?.c || 0) + seededN;
     } catch { /* fall through */ }
   }
   return (s.comments.get(tipId) || []).length + seededN;
 }
 
-// Seed fake/auto-generated comments (used by auto-tip system)
 export function seedComments(tipId: string, comments: TipComment[]) {
   s.seededComments.set(tipId, comments);
 }
 
-// Full engagement seed: sets baseline likes AND generates fake comments.
-// Called by auto-tips-store to initialise engagement on generated tips.
 export function seedTipEngagement(tipId: string, opts: {
   likes: number;
   comments: number;
@@ -185,7 +181,6 @@ export function seedTipEngagement(tipId: string, opts: {
   seedComments(tipId, fakeComments);
 }
 
-// COMMENT_TEMPLATES for auto-generated community engagement
 export const COMMENT_TEMPLATES = [
   "Backing this one! The form's been outstanding lately.",
   "Solid analysis. I'm in on this pick.",

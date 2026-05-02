@@ -1,32 +1,14 @@
 import { query } from './db';
 
-/**
- * Admin-managed "Favorited Tips" config that powers the panel under Live Now
- * on the homepage when there are very few live games.
- *
- * Two storage layers:
- *   1. PostgreSQL (when DATABASE_URL is set) via the `featured_config` table.
- *   2. In-memory fallback on globalThis so dev installs without a DB still
- *      persist within the running process.
- */
-
 export interface FeaturedConfig {
   enabled: boolean;
-  /** Minimum implied confidence (0-100) a pick must reach to qualify. */
   minConfidence: number;
-  /** Minimum bookmaker odds. */
   minOdds: number;
-  /** Maximum bookmaker odds (avoid lottery longshots). */
   maxOdds: number;
-  /** Only include picks from a top-ranked tipster (rank ≤ 5). */
   topTipsterOnly: boolean;
-  /** Restrict to a sport slug, e.g. "football"; empty = all sports. */
   sport: string;
-  /** Manually pinned match IDs (always show, in order). */
   pinnedMatchIds: string[];
-  /** Manually hidden match IDs (never show, even if criteria pass). */
   hiddenMatchIds: string[];
-  /** Max items to show. */
   limit: number;
   updatedAt: string;
 }
@@ -47,7 +29,7 @@ export const DEFAULT_FEATURED_CONFIG: FeaturedConfig = {
 const g = globalThis as { __featuredConfig?: FeaturedConfig };
 
 function hasDb(): boolean {
-  return !!(process.env.DATABASE_URL || process.env.MYSQL_URL);
+  return !!process.env.DATABASE_URL;
 }
 
 async function ensureTable(): Promise<void> {
@@ -60,7 +42,6 @@ async function ensureTable(): Promise<void> {
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    // no-op — PostgreSQL syntax is fine
   } catch (e) {
     console.warn('[featured-store] ensureTable failed:', e);
   }
@@ -105,7 +86,7 @@ export async function saveFeaturedConfig(patch: Partial<FeaturedConfig>): Promis
     try {
       await query(
         `INSERT INTO featured_config (id, config_json) VALUES (1, ?)
-         ON DUPLICATE KEY UPDATE config_json = VALUES(config_json)`,
+         ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json`,
         [JSON.stringify(next)]
       );
     } catch (e) {

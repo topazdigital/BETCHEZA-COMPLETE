@@ -22,7 +22,7 @@ async function ensureSport(id: number, name: string, slug: string): Promise<numb
     await execute(
       `INSERT INTO sports (id, name, slug, icon, is_active)
        VALUES (?, ?, ?, ?, TRUE)
-       ON DUPLICATE KEY UPDATE name = VALUES(name)`,
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
       [id, name, slug, slug]
     );
     return id;
@@ -45,7 +45,7 @@ async function ensureLeague(
     const result = await execute(
       `INSERT INTO leagues (sport_id, country_id, name, slug, api_id, is_active)
        VALUES (?, ?, ?, ?, ?, TRUE)
-       ON DUPLICATE KEY UPDATE api_id = VALUES(api_id)`,
+       ON CONFLICT (slug) DO UPDATE SET api_id = EXCLUDED.api_id RETURNING id`,
       [sportId, countryId, name, slug, apiId]
     );
     if (result.insertId) return result.insertId;
@@ -61,7 +61,7 @@ async function ensureCountry(name: string | undefined, code: string | undefined)
     const existing = await queryOne<{ id: number }>(`SELECT id FROM countries WHERE code = ? LIMIT 1`, [countryCode]);
     if (existing) return existing.id;
     const result = await execute(
-      `INSERT IGNORE INTO countries (name, code) VALUES (?, ?)`,
+      `INSERT INTO countries (name, code) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING id`,
       [country, countryCode]
     );
     if (result.insertId) return result.insertId;
@@ -99,10 +99,10 @@ async function upsertTeam(t: TeamPayload): Promise<void> {
     await execute(
       `INSERT INTO teams (sport_id, country_id, league_id, name, slug, short_name, logo_url, api_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         logo_url = COALESCE(VALUES(logo_url), logo_url),
-         api_id   = COALESCE(VALUES(api_id), api_id),
-         league_id = COALESCE(VALUES(league_id), league_id)`,
+       ON CONFLICT (slug) DO UPDATE SET
+         logo_url = COALESCE(EXCLUDED.logo_url, teams.logo_url),
+         api_id   = COALESCE(EXCLUDED.api_id, teams.api_id),
+         league_id = COALESCE(EXCLUDED.league_id, teams.league_id)`,
       [t.sportId, t.countryId, t.leagueId, t.name, slug, t.shortName || null, t.logo || null, t.apiId]
     );
   } catch (e) { logOnce(e); }
@@ -110,7 +110,7 @@ async function upsertTeam(t: TeamPayload): Promise<void> {
 
 /**
  * Best-effort persistence of teams + leagues from a batch of matches.
- * Silently no-ops when no MySQL pool is configured.
+ * Silently no-ops when no PostgreSQL pool is configured.
  * Runs FULLY ASYNC — never blocks the caller, never throws.
  */
 export function persistMatchEntities(matches: UnifiedMatch[]): void {

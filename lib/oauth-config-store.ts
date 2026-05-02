@@ -106,7 +106,7 @@ export async function setOAuthSiteUrl(value: string): Promise<string> {
       await query(
         `INSERT INTO admin_settings (name, value, type, description)
          VALUES ('oauth_site_url', ?, 'string', 'Public site URL used for OAuth callback URLs')
-         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
         [normalized]
       );
     } catch {
@@ -181,7 +181,7 @@ export async function saveOAuthConfig(patch: Partial<OAuthAllConfig>): Promise<O
         await query(
           `INSERT INTO admin_settings (name, value, type, description)
            VALUES (?, ?, 'string', 'OAuth provider config')
-           ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+           ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
           [name, value]
         );
       }

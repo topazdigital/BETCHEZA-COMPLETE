@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       }
       const presetResult = await query(`
         SELECT * FROM seo_presets
-        WHERE page_type = ? AND is_default = 1
+        WHERE page_type = ? AND is_default = true
         LIMIT 1
       `, [pageType]);
       const presets = presetResult.rows as Array<Record<string, unknown>>;
@@ -51,14 +51,14 @@ export async function POST(request: NextRequest) {
         keywords, canonical_url, no_index, structured_data
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        title = VALUES(title),
-        description = VALUES(description),
-        og_image = VALUES(og_image),
-        keywords = VALUES(keywords),
-        canonical_url = VALUES(canonical_url),
-        no_index = VALUES(no_index),
-        structured_data = VALUES(structured_data)
+      ON CONFLICT (page_type, page_id) DO UPDATE SET
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        og_image = EXCLUDED.og_image,
+        keywords = EXCLUDED.keywords,
+        canonical_url = EXCLUDED.canonical_url,
+        no_index = EXCLUDED.no_index,
+        structured_data = EXCLUDED.structured_data
     `, [
       pageType, pageId || null, title || null, description || null,
       ogImage || null, keywords || null, canonicalUrl || null,

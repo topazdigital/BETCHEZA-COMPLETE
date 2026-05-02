@@ -113,7 +113,7 @@ export async function castVote(
     await ensureTable();
     try {
       await query(
-        `INSERT IGNORE INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?)`,
+        `INSERT INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
         [matchId, voterId, pick],
       );
       const totals = await getVoteTotals(matchId);
