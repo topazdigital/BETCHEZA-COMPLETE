@@ -1003,6 +1003,8 @@ export default function MatchDetailPage({ params }: PageProps) {
   const { open: openAuthModal } = useAuthModal()
   const [savedMatch, setSavedMatch] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const [showMobileLineups, setShowMobileLineups] = useState(false)
+  const [showMobileMarkets, setShowMobileMarkets] = useState(false)
   const [tipSubmitted, setTipSubmitted] = useState<null | { label: string; odds: number }>(null)
   const [shareToast, setShareToast] = useState<string | null>(null)
   // Add-Tip modal — auth-aware: signed-out users see a friendly sign-in prompt
@@ -1404,34 +1406,36 @@ export default function MatchDetailPage({ params }: PageProps) {
               <div className="rounded-lg border border-border/60 bg-card p-2.5">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-[10px] font-bold uppercase tracking-wider">Lineups & Formation</h3>
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setActiveTab('lineups')}>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowMobileLineups(v => !v)}>
                     Open
                   </Button>
                 </div>
-                <div className="space-y-2">
-                  {lineups.home && (
-                    <div className="rounded-md bg-muted/30 px-2.5 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-semibold truncate">{match.homeTeam.name}</span>
-                        {lineups.home.formation && <span className="text-[10px] text-muted-foreground">{lineups.home.formation}</span>}
+                {showMobileLineups && (
+                  <div className="space-y-2">
+                    {lineups.home && (
+                      <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold truncate">{match.homeTeam.name}</span>
+                          {lineups.home.formation && <span className="text-[10px] text-muted-foreground">{lineups.home.formation}</span>}
+                        </div>
+                        <p className="mt-1 text-[10px] text-muted-foreground truncate">
+                          {lineups.home.starting.slice(0, 4).map(p => p.name).join(' • ')}
+                        </p>
                       </div>
-                      <p className="mt-1 text-[10px] text-muted-foreground truncate">
-                        {lineups.home.starting.slice(0, 4).map(p => p.name).join(' • ')}
-                      </p>
-                    </div>
-                  )}
-                  {lineups.away && (
-                    <div className="rounded-md bg-muted/30 px-2.5 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-semibold truncate">{match.awayTeam.name}</span>
-                        {lineups.away.formation && <span className="text-[10px] text-muted-foreground">{lineups.away.formation}</span>}
+                    )}
+                    {lineups.away && (
+                      <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold truncate">{match.awayTeam.name}</span>
+                          {lineups.away.formation && <span className="text-[10px] text-muted-foreground">{lineups.away.formation}</span>}
+                        </div>
+                        <p className="mt-1 text-[10px] text-muted-foreground truncate">
+                          {lineups.away.starting.slice(0, 4).map(p => p.name).join(' • ')}
+                        </p>
                       </div>
-                      <p className="mt-1 text-[10px] text-muted-foreground truncate">
-                        {lineups.away.starting.slice(0, 4).map(p => p.name).join(' • ')}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1441,41 +1445,45 @@ export default function MatchDetailPage({ params }: PageProps) {
               <div className="rounded-lg border border-border/60 bg-card p-2.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="text-[10px] font-bold uppercase tracking-wider">Bet Markets</h3>
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setActiveTab('odds')}>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowMobileMarkets(v => !v)}>
                     Open
                   </Button>
                 </div>
-                {bookmakerOdds.length > 0 && (
-                  <div className="space-y-2">
-                    {bookmakerOdds.slice(0, 2).map((o, i) => (
-                      <div key={i} className="rounded-md bg-muted/30 px-2.5 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold truncate">{o.bookmaker}</span>
-                          <span className="text-[10px] text-muted-foreground">{o.home.toFixed(2)} / {o.draw !== undefined ? o.draw.toFixed(2) : '—'} / {o.away.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {match.markets && match.markets.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {match.markets.slice(0, 2).map((mkt) => (
-                      <div key={mkt.key} className="rounded-md bg-muted/30 px-2.5 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold truncate">{mkt.name}</span>
-                          <span className="text-[10px] text-muted-foreground">{mkt.outcomes.length} options</span>
-                        </div>
-                        <div className="mt-1 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
-                          {mkt.outcomes.slice(0, 3).map((o, i) => (
-                            <div key={i} className="rounded border border-border/40 bg-background px-2 py-1 text-center">
-                              <div className="text-[9px] uppercase text-muted-foreground truncate">{o.name}</div>
-                              <div className="font-mono text-xs font-bold">{o.price.toFixed(2)}</div>
+                {showMobileMarkets && (
+                  <>
+                    {bookmakerOdds.length > 0 && (
+                      <div className="space-y-2">
+                        {bookmakerOdds.slice(0, 2).map((o, i) => (
+                          <div key={i} className="rounded-md bg-muted/30 px-2.5 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-semibold truncate">{o.bookmaker}</span>
+                              <span className="text-[10px] text-muted-foreground">{o.home.toFixed(2)} / {o.draw !== undefined ? o.draw.toFixed(2) : '—'} / {o.away.toFixed(2)}</span>
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    )}
+                    {match.markets && match.markets.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {match.markets.slice(0, 2).map((mkt) => (
+                          <div key={mkt.key} className="rounded-md bg-muted/30 px-2.5 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-semibold truncate">{mkt.name}</span>
+                              <span className="text-[10px] text-muted-foreground">{mkt.outcomes.length} options</span>
+                            </div>
+                            <div className="mt-1 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
+                              {mkt.outcomes.slice(0, 3).map((o, i) => (
+                                <div key={i} className="rounded border border-border/40 bg-background px-2 py-1 text-center">
+                                  <div className="text-[9px] uppercase text-muted-foreground truncate">{o.name}</div>
+                                  <div className="font-mono text-xs font-bold">{o.price.toFixed(2)}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
