@@ -1892,7 +1892,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                   )}
                 </div>
                 <CardContent className="p-3 space-y-2.5">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <OddsCardLarge label="1 Home" sublabel={match.homeTeam.name} value={match.odds.home} />
                     {match.odds.draw !== undefined
                       ? <OddsCardLarge label="X Draw" sublabel="Draw" value={match.odds.draw} highlight />
@@ -1918,7 +1918,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                   <h3 className="text-xs font-bold uppercase tracking-wide">Bookmaker Comparison</h3>
                 </div>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto md:block hidden">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-border/40 text-[10px] uppercase text-muted-foreground bg-muted/30">
@@ -1983,6 +1983,48 @@ export default function MatchDetailPage({ params }: PageProps) {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="space-y-2 p-3 md:hidden">
+                    {bookmakerOdds.map((o, i) => {
+                      const best1 = Math.max(...bookmakerOdds.map(x => x.home))
+                      const bestX = Math.max(...bookmakerOdds.map(x => x.draw ?? 0))
+                      const best2 = Math.max(...bookmakerOdds.map(x => x.away))
+                      const anyLinks = bookmakerOdds.some(x => x.links?.home || x.links?.away || x.links?.draw)
+                      const link = o.links?.home || o.links?.away || o.links?.draw
+                      return (
+                        <div key={i} className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold">{o.bookmaker}</span>
+                            {link && (
+                              <a
+                                href={link}
+                                target="_blank"
+                                rel="nofollow noopener sponsored"
+                                className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-500"
+                              >
+                                Bet
+                              </a>
+                            )}
+                          </div>
+                          <div className={cn('grid gap-2', o.draw !== undefined ? 'grid-cols-3' : 'grid-cols-2')}>
+                            <div className={cn('rounded-md bg-background px-2 py-1 text-center', o.home === best1 && 'text-emerald-500')}>
+                              <div className="text-[9px] uppercase text-muted-foreground">1</div>
+                              <div className="font-mono text-sm font-bold">{o.home.toFixed(2)}</div>
+                            </div>
+                            {o.draw !== undefined && (
+                              <div className={cn('rounded-md bg-background px-2 py-1 text-center', o.draw === bestX && 'text-emerald-500')}>
+                                <div className="text-[9px] uppercase text-muted-foreground">X</div>
+                                <div className="font-mono text-sm font-bold">{o.draw.toFixed(2)}</div>
+                              </div>
+                            )}
+                            <div className={cn('rounded-md bg-background px-2 py-1 text-center', o.away === best2 && 'text-emerald-500')}>
+                              <div className="text-[9px] uppercase text-muted-foreground">2</div>
+                              <div className="font-mono text-sm font-bold">{o.away.toFixed(2)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                   <p className="px-4 py-2 text-[10px] text-muted-foreground">
                     Best odds highlighted in green. Affiliate-style links open the bookmaker’s bet slip in a new tab.
