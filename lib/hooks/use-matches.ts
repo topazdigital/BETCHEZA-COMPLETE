@@ -190,7 +190,7 @@ function sortMatchesWithPriority(matches: Match[], countryCode?: string): Match[
 // Filter helper functions
 function getLiveMatches(matches: Match[]): Match[] {
   return matches
-    .filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'extra_time' || m.status === 'penalties')
+    .filter(m => m.status === 'live' || m.status === 'extra_time' || m.status === 'penalties')
     .sort((a, b) => {
       const sportPriorityA = SPORT_PRIORITY[a.sportId] ?? 99;
       const sportPriorityB = SPORT_PRIORITY[b.sportId] ?? 99;
@@ -326,11 +326,7 @@ export function useLiveMatches() {
 
   return {
     matches: getLiveMatches(matches),
-    // Only show the loading spinner on the true first load (isLoading = no data yet).
-    // Do NOT re-show the spinner during every 10-second background revalidation —
-    // that's what caused the page to flicker between "live matches" and "Nothing
-    // live right now" every poll cycle. keepPreviousData keeps the last-known array
-    // (even an empty []) during revalidation so isLoading stays false.
+    // Only show the loading spinner on the true first load.
     isLoading,
     error,
   };

@@ -14,6 +14,7 @@ export function liveStatusLabel(sportSlug: string, status: string, minute?: numb
   if (status === 'halftime') return 'HT';
   if (status === 'extra_time') return minute && minute > 90 ? `${minute}'` : 'ET';
   if (status === 'penalties') return 'PEN';
+  if (minute !== undefined && minute !== null && minute <= 45 && status !== 'live') return 'HT';
   const m = minute ?? 0;
   switch (sportSlug) {
     case 'basketball':
