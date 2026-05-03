@@ -37,20 +37,14 @@ export function liveStatusLabel(sportSlug: string, status: string, minute?: numb
     case 'rugby':
       return m > 0 ? `${m}'` : 'LIVE';
     default:
-      // soccer / football / generic
       return m >= 0 ? `${m || 0}'` : 'LIVE';
   }
 }
 
-/**
- * Should this sport use a soccer-style ticking minute counter on the
- * match detail hero? For these sports we trust the kickoff time + a
- * setInterval to keep the displayed minute fresh between API polls.
- */
 export function isMinuteTickingSport(sportSlug: string): boolean {
-  return (
-    sportSlug === 'soccer' ||
-    sportSlug === 'football' ||
-    sportSlug === 'rugby'
-  );
+  return sportSlug === 'soccer' || sportSlug === 'football' || sportSlug === 'rugby';
+}
+
+export function isLiveMatchStatus(status: string): boolean {
+  return status === 'live' || status === 'halftime' || status === 'extra_time' || status === 'penalties';
 }

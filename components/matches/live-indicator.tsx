@@ -1,18 +1,17 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { liveStatusLabel } from '@/lib/utils/live-status';
+import { liveStatusLabel, isLiveMatchStatus } from '@/lib/utils/live-status';
 
 interface LiveIndicatorProps {
   minute?: number;
-  /** Match status (e.g. 'live' | 'halftime' | 'extra_time' | 'penalties') */
   status?: string;
-  /** Sport slug used to format the label (e.g. 'soccer', 'tennis', 'basketball'). */
   sportSlug?: string;
   className?: string;
 }
 
 export function LiveIndicator({ minute, status = 'live', sportSlug = 'soccer', className }: LiveIndicatorProps) {
+  if (!isLiveMatchStatus(status)) return null;
   const label = liveStatusLabel(sportSlug, status, minute);
   return (
     <div className={cn('flex items-center gap-1.5', className)}>
