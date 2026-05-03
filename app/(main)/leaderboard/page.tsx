@@ -179,7 +179,7 @@ export default function LeaderboardPage() {
   const { data: apiData, isLoading } = useSWR<{ tipsters: ApiTipster[] }>(
     `/api/tipsters?sortBy=${view === 'streaks' ? 'streak' : def.sort}&limit=50`,
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, dedupingInterval: 60000 },
   );
 
   const data: Row[] = useMemo(() => {

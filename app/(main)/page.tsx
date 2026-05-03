@@ -60,16 +60,13 @@ export default function HomePage() {
   const { data: topTipstersData } = useSWR<ApiTipster[]>(
     '/api/tipsters?sortBy=winRate&limit=4',
     tipstersFetcher,
-    { refreshInterval: 5 * 60 * 1000, revalidateOnFocus: false },
+    { refreshInterval: 10 * 60 * 1000, revalidateOnFocus: false, dedupingInterval: 10 * 60 * 1000 },
   );
   const topTipsters = topTipstersData ?? [];
 
   const { matches, isLoading } = useMatches(
     selectedSportId ? { sportId: selectedSportId } : undefined
   );
-  // Always fetch unfiltered set so per-sport counts (Oddspedia-style) stay
-  // accurate regardless of the currently selected sport.
-  const { matches: allMatches } = useMatches();
   const { matches: liveMatches } = useLiveMatches();
   const { items: favoritedTips } = useFavoritedTips();
   // When live action is sparse (1-3 games) we mix featured tips into the live
@@ -82,11 +79,11 @@ export default function HomePage() {
   // Calculate match counts per sport from the UNFILTERED list.
   const matchCounts = useMemo(() => {
     const counts: Record<number, number> = {};
-    allMatches.forEach(m => {
+    matches.forEach(m => {
       counts[m.sportId] = (counts[m.sportId] || 0) + 1;
     });
     return counts;
-  }, [allMatches]);
+  }, [matches]);
 
   // Get featured/upcoming matches — sorted by kickoff time ascending (soonest first)
   const upcomingMatches = useMemo(() => {

@@ -512,7 +512,7 @@ function TrendingRail() {
 
 export default function FeedPage() {
   const { data: meRes } = useSWR<Me>('/api/auth/me', fetcher);
-  const { data: postsRes, isLoading } = useSWR<{ posts: Post[] }>(POSTS_KEY, fetcher, { refreshInterval: 30000 });
+  const { data: postsRes, isLoading } = useSWR<{ posts: Post[] }>(POSTS_KEY, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
   const posts = postsRes?.posts ?? [];
 
   const refresh = () => mutate(POSTS_KEY);
