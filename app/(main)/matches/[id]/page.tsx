@@ -304,17 +304,24 @@ function useLiveMinute(storedMinute: number | undefined, status: string, sportSl
 
   useEffect(() => {
     if (liveClock) {
-      const plus = liveClock.match(/^(\d+)(?:\+(\d+))?'?$/)
-      const mmss = liveClock.match(/^(\d+):(\d+)$/)
+      const text = liveClock.trim()
+      const plus = text.match(/^(\d+)(?:\+(\d+))?'?$/)
+      const mmss = text.match(/^(\d+):(\d+)$/)
+      const hasRemaining = /remaining|left/i.test(text)
       if (plus) {
-        const base = parseInt(plus[1], 10)
-        const extra = plus[2] ? parseInt(plus[2], 10) : 0
-        setMinute(base + extra)
+        setMinute(parseInt(plus[1], 10) + (plus[2] ? parseInt(plus[2], 10) : 0))
         return
       }
       if (mmss) {
         const mins = parseInt(mmss[1], 10)
-        setMinute(status === 'halftime' ? 45 : mins)
+        const secs = parseInt(mmss[2], 10)
+        const elapsed = hasRemaining ? Math.max(0, mins - (secs > 0 ? 1 : 0)) : mins
+        setMinute(status === 'halftime' ? 45 : elapsed)
+        return
+      }
+      const plain = text.match(/^(\d+)$/)
+      if (plain) {
+        setMinute(parseInt(plain[1], 10))
         return
       }
     }
@@ -322,7 +329,7 @@ function useLiveMinute(storedMinute: number | undefined, status: string, sportSl
     if (!isLive || !ticksByMinute || !kickoffTime) return
     const kickoff = new Date(kickoffTime).getTime()
     const tick = () => {
-      const elapsed = Math.max(0, Math.floor((Date.now() - kickoff) / 60000))
+      const elapsed = Math.max(0, Math.floor((Date.now() - kickoff + 60000) / 60000))
       setMinute(Math.min(elapsed, 120))
     }
     tick()
