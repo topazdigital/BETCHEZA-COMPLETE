@@ -37,6 +37,7 @@ import { WinnerVote } from "@/components/matches/winner-vote"
 import { useAuth } from "@/contexts/auth-context"
 import { useMatches } from "@/lib/hooks/use-matches"
 import { useBetSlip } from "@/contexts/bet-slip-context"
+import { isMinuteTickingSport } from "@/lib/utils/live-status"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -292,7 +293,7 @@ function EventIcon({ type }: { type: MatchEvent['type'] }) {
 // for soccer / football / rugby so the seconds keep moving naturally —
 // but we always anchor to the API value rather than to kickoff time
 // (kickoff-based ticking was wrong for delayed kick-offs, halftime, ET).
-function useLiveMinute(storedMinute: number | undefined, status: string, sportSlug: string = 'soccer') {
+function useLiveMinute(storedMinute: number | undefined, status: string, sportSlug: string = 'soccer', kickoffTime?: string) {
   const [minute, setMinute] = useState(storedMinute ?? 0)
   const isLive = status === 'live' || status === 'extra_time' || status === 'penalties'
   const isHalftime = status === 'halftime'
@@ -303,15 +304,16 @@ function useLiveMinute(storedMinute: number | undefined, status: string, sportSl
 
   useEffect(() => {
     if (isHalftime) { setMinute(45); return }
-    if (!isLive || !ticksByMinute) return
-    const start = Date.now()
-    const base = storedMinute ?? 0
-    const id = setInterval(() => {
-      const extra = Math.floor((Date.now() - start) / 60000)
-      setMinute(Math.min(base + extra, 120))
-    }, 30000)
+    if (!isLive || !ticksByMinute || !kickoffTime) return
+    const kickoff = new Date(kickoffTime).getTime()
+    const tick = () => {
+      const elapsed = Math.max(0, Math.floor((Date.now() - kickoff) / 60000))
+      setMinute(Math.min(elapsed, 120))
+    }
+    tick()
+    const id = setInterval(tick, 15_000)
     return () => clearInterval(id)
-  }, [isLive, isHalftime, ticksByMinute, storedMinute])
+  }, [isLive, isHalftime, ticksByMinute, kickoffTime])
 
   return minute
 }
@@ -1079,10 +1081,11 @@ export default function MatchDetailPage({ params }: PageProps) {
   const liveMinute = useLiveMinute(
     match?.minute,
     match?.status || '',
-    match?.sport.slug || 'soccer'
+    match?.sport.slug || 'soccer',
+    match?.kickoffTime
   )
   const sportSlug = match?.sport.slug || 'soccer'
-  const ticksByMinute = sportSlug === 'soccer' || sportSlug === 'football' || sportSlug === 'rugby'
+  const ticksByMinute = isMinuteTickingSport(sportSlug)
   const liveLabel = liveStatusLabel(sportSlug, match?.status || '', liveMinute)
 
   if (isLoading) {

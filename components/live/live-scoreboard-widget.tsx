@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Radio, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { matchToSlug } from '@/lib/utils/match-url';
+import useSWR from 'swr';
 
 interface LiveMatch {
   id: string;
@@ -17,6 +18,7 @@ interface LiveMatch {
 }
 
 const POLL_INTERVAL = 30_000;
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 function abbr(name: string, short?: string): string {
   if (short && short.length <= 4) return short;
@@ -29,22 +31,14 @@ export function LiveScoreboardWidget() {
   const [matches, setMatches] = useState<LiveMatch[]>([]);
   const [open, setOpen] = useState(true);
   const [dismissed, setDismissed] = useState(false);
-
-  const fetchLive = useCallback(async () => {
-    try {
-      const r = await fetch('/api/matches?status=live&limit=10', { cache: 'no-store' });
-      if (!r.ok) return;
-      const data = await r.json() as { matches?: LiveMatch[] };
-      const live = (data.matches || []).filter(m => m.status === 'live' || m.status === 'in');
-      setMatches(live);
-    } catch {}
-  }, []);
+  const { data } = useSWR('/api/matches?status=live&limit=10', fetcher, { refreshInterval: POLL_INTERVAL });
 
   useEffect(() => {
-    fetchLive();
-    const id = setInterval(fetchLive, POLL_INTERVAL);
-    return () => clearInterval(id);
-  }, [fetchLive]);
+    const live = ((data?.matches || []) as LiveMatch[])
+      .filter(m => m.status === 'live' || m.status === 'in')
+      .filter(m => (m.homeTeam.score ?? 0) > 0 || (m.awayTeam.score ?? 0) > 0);
+    setMatches(live);
+  }, [data]);
 
   if (dismissed || matches.length === 0) return null;
 
@@ -108,7 +102,7 @@ export function LiveScoreboardWidget() {
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="text-[9px] font-bold text-red-600 tabular-nums">{m.clock || 'LIVE'}</div>
+                    <div className="text-[9px] font-bold text-red-600 tabular-nums">GOAL</div>
                     {m.league?.name && (
                       <div className="text-[8px] text-muted-foreground truncate max-w-[50px]">{m.league.name}</div>
                     )}
