@@ -3225,7 +3225,9 @@ export async function getLiveMatches(): Promise<UnifiedMatch[]> {
   const allMatches = await getAllMatches();
   return allMatches.filter(m =>
     m.status === 'live' ||
-    m.status === 'halftime'
+    m.status === 'halftime' ||
+    (m.status as string) === 'extra_time' ||
+    (m.status as string) === 'penalties'
   );
 }
 

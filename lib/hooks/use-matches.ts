@@ -29,6 +29,7 @@ export interface Match {
   homeScore: number | null;
   awayScore: number | null;
   minute?: number;
+  period?: string;
   league: {
     id: number;
     name: string;

@@ -10,9 +10,74 @@ import { useBetSlip } from '@/contexts/bet-slip-context';
 import { formatOdds } from '@/lib/utils/odds-converter';
 import { TeamLogo, SportIcon, LeagueFlag } from '@/components/ui/team-logo';
 import { getBrowserTimezone, formatTime, formatDate, isToday, isTomorrow } from '@/lib/utils/timezone';
-import { liveStatusLabel } from '@/lib/utils/live-status';
+import { liveStatusLabel, isMinuteTickingSport } from '@/lib/utils/live-status';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { getTeamCategoryBadge } from '@/lib/utils/team-category';
+
+/**
+ * Ticking live-minute hook for match cards.
+ * - Parses ESPN's displayClock string (period field) immediately.
+ * - Falls back to computing elapsed time from kickoff for minute-ticking sports.
+ * - Ticks every 15 s so the displayed minute stays fresh between API polls.
+ */
+function useLiveCardMinute(
+  storedMinute: number | undefined,
+  status: string,
+  sportSlug: string,
+  kickoffTime: string | Date,
+  period?: string,
+): number {
+  const [minute, setMinute] = useState(storedMinute ?? 0);
+
+  // Sync to fresh API value whenever it changes
+  useEffect(() => { setMinute(storedMinute ?? 0); }, [storedMinute]);
+
+  useEffect(() => {
+    const isLive = status === 'live' || status === 'extra_time' || status === 'penalties';
+    const isHalftime = status === 'halftime';
+
+    // Parse ESPN displayClock first (most accurate)
+    if (period) {
+      const text = period.trim();
+      const plusMatch = text.match(/^(\d+)(?:\+(\d+))?'?$/);
+      if (plusMatch) {
+        const parsed = parseInt(plusMatch[1], 10) + (plusMatch[2] ? parseInt(plusMatch[2], 10) : 0);
+        setMinute(parsed);
+        if (!isLive) return;
+        // Still tick from this base for minute-ticking sports
+        if (isMinuteTickingSport(sportSlug)) {
+          const parseMs = Date.now();
+          const id = setInterval(() => {
+            setMinute(parsed + Math.floor((Date.now() - parseMs) / 60000));
+          }, 15_000);
+          return () => clearInterval(id);
+        }
+        return;
+      }
+      const mmssMatch = text.match(/^(\d+):(\d+)$/);
+      if (mmssMatch) {
+        const mins = parseInt(mmssMatch[1], 10);
+        setMinute(isHalftime ? 45 : mins);
+        return;
+      }
+    }
+
+    if (isHalftime) { setMinute(45); return; }
+    if (!isLive || !isMinuteTickingSport(sportSlug)) return;
+
+    const kickoff = new Date(kickoffTime).getTime();
+    if (isNaN(kickoff)) return;
+    const tick = () => {
+      const elapsed = Math.max(0, Math.floor((Date.now() - kickoff) / 60000));
+      setMinute(Math.min(elapsed, 120));
+    };
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, [status, sportSlug, kickoffTime, period]);
+
+  return minute;
+}
 
 interface Match {
   id: string;
@@ -39,6 +104,7 @@ interface Match {
   homeScore: number | null;
   awayScore: number | null;
   minute?: number;
+  period?: string;
   league: {
     id: number;
     name: string;
@@ -95,6 +161,15 @@ export function MatchCardNew({
   const statusForLabel = match.status === 'halftime' ? 'halftime' : match.status;
   const isTwoWay = NO_DRAW_SPORTS.has(match.sport.slug);
 
+  // Locally ticking live minute — updates every 15 s without waiting for API refresh
+  const liveMinute = useLiveCardMinute(
+    match.minute,
+    match.status,
+    match.sport.slug,
+    match.kickoffTime,
+    match.period,
+  );
+
   const homeBadge = getTeamCategoryBadge(match.homeTeam.name, match.league.name, match.league.slug);
   const awayBadge = getTeamCategoryBadge(match.awayTeam.name, match.league.name, match.league.slug);
   const homeBadgeLabel = homeBadge.youthLabel || (homeBadge.isWomens ? 'W' : null);
@@ -132,7 +207,7 @@ export function MatchCardNew({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-live"></span>
               </span>
               <span className="mt-1 text-[10px] font-bold text-live">
-                {liveStatusLabel(match.sport.slug, statusForLabel, match.minute)}
+                {liveStatusLabel(match.sport.slug, statusForLabel, liveMinute)}
               </span>
             </div>
           ) : isFinished ? (
@@ -276,7 +351,7 @@ export function MatchCardNew({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-live"></span>
               </span>
               <span className="text-xs font-bold text-live">
-                {liveStatusLabel(match.sport.slug, statusForLabel, match.minute)}
+                {liveStatusLabel(match.sport.slug, statusForLabel, liveMinute)}
               </span>
             </div>
           ) : isFinished ? (

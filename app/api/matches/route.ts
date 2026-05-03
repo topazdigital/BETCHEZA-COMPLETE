@@ -78,6 +78,7 @@ export interface MatchData {
   homeScore: number | null;
   awayScore: number | null;
   minute?: number;
+  period?: string;
   league: {
     id: number;
     name: string;
@@ -127,6 +128,7 @@ function convertToMatchData(match: UnifiedMatch): MatchData {
     homeScore: match.homeScore,
     awayScore: match.awayScore,
     minute: match.minute,
+    period: match.period,
     league: match.league,
     sport: match.sport,
     odds: (() => {
