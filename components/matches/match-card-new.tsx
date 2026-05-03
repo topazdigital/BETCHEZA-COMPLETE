@@ -92,6 +92,7 @@ export function MatchCardNew({
   const { settings } = useUserSettings();
   const isLive = match.status === 'live' || match.status === 'halftime' || match.status === 'extra_time' || match.status === 'penalties';
   const isFinished = match.status === 'finished';
+  const statusForLabel = match.status === 'halftime' ? 'halftime' : match.status;
   const isTwoWay = NO_DRAW_SPORTS.has(match.sport.slug);
 
   const homeBadge = getTeamCategoryBadge(match.homeTeam.name, match.league.name, match.league.slug);
@@ -131,7 +132,7 @@ export function MatchCardNew({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-live"></span>
               </span>
               <span className="mt-1 text-[10px] font-bold text-live">
-                {liveStatusLabel(match.sport.slug, match.status, match.minute)}
+                {liveStatusLabel(match.sport.slug, statusForLabel, match.minute)}
               </span>
             </div>
           ) : isFinished ? (
@@ -275,7 +276,7 @@ export function MatchCardNew({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-live"></span>
               </span>
               <span className="text-xs font-bold text-live">
-                {liveStatusLabel(match.sport.slug, match.status, match.minute)}
+                {liveStatusLabel(match.sport.slug, statusForLabel, match.minute)}
               </span>
             </div>
           ) : isFinished ? (

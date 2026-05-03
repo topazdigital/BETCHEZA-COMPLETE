@@ -26,6 +26,13 @@ const SPORTS = [
   { value: 'american-football', label: '🏈 American Football' },
   { value: 'baseball', label: '⚾ Baseball' },
   { value: 'ice-hockey', label: '🏒 Ice Hockey' },
+  { value: 'soccer', label: '⚽ Soccer' },
+  { value: 'mma', label: '🥊 MMA' },
+  { value: 'boxing', label: '🥊 Boxing' },
+  { value: 'cricket', label: '🏏 Cricket' },
+  { value: 'rugby', label: '🏉 Rugby' },
+  { value: 'volleyball', label: '🏐 Volleyball' },
+  { value: 'table-tennis', label: '🏓 Table Tennis' },
 ];
 
 const SCORING = [
