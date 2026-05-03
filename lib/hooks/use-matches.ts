@@ -338,7 +338,9 @@ export function useTodayMatches() {
     '/api/matches',
     matchesFetcher,
     {
-      refreshInterval: 30000,
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
     }
   );
 
@@ -359,6 +361,8 @@ export function useUpcomingMatches(limit?: number) {
     matchesFetcher,
     {
       refreshInterval: 60000,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
     }
   );
 
@@ -380,6 +384,8 @@ export function useFinishedMatches(date?: Date) {
     matchesFetcher,
     {
       refreshInterval: 60000,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
     }
   );
 
@@ -403,7 +409,9 @@ export function useMatch(matchId: string) {
     '/api/matches',
     matchesFetcher,
     {
-      refreshInterval: 10000,
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
     }
   );
 
@@ -468,7 +476,9 @@ export function useMatchesByLeague(sportId?: number) {
     `/api/matches${params}`,
     matchesFetcher,
     {
-      refreshInterval: 30000,
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
     }
   );
 
@@ -485,7 +495,9 @@ export function useMatchesBySport() {
     '/api/matches',
     matchesFetcher,
     {
-      refreshInterval: 30000,
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
     }
   );
 
@@ -502,7 +514,9 @@ export function useMatchStats() {
     '/api/matches',
     matchesFetcher,
     {
-      refreshInterval: 30000,
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      dedupingInterval: 30000,
     }
   );
 

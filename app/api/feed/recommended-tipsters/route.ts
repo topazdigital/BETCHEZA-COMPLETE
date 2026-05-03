@@ -5,12 +5,21 @@ import { getFakeTipsters } from '@/lib/fake-tipsters';
 
 export const dynamic = 'force-dynamic';
 
-// Recommended tipsters now come from the real fake-tipster catalogue
-// (the same accounts that author the feed posts and competition standings).
-// Pick a deterministic top-6 by a composite score so the rail stays stable
-// across refreshes but reflects the actual tipster pool.
+// In-process cache — list is user-aware (followed set) so we cache per userId.
+// Anonymous users share the same key. TTL: 5 min.
+const CACHE_TTL = 5 * 60_000;
+const g = globalThis as { __recTipstersCache?: Map<string, { data: unknown; ts: number }> };
+if (!g.__recTipstersCache) g.__recTipstersCache = new Map();
+
 export async function GET() {
   const user = await getCurrentUser();
+  const cacheKey = user ? `u:${user.userId}` : 'anon';
+  const now = Date.now();
+  const cached = g.__recTipstersCache!.get(cacheKey);
+  if (cached && now - cached.ts < CACHE_TTL) {
+    return NextResponse.json(cached.data);
+  }
+
   let followed = new Set<number>();
   if (user) {
     try {
@@ -39,5 +48,7 @@ export async function GET() {
       following: followed.has(t.id),
     }));
 
-  return NextResponse.json({ tipsters: ranked });
+  const payload = { tipsters: ranked };
+  g.__recTipstersCache!.set(cacheKey, { data: payload, ts: now });
+  return NextResponse.json(payload);
 }

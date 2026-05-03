@@ -160,56 +160,132 @@ function convertToMatchData(match: UnifiedMatch): MatchData {
   };
 }
 
-// Day buckets relative to user's timezone offset (in minutes from server UTC)
-function getDayBucket(kickoff: Date, tzOffsetMin: number): number {
-  // tzOffsetMin: e.g. for UTC+3, it's +180
-  // Bucket: 0 = today, 1 = tomorrow, 2+ = later, -1 = past
-  const now = new Date();
-  const localNow = new Date(now.getTime() + tzOffsetMin * 60 * 1000);
-  const localKick = new Date(kickoff.getTime() + tzOffsetMin * 60 * 1000);
-  const startOfDayUTC = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const todayStart = startOfDayUTC(localNow);
-  const kickStart = startOfDayUTC(localKick);
-  return Math.round((kickStart - todayStart) / (24 * 60 * 60 * 1000));
+// Day bucket for a kickoff timestamp (ms) relative to the user's timezone.
+// Returns 0=today, 1=tomorrow, 2+=future, negative=past.
+// Uses only arithmetic — no Date object construction — for maximum speed.
+function getDayBucketMs(kickoffMs: number, tzOffsetMs: number, nowMs: number): number {
+  const DAY = 86_400_000;
+  const localNow  = nowMs     + tzOffsetMs;
+  const localKick = kickoffMs + tzOffsetMs;
+  const todayStart = localNow  - (localNow  % DAY);
+  const kickStart  = localKick - (localKick % DAY);
+  return Math.round((kickStart - todayStart) / DAY);
 }
 
-// Sort: today first → live first within day → sport priority → league priority → time asc
+// Legacy overload used by status-filter helper below.
+function getDayBucket(kickoff: Date, tzOffsetMin: number): number {
+  return getDayBucketMs(kickoff.getTime(), tzOffsetMin * 60_000, Date.now());
+}
+
+// Sort: today first → live first → sport priority → league priority → time asc.
+// Sort keys are pre-computed once (O(n)) to avoid repeated Date work inside
+// the O(n log n) comparator.
 function sortMatches(matches: MatchData[], userCountryCode: string, tzOffsetMin: number): MatchData[] {
   const leaguePriority = COUNTRY_LEAGUES[userCountryCode.toUpperCase()] || EUROPEAN_TOP_5_LEAGUES;
+  const liveStatuses   = new Set(['live', 'halftime', 'extra_time', 'penalties']);
+  const tzOffsetMs     = tzOffsetMin * 60_000;
+  const nowMs          = Date.now();
 
-  const liveStatuses = new Set(['live', 'halftime', 'extra_time', 'penalties']);
+  type Tagged = {
+    m: MatchData;
+    isLive: boolean;
+    bucket: number;
+    sportP: number;
+    leagueP: number;
+    kickMs: number;
+  };
 
-  return matches.slice().sort((a, b) => {
-    const aLive = liveStatuses.has(a.status);
-    const bLive = liveStatuses.has(b.status);
-
-    // 1. Live matches always first across all days
-    if (aLive !== bLive) return aLive ? -1 : 1;
-
-    // 2. Day bucket - today (0) first, then tomorrow (1), etc.
-    const aBucket = getDayBucket(new Date(a.kickoffTime), tzOffsetMin);
-    const bBucket = getDayBucket(new Date(b.kickoffTime), tzOffsetMin);
-    // Past matches (negative) go to the very end
-    const aBucketSort = aBucket < 0 ? 9999 + Math.abs(aBucket) : aBucket;
-    const bBucketSort = bBucket < 0 ? 9999 + Math.abs(bBucket) : bBucket;
-    if (aBucketSort !== bBucketSort) return aBucketSort - bBucketSort;
-
-    // 3. Sport priority (Football first)
-    const sportA = SPORT_PRIORITY[a.sportId] ?? 99;
-    const sportB = SPORT_PRIORITY[b.sportId] ?? 99;
-    if (sportA !== sportB) return sportA - sportB;
-
-    // 4. League priority (geo-aware)
-    const idxA = leaguePriority.indexOf(a.leagueId);
-    const idxB = leaguePriority.indexOf(b.leagueId);
-    const leagueA = idxA === -1 ? 999 : idxA;
-    const leagueB = idxB === -1 ? 999 : idxB;
-    if (leagueA !== leagueB) return leagueA - leagueB;
-
-    // 5. Within league: ascending time (earliest upcoming first)
-    return new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime();
+  const tagged: Tagged[] = matches.map(m => {
+    const kickMs  = new Date(m.kickoffTime).getTime();
+    const raw     = getDayBucketMs(kickMs, tzOffsetMs, nowMs);
+    const bucket  = raw < 0 ? 9999 + Math.abs(raw) : raw;
+    const idxL    = leaguePriority.indexOf(m.leagueId);
+    return {
+      m,
+      isLive:  liveStatuses.has(m.status),
+      bucket,
+      sportP:  SPORT_PRIORITY[m.sportId] ?? 99,
+      leagueP: idxL === -1 ? 999 : idxL,
+      kickMs,
+    };
   });
+
+  tagged.sort((a, b) => {
+    if (a.isLive !== b.isLive)      return a.isLive ? -1 : 1;
+    if (a.bucket  !== b.bucket)     return a.bucket  - b.bucket;
+    if (a.sportP  !== b.sportP)     return a.sportP  - b.sportP;
+    if (a.leagueP !== b.leagueP)    return a.leagueP - b.leagueP;
+    return a.kickMs - b.kickMs;
+  });
+
+  return tagged.map(t => t.m);
 }
+
+// ── Stale-live detection constants (used in route cache + per-request) ────────
+const STALE_LIVE_HOURS: Record<string, number> = {
+  soccer: 3.5, football: 3.5, basketball: 3.5,
+  americanfootball: 4.5, baseball: 5, hockey: 4, icehockey: 4,
+  tennis: 6, cricket: 10, rugby: 3, mma: 4, boxing: 4,
+  golf: 12, racing: 6,
+};
+
+function isStaleLive(m: MatchData): boolean {
+  const live = m.status === 'live' || m.status === 'halftime' ||
+    m.status === 'extra_time' || m.status === 'penalties';
+  if (!live) return false;
+  const slug = m.sport.slug;
+  const maxHours = STALE_LIVE_HOURS[slug] ?? 4;
+  const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
+  return ageHours > maxHours;
+}
+
+// ── Route-level in-process cache ──────────────────────────────────────────────
+// Caches the processed MatchData[] (post getAllMatches + convertToMatchData +
+// stale-live filter) so per-request work is only geo-sort + status filter
+// (<2 ms). Promise dedup prevents stampedes when the cache is cold.
+//
+// TTL: 90 s — comfortably within the 3-min getAllMatches() in-process TTL,
+// so background refreshes from the lower layer stay ahead of this window.
+const ROUTE_CACHE_TTL = 90_000;
+
+interface RouteCacheEntry {
+  data: MatchData[];
+  source: string;
+  ts: number;
+}
+
+let g_routeCache: RouteCacheEntry | null = null;
+let g_routePromise: Promise<RouteCacheEntry> | null = null;
+
+async function getProcessedMatches(): Promise<RouteCacheEntry> {
+  // Serve from in-process cache if fresh
+  if (g_routeCache && Date.now() - g_routeCache.ts < ROUTE_CACHE_TTL) {
+    return g_routeCache;
+  }
+
+  // Deduplicate concurrent requests — all share the same promise
+  if (g_routePromise) return g_routePromise;
+
+  g_routePromise = (async (): Promise<RouteCacheEntry> => {
+    const apiMatches = await getAllMatches();
+    const sources = new Set(apiMatches.map(m => m.source));
+    const source = Array.from(sources).join('+') || 'espn';
+
+    let matches = apiMatches.map(convertToMatchData);
+    matches = matches.filter(m => !isStaleLive(m));
+
+    const entry: RouteCacheEntry = { data: matches, source, ts: Date.now() };
+    g_routeCache = entry;
+    return entry;
+  })().finally(() => {
+    g_routePromise = null;
+  });
+
+  return g_routePromise;
+}
+
+// International competition league IDs
+const INTL_LEAGUE_IDS = new Set([9, 10, 26, 102, 24, 29, 30, 31, 104, 111, 109, 80, 25]);
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -219,6 +295,8 @@ export async function GET(request: NextRequest) {
   const countryCode = searchParams.get('countryCode') || 'GB';
   const tzOffsetMin = parseInt(searchParams.get('tzOffsetMin') || '0', 10);
   const matchId = searchParams.get('matchId');
+  const category = searchParams.get('category');
+  const limit = searchParams.get('limit');
 
   try {
     let matches: MatchData[] = [];
@@ -235,76 +313,53 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
-    // International competition league IDs (matches layout.tsx + sidebar-new.tsx)
-  const INTL_LEAGUE_IDS = new Set([9, 10, 26, 102, 24, 29, 30, 31, 104, 111, 109, 80, 25]);
-  const category = searchParams.get('category');
-  const limit = searchParams.get('limit');
-
-  let apiMatches: UnifiedMatch[] = [];
     if (sportId) {
-      apiMatches = await getMatchesBySport(parseInt(sportId));
+      // Sport-specific: go direct (cached per-sport in unified-sports-api)
+      const apiMatches = await getMatchesBySport(parseInt(sportId));
+      matches = apiMatches.map(convertToMatchData).filter(m => !isStaleLive(m));
+      const sources = new Set(apiMatches.map(m => m.source));
+      apiSource = Array.from(sources).join('+') || 'espn';
     } else if (leagueId) {
-      apiMatches = await getMatchesByLeague(parseInt(leagueId));
+      // League-specific: go direct
+      const apiMatches = await getMatchesByLeague(parseInt(leagueId));
+      matches = apiMatches.map(convertToMatchData).filter(m => !isStaleLive(m));
+      const sources = new Set(apiMatches.map(m => m.source));
+      apiSource = Array.from(sources).join('+') || 'espn';
     } else if (status === 'live') {
-      apiMatches = await getApiLiveMatches();
-    } else if (status === 'upcoming') {
-      apiMatches = await getApiUpcomingMatches();
-    } else {
-      apiMatches = await getAllMatches();
-    }
-
-  // Filter by category if specified
-  if (category === 'international') {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
-    apiMatches = apiMatches.filter(m => {
-      const t = new Date(m.kickoffTime).getTime();
-      return INTL_LEAGUE_IDS.has(m.leagueId) && t >= today.getTime() && t <= todayEnd.getTime();
-    });
-  }
-
-  if (limit) {
-    apiMatches = apiMatches.slice(0, parseInt(limit, 10));
-  }
-
-    matches = apiMatches.map(convertToMatchData);
-    const sources = new Set(apiMatches.map(m => m.source));
-    apiSource = Array.from(sources).join('+') || 'espn';
-
-    // Stale-live guard — upstream feeds (ESPN/SportsDB) sometimes leave
-    // matches stuck on "live" long after they've ended. Treat any match
-    // tagged live whose kickoff was more than the sport's max duration ago
-    // as finished, so the Live section never shows zombie fixtures.
-    const STALE_LIVE_HOURS: Record<string, number> = {
-      soccer: 3.5, football: 3.5, basketball: 3.5,
-      americanfootball: 4.5, baseball: 5, hockey: 4, icehockey: 4,
-      tennis: 6, cricket: 10, rugby: 3, mma: 4, boxing: 4,
-      golf: 12, racing: 6,
-    };
-    const nowMs = Date.now();
-    const isStaleLive = (m: MatchData) => {
-      const live = m.status === 'live' || m.status === 'halftime' ||
-        m.status === 'extra_time' || m.status === 'penalties';
-      if (!live) return false;
-      const slug = m.sport.slug;
-      const maxHours = STALE_LIVE_HOURS[slug] ?? 4;
-      const ageHours = (nowMs - new Date(m.kickoffTime).getTime()) / 3_600_000;
-      return ageHours > maxHours;
-    };
-    // Drop stale-live matches outright — they shouldn't pollute live or
-    // upcoming views (they belong on /results once the feed catches up).
-    matches = matches.filter(m => !isStaleLive(m));
-
-    // Status filter — IMPORTANT: upcoming list never shows finished
-    if (status === 'live') {
-      matches = matches.filter(m =>
+      // Live: lightweight filter on top of getProcessedMatches() (fast path)
+      const cached = await getProcessedMatches();
+      apiSource = cached.source;
+      matches = cached.data.filter(m =>
         m.status === 'live' || m.status === 'halftime' ||
         m.status === 'extra_time' || m.status === 'penalties'
       );
-    } else if (status === 'upcoming') {
-      // Strictly exclude finished matches
+    } else {
+      // ALL other cases (including status=upcoming, status=finished, status=today,
+      // category=international, etc.) — serve from the route-level cache.
+      const cached = await getProcessedMatches();
+      apiSource = cached.source;
+      matches = cached.data;
+    }
+
+    // Category filter
+    if (category === 'international') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(today);
+      todayEnd.setHours(23, 59, 59, 999);
+      matches = matches.filter(m => {
+        const t = new Date(m.kickoffTime).getTime();
+        return INTL_LEAGUE_IDS.has(m.leagueId) && t >= today.getTime() && t <= todayEnd.getTime();
+      });
+    }
+
+    // Limit (applied before status filter so we don't over-trim)
+    if (limit && !status) {
+      matches = matches.slice(0, parseInt(limit, 10));
+    }
+
+    // Status filter
+    if (status === 'upcoming') {
       matches = matches.filter(m =>
         m.status === 'scheduled' || m.status === 'live' ||
         m.status === 'halftime' || m.status === 'extra_time' || m.status === 'penalties'
@@ -312,15 +367,11 @@ export async function GET(request: NextRequest) {
     } else if (status === 'finished' || status === 'results') {
       matches = matches.filter(m => m.status === 'finished');
     } else if (status === 'today') {
-      // Today bucket — same logic used by stats below.
       matches = matches.filter(m => getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0);
-    } else if (status && status !== 'all') {
+    } else if (status && status !== 'all' && status !== 'live') {
       matches = matches.filter(m => m.status === status);
-    } else {
-      // Default behaviour: keep today's matches even when finished (so the
-      // homepage / matches page "Today" tab shows the full daily slate
-      // including final scores), but drop finished/cancelled/postponed
-      // matches from other days — those belong on /results.
+    } else if (!status || status === 'all') {
+      // Default: keep today's matches even if finished; drop finished from other days
       matches = matches.filter(m => {
         if (m.status === 'cancelled' || m.status === 'postponed') return false;
         if (m.status === 'finished') {
@@ -330,6 +381,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Post-status limit (for ?status=live&limit=20 style requests)
+    if (limit && status) {
+      matches = matches.slice(0, parseInt(limit, 10));
+    }
+
+    // Geo sort
     matches = sortMatches(matches, countryCode, tzOffsetMin);
 
     const stats = {
@@ -349,8 +406,6 @@ export async function GET(request: NextRequest) {
       source: apiSource,
       timestamp: new Date().toISOString(),
     });
-    // stale-while-revalidate: browser can serve cached response for 60s,
-    // then serve stale for up to 5 min while revalidating in background
     res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     return res;
   } catch (error) {

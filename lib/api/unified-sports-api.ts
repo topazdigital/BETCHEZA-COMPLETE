@@ -2931,8 +2931,8 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
 // This means after the first ever warm-up, every subsequent request — including
 // after PM2 restarts — serves data in < 50ms.
 
-const ALLMATCHES_CACHE_TTL  = 3 * 60 * 1000;   // 3 min  — serve from memory
-const ALLMATCHES_STALE_TTL  = 15 * 60 * 1000;  // 15 min — stale-while-revalidate
+const ALLMATCHES_CACHE_TTL  = 8 * 60 * 1000;   // 8 min  — serve from memory
+const ALLMATCHES_STALE_TTL  = 30 * 60 * 1000;  // 30 min — stale-while-revalidate
 const ALLMATCHES_PERSIST_FILE = '/tmp/betcheza_matches_cache.json';
 
 const g_allMatchesCache: {

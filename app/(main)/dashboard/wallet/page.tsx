@@ -203,7 +203,7 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
   const { data: methodsData } = useSWR<{ gateways: ActiveGateway[] }>(
     '/api/wallet/methods',
     fetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 },
   );
   const activeGateways = methodsData?.gateways ?? [];
 

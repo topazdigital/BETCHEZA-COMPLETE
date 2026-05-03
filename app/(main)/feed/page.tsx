@@ -342,7 +342,7 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
 }
 
 function RecommendedTipstersRail() {
-  const { data, isLoading } = useSWR<{ tipsters: RecommendedTipster[] }>('/api/feed/recommended-tipsters', fetcher, { refreshInterval: 60000 });
+  const { data, isLoading } = useSWR<{ tipsters: RecommendedTipster[] }>('/api/feed/recommended-tipsters', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60_000 });
   const tipsters = data?.tipsters ?? [];
 
   return (
@@ -394,7 +394,7 @@ function RecommendedTipstersRail() {
 }
 
 function TrendingRail() {
-  const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 60000 });
+  const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60_000 });
   const trending = data?.trending ?? [];
   const stats = data?.stats;
 

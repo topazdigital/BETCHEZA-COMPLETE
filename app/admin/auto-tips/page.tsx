@@ -72,7 +72,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export default function AdminAutoTipsPage() {
   const { data, isLoading } = useSWR<AutoTipsResponse>('/api/admin/auto-tips', fetcher, {
-    refreshInterval: 5000,
+    refreshInterval: 30000,
   })
   const { data: matchesData } = useSWR<{ matches: AdminMatchRaw[] }>(
     '/api/admin/matches?status=scheduled&limit=200',

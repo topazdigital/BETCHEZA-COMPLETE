@@ -146,7 +146,8 @@ function FavoritedTipCard({ item }: { item: FeaturedItem }) {
 export function FavoritedTipsPanel() {
   const { data, error, isLoading } = useSWR<FeaturedResponse>("/api/featured", fetcher, {
     refreshInterval: 60_000,
-    revalidateOnFocus: true,
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
   })
 
   if (error || isLoading) return null
@@ -235,8 +236,9 @@ function MyTipRow({ tip }: { tip: MyTip }) {
 
 export function MyTipsPanel() {
   const { data, isLoading } = useSWR<MyTipsResponse>("/api/tips/my", fetcher, {
-    refreshInterval: 30_000,
-    revalidateOnFocus: true,
+    refreshInterval: 60_000,
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
   })
 
   if (isLoading || !data?.authenticated || !data.tips?.length) return null

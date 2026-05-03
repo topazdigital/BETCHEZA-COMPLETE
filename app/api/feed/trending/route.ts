@@ -3,10 +3,19 @@ import { listPosts } from '@/lib/feed-store';
 
 export const dynamic = 'force-dynamic';
 
+// In-process cache — trending changes slowly; 2-min TTL is fine.
+const CACHE_TTL = 2 * 60_000;
+const g = globalThis as { __trendingCache?: { data: unknown; ts: number } };
+
 export async function GET() {
+  const now = Date.now();
+  if (g.__trendingCache && now - g.__trendingCache.ts < CACHE_TTL) {
+    return NextResponse.json(g.__trendingCache.data);
+  }
+
   const posts = await listPosts({ limit: 50 });
 
-  const since = Date.now() - 24 * 60 * 60 * 1000;
+  const since = now - 24 * 60 * 60 * 1000;
   const recent = posts.filter(p => new Date(p.createdAt).getTime() >= since);
 
   const trending = [...recent]
@@ -29,7 +38,7 @@ export async function GET() {
   const totalComments = posts.reduce((s, p) => s + p.commentCount, 0);
   const activeUsers = new Set(posts.map(p => p.userId)).size;
 
-  return NextResponse.json({
+  const payload = {
     trending,
     stats: {
       postsToday: recent.length,
@@ -38,5 +47,8 @@ export async function GET() {
       totalComments,
       activeUsers,
     },
-  });
+  };
+
+  g.__trendingCache = { data: payload, ts: now };
+  return NextResponse.json(payload);
 }

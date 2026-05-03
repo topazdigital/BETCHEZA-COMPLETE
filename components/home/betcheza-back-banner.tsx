@@ -21,6 +21,8 @@ export function BetchezaBackBanner() {
 
   const { data } = useSWR<AnnouncementData>('/api/site-settings', fetcher, {
     revalidateOnFocus: false,
+    dedupingInterval: 5 * 60_000,
+    refreshInterval: 0,
   });
 
   useEffect(() => {

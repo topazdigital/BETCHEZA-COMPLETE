@@ -17,7 +17,7 @@ interface LiveMatch {
   league?: { name?: string };
 }
 
-const POLL_INTERVAL = 20_000;
+const POLL_INTERVAL = 30_000;
 const GOAL_HIDE_DELAY = 60_000; // hide the popup after 60 s of no new goals
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -45,6 +45,8 @@ export function LiveScoreboardWidget() {
 
   const { data } = useSWR('/api/matches?status=live&limit=20', fetcher, {
     refreshInterval: POLL_INTERVAL,
+    revalidateOnFocus: false,
+    dedupingInterval: 15_000,
   });
 
   useEffect(() => {

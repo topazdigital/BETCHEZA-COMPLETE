@@ -354,7 +354,7 @@ function PlayerPicker({ slot, onPick }: { slot: 'A' | 'B'; onPick: (id: string) 
   const { data, isLoading } = useSWR<{ hits: PlayerSearchHit[] }>(
     q.trim().length >= 2 ? `/api/players/search?q=${encodeURIComponent(q.trim())}&limit=10` : null,
     fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 300 },
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
   );
   const numericId = /^\d+$/.test(q.trim()) ? q.trim() : null;
 

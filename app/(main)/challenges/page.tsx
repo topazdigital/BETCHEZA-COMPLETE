@@ -465,7 +465,7 @@ export default function ChallengesPage() {
   const [sportFilter, setSportFilter] = useState<string>('all');
 
   const { data, isLoading, mutate: refetch } = useSWR('/api/challenges', fetcher, {
-    refreshInterval: 30000,
+    refreshInterval: 120_000, revalidateOnFocus: false, dedupingInterval: 60_000,
   });
 
   const challenges: Challenge[] = data?.challenges || [];

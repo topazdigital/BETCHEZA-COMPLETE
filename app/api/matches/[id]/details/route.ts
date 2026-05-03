@@ -13,6 +13,23 @@ import { slugToMatchId } from '@/lib/utils/match-url';
 export const dynamic = 'force-dynamic';
 export const revalidate = 30;
 
+// ─── In-process response cache ────────────────────────────────────────────────
+// Avoids redundant ESPN + SGO fan-out on every poll cycle.
+// Live matches: 30s TTL.  Pre-match / finished: 90s TTL.
+const DETAILS_CACHE_TTL_LIVE = 30_000;
+const DETAILS_CACHE_TTL_STATIC = 90_000;
+const H2H_CACHE_TTL = 30 * 60_000; // 30 min — historical fixtures never change
+
+type DetailsCache = { data: unknown; ts: number };
+type H2HCache = { data: ReturnType<typeof buildH2HFallback> extends Promise<infer T> ? T : never; ts: number };
+
+const g = globalThis as {
+  __detailsCache?: Map<string, DetailsCache>;
+  __h2hCache?: Map<string, H2HCache>;
+};
+if (!g.__detailsCache) g.__detailsCache = new Map();
+if (!g.__h2hCache) g.__h2hCache = new Map();
+
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
@@ -813,13 +830,38 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const cfg = getEspnLeagueConfigForId(resolvedId);
     const eventId = getEspnEventIdFromMatchId(resolvedId);
 
-    let summary: ESPNSummaryResponse | null = null;
-    if (cfg && eventId) {
-      summary = await fetchESPNSummary(cfg.sport, cfg.league, eventId);
+    const isLive = match.status === 'live' || match.status === 'in_progress';
+    const cacheTTL = isLive ? DETAILS_CACHE_TTL_LIVE : DETAILS_CACHE_TTL_STATIC;
+    const cacheKey = resolvedId;
+    const now = Date.now();
+
+    // ── Serve from in-process cache when fresh ────────────────────────────────
+    const cached = g.__detailsCache!.get(cacheKey);
+    if (cached && now - cached.ts < cacheTTL) {
+      return NextResponse.json(cached.data);
     }
+
+    // ── Fan-out: ESPN summary + SGO bookmaker lines in parallel ───────────────
+    const summaryPromise: Promise<ESPNSummaryResponse | null> = cfg && eventId
+      ? fetchESPNSummary(cfg.sport, cfg.league, eventId)
+      : Promise.resolve(null);
+
+    const isoKickoff = match.kickoffTime instanceof Date
+      ? match.kickoffTime.toISOString()
+      : new Date(match.kickoffTime as unknown as string).toISOString();
 
     const noDrawSports = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
     const hasDraw = !noDrawSports.includes(cfg?.sportType || 'soccer');
+
+    const sgoPromise: Promise<Array<{
+      bookmaker: string; display: string;
+      home: number; draw?: number; away: number;
+      links?: { home?: string; draw?: string; away?: string };
+    }>> = import('@/lib/api/sportsgameodds')
+      .then(m => m.getSgoBookmakerLines(match.homeTeam.name, match.awayTeam.name, isoKickoff, hasDraw))
+      .catch(() => []);
+
+    const [summary, sgoRaw] = await Promise.all([summaryPromise, sgoPromise]);
 
     const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
     const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw);
@@ -857,28 +899,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 
-    // Enrich with SportsGameOdds bookmakers (FanDuel, DraftKings, ESPN BET,
-    // Bet365, William Hill, Paddy Power, Polymarket, ...). SGO is the only
-    // provider that ships per-book deeplinks, which lets the UI offer an
-    // Oddspedia-style "Bet now" link for each row.
+    // Merge SGO bookmaker lines (already fetched in parallel above).
     try {
-      const { getSgoBookmakerLines } = await import('@/lib/api/sportsgameodds');
       const { buildAffiliateLink } = await import('@/lib/bookmakers-store');
-      // `match.kickoffTime` is a Date — convert to ISO so SGO can date-filter.
-      const isoKickoff = match.kickoffTime instanceof Date
-        ? match.kickoffTime.toISOString()
-        : new Date(match.kickoffTime as unknown as string).toISOString();
-      const sgoLines = await getSgoBookmakerLines(
-        match.homeTeam.name,
-        match.awayTeam.name,
-        isoKickoff,
-        hasDraw,
-      );
       const seen = new Set(bookmakerOdds.map(o => o.bookmaker.toLowerCase()));
-      for (const sl of sgoLines) {
+      for (const sl of sgoRaw) {
         if (seen.has(sl.display.toLowerCase())) continue;
-        // Wrap each per-side deeplink with the admin-configured affiliate URL when
-        // we have a matching slug — that's how Betcheza monetises the "Bet now" CTA.
         const affHome = buildAffiliateLink(sl.bookmaker, sl.links?.home) || sl.links?.home;
         const affDraw = buildAffiliateLink(sl.bookmaker, sl.links?.draw) || sl.links?.draw;
         const affAway = buildAffiliateLink(sl.bookmaker, sl.links?.away) || sl.links?.away;
@@ -896,28 +922,34 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         seen.add(sl.display.toLowerCase());
       }
     } catch (err) {
-      // SGO is best-effort — never block the match details response.
-      console.warn('[match details] SGO enrichment failed:', err);
+      console.warn('[match details] SGO merge failed:', err);
     }
+
     const lineups = summary ? buildLineups(summary) : null;
     let h2h = summary ? buildH2H(summary) : null;
+
     // Fallback: when ESPN's summary doesn't include H2H (common for smaller
     // leagues, cup ties or international fixtures), pull each team's recent
-    // fixtures and look for direct meetings.
+    // fixtures and look for direct meetings. Cache heavily — history never changes.
     if ((!h2h || h2h.length === 0) && cfg && summary) {
       const homeTeamId = summary.header?.competitions?.[0]?.competitors?.find(c => c.homeAway === 'home')?.team?.id;
       const awayTeamId = summary.header?.competitions?.[0]?.competitors?.find(c => c.homeAway === 'away')?.team?.id;
       if (homeTeamId && awayTeamId) {
-        h2h = await buildH2HFallback(
-          cfg.sport,
-          cfg.league,
-          homeTeamId,
-          awayTeamId,
-          match.homeTeam.name,
-          match.awayTeam.name,
-        );
+        const h2hKey = `${cfg.sport}:${cfg.league}:${homeTeamId}:${awayTeamId}`;
+        const cachedH2H = g.__h2hCache!.get(h2hKey);
+        if (cachedH2H && now - cachedH2H.ts < H2H_CACHE_TTL) {
+          h2h = cachedH2H.data;
+        } else {
+          h2h = await buildH2HFallback(
+            cfg.sport, cfg.league,
+            homeTeamId, awayTeamId,
+            match.homeTeam.name, match.awayTeam.name,
+          );
+          g.__h2hCache!.set(h2hKey, { data: h2h as H2HCache['data'], ts: now });
+        }
       }
     }
+
     const standings = summary ? buildStandings(summary, cfg?.sport || 'soccer') : null;
     const news = summary ? buildNews(summary) : [];
     const leaders = summary ? buildLeaders(summary) : [];
@@ -942,7 +974,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .map(b => b.media?.shortName)
       .filter((x): x is string => !!x);
 
-    return NextResponse.json({
+    const payload = {
       match: {
         id: match.id,
         sportId: match.sportId,
@@ -996,7 +1028,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       hasEvents: matchEvents.length > 0,
       hasTeamStats: !!(teamStats && (teamStats.home.stats.length > 0 || teamStats.away.stats.length > 0)),
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    // Store in cache (skip for live matches only if they have active minute ticking)
+    g.__detailsCache!.set(cacheKey, { data: payload, ts: now });
+
+    return NextResponse.json(payload);
   } catch (error) {
     console.error('[Match details] Error:', error);
     return NextResponse.json({ error: 'Failed to fetch match details' }, { status: 500 });

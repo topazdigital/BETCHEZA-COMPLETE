@@ -1037,7 +1037,7 @@ export default function MatchDetailPage({ params }: PageProps) {
   const { data, error, isLoading } = useSWR<MatchDetails>(
     `/api/matches/${encodeURIComponent(id)}/details`,
     fetcher,
-    { refreshInterval: 60000, revalidateOnFocus: true, dedupingInterval: 15000 }
+    { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
 
   const match0 = data?.match

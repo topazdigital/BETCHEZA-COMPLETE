@@ -25,6 +25,7 @@ export default function DashboardTipsPage() {
   const { data: bookmarksData, isLoading } = useSWR<{ bookmarks: BookmarkRow[] }>(
     user ? '/api/bookmarks' : null,
     fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
   const bookmarks = bookmarksData?.bookmarks ?? [];
   const matchBookmarks = bookmarks.filter(b => b.entity_type === 'match');
