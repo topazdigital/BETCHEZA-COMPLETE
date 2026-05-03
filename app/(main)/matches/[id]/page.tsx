@@ -304,11 +304,11 @@ function useLiveMinute(storedMinute: number | undefined, status: string, sportSl
 
   useEffect(() => {
     if (liveClock) {
-      const match = liveClock.match(/^(\d+)(?:\+(\d+))?'?$/)
+      const plus = liveClock.match(/^(\d+)(?:\+(\d+))?'?$/)
       const mmss = liveClock.match(/^(\d+):(\d+)$/)
-      if (match) {
-        const base = parseInt(match[1], 10)
-        const extra = match[2] ? parseInt(match[2], 10) : 0
+      if (plus) {
+        const base = parseInt(plus[1], 10)
+        const extra = plus[2] ? parseInt(plus[2], 10) : 0
         setMinute(base + extra)
         return
       }
@@ -1089,6 +1089,7 @@ export default function MatchDetailPage({ params }: PageProps) {
   }, [match])
 
   const { addSelection, isSelected } = useBetSlip()
+  const liveClock = (match as { liveClock?: string; period?: string } | null)?.liveClock || (match as { period?: string } | null)?.period
 
   const isLive = match && (match.status === 'live' || match.status === 'halftime' || match.status === 'extra_time' || match.status === 'penalties')
   const isFinished = match?.status === 'finished'
@@ -1097,7 +1098,8 @@ export default function MatchDetailPage({ params }: PageProps) {
     match?.minute,
     match?.status || '',
     match?.sport.slug || 'soccer',
-    match?.kickoffTime
+    match?.kickoffTime,
+    liveClock
   )
   const sportSlug = match?.sport.slug || 'soccer'
   const ticksByMinute = isMinuteTickingSport(sportSlug)
