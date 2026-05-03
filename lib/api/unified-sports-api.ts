@@ -1690,11 +1690,15 @@ function mapESPNStatus(status: ESPNEvent['status']): UnifiedMatch['status'] {
   const name = status.type.name?.toLowerCase() || '';
   const detail = (status.type.detail || status.type.shortDetail || '').toLowerCase();
 
+  // Check completed FIRST — ESPN sometimes leaves state='in' briefly after
+  // the final whistle, so a match with completed=true is always finished
+  // regardless of what state says.
+  if (status.type.completed || state === 'post') return 'finished';
+
   if (name.includes('halftime') || name === 'half' || detail.includes('halftime') || detail.includes('half time')) return 'halftime';
   if (name.includes('extra') || detail.includes('extra time') || detail.includes('et')) return 'extra_time';
   if (name.includes('penalt') || detail.includes('penalt')) return 'penalties';
   if (state === 'in' || name === 'in progress' || name === 'in_progress' || name.startsWith('status_in')) return 'live';
-  if (state === 'post' || status.type.completed) return 'finished';
   if (name === 'postponed' || detail.includes('postpon')) return 'postponed';
   if (name === 'canceled' || name === 'cancelled' || detail.includes('cancel')) return 'cancelled';
   return 'scheduled';
@@ -2635,7 +2639,7 @@ const THE_ODDS_API_SPORTS: Record<string, { sportId: number; leagueId: number }>
   'soccer_usa_mls': { sportId: 1, leagueId: 76 },
   'soccer_brazil_campeonato': { sportId: 1, leagueId: 77 },
   'soccer_argentina_primera_division': { sportId: 1, leagueId: 78 },
-  'soccer_mexico_ligamx': { sportId: 1, leagueId: 79 },
+  'soccer_mexico_ligamx': { sportId: 1, leagueId: 27 },
   'soccer_australia_aleague': { sportId: 1, leagueId: 80 },
   'soccer_japan_j_league': { sportId: 1, leagueId: 81 },
   'soccer_south_korea_kleague': { sportId: 1, leagueId: 82 },
@@ -3124,6 +3128,22 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     }
   }
 
+  // Build a set of ESPN event IDs already registered by the per-league fetchers.
+  // The global /all/scoreboard returns the same events for leagues we already
+  // fetch explicitly (NWSL, MLS, Liga MX, etc.) but maps them through the
+  // generic KNOWN_GLOBAL_LEAGUES resolver, which can assign the wrong league
+  // name when a numeric ESPN league ID isn't in the curated map.  By skipping
+  // any global event whose ID is already seen we guarantee the per-league
+  // metadata (correct name, country, countryCode) always wins.
+  const seenEspnEventIds = new Set<string>(
+    allMatches.map(m => m.externalId).filter((id): id is string => Boolean(id))
+  );
+
+  // Filter global ESPN matches to only those not already covered per-league.
+  const novelGlobalEspnMatches = globalEspnMatches.filter(
+    m => !m.externalId || !seenEspnEventIds.has(m.externalId)
+  );
+
   // Merge in supplementary sources (ESPN global catch-all, TheSportsDB,
   // OpenLigaDB, football-data.org, FotMob). Order matters because addMatch()
   // dedupes by team-pair+date and keeps the first source seen — we put
@@ -3132,7 +3152,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // every other ESPN league we don't explicitly configure), then
   // football-data.org (top-tier), then OpenLigaDB (German depth),
   // then TheSportsDB (African/exotic), then FotMob (catch-all).
-  const supplementarySources: UnifiedMatch[][] = [globalEspnMatches, fdMatches, oldbMatches, tsdbMatches, fmMatches];
+  const supplementarySources: UnifiedMatch[][] = [novelGlobalEspnMatches, fdMatches, oldbMatches, tsdbMatches, fmMatches];
   for (const source of supplementarySources) {
     for (const match of source) {
       if (realOddsIndex.size > 0) {

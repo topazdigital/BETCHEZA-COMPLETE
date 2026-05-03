@@ -326,9 +326,12 @@ export function useLiveMatches() {
 
   return {
     matches: getLiveMatches(matches),
-    // Show as loading if SWR hasn't resolved yet OR is revalidating with zero results
-    // (prevents "Nothing live" flash when data is en-route)
-    isLoading: isLoading || (isValidating && matches.length === 0),
+    // Only show the loading spinner on the true first load (isLoading = no data yet).
+    // Do NOT re-show the spinner during every 10-second background revalidation —
+    // that's what caused the page to flicker between "live matches" and "Nothing
+    // live right now" every poll cycle. keepPreviousData keeps the last-known array
+    // (even an empty []) during revalidation so isLoading stays false.
+    isLoading,
     error,
   };
 }
