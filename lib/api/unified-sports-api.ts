@@ -1695,9 +1695,9 @@ function mapESPNStatus(status: ESPNEvent['status']): UnifiedMatch['status'] {
   // regardless of what state says.
   if (status.type.completed || state === 'post') return 'finished';
 
-  if (name.includes('halftime') || name === 'half' || detail.includes('halftime') || detail.includes('half time')) return 'halftime';
-  if (name.includes('extra') || detail.includes('extra time') || detail.includes('et')) return 'extra_time';
-  if (name.includes('penalt') || detail.includes('penalt')) return 'penalties';
+  if (name.includes('halftime') || name === 'half' || detail.includes('halftime') || detail.includes('half time')) return 'halftime' as UnifiedMatch['status'];
+  if (name.includes('extra') || detail.includes('extra time') || detail.includes('et')) return 'live';
+  if (name.includes('penalt') || detail.includes('penalt')) return 'live';
   if (state === 'in' || name === 'in progress' || name === 'in_progress' || name.startsWith('status_in')) return 'live';
   if (name === 'postponed' || detail.includes('postpon')) return 'postponed';
   if (name === 'canceled' || name === 'cancelled' || detail.includes('cancel')) return 'cancelled';
@@ -3216,9 +3216,7 @@ export async function getLiveMatches(): Promise<UnifiedMatch[]> {
   const allMatches = await getAllMatches();
   return allMatches.filter(m =>
     m.status === 'live' ||
-    m.status === 'halftime' ||
-    m.status === 'extra_time' ||
-    m.status === 'penalties'
+    m.status === 'halftime'
   );
 }
 

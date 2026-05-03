@@ -66,6 +66,7 @@ export default function LivePage() {
   const filteredMatches = selectedSport
     ? matches.filter(m => m.sportId === selectedSport)
     : matches
+  const hasVisibleLiveMatches = filteredMatches.length > 0
 
   // Sport tabs (only sports with live matches)
   const sportCounts = useMemo(() => {
@@ -179,7 +180,7 @@ export default function LivePage() {
               <h1 className="text-base font-bold">Unable to load live matches</h1>
               <p className="mt-1 text-xs text-muted-foreground">Please try again later</p>
             </div>
-          ) : groupedMatches.length > 0 ? (
+          ) : hasVisibleLiveMatches && groupedMatches.length > 0 ? (
             <div className="space-y-2.5">
               {groupedMatches.map(group => (
                 <section key={`${group.sportSlug}-${group.leagueName}`} className="overflow-hidden rounded-xl border border-border bg-card">

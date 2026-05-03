@@ -190,7 +190,7 @@ function sortMatchesWithPriority(matches: Match[], countryCode?: string): Match[
 // Filter helper functions
 function getLiveMatches(matches: Match[]): Match[] {
   return matches
-    .filter(m => m.status === 'live' || m.status === 'extra_time' || m.status === 'penalties')
+    .filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'extra_time' || m.status === 'penalties')
     .sort((a, b) => {
       const sportPriorityA = SPORT_PRIORITY[a.sportId] ?? 99;
       const sportPriorityB = SPORT_PRIORITY[b.sportId] ?? 99;
