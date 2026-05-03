@@ -26,13 +26,20 @@ const SPORTS = [
   { value: 'american-football', label: '🏈 American Football' },
   { value: 'baseball', label: '⚾ Baseball' },
   { value: 'ice-hockey', label: '🏒 Ice Hockey' },
-  { value: 'soccer', label: '⚽ Soccer' },
-  { value: 'mma', label: '🥊 MMA' },
+  { value: 'mma', label: '🥋 MMA' },
   { value: 'boxing', label: '🥊 Boxing' },
   { value: 'cricket', label: '🏏 Cricket' },
   { value: 'rugby', label: '🏉 Rugby' },
   { value: 'volleyball', label: '🏐 Volleyball' },
   { value: 'table-tennis', label: '🏓 Table Tennis' },
+  { value: 'golf', label: '⛳ Golf' },
+  { value: 'cycling', label: '🚴 Cycling' },
+  { value: 'esports', label: '🎮 Esports' },
+  { value: 'darts', label: '🎯 Darts' },
+  { value: 'snooker', label: '🎱 Snooker' },
+  { value: 'motorsport', label: '🏎️ Motorsport' },
+  { value: 'athletics', label: '🏃 Athletics' },
+  { value: 'swimming', label: '🏊 Swimming' },
 ];
 
 const SCORING = [
@@ -455,6 +462,7 @@ export default function ChallengesPage() {
   const { isAuthenticated } = useAuth();
   const { open: openAuthModal } = useAuthModal();
   const [showCreate, setShowCreate] = useState(false);
+  const [sportFilter, setSportFilter] = useState<string>('all');
 
   const { data, isLoading, mutate: refetch } = useSWR('/api/challenges', fetcher, {
     refreshInterval: 30000,
@@ -462,10 +470,12 @@ export default function ChallengesPage() {
 
   const challenges: Challenge[] = data?.challenges || [];
 
-  const live = challenges.filter(c => c.status === 'active');
-  const pending = challenges.filter(c => c.status === 'pending');
+  const filtered = sportFilter === 'all' ? challenges : challenges.filter(c => c.sport === sportFilter);
+
+  const live = filtered.filter(c => c.status === 'active');
+  const pending = filtered.filter(c => c.status === 'pending');
   const upcoming = [...live, ...pending];
-  const finished = challenges.filter(c => c.status === 'finished');
+  const finished = filtered.filter(c => c.status === 'finished');
 
   function handleCreate() {
     if (!isAuthenticated) { openAuthModal('login'); return; }
@@ -523,6 +533,35 @@ export default function ChallengesPage() {
             </div>
             <div className="text-xl font-bold">{isLoading ? '–' : s.value}</div>
           </div>
+        ))}
+      </div>
+
+      {/* Sport filter */}
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <button
+          onClick={() => setSportFilter('all')}
+          className={cn(
+            'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+            sportFilter === 'all'
+              ? 'bg-primary text-primary-foreground'
+              : 'border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
+          )}
+        >
+          All Sports
+        </button>
+        {SPORTS.map(s => (
+          <button
+            key={s.value}
+            onClick={() => setSportFilter(s.value)}
+            className={cn(
+              'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              sportFilter === s.value
+                ? 'bg-primary text-primary-foreground'
+                : 'border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
+            )}
+          >
+            {s.label}
+          </button>
         ))}
       </div>
 

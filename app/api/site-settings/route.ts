@@ -26,5 +26,10 @@ export async function GET() {
     socialLinks,
     cookieBannerEnabled: s.cookie_banner_enabled === 'true',
     cookieBannerMessage: s.cookie_banner_message,
+    announcementEnabled: s.announcement_enabled === 'true',
+    announcementLabel: s.announcement_label,
+    announcementHeadline: s.announcement_headline,
+    announcementSubtext: s.announcement_subtext,
+    announcementLink: s.announcement_link,
   });
 }

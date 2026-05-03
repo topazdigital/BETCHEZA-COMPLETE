@@ -22,6 +22,16 @@ export interface SiteSettings {
   cookie_banner_enabled: string;
   /** Customisable banner copy. Falls back to a sensible default. */
   cookie_banner_message: string;
+  /** "true" / "false" — controls homepage hero announcement banner visibility. */
+  announcement_enabled: string;
+  /** Small eyebrow label shown above the headline. */
+  announcement_label: string;
+  /** Main bold headline of the announcement. */
+  announcement_headline: string;
+  /** Secondary subtext below the headline. */
+  announcement_subtext: string;
+  /** Optional URL the banner links to (leave blank for no link). */
+  announcement_link: string;
   [key: string]: string;
 }
 
@@ -71,6 +81,11 @@ const DEFAULTS: SiteSettings = {
   cookie_banner_enabled: 'true',
   cookie_banner_message:
     'We use cookies to improve your experience, analyse site traffic and personalise content. By clicking "Accept", you consent to our use of cookies.',
+  announcement_enabled: 'true',
+  announcement_label: "We're back — and sharper than ever",
+  announcement_headline: 'Betcheza is back 🎉 with smarter tips, faster odds, and a fresh community.',
+  announcement_subtext: 'Welcome home, tipster — your dashboard, leaderboard streaks and bookmarks are waiting.',
+  announcement_link: '',
   // Captcha provider (managed via /admin/settings → Security tab):
   // 'turnstile' | 'recaptcha' | 'math' | 'none' | '' (auto)
   captcha_provider: '',

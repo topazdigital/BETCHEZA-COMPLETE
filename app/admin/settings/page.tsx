@@ -38,6 +38,12 @@ interface Settings {
   social_links: string
   cookie_banner_enabled: string
   cookie_banner_message: string
+  // Homepage hero announcement banner
+  announcement_enabled: string
+  announcement_label: string
+  announcement_headline: string
+  announcement_subtext: string
+  announcement_link: string
   // API keys (stored in site_settings; env vars take precedence at read time
   // unless overridden by the dedicated *_override flag).
   the_odds_api_key: string
@@ -124,6 +130,11 @@ const defaultSettings: Settings = {
   cookie_banner_enabled: "true",
   cookie_banner_message:
     'We use cookies to improve your experience, analyse site traffic and personalise content. By clicking "Accept", you consent to our use of cookies.',
+  announcement_enabled: "true",
+  announcement_label: "We're back — and sharper than ever",
+  announcement_headline: "Betcheza is back 🎉 with smarter tips, faster odds, and a fresh community.",
+  announcement_subtext: "Welcome home, tipster — your dashboard, leaderboard streaks and bookmarks are waiting.",
+  announcement_link: "",
   the_odds_api_key: "",
   sportsgameodds_api_key: "",
   openai_api_key: "",
@@ -285,6 +296,9 @@ export default function AdminSettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="apikeys" className="h-7 text-xs px-2.5 gap-1.5">
             <KeyRound className="h-3.5 w-3.5" /> Keys
+          </TabsTrigger>
+          <TabsTrigger value="announcement" className="h-7 text-xs px-2.5 gap-1.5">
+            <Bell className="h-3.5 w-3.5" /> Announcement
           </TabsTrigger>
         </TabsList>
 
@@ -832,6 +846,102 @@ export default function AdminSettingsPage() {
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Announcement Banner */}
+        <TabsContent value="announcement">
+          <Card>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Homepage Announcement Banner</CardTitle>
+              <CardDescription className="text-xs">
+                Controls the &quot;Betcheza is back&quot; hero banner shown at the top of the homepage. You can customise every line of text and optionally add a link.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 p-3 pt-2">
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div>
+                  <p className="font-medium text-xs">Show announcement banner</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">When off, the banner is hidden for all visitors.</p>
+                </div>
+                <Switch
+                  checked={settings.announcement_enabled === 'true'}
+                  onCheckedChange={(c) => updateSetting('announcement_enabled', c ? 'true' : 'false')}
+                  className="scale-75"
+                />
+              </div>
+
+              {settings.announcement_enabled === 'true' && (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Eyebrow label <span className="text-muted-foreground font-normal">(small text above the headline)</span></Label>
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="e.g. We're back — and sharper than ever"
+                      value={settings.announcement_label}
+                      onChange={(e) => updateSetting('announcement_label', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Headline <span className="text-muted-foreground font-normal">(bold main message)</span></Label>
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="e.g. Betcheza is back 🎉 with smarter tips..."
+                      value={settings.announcement_headline}
+                      onChange={(e) => updateSetting('announcement_headline', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Subtext <span className="text-muted-foreground font-normal">(secondary description)</span></Label>
+                    <textarea
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs leading-normal focus:outline-none focus:ring-1 focus:ring-ring"
+                      rows={2}
+                      placeholder="e.g. Welcome home, tipster — your dashboard, leaderboard..."
+                      value={settings.announcement_subtext}
+                      onChange={(e) => updateSetting('announcement_subtext', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Link URL <span className="text-muted-foreground font-normal">(optional — makes the banner clickable)</span></Label>
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="https://... or /internal-path  (leave blank for no link)"
+                      value={settings.announcement_link}
+                      onChange={(e) => updateSetting('announcement_link', e.target.value)}
+                    />
+                    <p className="text-[10px] text-muted-foreground">Leave empty to show the banner without a clickable link. External URLs open in a new tab.</p>
+                  </div>
+
+                  {/* Live preview */}
+                  <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Preview</p>
+                    <div className="rounded-xl border border-primary/40 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-3">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs">🚀</span>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                            ✨ {settings.announcement_label || "Eyebrow label"}
+                          </div>
+                          <p className="mt-0.5 text-sm font-bold leading-tight text-foreground">
+                            {settings.announcement_headline || "Your headline here"}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
+                            {settings.announcement_subtext || "Your subtext here"}
+                          </p>
+                          {settings.announcement_link && (
+                            <span className="mt-1 inline-block text-[11px] font-semibold text-primary">Learn more →</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[10px] text-muted-foreground">
+                Remember to click <strong>Save Changes</strong> at the top of the page to apply your edits.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
