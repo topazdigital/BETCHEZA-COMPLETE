@@ -1436,6 +1436,51 @@ export default function MatchDetailPage({ params }: PageProps) {
             </div>
           )}
 
+          {(bookmakerOdds.length > 0 || (match.markets && match.markets.length > 0)) && (
+            <div className="px-3 pb-3">
+              <div className="rounded-lg border border-border/60 bg-card p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider">Bet Markets</h3>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setActiveTab('odds')}>
+                    Open
+                  </Button>
+                </div>
+                {bookmakerOdds.length > 0 && (
+                  <div className="space-y-2">
+                    {bookmakerOdds.slice(0, 2).map((o, i) => (
+                      <div key={i} className="rounded-md bg-muted/30 px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold truncate">{o.bookmaker}</span>
+                          <span className="text-[10px] text-muted-foreground">{o.home.toFixed(2)} / {o.draw !== undefined ? o.draw.toFixed(2) : '—'} / {o.away.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {match.markets && match.markets.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {match.markets.slice(0, 2).map((mkt) => (
+                      <div key={mkt.key} className="rounded-md bg-muted/30 px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold truncate">{mkt.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{mkt.outcomes.length} options</span>
+                        </div>
+                        <div className="mt-1 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
+                          {mkt.outcomes.slice(0, 3).map((o, i) => (
+                            <div key={i} className="rounded border border-border/40 bg-background px-2 py-1 text-center">
+                              <div className="text-[9px] uppercase text-muted-foreground truncate">{o.name}</div>
+                              <div className="font-mono text-xs font-bold">{o.price.toFixed(2)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Venue strip */}
           {(match.venue || match.broadcasts?.length || match.attendance) && (
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-3 pb-3 text-[10px] text-white/40">
