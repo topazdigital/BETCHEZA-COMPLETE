@@ -293,7 +293,7 @@ function EventIcon({ type }: { type: MatchEvent['type'] }) {
 // for soccer / football / rugby so the seconds keep moving naturally —
 // but we always anchor to the API value rather than to kickoff time
 // (kickoff-based ticking was wrong for delayed kick-offs, halftime, ET).
-function useLiveMinute(storedMinute: number | undefined, status: string, sportSlug: string = 'soccer', kickoffTime?: string) {
+function useLiveMinute(storedMinute: number | undefined, status: string, sportSlug: string = 'soccer', kickoffTime?: string, liveClock?: string) {
   const [minute, setMinute] = useState(storedMinute ?? 0)
   const isLive = status === 'live' || status === 'extra_time' || status === 'penalties'
   const isHalftime = status === 'halftime'
@@ -303,6 +303,21 @@ function useLiveMinute(storedMinute: number | undefined, status: string, sportSl
   useEffect(() => { setMinute(storedMinute ?? 0) }, [storedMinute])
 
   useEffect(() => {
+    if (liveClock) {
+      const match = liveClock.match(/^(\d+)(?:\+(\d+))?'?$/)
+      const mmss = liveClock.match(/^(\d+):(\d+)$/)
+      if (match) {
+        const base = parseInt(match[1], 10)
+        const extra = match[2] ? parseInt(match[2], 10) : 0
+        setMinute(base + extra)
+        return
+      }
+      if (mmss) {
+        const mins = parseInt(mmss[1], 10)
+        setMinute(status === 'halftime' ? 45 : mins)
+        return
+      }
+    }
     if (isHalftime) { setMinute(45); return }
     if (!isLive || !ticksByMinute || !kickoffTime) return
     const kickoff = new Date(kickoffTime).getTime()
@@ -313,7 +328,7 @@ function useLiveMinute(storedMinute: number | undefined, status: string, sportSl
     tick()
     const id = setInterval(tick, 15_000)
     return () => clearInterval(id)
-  }, [isLive, isHalftime, ticksByMinute, kickoffTime])
+  }, [isLive, isHalftime, ticksByMinute, kickoffTime, liveClock, status])
 
   return minute
 }

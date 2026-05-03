@@ -1718,7 +1718,14 @@ function extractLiveMinute(
 ): number | null {
   const dc = (status.displayClock || '').trim();
   const period = status.period || 0;
-  if (!dc && !period) return null;
+  const state = status.type.state?.toLowerCase() || '';
+  const name = status.type.name?.toLowerCase() || '';
+
+  if (!dc && !period) {
+    if (status.type?.name?.toLowerCase().includes('half')) return 45;
+    if (state === 'in' || name === 'in progress' || name === 'in_progress') return 0;
+    return null;
+  }
 
   if (sportType === 'soccer') {
     // "75'" or "90+3'" or "45+2"
@@ -1736,7 +1743,7 @@ function extractLiveMinute(
       return mins;
     }
     // Halftime / pre-match — fall through to 45 / 0
-    if (status.type?.name?.toLowerCase().includes('half')) return 45;
+    if (name.includes('half')) return 45;
     return null;
   }
 
@@ -1756,7 +1763,9 @@ function extractLiveMinute(
     return completedPeriods * periodLen + elapsedInPeriod;
   }
 
-  return period || null;
+  if (period) return period;
+  if (state === 'in') return 0;
+  return null;
 }
 
 // Generate realistic odds based on team factors

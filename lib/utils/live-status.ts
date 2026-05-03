@@ -38,7 +38,7 @@ export function liveStatusLabel(sportSlug: string, status: string, minute?: numb
       return m > 0 ? `${m}'` : 'LIVE';
     default:
       // soccer / football / generic
-      return m > 0 ? `${m}'` : 'LIVE';
+      return m >= 0 ? `${m || 0}'` : 'LIVE';
   }
 }
 
