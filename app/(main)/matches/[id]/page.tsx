@@ -37,7 +37,7 @@ import { WinnerVote } from "@/components/matches/winner-vote"
 import { useAuth } from "@/contexts/auth-context"
 import { useMatches } from "@/lib/hooks/use-matches"
 import { useBetSlip } from "@/contexts/bet-slip-context"
-import { isMinuteTickingSport } from "@/lib/utils/live-status"
+import { isMinuteTickingSport, isLiveMatchStatus } from "@/lib/utils/live-status"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -1098,7 +1098,7 @@ export default function MatchDetailPage({ params }: PageProps) {
   const { addSelection, isSelected } = useBetSlip()
   const liveClock = (match as { liveClock?: string; period?: string } | null)?.liveClock || (match as { period?: string } | null)?.period
 
-  const isLive = match && (match.status === 'live' || match.status === 'halftime' || match.status === 'extra_time' || match.status === 'penalties')
+  const isLive = match && isLiveMatchStatus(match.status)
   const isFinished = match?.status === 'finished'
   const isHalftime = match?.status === 'halftime'
   const liveMinute = useLiveMinute(
