@@ -1399,6 +1399,43 @@ export default function MatchDetailPage({ params }: PageProps) {
             </div>
           )}
 
+          {(lineups?.home || lineups?.away) && (
+            <div className="px-3 pb-3">
+              <div className="rounded-lg border border-border/60 bg-card p-2.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider">Lineups & Formation</h3>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setActiveTab('lineups')}>
+                    Open
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {lineups.home && (
+                    <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold truncate">{match.homeTeam.name}</span>
+                        {lineups.home.formation && <span className="text-[10px] text-muted-foreground">{lineups.home.formation}</span>}
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground truncate">
+                        {lineups.home.starting.slice(0, 4).map(p => p.name).join(' • ')}
+                      </p>
+                    </div>
+                  )}
+                  {lineups.away && (
+                    <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold truncate">{match.awayTeam.name}</span>
+                        {lineups.away.formation && <span className="text-[10px] text-muted-foreground">{lineups.away.formation}</span>}
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground truncate">
+                        {lineups.away.starting.slice(0, 4).map(p => p.name).join(' • ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Venue strip */}
           {(match.venue || match.broadcasts?.length || match.attendance) && (
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-3 pb-3 text-[10px] text-white/40">
