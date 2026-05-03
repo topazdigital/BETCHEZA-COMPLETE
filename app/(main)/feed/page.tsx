@@ -342,7 +342,7 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
 }
 
 function RecommendedTipstersRail() {
-  const { data } = useSWR<{ tipsters: RecommendedTipster[] }>('/api/feed/recommended-tipsters', fetcher, { refreshInterval: 60000 });
+  const { data, isLoading } = useSWR<{ tipsters: RecommendedTipster[] }>('/api/feed/recommended-tipsters', fetcher, { refreshInterval: 60000 });
   const tipsters = data?.tipsters ?? [];
 
   return (
@@ -353,12 +353,14 @@ function RecommendedTipstersRail() {
           <h3 className="text-xs font-bold">Recommended Tipsters</h3>
         </div>
         <div className="space-y-2">
-          {tipsters.length === 0 ? (
+          {isLoading ? (
             <div className="space-y-1.5">
-              {[...Array(4)].map((_, i) => (
+              {[...Array(3)].map((_, i) => (
                 <div key={i} className="h-10 animate-pulse rounded-lg bg-muted/40" />
               ))}
             </div>
+          ) : tipsters.length === 0 ? (
+            <p className="py-3 text-center text-[11px] text-muted-foreground">No tipsters yet. Be the first!</p>
           ) : tipsters.map(t => (
             <div key={t.id} className="group flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted/50">
               <Link href={tipsterHref(t.username || t.displayName, t.username || t.id)} className="shrink-0">

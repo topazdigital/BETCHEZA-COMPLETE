@@ -276,7 +276,7 @@ export function MatchCardNew({
 
         {/* Odds */}
         {match.odds && !isFinished && (
-          <div className="hidden shrink-0 gap-1 sm:flex">
+          <div className="flex shrink-0 gap-0.5 sm:gap-1">
             <OddsButton
               value={match.odds.home}
               label={isTwoWay ? 'H' : '1'}

@@ -26,13 +26,19 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 export function BottomNav() {
   const pathname = usePathname();
   
-  // Fetch live match count
-  const { data } = useSWR('/api/matches?status=live', fetcher, {
-    refreshInterval: 30000,
-    revalidateOnFocus: false,
-  });
-  
-  const liveCount = data?.stats?.live || 0;
+  // Fetch live match count from the live-only endpoint (separate SWR key so it
+  // doesn't conflict with the array-typed cache used by useLiveMatches / useMatchStats).
+  const { data } = useSWR<{ stats?: { live?: number }; matches?: Array<{ status: string }> }>(
+    '/api/matches?status=live',
+    fetcher,
+    { refreshInterval: 30000, revalidateOnFocus: false }
+  );
+
+  // Prefer the server-computed stats count; fall back to counting returned matches.
+  const liveStatuses = new Set(['live', 'halftime', 'extra_time', 'penalties']);
+  const liveCount =
+    data?.stats?.live ??
+    (data?.matches?.filter(m => liveStatuses.has(m.status)).length ?? 0);
 
   // Don't show on admin pages or auth pages
   if (pathname.startsWith('/admin') || pathname.startsWith('/login') || pathname.startsWith('/register')) {

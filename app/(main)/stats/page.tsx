@@ -21,26 +21,21 @@ const FEATURED_LEAGUES: Array<{ id: number; name: string; slug: string }> = [
 ];
 
 interface StandingRow {
-  id?: string;
-  team?: { id?: string; name?: string; abbreviation?: string };
-  position?: number;
-  points?: number;
-  played?: number;
-  wins?: number;
-  draws?: number;
-  losses?: number;
-  goalsFor?: number;
-  goalsAgainst?: number;
-  goalDifference?: number;
-  logo?: string;
+  position: number;
+  team: { id: string; name: string; logo?: string };
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalDifference: number;
+  points: number;
 }
 
 interface ScorerRow {
-  rank?: number;
-  athlete?: { id?: string; displayName?: string; shortName?: string; headshot?: string };
-  team?: { id?: string; displayName?: string; logo?: string };
-  value?: number;
-  category?: string;
+  position: number;
+  player: { id: string; name: string; photo?: string };
+  team: { id?: string; name: string; logo?: string };
+  stats: { goals: number; appearances?: number; assists?: number };
 }
 
 function StandingsTable({ leagueId, leagueSlug }: { leagueId: number; leagueSlug: string }) {
@@ -67,18 +62,18 @@ function StandingsTable({ leagueId, leagueSlug }: { leagueId: number; leagueSlug
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id || i} className="border-t border-border hover:bg-muted/20">
+            <tr key={r.team?.id || i} className="border-t border-border hover:bg-muted/20">
               <td className="px-3 py-2 text-muted-foreground">{r.position ?? i + 1}</td>
               <td className="px-3 py-2">
                 <Link href={`/leagues/${leagueSlug}`} className="flex items-center gap-2 hover:text-primary">
-                  {r.logo && <TeamLogo teamName={r.team?.name || ''} logoUrl={r.logo} size="sm" />}
-                  <span className="font-medium">{r.team?.name || r.team?.abbreviation || '—'}</span>
+                  {r.team?.logo && <TeamLogo teamName={r.team.name} logoUrl={r.team.logo} size="sm" />}
+                  <span className="font-medium">{r.team?.name || '—'}</span>
                 </Link>
               </td>
               <td className="px-2 py-2 text-center">{r.played ?? '-'}</td>
-              <td className="px-2 py-2 text-center">{r.wins ?? '-'}</td>
-              <td className="px-2 py-2 text-center">{r.draws ?? '-'}</td>
-              <td className="px-2 py-2 text-center">{r.losses ?? '-'}</td>
+              <td className="px-2 py-2 text-center">{r.won ?? '-'}</td>
+              <td className="px-2 py-2 text-center">{r.drawn ?? '-'}</td>
+              <td className="px-2 py-2 text-center">{r.lost ?? '-'}</td>
               <td className="px-2 py-2 text-center">{r.goalDifference ?? '-'}</td>
               <td className="px-3 py-2 text-right font-bold">{r.points ?? '-'}</td>
             </tr>
@@ -99,9 +94,10 @@ function ScorersTable({ leagueId }: { leagueId: number }) {
   return (
     <div className="space-y-2">
       {rows.map((s, i) => {
-        const pid = s.athlete?.id;
+        const pid = s.player?.id;
+        const name = s.player?.name || '—';
         const Wrapper: React.ElementType = pid ? Link : 'div';
-        const wrapperProps = pid ? { href: playerHref(s.athlete?.displayName || s.athlete?.shortName, pid) } : {};
+        const wrapperProps = pid ? { href: playerHref(name, pid) } : {};
         return (
         <Wrapper
           key={pid || i}
@@ -112,15 +108,15 @@ function ScorersTable({ leagueId }: { leagueId: number }) {
           )}
         >
           <div className="flex items-center gap-3 min-w-0">
-            <span className="w-6 text-center text-xs font-bold text-muted-foreground">{s.rank ?? i + 1}</span>
+            <span className="w-6 text-center text-xs font-bold text-muted-foreground">{s.position ?? i + 1}</span>
             <div className="min-w-0">
-              <p className={cn("truncate text-sm font-medium", pid && "group-hover:text-primary")}>{s.athlete?.displayName || s.athlete?.shortName || '—'}</p>
-              <p className="truncate text-xs text-muted-foreground">{s.team?.displayName || ''}</p>
+              <p className={cn("truncate text-sm font-medium", pid && "group-hover:text-primary")}>{name}</p>
+              <p className="truncate text-xs text-muted-foreground">{s.team?.name || ''}</p>
             </div>
           </div>
           <div className="flex items-center gap-1 text-amber-500">
             <Goal className="h-4 w-4" />
-            <span className="font-bold">{s.value ?? '-'}</span>
+            <span className="font-bold">{s.stats?.goals ?? '-'}</span>
           </div>
         </Wrapper>
       );})}

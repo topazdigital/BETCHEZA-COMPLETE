@@ -305,14 +305,13 @@ export function useMatches(filters?: MatchFilters) {
 }
 
 // Hook for live matches only.
-// IMPORTANT: We pass `keepPreviousData: true` so the live row never flickers
-// to the "no live games right now" empty state during a background refresh.
-// Without this, every 10-second SWR poll briefly returned `undefined` while
-// the request was in-flight, which caused the home page to oscillate between
-// the live marquee and the upcoming-games fallback.
+// IMPORTANT: Uses the same base SWR key as useMatchStats ('/api/matches') so
+// the live page and sidebar badge always reflect exactly the same set of
+// matches. Previously this hit '/api/matches?status=live' (a different cache
+// entry), which meant the sidebar could show N live while the page showed 0.
 export function useLiveMatches() {
-  const { data, error, isLoading, isValidating } = useSWR<Match[]>(
-    '/api/matches?status=live',
+  const { data, error, isLoading } = useSWR<Match[]>(
+    '/api/matches',
     matchesFetcher,
     {
       refreshInterval: 10000, // Refresh every 10 seconds for live

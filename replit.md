@@ -75,6 +75,11 @@ Key architectural decisions and features include:
 -   **Tipster Challenges**: Live/upcoming/finished tabs with VS cards.
 -   **Live Scoreboard Widget**: Floating bottom-right panel showing live matches.
 -   **Challenges in Sidebar Nav**: "Challenges" link added to `NAV_ITEMS`.
+-   **Stats Page Scorers Fix**: `ScorersTable` corrected to use `player.name`/`stats.goals`/`position` from the actual `TopScorer` API shape (was wrongly using `athlete.displayName`/`value`/`rank`).
+-   **Stats Page Standings Fix**: `StandingRow` corrected to use `won`/`drawn`/`lost` and `team.logo` matching the `Standing` API shape (was wrongly using `wins`/`draws`/`losses` and `r.logo`).
+-   **Mobile Odds Visibility**: Compact match card odds no longer hidden on mobile — changed from `hidden sm:flex` to `flex` so live/matches page odds show on all screen sizes.
+-   **SWR Key Architecture**: `useLiveMatches` and `useMatchStats` both use `/api/matches` key with `matchesFetcher`; `BottomNav` uses `/api/matches?status=live` with raw fetcher to avoid cache type conflict.
+-   **Feed Tipsters Empty State**: `RecommendedTipstersRail` shows "No tipsters yet. Be the first!" when data loads with 0 tipsters instead of perpetual skeleton.
 
 ## External Dependencies
 
