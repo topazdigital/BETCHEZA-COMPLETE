@@ -20,6 +20,14 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  return handleSave(req);
+}
+
+export async function POST(req: Request) {
+  return handleSave(req);
+}
+
+async function handleSave(req: Request) {
   const user = await requireAdmin();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const body = (await req.json().catch(() => ({}))) as Partial<OAuthAllConfig> & { siteUrl?: string };

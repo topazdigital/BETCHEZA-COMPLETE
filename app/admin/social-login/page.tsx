@@ -120,7 +120,7 @@ export default function AdminSocialLoginPage() {
         };
       });
       const res = await fetch('/api/admin/social-login', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
