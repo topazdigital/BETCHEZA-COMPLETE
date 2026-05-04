@@ -139,7 +139,7 @@ export async function toggleLike(postId: string, userId: number, likerName?: str
         await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
         liked = false;
       } else {
-        await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
+        await query(`INSERT INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW()) ON CONFLICT (post_id, user_id) DO NOTHING`, [postId, userId]);
         await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
         liked = true;
       }
@@ -217,7 +217,7 @@ export async function deleteComment(commentId: string): Promise<boolean> {
         `DELETE FROM feed_comments WHERE id = ?`, [commentId]
       );
       if ((r.affectedRows ?? 0) > 0) {
-        await query(`UPDATE feed_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = (SELECT post_id FROM (SELECT post_id FROM feed_comments WHERE id = ?) t)`, [commentId]).catch(() => {});
+        await query(`UPDATE feed_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = (SELECT post_id FROM feed_comments WHERE id = ? LIMIT 1)`, [commentId]).catch(() => {});
         return true;
       }
     } catch (e) { console.warn('[feed] db deleteComment failed', e); }
