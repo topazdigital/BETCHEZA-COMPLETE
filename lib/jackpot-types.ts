@@ -17,6 +17,25 @@ export const SUPPORTED_BOOKMAKERS: Bookmaker[] = [
 export interface JackpotGame {
   id: string; home: string; away: string; league?: string; kickoffTime?: string;
   prediction?: Prediction; aiPrediction?: Prediction; aiConfidence?: number; aiReasoning?: string;
+  /** Actual result after match is settled */
+  result?: '1' | 'X' | '2';
+  homeScore?: number;
+  awayScore?: number;
+}
+
+export interface JackpotResult {
+  /** Number of people who got all picks correct */
+  winnersCount: number;
+  /** Prize paid to each winner */
+  prizePerWinner?: string;
+  /** Total prize pool paid out */
+  totalPrizePaid?: string;
+  /** The winning combination e.g. "1 X 2 1 1 X 2 1 X 2 1 1 X" */
+  winningCombination?: string;
+  /** When this jackpot was settled */
+  settledAt: string;
+  /** Optional note from admin e.g. "Jackpot rolled over" */
+  notes?: string;
 }
 
 export interface Jackpot {
@@ -24,4 +43,6 @@ export interface Jackpot {
   jackpotAmount: string; currency: string; deadline: string; games: JackpotGame[];
   status: JackpotStatus; createdAt: string; updatedAt: string;
   aiAnalysis?: string; seoTitle?: string; seoDescription?: string;
+  /** Populated when status === 'settled' */
+  result?: JackpotResult;
 }

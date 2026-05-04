@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { SUPPORTED_BOOKMAKERS } from './jackpot-types';
-export type { JackpotStatus, Prediction, Bookmaker, JackpotGame, Jackpot } from './jackpot-types';
+export type { JackpotStatus, Prediction, Bookmaker, JackpotGame, Jackpot, JackpotResult } from './jackpot-types';
 export { SUPPORTED_BOOKMAKERS } from './jackpot-types';
 import type { Jackpot } from './jackpot-types';
 
@@ -27,6 +27,12 @@ export function getJackpotById(id: string): Jackpot | undefined { return loadSta
 export function getActiveJackpots(bookmakerSlug?: string): Jackpot[] {
   const all = loadState().jackpots.filter(j => j.status === 'active');
   return bookmakerSlug ? all.filter(j => j.bookmakerSlug === bookmakerSlug) : all;
+}
+
+export function getSettledJackpots(bookmakerSlug?: string): Jackpot[] {
+  const all = loadState().jackpots.filter(j => j.status === 'settled');
+  const filtered = bookmakerSlug ? all.filter(j => j.bookmakerSlug === bookmakerSlug) : all;
+  return filtered.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
 export function getActiveJackpotsByBookmaker(): Record<string, Jackpot[]> {
