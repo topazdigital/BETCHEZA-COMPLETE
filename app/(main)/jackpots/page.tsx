@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { Trophy } from 'lucide-react';
+import { Trophy, CheckCircle2 } from 'lucide-react';
+import Link from 'next/link';
 import BookmakerCards from './bookmaker-cards';
 
 export const metadata: Metadata = {
@@ -52,6 +53,15 @@ export default function JackpotsPage() {
               <h1 className="text-2xl font-extrabold tracking-tight">Kenya Jackpot Predictions</h1>
               <p className="text-sm text-muted-foreground">Free AI tips for all major Kenyan bookmaker jackpots — updated daily</p>
             </div>
+          </div>
+          <div className="mt-3">
+            <Link
+              href="/jackpots/results"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50 px-3 py-1.5 rounded-full transition-colors"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              View Past Jackpot Results &amp; Winning Combinations
+            </Link>
           </div>
         </div>
         <BookmakerCards />
