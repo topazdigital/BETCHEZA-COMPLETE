@@ -296,9 +296,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                   >
                     <FlagIcon countryCode={league.countryCode} size="xs" />
                     <span className="truncate">{league.name}</span>
-                    {isCountry && idx === 0 && (
-                      <span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-primary">Local</span>
-                    )}
                   </Link>
                 )
               })}

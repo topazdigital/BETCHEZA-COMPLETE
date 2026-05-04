@@ -130,52 +130,6 @@ async function fetchMozzartGames(count: number): Promise<RawGame[] | null> {
   return extractGames(data, count);
 }
 
-// ─── ESPN real match fetcher (fallback) ───────────────────────────────────────
-
-async function fetchESPNUpcoming(count: number): Promise<RawGame[]> {
-  const endpoints = [
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard', league: 'Premier League' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard', league: 'La Liga' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard', league: 'Bundesliga' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard', league: 'Serie A' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard', league: 'Ligue 1' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard', league: 'Champions League' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard', league: 'Europa League' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/por.1/scoreboard', league: 'Primeira Liga' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ned.1/scoreboard', league: 'Eredivisie' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/sco.1/scoreboard', league: 'Scottish Premiership' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/tur.1/scoreboard', league: 'Süper Lig' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard', league: 'Liga MX' },
-  ];
-  const games: RawGame[] = [];
-  await Promise.allSettled(endpoints.map(async ({ url, league }) => {
-    try {
-      const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(6000), next: { revalidate: 300 } });
-      if (!res.ok) return;
-      const data = await res.json() as { events?: unknown[] };
-      for (const ev of (data.events ?? [])) {
-        const e = ev as Record<string, unknown>;
-        const comp = (e.competitions as Record<string, unknown>[])?.[0];
-        if (!comp) continue;
-        const stateVal = ((comp.status as Record<string, unknown>)?.type as Record<string, unknown>)?.state as string | undefined;
-        if (stateVal && stateVal !== 'pre') continue;
-        const competitors = comp.competitors as Record<string, unknown>[] | undefined;
-        if (!competitors || competitors.length < 2) continue;
-        const home = competitors.find((c) => (c.homeAway as string) === 'home');
-        const away = competitors.find((c) => (c.homeAway as string) === 'away');
-        if (!home || !away) continue;
-        games.push({
-          home: (home.team as Record<string, string>)?.displayName || (home.team as Record<string, string>)?.name || 'Home',
-          away: (away.team as Record<string, string>)?.displayName || (away.team as Record<string, string>)?.name || 'Away',
-          league,
-          kickoffTime: (e.date as string) || (comp.date as string) || undefined,
-        });
-      }
-    } catch { /* skip */ }
-  }));
-  return games.slice(0, count);
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function daysFromNow(days: number): string {
@@ -245,14 +199,13 @@ export async function GET(req: NextRequest) {
   try {
     const { getJackpots, createJackpot, deleteJackpot } = await import('@/lib/jackpot-store');
 
-    // Fetch all sources in parallel
-    const [betikaResult, sportpesaGames, odibetsGames, betinGames, mozzartGames, espnGames] = await Promise.all([
+    // Fetch all bookmaker sources in parallel — no ESPN fallback
+    const [betikaResult, sportpesaGames, odibetsGames, betinGames, mozzartGames] = await Promise.all([
       fetchBetikaGames(15),
       fetchSportPesaGames(17),
       fetchOdiBetsGames(10),
       fetchBetinGames(13),
       fetchMozzartGames(15),
-      fetchESPNUpcoming(90),
     ]);
 
     const betikaGames = betikaResult.games;
@@ -264,51 +217,43 @@ export async function GET(req: NextRequest) {
     if (odibetsGames) liveSources.push('OdiBets');
     if (betinGames) liveSources.push('Betin');
     if (mozzartGames) liveSources.push('Mozzartbet');
-    if (espnGames.length > 0) liveSources.push(`ESPN(${espnGames.length})`);
     console.log(`[jackpot-sync] live sources: ${liveSources.join(', ') || 'none'}`);
-
-    function pickESPN(count: number, offset: number): RawGame[] {
-      const pool = espnGames;
-      if (pool.length === 0) return [];
-      const start = offset % pool.length;
-      return [...pool.slice(start), ...pool.slice(0, start)].slice(0, count);
-    }
 
     const desired = [
       {
         bookmakerSlug: 'sportpesa', bookmakerName: 'SportPesa',
         title: 'SportPesa Mega Jackpot', jackpotAmount: '100000000', currency: 'KES',
-        games: sportpesaGames ?? pickESPN(17, 0), deadline: daysFromNow(5), source: sportpesaGames ? 'live' : 'espn',
+        games: sportpesaGames, deadline: daysFromNow(5), source: 'live',
       },
       {
         bookmakerSlug: 'sportpesa', bookmakerName: 'SportPesa',
         title: 'SportPesa Midweek Jackpot', jackpotAmount: '15000000', currency: 'KES',
-        games: sportpesaGames ? sportpesaGames.slice(0, 13) : pickESPN(13, 5), deadline: daysFromNow(2), source: sportpesaGames ? 'live' : 'espn',
+        games: sportpesaGames ? sportpesaGames.slice(0, 13) : null, deadline: daysFromNow(2), source: 'live',
       },
       {
         bookmakerSlug: 'betika', bookmakerName: 'Betika',
         title: betikaResult.jackpotTitle || 'Betika Grand Jackpot', jackpotAmount: betikaResult.amount || '30000000', currency: 'KES',
-        games: betikaGames ?? pickESPN(15, 10), deadline: betikaResult.deadline || daysFromNow(4), source: betikaGames ? 'live' : 'espn',
+        games: betikaGames, deadline: betikaResult.deadline || daysFromNow(4), source: 'live',
       },
       {
         bookmakerSlug: 'betika', bookmakerName: 'Betika',
         title: 'Betika Midweek Jackpot', jackpotAmount: '15000000', currency: 'KES',
-        games: betikaGames ? betikaGames.slice(0, 13) : pickESPN(13, 20), deadline: daysFromNow(2), source: betikaGames ? 'live' : 'espn',
+        games: betikaGames ? betikaGames.slice(0, 13) : null, deadline: daysFromNow(2), source: 'live',
       },
       {
         bookmakerSlug: 'odibets', bookmakerName: 'OdiBets',
         title: 'OdiBets Jackpot Bonanza', jackpotAmount: '5000000', currency: 'KES',
-        games: odibetsGames ?? pickESPN(10, 30), deadline: daysFromNow(3), source: odibetsGames ? 'live' : 'espn',
+        games: odibetsGames, deadline: daysFromNow(3), source: 'live',
       },
       {
         bookmakerSlug: 'betin', bookmakerName: 'Betin Kenya',
         title: 'Betin Grand Jackpot', jackpotAmount: '20000000', currency: 'KES',
-        games: betinGames ?? pickESPN(13, 40), deadline: daysFromNow(4), source: betinGames ? 'live' : 'espn',
+        games: betinGames, deadline: daysFromNow(4), source: 'live',
       },
       {
         bookmakerSlug: 'mozzartbet', bookmakerName: 'Mozzartbet',
         title: 'Mozzartbet Mega Jackpot', jackpotAmount: '25000000', currency: 'KES',
-        games: mozzartGames ?? pickESPN(15, 50), deadline: daysFromNow(5), source: mozzartGames ? 'live' : 'espn',
+        games: mozzartGames, deadline: daysFromNow(5), source: 'live',
       },
     ];
 
@@ -364,14 +309,13 @@ export async function GET(req: NextRequest) {
       void notifyJackpotSubscribers(created + refreshed, uniqueBookmakers);
     }
 
-    const liveCount = desired.filter(d => d.source === 'live' && d.games && d.games.length > 0).length;
-    const espnCount = desired.filter(d => d.source === 'espn' && d.games && d.games.length > 0).length;
+    const liveCount = desired.filter(d => d.games && d.games.length > 0).length;
 
-    console.log(`[jackpot-sync] created=${created} refreshed=${refreshed} skipped=${skipped} predicted=${predicted} live=${liveCount} espn=${espnCount}`);
+    console.log(`[jackpot-sync] created=${created} refreshed=${refreshed} skipped=${skipped} predicted=${predicted} live=${liveCount}`);
 
     return NextResponse.json({
       success: true, created, refreshed, skipped, predicted,
-      liveCount, espnCount,
+      liveCount,
       message: `${created + refreshed} jackpots synced, ${predicted} AI-predicted, ${skipped} already up-to-date`,
     });
   } catch (e) {

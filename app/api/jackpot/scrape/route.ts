@@ -163,58 +163,6 @@ async function fetchMozzartGames(count: number): Promise<RawGame[] | null> {
   return null;
 }
 
-// ─── ESPN real match fetcher as fallback ──────────────────────────────────────
-// Uses the same ESPN free API the rest of the app uses. Returns real scheduled
-// football fixtures grouped by league.
-async function fetchESPNUpcomingFootball(count: number): Promise<RawGame[]> {
-  const leagueEndpoints = [
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard', league: 'Premier League' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard', league: 'La Liga' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard', league: 'Bundesliga' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard', league: 'Serie A' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard', league: 'Ligue 1' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard', league: 'Champions League' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard', league: 'Europa League' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/por.1/scoreboard', league: 'Primeira Liga' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ned.1/scoreboard', league: 'Eredivisie' },
-    { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/sco.1/scoreboard', league: 'Scottish Premiership' },
-  ];
-
-  const games: RawGame[] = [];
-
-  await Promise.allSettled(leagueEndpoints.map(async ({ url, league }) => {
-    try {
-      const res = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(6000),
-        next: { revalidate: 300 },
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const events: unknown[] = data?.events ?? [];
-      for (const ev of events) {
-        const e = ev as Record<string, unknown>;
-        const comp = (e.competitions as Record<string, unknown>[])?.[0];
-        if (!comp) continue;
-        const status = (comp.status as Record<string, unknown>)?.type as Record<string, unknown> | undefined;
-        const stateVal = status?.state as string | undefined;
-        // Only take scheduled/pre-game matches
-        if (stateVal && stateVal !== 'pre') continue;
-        const competitors = comp.competitors as Record<string, unknown>[] | undefined;
-        if (!competitors || competitors.length < 2) continue;
-        const home = competitors.find((c) => (c.homeAway as string) === 'home');
-        const away = competitors.find((c) => (c.homeAway as string) === 'away');
-        if (!home || !away) continue;
-        const homeName = (home.team as Record<string, string>)?.displayName || (home.team as Record<string, string>)?.name || 'Home';
-        const awayName = (away.team as Record<string, string>)?.displayName || (away.team as Record<string, string>)?.name || 'Away';
-        const kickoffTime = (e.date as string) || (comp.date as string) || undefined;
-        games.push({ home: homeName, away: awayName, league, kickoffTime });
-      }
-    } catch { /* skip this league */ }
-  }));
-
-  return games.slice(0, count);
-}
 
 function todayPlusDays(days: number): string {
   const d = new Date();
@@ -255,16 +203,7 @@ export async function GET(req: NextRequest) {
       fetchMozzartGames(15),
     ]);
 
-    // Fetch ESPN real matches as the shared fallback pool
-    const espnGames = await fetchESPNUpcomingFootball(80);
-    const espnPool = [...espnGames];
-    const pickFromESPN = (count: number, offset = 0): RawGame[] => {
-      const start = offset % Math.max(espnPool.length, 1);
-      const slice = [...espnPool.slice(start), ...espnPool.slice(0, start)];
-      return slice.slice(0, count);
-    };
-
-    // Bookmaker configs: real data or ESPN fallback
+    // Only use real bookmaker data — no ESPN fallback
     const jackpotDefs = [
       {
         bookmakerSlug: 'sportpesa',
@@ -273,8 +212,8 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '100000000',
         currency: 'KES',
         deadline: todayPlusDays(5),
-        rawGames: sportpesaGames ?? pickFromESPN(17, 0),
-        source: sportpesaGames ? 'live' : 'espn',
+        rawGames: sportpesaGames,
+        source: 'live',
       },
       {
         bookmakerSlug: 'sportpesa',
@@ -283,8 +222,8 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '15000000',
         currency: 'KES',
         deadline: todayPlusDays(2),
-        rawGames: sportpesaGames ? sportpesaGames.slice(0, 13) : pickFromESPN(13, 5),
-        source: sportpesaGames ? 'live' : 'espn',
+        rawGames: sportpesaGames ? sportpesaGames.slice(0, 13) : null,
+        source: 'live',
       },
       {
         bookmakerSlug: 'betika',
@@ -293,8 +232,8 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '30000000',
         currency: 'KES',
         deadline: todayPlusDays(4),
-        rawGames: betikaGames ?? pickFromESPN(15, 10),
-        source: betikaGames ? 'live' : 'espn',
+        rawGames: betikaGames,
+        source: 'live',
       },
       {
         bookmakerSlug: 'betika',
@@ -303,8 +242,8 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '10000000',
         currency: 'KES',
         deadline: todayPlusDays(2),
-        rawGames: betikaGames ? betikaGames.slice(0, 13) : pickFromESPN(13, 20),
-        source: betikaGames ? 'live' : 'espn',
+        rawGames: betikaGames ? betikaGames.slice(0, 13) : null,
+        source: 'live',
       },
       {
         bookmakerSlug: 'odibets',
@@ -313,8 +252,8 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '5000000',
         currency: 'KES',
         deadline: todayPlusDays(3),
-        rawGames: odibetsGames ?? pickFromESPN(10, 30),
-        source: odibetsGames ? 'live' : 'espn',
+        rawGames: odibetsGames,
+        source: 'live',
       },
       {
         bookmakerSlug: 'betin',
@@ -323,8 +262,8 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '20000000',
         currency: 'KES',
         deadline: todayPlusDays(4),
-        rawGames: betinGames ?? pickFromESPN(13, 40),
-        source: betinGames ? 'live' : 'espn',
+        rawGames: betinGames,
+        source: 'live',
       },
       {
         bookmakerSlug: 'mozzartbet',
@@ -333,8 +272,8 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '25000000',
         currency: 'KES',
         deadline: todayPlusDays(5),
-        rawGames: mozzartGames ?? pickFromESPN(15, 50),
-        source: mozzartGames ? 'live' : 'espn',
+        rawGames: mozzartGames,
+        source: 'live',
       },
     ];
 
@@ -363,7 +302,7 @@ export async function GET(req: NextRequest) {
     const sources: Record<string, string> = {};
     let created = 0;
     for (const def of jackpotDefs) {
-      if (def.rawGames.length === 0) continue;
+      if (!def.rawGames || def.rawGames.length === 0) continue;
       const games = toJackpotGames(def.rawGames, def.bookmakerSlug, created * 100);
       store.createJackpot({
         bookmakerSlug: def.bookmakerSlug,
@@ -379,12 +318,9 @@ export async function GET(req: NextRequest) {
       created++;
     }
 
-    const liveSources = Object.values(sources).filter(s => s === 'live').length;
-    const espnSources = Object.values(sources).filter(s => s === 'espn').length;
-
     return NextResponse.json({
       success: true,
-      message: `Scraped ${created} jackpots. Live bookmaker data: ${liveSources}, ESPN real fixtures: ${espnSources}`,
+      message: `Scraped ${created} jackpots from live bookmaker data`,
       created,
       sources,
     });

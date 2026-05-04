@@ -8,6 +8,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { useLiveMatches, useUpcomingMatches } from '@/lib/hooks/use-matches';
 import { matchIdToSlug } from '@/lib/utils/match-url';
+import { useUserSettings } from '@/contexts/user-settings-context';
+import { formatTime, formatDate, isToday, isTomorrow } from '@/lib/utils/timezone';
 
 /**
  * Live Now is meant to be ALWAYS visible on the homepage. When there are no
@@ -16,6 +18,7 @@ import { matchIdToSlug } from '@/lib/utils/match-url';
  * disappears (the user always knows something is happening).
  */
 export function LiveMatchesSection() {
+  const { settings } = useUserSettings();
   const { matches: liveMatches, isLoading } = useLiveMatches();
   const { matches: upcoming } = useUpcomingMatches(6);
 
@@ -76,10 +79,9 @@ export function LiveMatchesSection() {
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {upcoming.slice(0, 6).map((m) => {
                 const t = new Date(m.kickoffTime);
-                const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const day = t.toDateString() === new Date().toDateString()
-                  ? 'Today'
-                  : t.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                const tz = settings.timezone;
+                const time = formatTime(t, tz);
+                const day = isToday(t, tz) ? 'Today' : isTomorrow(t, tz) ? 'Tomorrow' : formatDate(t, tz);
                 return (
                   <Link
                     key={m.id}

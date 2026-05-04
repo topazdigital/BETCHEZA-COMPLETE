@@ -175,7 +175,7 @@ export function MatchCardNew({
   const homeBadgeLabel = homeBadge.youthLabel || (homeBadge.isWomens ? 'W' : null);
   const awayBadgeLabel = awayBadge.youthLabel || (awayBadge.isWomens ? 'W' : null);
 
-  const timezone = getBrowserTimezone();
+  const timezone = settings.timezone || getBrowserTimezone();
   const kickoffTime = new Date(match.kickoffTime);
   const timeStr = formatTime(kickoffTime, timezone);
 
