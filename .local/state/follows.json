@@ -1,0 +1,25 @@
+{
+  "teams": {
+    "1": [
+      {
+        "teamId": "359",
+        "teamName": "Arsenal",
+        "teamLogo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+        "leagueId": null,
+        "leagueSlug": "premier-league",
+        "leagueName": "Premier League",
+        "sportSlug": null,
+        "countryCode": "GB-ENG",
+        "followedAt": "2026-05-01T20:05:54.624Z"
+      }
+    ]
+  },
+  "tipsters": {
+    "1": [
+      {
+        "tipsterId": 1024,
+        "followedAt": "2026-05-01T20:04:19.225Z"
+      }
+    ]
+  }
+}

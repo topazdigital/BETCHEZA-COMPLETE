@@ -1,0 +1,18 @@
+{
+  "balances": {
+    "1:KES": 500
+  },
+  "txns": [
+    {
+      "id": "tx_monxas9tz6v6t3",
+      "userId": 1,
+      "type": "deposit",
+      "amount": 500,
+      "currency": "KES",
+      "status": "completed",
+      "method": "mpesa",
+      "description": "Deposit via M-Pesa · 0723744915",
+      "createdAt": "2026-05-02T05:50:38.753Z"
+    }
+  ]
+}
