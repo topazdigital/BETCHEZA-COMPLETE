@@ -1,0 +1,145 @@
+[root@mail betcheza]# find / -name "deploy.sh" -path "*/betcheza/*" 2>/dev/null
+/home/admin/apps/betcheza/deploy.sh
+[root@mail betcheza]# cd /home/admin/apps/betcheza    # replace with whatever path Step 1 shows
+[root@mail betcheza]# git pull origin main
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+Updating 8e1853b..f8117ac
+error: Your local changes to the following files would be overwritten by merge:
+        .local/state/auto-tips.json
+Please commit your changes or stash them before you merge.
+Aborting
+[root@mail betcheza]# mysql -u admin_betcheza -p admin_betcheza < scripts/migrate-missing-tables.sql
+-bash: scripts/migrate-missing-tables.sql: No such file or directory
+[root@mail betcheza]# git rm --cached .local/state/auto-tips.json
+
+mysql -u admin_betcheza -p admin_betcheza < scripts/migrate-missing-tables.sqlrm '.local/state/auto-tips.json'
+[root@mail betcheza]# git pull origin main
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+Updating 8e1853b..f8117ac
+Fast-forward
+ .local/state/admin/email-config.json                                        |   11 -
+ .local/state/admin/follows.json                                             |   22 -
+ .local/state/admin/site-settings.json                                       |   46 -
+ .local/state/auto-tips.json                                                 |    1 -
+ .local/state/email-verifications.json                                       |    6 -
+ .local/state/follows.json                                                   |   25 -
+ .local/state/predictions.json                                               |    1 -
+ .local/state/wallets.json                                                   |   18 -
+ .replit                                                                     |    3 +
+ app/(main)/jackpots/bookmaker-cards.tsx                                     |  248 ++
+ app/(main)/jackpots/page.tsx                                                |   80 +
+ app/(main)/jackpots/results/layout.tsx                                      |   11 +
+ app/(main)/jackpots/results/page.tsx                                        |  409 +++
+ app/(main)/layout.tsx                                                       |   69 +-
+ app/admin/jackpots/page.tsx                                                 |  793 ++++++
+ app/api/admin/payment-gateways/route.ts                                     |   64 +-
+ app/api/admin/seo/route.ts                                                  |   44 +-
+ app/api/auth/forgot-password/route.ts                                       |   17 +-
+ app/api/auth/google-client-id/route.ts                                      |   23 +
+ app/api/auth/google-one-tap/route.ts                                        |  199 ++
+ app/api/auth/login/route.ts                                                 |   49 +-
+ app/api/auth/login/verify-2fa/route.ts                                      |   36 +-
+ app/api/auth/me/route.ts                                                    |   49 +-
+ app/api/auth/register/route.ts                                              |   92 +-
+ app/api/auth/resend-verification/route.ts                                   |   17 +-
+ app/api/cron/jackpot-sync/route.ts                                          |  325 +++
+ app/api/jackpot/predict/route.ts                                            |  161 ++
+ app/api/jackpot/results/route.ts                                            |   78 +
+ app/api/jackpot/route.ts                                                    |   78 +
+ app/api/jackpot/scrape/route.ts                                             |  331 +++
+ app/api/matches/route.ts                                                    |   28 +-
+ app/api/notifications/subscribe/route.ts                                    |   11 +-
+ app/api/notifications/vapid-public-key/route.ts                             |    8 +
+ app/layout.tsx                                                              |    2 +
+ ...phpMyAdmin-SQL-Dump-version-5-2-3-https-www-phpmyadmin_1777901370395.txt | 5205 +++++++++++++++++++++++++++++++++++
+ ...phpMyAdmin-SQL-Dump-version-5-2-3-https-www-phpmyadmin_1777912914348.txt | 5205 +++++++++++++++++++++++++++++++++++
+ ...es-do-that-and-also-let-s-add-jackpots-even-in-admin-p_1777903784262.txt |  101 +
+ attached_assets/image_1777901485472.png                                     |  Bin 0 -> 500773 bytes
+ attached_assets/image_1777903845639.png                                     |  Bin 0 -> 345263 bytes
+ attached_assets/image_1777904525075.png                                     |  Bin 0 -> 306711 bytes
+ attached_assets/image_1777907703276.png                                     |  Bin 0 -> 306014 bytes
+ attached_assets/image_1777908306708.png                                     |  Bin 0 -> 304980 bytes
+ attached_assets/image_1777912981060.png                                     |  Bin 0 -> 345517 bytes
+ attached_assets/image_1777912987927.png                                     |  Bin 0 -> 305764 bytes
+ attached_assets/image_1777913003630.png                                     |  Bin 0 -> 222187 bytes
+ components/admin/admin-shell.tsx                                            |    3 +-
+ components/auth/google-one-tap.tsx                                          |   80 +
+ components/jackpots/jackpot-notify-button.tsx                               |  145 +
+ components/matches/match-card-new.tsx                                       |    9 +-
+ components/sections/live-matches.tsx                                        |   10 +-
+ contexts/auth-context.tsx                                                   |   20 +
+ contexts/user-settings-context.tsx                                          |    4 +-
+ lib/cron.ts                                                                 |   68 +-
+ lib/db.ts                                                                   |   19 +-
+ lib/email-config-store.ts                                                   |    4 +-
+ lib/featured-store.ts                                                       |    2 +-
+ lib/feed-store.ts                                                           |    2 +-
+ lib/jackpot-store.ts                                                        |   15 +-
+ lib/jackpot-types.ts                                                        |   21 +
+ lib/notification-store.ts                                                   |   18 +-
+ lib/oauth-config-store.ts                                                   |   36 +-
+ lib/push-sender.ts                                                          |   80 +
+ lib/static-pages-store.ts                                                   |    4 +-
+ lib/user-profile-store.ts                                                   |    2 +-
+ lib/votes-store.ts                                                          |    8 +-
+ next-env.d.ts                                                               |    2 +-
+ next.config.ts                                                              |   18 -
+ package-lock.json                                                           |  118 +
+ package.json                                                                |    2 +
+ replit.md                                                                   |  132 +-
+ scripts/db-migrate.sql                                                      |   34 +
+ scripts/migrate-missing-tables.sql                                          |  144 +
+ tsconfig.tsbuildinfo                                                        |    2 +-
+ 73 files changed, 14386 insertions(+), 482 deletions(-)
+ delete mode 100644 .local/state/admin/email-config.json
+ delete mode 100644 .local/state/admin/follows.json
+ delete mode 100644 .local/state/admin/site-settings.json
+ delete mode 100644 .local/state/auto-tips.json
+ delete mode 100644 .local/state/email-verifications.json
+ delete mode 100644 .local/state/follows.json
+ delete mode 100644 .local/state/predictions.json
+ delete mode 100644 .local/state/wallets.json
+ create mode 100644 app/(main)/jackpots/bookmaker-cards.tsx
+ create mode 100644 app/(main)/jackpots/page.tsx
+ create mode 100644 app/(main)/jackpots/results/layout.tsx
+ create mode 100644 app/(main)/jackpots/results/page.tsx
+ create mode 100644 app/admin/jackpots/page.tsx
+ create mode 100644 app/api/auth/google-client-id/route.ts
+ create mode 100644 app/api/auth/google-one-tap/route.ts
+ create mode 100644 app/api/cron/jackpot-sync/route.ts
+ create mode 100644 app/api/jackpot/predict/route.ts
+ create mode 100644 app/api/jackpot/results/route.ts
+ create mode 100644 app/api/jackpot/route.ts
+ create mode 100644 app/api/jackpot/scrape/route.ts
+ create mode 100644 app/api/notifications/vapid-public-key/route.ts
+ create mode 100644 attached_assets/Pasted--phpMyAdmin-SQL-Dump-version-5-2-3-https-www-phpmyadmin_1777901370395.txt
+ create mode 100644 attached_assets/Pasted--phpMyAdmin-SQL-Dump-version-5-2-3-https-www-phpmyadmin_1777912914348.txt
+ create mode 100644 attached_assets/Pasted-Yes-do-that-and-also-let-s-add-jackpots-even-in-admin-p_1777903784262.txt
+ create mode 100644 attached_assets/image_1777901485472.png
+ create mode 100644 attached_assets/image_1777903845639.png
+ create mode 100644 attached_assets/image_1777904525075.png
+ create mode 100644 attached_assets/image_1777907703276.png
+ create mode 100644 attached_assets/image_1777908306708.png
+ create mode 100644 attached_assets/image_1777912981060.png
+ create mode 100644 attached_assets/image_1777912987927.png
+ create mode 100644 attached_assets/image_1777913003630.png
+ create mode 100644 components/auth/google-one-tap.tsx
+ create mode 100644 components/jackpots/jackpot-notify-button.tsx
+ create mode 100644 lib/push-sender.ts
+ delete mode 100644 next.config.ts
+ create mode 100644 scripts/db-migrate.sql
+ create mode 100644 scripts/migrate-missing-tables.sql
+[root@mail betcheza]# mysql -u admin_betcheza -p admin_betcheza < scripts/migrate-missing-tables.sql
+Enter password:
+--------------
+ALTER TABLE `jackpots`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_jackpots_status` (`status`),
+  ADD KEY `idx_jackpots_bookmaker` (`bookmaker_slug`),
+  ADD KEY `idx_jackpots_deadline` (`deadline`)
+--------------
+
+ERROR 1068 (42000) at line 29: Multiple primary key defined
+[root@mail betcheza]#
