@@ -50,8 +50,10 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const browserTimezone = getBrowserTimezone();
     setSettings({
       ...defaultSettings,
-      timezone: browserTimezone,
       ...loaded,
+      // Always prefer browser timezone over stored 'UTC' default.
+      // Only keep the saved value if the user explicitly chose a non-UTC timezone.
+      timezone: (loaded.timezone && loaded.timezone !== 'UTC') ? loaded.timezone : browserTimezone,
     });
     setIsLoaded(true);
   }, []);

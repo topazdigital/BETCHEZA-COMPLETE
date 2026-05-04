@@ -33,35 +33,66 @@ import { FlagIcon } from "@/components/ui/flag-icon"
 const POPULAR_LEAGUE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const INTERNATIONAL_LEAGUE_IDS = [9, 10, 26, 102, 24, 29, 30, 31];
 
-// Country code → league IDs mapping for "your country first" feature
+// Country code → league IDs in sports-data.ts for "local league first" sorting
 const COUNTRY_LEAGUE_MAP: Record<string, number[]> = {
-  KE: [9022], TZ: [9028], UG: [9029], NG: [9027], GH: [9026],
-  ZA: [96], EG: [97], MA: [98], TN: [99], DZ: [100],
-  GB: [1, 44, 41], ES: [2, 47], DE: [3, 49], IT: [4, 51],
-  FR: [5], US: [200, 201], AU: [20], MX: [27], CN: [28],
+  KE: [9022],         // Kenya Premier League
+  TZ: [256],          // Tanzanian Premier League
+  UG: [9029],         // Ugandan Premier League
+  NG: [9027],         // Nigerian Premier League
+  GH: [9026],         // Ghana Premier League
+  ZA: [96],           // South African Premier Soccer League
+  RW: [247],          // Rwandan Premier League (from sports-data ID 247)
+  ZM: [234],          // Zambian MTN Super League
+  GB: [1, 90, 245],   // Premier League, Championship, EFL Cup
+  ES: [64, 41],       // La Liga, La Liga 2
+  DE: [110, 86],      // Bundesliga, 2. Bundesliga
+  IT: [50, 35],       // Serie A, Serie B
+  FR: [102, 141],     // Ligue 1, Ligue 2
+  NL: [122],          // Eredivisie
+  PT: [125],          // Primeira Liga
+  BE: [56],           // Belgian Pro League
+  TR: [36],           // Turkish Super Lig
+  US: [130, 79],      // MLS, NWSL
+  AU: [83],           // A-League
+  MX: [169],          // Liga MX
+  CN: [32],           // Chinese Super League
+  JP: [80],           // J League
+  BR: [144],          // Brasileirão
+  AR: [135],          // Argentine Primera
 };
 
-// Detect user's country code from Intl timezone
+// Maps IANA timezone → ISO country code (exact matches for African timezones to prevent misdetection)
 function detectCountryCode(): string {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (tz.startsWith('Africa/Nairobi') || tz.startsWith('Africa/Dar') || tz === 'Africa/Kampala') return 'KE';
-    if (tz.startsWith('Africa/Lagos') || tz.startsWith('Africa/Kano')) return 'NG';
-    if (tz.startsWith('Africa/Accra')) return 'GH';
-    if (tz.startsWith('Africa/Dar_es_Salaam')) return 'TZ';
-    if (tz.startsWith('Africa/Kampala')) return 'UG';
-    if (tz.startsWith('Africa/Johannesburg')) return 'ZA';
-    if (tz.startsWith('Africa/Cairo')) return 'EG';
-    if (tz.startsWith('Africa/Casablanca') || tz.startsWith('Africa/El_Aaiun')) return 'MA';
+    // African timezones — use exact match to avoid Uganda/Tanzania being mislabeled as Kenya
+    if (tz === 'Africa/Nairobi') return 'KE';
+    if (tz === 'Africa/Kampala') return 'UG';
+    if (tz === 'Africa/Dar_es_Salaam' || tz === 'Africa/Zanzibar') return 'TZ';
+    if (tz === 'Africa/Lagos' || tz === 'Africa/Kano' || tz === 'Africa/Abuja') return 'NG';
+    if (tz === 'Africa/Accra' || tz === 'Africa/Abidjan') return 'GH';
+    if (tz === 'Africa/Johannesburg' || tz === 'Africa/Harare' || tz === 'Africa/Lusaka') return 'ZA';
+    if (tz === 'Africa/Cairo' || tz === 'Africa/Tripoli') return 'EG';
+    if (tz === 'Africa/Kigali') return 'RW';
+    if (tz === 'Africa/Casablanca' || tz === 'Africa/El_Aaiun') return 'MA';
+    // European timezones
     if (tz.startsWith('Europe/London')) return 'GB';
     if (tz.startsWith('Europe/Madrid')) return 'ES';
     if (tz.startsWith('Europe/Berlin') || tz.startsWith('Europe/Vienna') || tz.startsWith('Europe/Zurich')) return 'DE';
     if (tz.startsWith('Europe/Rome')) return 'IT';
     if (tz.startsWith('Europe/Paris')) return 'FR';
-    if (tz.startsWith('America/New_York') || tz.startsWith('America/Los_Angeles') || tz.startsWith('America/Chicago')) return 'US';
+    if (tz.startsWith('Europe/Amsterdam') || tz.startsWith('Europe/Brussels')) return 'NL';
+    if (tz.startsWith('Europe/Lisbon')) return 'PT';
+    if (tz.startsWith('Europe/Istanbul')) return 'TR';
+    // Americas
+    if (tz.startsWith('America/New_York') || tz.startsWith('America/Los_Angeles') || tz.startsWith('America/Chicago') || tz.startsWith('America/Denver')) return 'US';
+    if (tz.startsWith('America/Sao_Paulo') || tz.startsWith('America/Recife') || tz.startsWith('America/Manaus')) return 'BR';
+    if (tz.startsWith('America/Argentina')) return 'AR';
+    if (tz.startsWith('America/Mexico_City') || tz.startsWith('America/Monterrey')) return 'MX';
+    // Asia-Pacific
     if (tz.startsWith('Australia/')) return 'AU';
-    if (tz.startsWith('America/Mexico_City')) return 'MX';
-    if (tz.startsWith('Asia/Shanghai') || tz.startsWith('Asia/Hong_Kong')) return 'CN';
+    if (tz.startsWith('Asia/Shanghai') || tz.startsWith('Asia/Hong_Kong') || tz.startsWith('Asia/Chongqing')) return 'CN';
+    if (tz.startsWith('Asia/Tokyo')) return 'JP';
     return '';
   } catch { return ''; }
 }

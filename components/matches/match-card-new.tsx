@@ -161,6 +161,12 @@ export function MatchCardNew({
   const statusForLabel = match.status === 'halftime' ? 'halftime' : match.status;
   const isTwoWay = NO_DRAW_SPORTS.has(match.sport.slug);
 
+  // mounted guard: render UTC on server/first-paint, then switch to user timezone
+  // This prevents a React hydration mismatch when the server renders UTC
+  // but the browser has a different timezone.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   // Locally ticking live minute — updates every 15 s without waiting for API refresh
   const liveMinute = useLiveCardMinute(
     match.minute,
@@ -175,7 +181,8 @@ export function MatchCardNew({
   const homeBadgeLabel = homeBadge.youthLabel || (homeBadge.isWomens ? 'W' : null);
   const awayBadgeLabel = awayBadge.youthLabel || (awayBadge.isWomens ? 'W' : null);
 
-  const timezone = settings.timezone || getBrowserTimezone();
+  // Use 'UTC' until after hydration, then switch to the user's detected timezone
+  const timezone = mounted ? (settings.timezone || getBrowserTimezone()) : 'UTC';
   const kickoffTime = new Date(match.kickoffTime);
   const timeStr = formatTime(kickoffTime, timezone);
 
