@@ -38,6 +38,7 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string; verifyRequired?: boolean; emailStatus?: 'sent' | 'skipped' | 'failed' }>;
   verifyEmail: (code: string) => Promise<{ success: boolean; error?: string }>;
   resendVerification: () => Promise<{ success: boolean; error?: string; emailStatus?: 'sent' | 'skipped' | 'failed' }>;
+  loginWithGoogleOneTap: (credential: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -272,6 +273,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await checkAuth();
   };
 
+  const loginWithGoogleOneTap = async (credential: string) => {
+    try {
+      const res = await fetch('/api/auth/google-one-tap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setUser(data.user);
+        return { success: true };
+      }
+      return { success: false, error: data.error || 'Google sign-in failed' };
+    } catch {
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -284,6 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         verifyEmail,
         resendVerification,
+        loginWithGoogleOneTap,
         logout,
         refreshUser,
       }}

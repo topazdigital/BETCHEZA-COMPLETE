@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { setAuthCookie, verifyPassword } from '@/lib/auth';
 import { mockUsers } from '@/lib/mock-data';
+import { queryOne, getPool } from '@/lib/db';
 import { issueTwoFactorChallenge, requiresTwoFactor } from '@/lib/two-factor-store';
 import {
   CAPTCHA_THRESHOLD,
@@ -15,12 +16,49 @@ import { getCaptchaProvider, recallMathAnswer, verifyCaptcha } from '@/lib/captc
 
 export const dynamic = 'force-dynamic';
 
+interface DbUser {
+  id: number;
+  email: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  role: 'user' | 'tipster' | 'admin';
+  balance: number;
+  is_verified: boolean;
+  password_hash: string;
+}
+
+async function findUserByEmail(email: string): Promise<DbUser | null> {
+  if (getPool()) {
+    try {
+      const u = await queryOne<DbUser>(
+        'SELECT id, email, username, display_name, avatar_url, role, balance, is_verified, password_hash FROM users WHERE email = ? LIMIT 1',
+        [email]
+      );
+      if (u) return u;
+    } catch (err) {
+      console.warn('[login] DB lookup failed, falling back to mock:', err);
+    }
+  }
+  const mock = mockUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  if (!mock) return null;
+  return {
+    id: mock.id,
+    email: mock.email,
+    username: mock.username,
+    display_name: mock.display_name,
+    avatar_url: mock.avatar_url,
+    role: mock.role,
+    balance: mock.balance,
+    is_verified: !!mock.is_verified,
+    password_hash: mock.password_hash,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const ip = ipKeyFromHeaders(request.headers);
 
-    // Hard rate-limit: 20 login attempts per IP per 5 minutes — stops bulk
-    // credential-stuffing entirely.
     const ipLimit = rateLimit(`login:ip:${ip}`, 20, 5 * 60_000);
     if (!ipLimit.ok) {
       return NextResponse.json(
@@ -61,7 +99,6 @@ export async function POST(request: Request) {
     const failureKey = `login:fail:${normalizedEmail}:${ip}`;
     const failureCount = getFailures(failureKey);
 
-    // Permanent block for the day after too many failures.
     if (failureCount >= HARD_LOCK_THRESHOLD) {
       return NextResponse.json(
         {
@@ -72,8 +109,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Captcha gate — once the user (or attacker) has missed CAPTCHA_THRESHOLD
-    // times we require a captcha solution before checking the password again.
     if (failureCount >= CAPTCHA_THRESHOLD) {
       const provider = await getCaptchaProvider();
       let expected: string | undefined;
@@ -93,7 +128,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const user = mockUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
+    const user = await findUserByEmail(normalizedEmail);
 
     if (!user) {
       recordFailure(failureKey);
@@ -162,7 +197,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error('[v0] Login error:', error);
+    console.error('[login] Login error:', error);
     return NextResponse.json(
       { success: false, error: 'An unexpected error occurred. Please try again.' },
       { status: 500 }

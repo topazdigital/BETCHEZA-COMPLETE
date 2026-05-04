@@ -80,6 +80,11 @@ Key architectural decisions and features include:
 -   **Mobile Odds Visibility**: Compact match card odds no longer hidden on mobile — changed from `hidden sm:flex` to `flex` so live/matches page odds show on all screen sizes.
 -   **SWR Key Architecture**: `useLiveMatches` and `useMatchStats` both use `/api/matches` key with `matchesFetcher`; `BottomNav` uses `/api/matches?status=live` with raw fetcher to avoid cache type conflict.
 -   **Feed Tipsters Empty State**: `RecommendedTipstersRail` shows "No tipsters yet. Be the first!" when data loads with 0 tipsters instead of perpetual skeleton.
+-   **DB-First Auth**: All auth routes (`login`, `me`, `register`, `forgot-password`, `verify-2fa`, `resend-verification`) query MySQL first and fall back to in-memory mock only when no DB pool is configured.
+-   **Google OAuth DB Save**: OAuth callback (`/api/auth/oauth/[provider]/callback`) saves Google users to DB with `google_id`; `/api/auth/me` resolves users from DB by ID.
+-   **Google One Tap**: `components/auth/google-one-tap.tsx` loads Google Identity Services script, shows One Tap prompt for unauthenticated visitors, and posts the credential to `/api/auth/google-one-tap` which verifies via Google tokeninfo API and finds/creates the user in DB. The `loginWithGoogleOneTap` method was added to `AuthContext`. A public `/api/auth/google-client-id` endpoint exposes only the client ID (no secret) for the frontend.
+-   **Real Bookmaker Odds Only**: `app/api/matches/route.ts` no longer imports or calls `generateRealisticOdds` — matches without bookmaker odds return `undefined` odds instead of computer-generated estimates.
+-   **Player/Team Follow DB**: `lib/follows-store.ts` already has `try/catch` guards; `scripts/db-migrate.sql` contains the ALTER TABLE statements needed to add missing columns (`oauth_provider`, `oauth_provider_id` on `users`; `player_id`, `player_name`, etc. on `player_follows`) when deploying to a real DB.
 
 ## External Dependencies
 

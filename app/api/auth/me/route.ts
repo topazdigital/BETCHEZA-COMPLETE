@@ -1,26 +1,63 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { mockUsers } from '@/lib/mock-data';
+import { queryOne, getPool } from '@/lib/db';
 import { getBalance } from '@/lib/wallet-store';
 import { isVerified } from '@/lib/email-verification-store';
+
+export const dynamic = 'force-dynamic';
+
+interface DbUser {
+  id: number;
+  email: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  role: 'user' | 'tipster' | 'admin';
+  balance: number;
+  is_verified: boolean;
+}
+
+async function findUserById(id: number): Promise<DbUser | null> {
+  if (getPool()) {
+    try {
+      const u = await queryOne<DbUser>(
+        'SELECT id, email, username, display_name, avatar_url, role, balance, is_verified FROM users WHERE id = ? LIMIT 1',
+        [id]
+      );
+      if (u) return u;
+    } catch (err) {
+      console.warn('[auth/me] DB lookup failed, falling back to mock:', err);
+    }
+  }
+  const mock = mockUsers.find((u) => u.id === id);
+  if (!mock) return null;
+  return {
+    id: mock.id,
+    email: mock.email,
+    username: mock.username,
+    display_name: mock.display_name,
+    avatar_url: mock.avatar_url,
+    role: mock.role,
+    balance: mock.balance,
+    is_verified: !!mock.is_verified,
+  };
+}
 
 export async function GET() {
   try {
     const authUser = await getCurrentUser();
-    
+
     if (!authUser) {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // In development/preview, use mock data
-    const user = mockUsers.find((u) => u.id === authUser.userId);
-    
+    const user = await findUserById(authUser.userId);
+
     if (!user) {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // Wallet balance is the source of truth — fall back to the seeded
-    // mock balance only if no wallet ledger exists for this user yet.
     const walletBalance = getBalance(user.id, 'KES');
     const balance = walletBalance > 0 ? walletBalance : user.balance;
 

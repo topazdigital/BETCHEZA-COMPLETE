@@ -7,6 +7,7 @@ import { UserSettingsProvider } from '@/contexts/user-settings-context'
 import { AuthProvider } from '@/contexts/auth-context'
 import { AuthModalProvider } from '@/contexts/auth-modal-context'
 import { AuthModal } from '@/components/auth/auth-modal'
+import { GoogleOneTap } from '@/components/auth/google-one-tap'
 import { AIChatButton } from '@/components/ai/ai-chat-button'
 import { InstallPrompt } from '@/components/install-prompt'
 import { BetSlipProvider } from '@/contexts/bet-slip-context'
@@ -129,6 +130,7 @@ export default function RootLayout({
               <UserSettingsProvider>
                 {children}
                 <AuthModal />
+                <GoogleOneTap />
                 <AIChatButton />
                 <InstallPrompt />
                 <BetSlipPanel />

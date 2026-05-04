@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { issueVerification, isVerified } from '@/lib/email-verification-store';
 import { mockUsers } from '@/lib/mock-data';
+import { queryOne, getPool } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
 import { buildVerificationEmail } from '@/lib/email-templates/verification-email';
 import { ipKeyFromHeaders, rateLimit } from '@/lib/rate-limit';
@@ -29,7 +30,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, alreadyVerified: true });
   }
 
-  const user = mockUsers.find(u => u.id === auth.userId);
+  // DB-first lookup, fall back to in-memory mock
+  let user: { id: number; email: string; display_name: string } | null = null;
+  if (getPool()) {
+    try {
+      const row = await queryOne<{ id: number; email: string; display_name: string }>(
+        'SELECT id, email, display_name FROM users WHERE id = ? LIMIT 1',
+        [auth.userId],
+      );
+      if (row) user = row;
+    } catch { /* fall through */ }
+  }
+  if (!user) {
+    const m = mockUsers.find(u => u.id === auth.userId);
+    if (m) user = { id: m.id, email: m.email, display_name: m.display_name };
+  }
   if (!user) {
     return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
   }

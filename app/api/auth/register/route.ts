@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { hashPassword, setAuthCookie } from '@/lib/auth';
 import { mockUsers } from '@/lib/mock-data';
+import { queryOne, execute, getPool } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
 import { ipKeyFromHeaders, rateLimit } from '@/lib/rate-limit';
 import { getCaptchaProvider, recallMathAnswer, verifyCaptcha } from '@/lib/captcha';
@@ -128,49 +129,60 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if email exists
-    const existingEmail = mockUsers.find((u) => u.email === email);
-    if (existingEmail) {
-      return NextResponse.json(
-        { success: false, error: 'Email already registered' },
-        { status: 400 }
-      );
-    }
-
-    // Check if username exists
-    const existingUsername = mockUsers.find((u) => u.username === username);
-    if (existingUsername) {
-      return NextResponse.json(
-        { success: false, error: 'Username already taken' },
-        { status: 400 }
-      );
-    }
-
-    // In production, you would insert into database
-    // For preview, we'll create a mock user
     const passwordHash = await hashPassword(password);
-    
-    const newUser = {
-      id: mockUsers.length + 1,
-      email,
-      phone: phone || null,
-      country_code: countryCode || null,
-      password_hash: passwordHash,
-      google_id: null,
-      username,
-      display_name: displayName,
-      avatar_url: null,
-      bio: null,
-      role: 'user' as const,
-      balance: 0,
-      timezone: 'Africa/Nairobi',
-      odds_format: 'decimal' as const,
-      is_verified: false,
-      created_at: new Date(),
+
+    let newUser: {
+      id: number; email: string; phone: string | null; country_code: string | null;
+      password_hash: string; google_id: null; username: string; display_name: string;
+      avatar_url: null; bio: null; role: 'user'; balance: number; timezone: string;
+      odds_format: 'decimal'; is_verified: boolean; created_at: Date;
     };
 
-    // Add to mock users (in memory only for preview)
-    mockUsers.push(newUser);
+    if (getPool()) {
+      // Check uniqueness in DB
+      try {
+        const existingEmail = await queryOne<{ id: number }>('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+        if (existingEmail) {
+          return NextResponse.json({ success: false, error: 'Email already registered' }, { status: 400 });
+        }
+        const existingUsername = await queryOne<{ id: number }>('SELECT id FROM users WHERE username = ? LIMIT 1', [username]);
+        if (existingUsername) {
+          return NextResponse.json({ success: false, error: 'Username already taken' }, { status: 400 });
+        }
+        // Insert into DB
+        const result = await execute(
+          `INSERT INTO users (email, phone, country_code, password_hash, google_id, username, display_name, avatar_url, bio, role, balance, timezone, odds_format, is_verified, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, NULL, 'user', 0, 'Africa/Nairobi', 'decimal', 0, NOW(), NOW())`,
+          [email, phone || null, countryCode || null, passwordHash, username, displayName]
+        );
+        newUser = {
+          id: result.insertId, email, phone: phone || null, country_code: countryCode || null,
+          password_hash: passwordHash, google_id: null, username, display_name: displayName,
+          avatar_url: null, bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
+          odds_format: 'decimal', is_verified: false, created_at: new Date(),
+        };
+      } catch (dbErr) {
+        console.error('[auth/register] DB insert failed:', dbErr);
+        return NextResponse.json({ success: false, error: 'Registration failed. Please try again.' }, { status: 500 });
+      }
+    } else {
+      // Fallback: in-memory mock (no DB configured)
+      const existingEmail = mockUsers.find((u) => u.email === email);
+      if (existingEmail) {
+        return NextResponse.json({ success: false, error: 'Email already registered' }, { status: 400 });
+      }
+      const existingUsername = mockUsers.find((u) => u.username === username);
+      if (existingUsername) {
+        return NextResponse.json({ success: false, error: 'Username already taken' }, { status: 400 });
+      }
+      newUser = {
+        id: mockUsers.length + 1, email, phone: phone || null, country_code: countryCode || null,
+        password_hash: passwordHash, google_id: null, username, display_name: displayName,
+        avatar_url: null, bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
+        odds_format: 'decimal', is_verified: false, created_at: new Date(),
+      };
+      mockUsers.push(newUser);
+    }
 
     // ── Affiliate attribution: if this user clicked through a bookmaker
     // link in the last 30 days, the redirect handler dropped a `bz_aff`
