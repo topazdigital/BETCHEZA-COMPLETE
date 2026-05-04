@@ -1,4 +1,5 @@
 import { query, execute, getPool } from './db';
+import { fileStoreGet, fileStoreSet } from './file-store';
 
 export type OAuthProvider = 'google' | 'facebook' | 'apple' | 'github' | 'twitter' | 'discord' | 'linkedin' | 'microsoft';
 
@@ -95,12 +96,15 @@ export async function getOAuthSiteUrl(): Promise<string> {
     }
   }
   if (gs.__oauthSiteUrl !== undefined) return gs.__oauthSiteUrl;
+  const storedUrl = fileStoreGet<string | null>('oauth-site-url', null);
+  if (storedUrl) { gs.__oauthSiteUrl = storedUrl; return storedUrl; }
   return normalizeSiteUrl(process.env.OAUTH_SITE_URL);
 }
 
 export async function setOAuthSiteUrl(value: string): Promise<string> {
   const normalized = normalizeSiteUrl(value);
   gs.__oauthSiteUrl = normalized;
+  fileStoreSet('oauth-site-url', normalized);
   if (getPool()) {
     try {
       await query(
@@ -143,6 +147,8 @@ export async function getOAuthConfig(): Promise<OAuthAllConfig> {
     }
   }
   if (g.__oauthCfg) return g.__oauthCfg;
+  const storedCfg = fileStoreGet<OAuthAllConfig | null>('oauth-config', null);
+  if (storedCfg) { g.__oauthCfg = storedCfg; return storedCfg; }
   const env = fromEnv();
   g.__oauthCfg = env;
   return env;
@@ -163,6 +169,7 @@ export async function saveOAuthConfig(patch: Partial<OAuthAllConfig>): Promise<O
     };
   });
   g.__oauthCfg = merged;
+  fileStoreSet('oauth-config', merged);
 
   if (getPool()) {
     try {

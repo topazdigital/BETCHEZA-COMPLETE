@@ -32,8 +32,13 @@ export async function GET(
 
   const cfg = (await getOAuthConfig())[p];
   if (!cfg.enabled || !cfg.clientId) {
-    // Friendly UI redirect — bounce back to home with a flash message in the URL hash.
-    const url = new URL('/', req.url);
+    const siteUrl = await getOAuthSiteUrl();
+    const base = siteUrl || (() => {
+      const proto = req.headers.get('x-forwarded-proto') || 'https';
+      const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost';
+      return `${proto}://${host}`;
+    })();
+    const url = new URL('/', base);
     url.searchParams.set('auth_error', `${p}_not_configured`);
     return NextResponse.redirect(url);
   }

@@ -19,13 +19,8 @@ export async function GET() {
   return NextResponse.json({ config: maskedOAuthConfig(cfg), siteUrl });
 }
 
-export async function PUT(req: Request) {
-  return handleSave(req);
-}
-
-export async function POST(req: Request) {
-  return handleSave(req);
-}
+export async function PUT(req: Request) { return handleSave(req); }
+export async function POST(req: Request) { return handleSave(req); }
 
 async function handleSave(req: Request) {
   const user = await requireAdmin();

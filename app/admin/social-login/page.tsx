@@ -101,7 +101,14 @@ export default function AdminSocialLoginPage() {
   }, []);
 
   function update(p: Provider, patch: Partial<ProviderState>) {
-    setState((s) => ({ ...s, [p]: { ...s[p], ...patch } }));
+    setState((s) => {
+      const merged = { ...s[p], ...patch };
+      // Auto-enable when a Client ID is typed in; never auto-disable.
+      if (patch.clientId !== undefined && patch.clientId.trim() && !s[p].enabled) {
+        merged.enabled = true;
+      }
+      return { ...s, [p]: merged };
+    });
   }
 
   async function save() {
