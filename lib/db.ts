@@ -1,26 +1,25 @@
-import { Pool, PoolClient } from 'pg';
+import mysql from 'mysql2/promise';
 
-let pool: Pool | null = null;
+let pool: mysql.Pool | null = null;
 
-function convertPlaceholders(sql: string): string {
-  let i = 0;
-  return sql.replace(/\?/g, () => `$${++i}`);
-}
+export function getPool(): mysql.Pool | null {
+  const host = process.env.DB_HOST || process.env.MYSQL_HOST;
+  const user = process.env.DB_USER || process.env.MYSQL_USER;
+  const password = process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD;
+  const database = process.env.DB_NAME || process.env.MYSQL_DATABASE;
 
-export function getPool(): Pool | null {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) return null;
+  if (!host || !user || !database) return null;
 
   if (!pool) {
-    pool = new Pool({
-      connectionString,
-      ssl: connectionString.includes('ssl') ? { rejectUnauthorized: false } : undefined,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
-    pool.on('error', (err) => {
-      console.error('[db] pool error:', err.message);
+    pool = mysql.createPool({
+      host,
+      user,
+      password: password || '',
+      database,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      charset: 'utf8mb4',
     });
   }
 
@@ -37,9 +36,8 @@ export async function query<T>(sql: string, params?: unknown[]): Promise<QueryRe
   if (!p) {
     return { rows: [] };
   }
-  const converted = convertPlaceholders(sql);
-  const result = await p.query(converted, params as unknown[]);
-  return { rows: result.rows as T[], affectedRows: result.rowCount ?? undefined };
+  const [rows] = await p.execute(sql, params);
+  return { rows: rows as T[], affectedRows: undefined };
 }
 
 export async function queryOne<T>(sql: string, params?: unknown[]): Promise<T | null> {
@@ -55,29 +53,28 @@ export interface ExecuteResult {
 export async function execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
   const p = getPool();
   if (!p) {
-    throw new Error('No PostgreSQL database connection available');
+    throw new Error('No MySQL database connection available');
   }
-  const converted = convertPlaceholders(sql);
-  const result = await p.query(converted, params as unknown[]);
-  const insertId = result.rows?.[0]?.id ?? result.rows?.[0]?.insertId ?? 0;
-  return { insertId, affectedRows: result.rowCount ?? 0 };
+  const [result] = await p.execute(sql, params);
+  const r = result as mysql.ResultSetHeader;
+  return { insertId: r.insertId, affectedRows: r.affectedRows };
 }
 
 export async function withTransaction<T>(
-  callback: (conn: PoolClient) => Promise<T>
+  callback: (conn: mysql.PoolConnection) => Promise<T>
 ): Promise<T> {
   const p = getPool();
   if (!p) {
-    throw new Error('No PostgreSQL database connection available');
+    throw new Error('No MySQL database connection available');
   }
-  const conn = await p.connect();
+  const conn = await p.getConnection();
   try {
-    await conn.query('BEGIN');
+    await conn.beginTransaction();
     const result = await callback(conn);
-    await conn.query('COMMIT');
+    await conn.commit();
     return result;
   } catch (error) {
-    await conn.query('ROLLBACK');
+    await conn.rollback();
     throw error;
   } finally {
     conn.release();

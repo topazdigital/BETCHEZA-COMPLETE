@@ -67,7 +67,7 @@ async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
   fileStoreSet('payment-gateways', gateways);
   try {
     await query(
-      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration') ON DUPLICATE KEY UPDATE value = VALUES(value)`,
       [JSON.stringify(gateways)]
     );
   } catch {}
@@ -93,7 +93,7 @@ async function savePayoutSettings(settings: PayoutSettings): Promise<void> {
   fileStoreSet('payout-settings', settings);
   try {
     await query(
-      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payout_settings', ?, 'json', 'Tipster payout configuration') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payout_settings', ?, 'json', 'Tipster payout configuration') ON DUPLICATE KEY UPDATE value = VALUES(value)`,
       [JSON.stringify(settings)]
     );
   } catch {}
@@ -111,8 +111,9 @@ export async function GET(req: NextRequest) {
       ),
     }))
     return NextResponse.json({ gateways: masked, payoutSettings: payoutStore })
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  } catch (error) {
+    console.error('[Admin API] Failed to get payment gateways:', error)
+    return NextResponse.json({ error: 'Failed to get payment gateways' }, { status: 500 })
   }
 }
 
@@ -121,40 +122,33 @@ export async function PUT(req: NextRequest) {
     const session = await requireAdmin()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const body = await req.json()
-    if (body.gateways) {
-      const gatewayStore = await loadGateways()
-      const updated = (body.gateways as PaymentGateway[]).map((incoming) => {
-        const existing = gatewayStore.find((gw) => gw.id === incoming.id)
-        const mergedCredentials = existing
-          ? Object.fromEntries(Object.entries(incoming.credentials).map(([k, v]) => {
-              const isMasked = /^.{1,4}•+$/.test(v)
-              return [k, isMasked && existing.credentials[k] ? existing.credentials[k] : v]
-            }))
-          : incoming.credentials
-        return { ...incoming, credentials: mergedCredentials }
-      })
-      await saveGateways(updated)
+    const { type, data } = body
+    if (type === 'gateway') {
+      const current = await loadGateways()
+      const idx = current.findIndex(g => g.id === data.id)
+      if (idx === -1) return NextResponse.json({ error: 'Gateway not found' }, { status: 404 })
+      const existing = current[idx]
+      const updated = {
+        ...existing,
+        ...data,
+        credentials: {
+          ...existing.credentials,
+          ...Object.fromEntries(
+            Object.entries(data.credentials || {}).filter(([, v]) => v !== '' && !(v as string).includes('•'))
+          ),
+        },
+      }
+      current[idx] = updated
+      await saveGateways(current)
+      return NextResponse.json({ success: true, gateway: updated })
     }
-    if (body.payoutSettings) {
-      const payoutStore = await loadPayoutSettings()
-      await savePayoutSettings({ ...payoutStore, ...body.payoutSettings })
+    if (type === 'payout') {
+      await savePayoutSettings(data)
+      return NextResponse.json({ success: true, payoutSettings: data })
     }
-    return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
-  }
-}
-
-export async function PATCH(req: NextRequest) {
-  try {
-    const session = await requireAdmin()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const { id, enabled } = await req.json()
-    const gatewayStore = await loadGateways()
-    const updated = gatewayStore.map((gw) => gw.id === id ? { ...gw, enabled } : gw)
-    await saveGateways(updated)
-    return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
+  } catch (error) {
+    console.error('[Admin API] Failed to update payment gateway:', error)
+    return NextResponse.json({ error: 'Failed to update payment gateway' }, { status: 500 })
   }
 }

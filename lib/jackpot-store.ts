@@ -39,7 +39,7 @@ export function getActiveJackpotsByBookmaker(): Record<string, Jackpot[]> {
 export function createJackpot(input: Omit<Jackpot, 'id' | 'createdAt' | 'updatedAt'>): Jackpot {
   const state = loadState();
   const bookmaker = getBookmaker(input.bookmakerSlug);
-  const jackpot: Jackpot = { ...input, bookmakerName: input.bookmakerName || bookmaker?.name || input.bookmakerSlug, id: 'jackpot-' + Date.now(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const jackpot: Jackpot = { ...input, bookmakerName: input.bookmakerName || bookmaker?.name || input.bookmakerSlug, id: 'jackpot-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   state.jackpots.unshift(jackpot); saveState(); return jackpot;
 }
 
@@ -49,6 +49,11 @@ export function updateJackpot(id: string, patch: Partial<Jackpot>): Jackpot | nu
   if (idx < 0) return null;
   state.jackpots[idx] = { ...state.jackpots[idx], ...patch, id, updatedAt: new Date().toISOString() };
   saveState(); return state.jackpots[idx];
+}
+
+export function resetJackpots(): void {
+  g.__jackpotState = { jackpots: [] };
+  saveState();
 }
 
 export function deleteJackpot(id: string): boolean {

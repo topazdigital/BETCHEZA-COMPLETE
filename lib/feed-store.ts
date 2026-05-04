@@ -139,7 +139,7 @@ export async function toggleLike(postId: string, userId: number, likerName?: str
         await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
         liked = false;
       } else {
-        await query(`INSERT INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW()) ON CONFLICT (post_id, user_id) DO NOTHING`, [postId, userId]);
+        await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
         await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
         liked = true;
       }

@@ -42,8 +42,8 @@ async function ensureTable(): Promise<void> {
         phone VARCHAR(30),
         bio TEXT,
         avatar_url VARCHAR(500),
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
     tableReady = true;
   } catch { /* ignore — no DB */ }
@@ -92,12 +92,12 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
       await query(
         `INSERT INTO user_profiles (user_id, display_name, username, phone, bio, avatar_url)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_id) DO UPDATE SET
-           display_name = EXCLUDED.display_name,
-           username = EXCLUDED.username,
-           phone = EXCLUDED.phone,
-           bio = EXCLUDED.bio,
-           avatar_url = EXCLUDED.avatar_url`,
+         ON DUPLICATE KEY UPDATE
+           display_name = VALUES(display_name),
+           username = VALUES(username),
+           phone = VALUES(phone),
+           bio = VALUES(bio),
+           avatar_url = VALUES(avatar_url)`,
         [
           userId,
           merged.displayName ?? null,

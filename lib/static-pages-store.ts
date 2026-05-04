@@ -71,8 +71,8 @@ async function ensureTable(): Promise<void> {
         title VARCHAR(255) NOT NULL,
         body TEXT NOT NULL,
         meta_description TEXT,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
     tableReady = true;
   } catch {}
@@ -138,7 +138,7 @@ export async function saveStaticPage(p: StaticPage): Promise<StaticPage> {
       await execute(
         `INSERT INTO static_pages (slug, title, body, meta_description)
          VALUES (?, ?, ?, ?)
-         ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body, meta_description = EXCLUDED.meta_description`,
+         ON DUPLICATE KEY UPDATE title = VALUES(title), body = VALUES(body), meta_description = VALUES(meta_description)`,
         [p.slug, p.title, p.body, p.meta_description ?? null],
       );
     } catch (e) {

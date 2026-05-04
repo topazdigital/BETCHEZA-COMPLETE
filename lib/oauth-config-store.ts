@@ -64,38 +64,26 @@ function fromEnv(): OAuthAllConfig {
   return cfg;
 }
 
-/**
- * Optional production "Site URL" override. When set (e.g. `https://betcheza.com`)
- * we use it to build OAuth callback URLs and to display the callback URI in the
- * admin panel — so admins can configure providers from any environment (Replit
- * dev, staging, etc.) and still register the production redirect URI.
- *
- * Stored alongside the OAuth provider config in `admin_settings` (key
- * `oauth_site_url`) and falls back to in-memory + the OAUTH_SITE_URL env var.
- */
-const gs = globalThis as { __oauthSiteUrl?: string };
-
-function normalizeSiteUrl(raw: string | null | undefined): string {
-  const v = (raw || '').trim();
-  if (!v) return '';
-  // Strip trailing slashes — we always append the path ourselves.
-  return v.replace(/\/+$/, '');
+function normalizeSiteUrl(raw: string | undefined): string {
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
 }
 
+const gs = globalThis as { __oauthSiteUrl?: string };
+
 export async function getOAuthSiteUrl(): Promise<string> {
+  if (gs.__oauthSiteUrl) return gs.__oauthSiteUrl;
   if (getPool()) {
     try {
-      const result = await query<{ value: string }>(
+      const r = await query<{ value: string }>(
         "SELECT value FROM admin_settings WHERE name = 'oauth_site_url' LIMIT 1"
       );
-      const rows = (result as unknown as { rows?: { value: string }[] }).rows
-        ?? (result as unknown as { value: string }[]) ?? [];
-      if (rows.length > 0) return normalizeSiteUrl(rows[0].value);
-    } catch {
-      // table missing — fall through
-    }
+      if (r.rows[0]?.value) {
+        gs.__oauthSiteUrl = normalizeSiteUrl(r.rows[0].value);
+        return gs.__oauthSiteUrl;
+      }
+    } catch { /* ignore */ }
   }
-  if (gs.__oauthSiteUrl !== undefined) return gs.__oauthSiteUrl;
   const storedUrl = fileStoreGet<string | null>('oauth-site-url', null);
   if (storedUrl) { gs.__oauthSiteUrl = storedUrl; return storedUrl; }
   return normalizeSiteUrl(process.env.OAUTH_SITE_URL);
@@ -110,7 +98,7 @@ export async function setOAuthSiteUrl(value: string): Promise<string> {
       await query(
         `INSERT INTO admin_settings (name, value, type, description)
          VALUES ('oauth_site_url', ?, 'string', 'Public site URL used for OAuth callback URLs')
-         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
         [normalized]
       );
     } catch {
@@ -188,7 +176,7 @@ export async function saveOAuthConfig(patch: Partial<OAuthAllConfig>): Promise<O
         await query(
           `INSERT INTO admin_settings (name, value, type, description)
            VALUES (?, ?, 'string', 'OAuth provider config')
-           ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+           ON DUPLICATE KEY UPDATE value = VALUES(value)`,
           [name, value]
         );
       }

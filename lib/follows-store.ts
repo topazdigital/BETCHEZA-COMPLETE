@@ -102,9 +102,9 @@ export async function followTeam(userId: number, team: Omit<FollowedTeam, 'follo
         `INSERT INTO team_follows
          (user_id, team_id, team_name, team_logo, league_id, league_slug, league_name, sport_slug, country_code, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON CONFLICT (user_id, team_id) DO UPDATE SET
-           team_name = EXCLUDED.team_name,
-           team_logo = EXCLUDED.team_logo`,
+         ON DUPLICATE KEY UPDATE
+           team_name = VALUES(team_name),
+           team_logo = VALUES(team_logo)`,
         [userId, entry.teamId, entry.teamName, entry.teamLogo || null, entry.leagueId || null,
          entry.leagueSlug || null, entry.leagueName || null, entry.sportSlug || null, entry.countryCode || null]
       );
@@ -148,7 +148,7 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
   if (hasDb()) {
     try {
       await query(
-        `INSERT INTO follows (follower_id, following_id) VALUES (?, ?) ON CONFLICT (follower_id, following_id) DO NOTHING`,
+        `INSERT IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`,
         [userId, tipsterId]
       );
     } catch (e) {
@@ -317,12 +317,12 @@ export async function followPlayer(userId: number, player: Omit<FollowedPlayer, 
         `INSERT INTO player_follows
          (user_id, player_id, player_name, player_headshot, team_id, team_name, team_logo, sport_slug, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-         ON CONFLICT (user_id, player_id) DO UPDATE SET
-           player_name = EXCLUDED.player_name,
-           player_headshot = EXCLUDED.player_headshot,
-           team_id = EXCLUDED.team_id,
-           team_name = EXCLUDED.team_name,
-           team_logo = EXCLUDED.team_logo`,
+         ON DUPLICATE KEY UPDATE
+           player_name = VALUES(player_name),
+           player_headshot = VALUES(player_headshot),
+           team_id = VALUES(team_id),
+           team_name = VALUES(team_name),
+           team_logo = VALUES(team_logo)`,
         [userId, entry.playerId, entry.playerName, entry.playerHeadshot || null,
          entry.teamId || null, entry.teamName || null, entry.teamLogo || null, entry.sportSlug || null]
       );

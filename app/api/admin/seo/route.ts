@@ -51,14 +51,14 @@ export async function POST(request: NextRequest) {
         keywords, canonical_url, no_index, structured_data
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (page_type, page_id) DO UPDATE SET
-        title = EXCLUDED.title,
-        description = EXCLUDED.description,
-        og_image = EXCLUDED.og_image,
-        keywords = EXCLUDED.keywords,
-        canonical_url = EXCLUDED.canonical_url,
-        no_index = EXCLUDED.no_index,
-        structured_data = EXCLUDED.structured_data
+      ON DUPLICATE KEY UPDATE
+        title = VALUES(title),
+        description = VALUES(description),
+        og_image = VALUES(og_image),
+        keywords = VALUES(keywords),
+        canonical_url = VALUES(canonical_url),
+        no_index = VALUES(no_index),
+        structured_data = VALUES(structured_data)
     `, [
       pageType, pageId || null, title || null, description || null,
       ogImage || null, keywords || null, canonicalUrl || null,
@@ -78,50 +78,18 @@ export async function PUT(request: NextRequest) {
     const { id, titleTemplate, descriptionTemplate, keywordsTemplate, isDefault } = body;
 
     if (!id) {
-      return NextResponse.json({ error: 'Preset ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'id is required' }, { status: 400 });
     }
 
-    const updates: string[] = [];
-    const params: (string | number | boolean | null)[] = [];
-
-    if (titleTemplate !== undefined) { updates.push('title_template = ?'); params.push(titleTemplate); }
-    if (descriptionTemplate !== undefined) { updates.push('description_template = ?'); params.push(descriptionTemplate); }
-    if (keywordsTemplate !== undefined) { updates.push('keywords_template = ?'); params.push(keywordsTemplate); }
-    if (isDefault !== undefined) { updates.push('is_default = ?'); params.push(isDefault); }
-
-    if (updates.length === 0) {
-      return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
-    }
-
-    params.push(id);
-    await query(`UPDATE seo_presets SET ${updates.join(', ')} WHERE id = ?`, params);
+    await query(`
+      UPDATE seo_presets
+      SET title_template = ?, description_template = ?, keywords_template = ?, is_default = ?
+      WHERE id = ?
+    `, [titleTemplate || null, descriptionTemplate || null, keywordsTemplate || null, isDefault || false, id]);
 
     return NextResponse.json({ success: true, message: 'SEO preset updated successfully' });
   } catch (error) {
     console.error('[Admin API] Failed to update SEO preset:', error);
     return NextResponse.json({ error: 'Failed to update SEO preset' }, { status: 500 });
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const pageType = searchParams.get('pageType');
-    const pageId = searchParams.get('pageId');
-
-    if (!pageType) {
-      return NextResponse.json({ error: 'pageType is required' }, { status: 400 });
-    }
-
-    if (pageId) {
-      await query('DELETE FROM seo_metadata WHERE page_type = ? AND page_id = ?', [pageType, pageId]);
-    } else {
-      await query('DELETE FROM seo_metadata WHERE page_type = ? AND page_id IS NULL', [pageType]);
-    }
-
-    return NextResponse.json({ success: true, message: 'SEO metadata deleted successfully' });
-  } catch (error) {
-    console.error('[Admin API] Failed to delete SEO:', error);
-    return NextResponse.json({ error: 'Failed to delete SEO metadata' }, { status: 500 });
   }
 }

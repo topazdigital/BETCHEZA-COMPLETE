@@ -84,6 +84,7 @@ const mainNavItems: NavItem[] = [
   { href: "/tipsters", label: "Tipsters", icon: Users, color: "text-orange-500", activeColor: "bg-orange-500" },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-yellow-500", activeColor: "bg-yellow-500" },
   { href: "/challenges", label: "Challenges", icon: Swords, color: "text-red-500", activeColor: "bg-red-500" },
+  { href: "/jackpots", label: "Jackpots", icon: Trophy, color: "text-amber-500", activeColor: "bg-amber-500" },
   { href: "/competitions", label: "Competitions", icon: Star, color: "text-pink-500", activeColor: "bg-pink-500" },
   { href: "/results", label: "Results", icon: BarChart3, color: "text-slate-400", activeColor: "bg-slate-500" },
   { href: "/become-tipster", label: "Become a Tipster", icon: UserPlus, color: "text-indigo-500", activeColor: "bg-indigo-500" },

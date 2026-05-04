@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { 
   LayoutDashboard, Users, Trophy, Calendar, Settings, 
-  Bell, LogOut, Menu, X, Shield, MessageSquare, Newspaper, Wallet, Mail, Rss, KeyRound, Star, CreditCard, Database, FileText, BarChart3, Wand2, UserPlus, Globe, MousePointerClick,
+  Bell, LogOut, Menu, X, Shield, MessageSquare, Newspaper, Wallet, Mail, Rss, KeyRound, Star, CreditCard, Database, FileText, BarChart3, Wand2, UserPlus, Globe, MousePointerClick, Gem,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -21,6 +21,7 @@ const adminNavItems = [
   { href: "/admin/matches", label: "Matches", icon: Calendar },
   { href: "/admin/predictions", label: "Predictions", icon: BarChart3 },
   { href: "/admin/auto-tips", label: "Auto-Tip Generator", icon: Wand2 },
+  { href: "/admin/jackpots", label: "Jackpots", icon: Gem },
   { href: "/admin/competitions", label: "Competitions", icon: Shield },
   { href: "/admin/comments", label: "Comments", icon: MessageSquare },
   { href: "/admin/feed", label: "Community Feed", icon: Rss },
