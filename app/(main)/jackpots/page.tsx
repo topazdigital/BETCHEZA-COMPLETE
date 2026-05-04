@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Trophy, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import BookmakerCards from './bookmaker-cards';
+import { JackpotNotifyButton } from '@/components/jackpots/jackpot-notify-button';
 
 export const metadata: Metadata = {
   title: 'Kenya Jackpot Predictions Today | Free AI Tips — Betcheza',
@@ -45,14 +46,17 @@ export default function JackpotsPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-              <Trophy className="h-5 w-5 text-amber-500" />
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                <Trophy className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-extrabold tracking-tight">Kenya Jackpot Predictions</h1>
+                <p className="text-sm text-muted-foreground">Free AI tips for all major Kenyan bookmaker jackpots — updated daily</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight">Kenya Jackpot Predictions</h1>
-              <p className="text-sm text-muted-foreground">Free AI tips for all major Kenyan bookmaker jackpots — updated daily</p>
-            </div>
+            <JackpotNotifyButton className="shrink-0 mt-1" />
           </div>
           <div className="mt-3">
             <Link

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { savePushSubscription } from '@/lib/notification-store';
+import { savePushSubscription, deletePushSubscription } from '@/lib/notification-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,4 +26,13 @@ export async function POST(req: NextRequest) {
     countryCode: body.countryCode || null,
   });
   return NextResponse.json({ success: true, id: row.id });
+}
+
+export async function DELETE(req: NextRequest) {
+  const body = (await req.json().catch(() => null)) as { endpoint?: string } | null;
+  if (!body?.endpoint) {
+    return NextResponse.json({ error: 'endpoint required' }, { status: 400 });
+  }
+  await deletePushSubscription(body.endpoint);
+  return NextResponse.json({ success: true });
 }

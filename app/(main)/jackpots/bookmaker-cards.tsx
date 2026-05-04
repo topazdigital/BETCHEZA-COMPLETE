@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Brain, Trophy, ChevronRight, ExternalLink, Sparkles } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +60,7 @@ export default function BookmakerCards() {
   const [summaries, setSummaries] = useState<BookmakerSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
+  const summariesRef = useRef<BookmakerSummary[]>([]);
 
   async function load() {
     setLoading(true);
@@ -80,7 +81,9 @@ export default function BookmakerCards() {
         entry.currency = j.currency;
         if (j.games.some(g => g.aiPrediction)) entry.hasPredictions = true;
       }
-      setSummaries(Array.from(map.values()).filter(s => s.jackpots.length > 0 || SUPPORTED_BOOKMAKERS.some(b => b.slug === s.slug)));
+      const result = Array.from(map.values()).filter(s => s.jackpots.length > 0 || SUPPORTED_BOOKMAKERS.some(b => b.slug === s.slug));
+      summariesRef.current = result;
+      setSummaries(result);
     } catch {}
     setLoading(false);
   }
@@ -97,7 +100,14 @@ export default function BookmakerCards() {
 
   useEffect(() => {
     load().then(() => {
-      // Auto-scrape if no jackpots found
+      // Auto-predict if any jackpots have no AI predictions yet
+      const jackpots = summariesRef.current;
+      const needsPredict = jackpots.some(s => s.jackpots.some(j => j.games.length > 0 && !j.games.some(g => g.aiPrediction)));
+      if (needsPredict) {
+        fetch('/api/jackpot/predict', { headers: { authorization: 'Bearer betcheza-cron' } })
+          .then(() => load())
+          .catch(() => {});
+      }
     });
   }, []);
 

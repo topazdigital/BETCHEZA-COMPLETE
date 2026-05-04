@@ -46,7 +46,8 @@ Key architectural decisions and features include:
 - **DB-First Auth**: All auth routes query MySQL first and fall back to in-memory mock only when no DB pool is configured.
 - **Google OAuth**: OAuth callback saves Google users to DB; `/api/auth/google-client-id` exposes the client ID for frontend.
 - **Real Bookmaker Odds Only**: matches without bookmaker odds return `undefined` odds instead of computer-generated estimates.
-- **Jackpot Feature**: Scrapes Kenyan bookmakers (SportPesa, Betika, etc.) for jackpot games, AI predicts them, admin can edit. Each bookmaker has its own SEO page. Results section and recently-viewed widget included.
+- **Jackpot Feature**: Scrapes Kenyan bookmakers (SportPesa, Betika, etc.) for jackpot games, AI predicts them (auto-triggered on sync), admin can edit. Each bookmaker has its own SEO page. Results section and recently-viewed widget included.
+- **Push Notifications**: Full browser push notification system using `web-push` + VAPID. Service worker at `public/sw.js`, subscription API at `/api/notifications/subscribe` (POST/DELETE), VAPID public key exposed at `/api/notifications/vapid-public-key`. Jackpot notifications sent automatically when new rounds are published. Bell UI on `/jackpots` page. VAPID keys stored as `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` env vars.
 - **GitHub Actions Deploy**: Configured for SSH-based auto-deployment on push to main.
 - **Health Check API**: `/api/health` returns uptime and timestamp.
 
