@@ -2804,7 +2804,7 @@ interface TheOddsApiEvent {
 function normalizeTeamName(name: string): string {
   return name
     .toLowerCase()
-    .replace(/\b(fc|cf|sc|afc|cfc|club|the)\b/g, '')
+    .replace(/\b(fc|cf|sc|afc|cfc|acf|ac|as|ss|bsc|fk|sk|rc|club|the)\b/g, '')
     .replace(/[^a-z0-9]/g, '')
     .trim();
 }
@@ -3078,7 +3078,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     // so "Derby County" and "Derby County FC" deduplicate to the same key.
     const stripSuffixes = (n: string) =>
       n.toLowerCase()
-        .replace(/\b(fc|afc|cfc|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|münchen|munchen|munich|real|atletico|deportivo|sporting|union|inter)\b/g, '')
+        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|münchen|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport)\b/g, '')
         .replace(/[^a-z0-9]/g, '');
     const homeNorm = stripSuffixes(match.homeTeam.name);
     const awayNorm = stripSuffixes(match.awayTeam.name);

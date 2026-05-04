@@ -254,6 +254,8 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
 
   for (const m of matches) {
     if (!m.odds) continue
+    // Skip hash-derived fake odds — they differ from real odds on match detail page
+    if (m.odds.bookmaker === 'Computed' || m.odds.bookmaker === 'Estimated' || m.odds.bookmaker === 'computed') continue
     const status = (m.status || '').toLowerCase()
     // Only true "scheduled / not started" matches are eligible — anything that
     // has kicked off, ended, was postponed, or is otherwise settled is dropped.
