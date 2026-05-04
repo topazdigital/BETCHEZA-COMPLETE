@@ -9,5 +9,5 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 export default function JackpotsLayout({ children }: { children: React.ReactNode }) {
-  return (<>{children}</>);
+  return <>{children}</>;
 }

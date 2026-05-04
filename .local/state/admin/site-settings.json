@@ -37,5 +37,10 @@
   "turnstile_site_key": "",
   "turnstile_secret_key": "",
   "recaptcha_site_key": "",
-  "recaptcha_secret_key": ""
+  "recaptcha_secret_key": "",
+  "announcement_enabled": "true",
+  "announcement_label": "We're back — and sharper than ever",
+  "announcement_headline": "Betcheza is back 🎉 with smarter tips, faster odds, and a fresh community.",
+  "announcement_subtext": "Welcome home, tipster — your dashboard, leaderboard streaks and bookmarks are waiting.",
+  "announcement_link": ""
 }
