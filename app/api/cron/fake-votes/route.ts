@@ -59,8 +59,9 @@ async function seedFakeVotesForMatches(matchData: Array<{ id: string; leagueId?:
     const rand = seededRand(match.id);
     const totalVotes = getVotePool(match.leagueId, match.tipsCount || 0);
     
-    // Sports without draws get different distributions
-    const hasDraw = !['basketball', 'tennis', 'baseball', 'hockey', 'mma', 'boxing', 'american-football', 'football'].includes(match.sport || '');
+    // Sports without draws — football/soccer explicitly EXCLUDED from this list
+    // (soccer always has draws). american-football, basketball etc. don't.
+    const hasDraw = !['basketball', 'tennis', 'baseball', 'hockey', 'mma', 'boxing', 'american-football'].includes(match.sport || '');
     
     // Realistic split — home bias for soccer, more even for others
     const homeShare = 0.38 + rand() * 0.22;  // 38–60%

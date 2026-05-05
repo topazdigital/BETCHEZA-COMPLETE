@@ -47,6 +47,19 @@ function makeId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Strip 4-byte UTF-8 characters (emoji, supplementary symbols, etc.) that
+ * MySQL's legacy `utf8` charset cannot store. The `utf8mb4` charset handles
+ * them — but many live installs still use `utf8`, so we sanitise on the way
+ * in to avoid ER_TRUNCATED_WRONG_VALUE_FOR_FIELD errors.
+ */
+function sanitise(str: string | null | undefined): string | null {
+  if (!str) return str ?? null;
+  // Strip UTF-16 surrogates (D800–DFFF) which represent 4-byte emoji / supplementary
+  // characters that MySQL's legacy utf8 charset rejects.
+  return str.replace(/[\uD800-\uDFFF]/g, '');
+}
+
 // ─── POSTS ───────────────────────────────────────
 export async function listPosts(limit = 50, viewerId?: number | null): Promise<FeedPost[]> {
   if (hasDb()) {
@@ -96,8 +109,10 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
           (id, user_id, author_name, author_avatar, content, match_id, match_title,
            pick, odds, image_url, likes, comment_count, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NOW())`,
-        [post.id, post.userId, post.authorName, post.authorAvatar || null, post.content,
-         post.matchId || null, post.matchTitle || null, post.pick || null, post.odds || null, post.imageUrl || null],
+        [post.id, post.userId, sanitise(post.authorName), post.authorAvatar || null,
+         sanitise(post.content),
+         post.matchId || null, sanitise(post.matchTitle), sanitise(post.pick),
+         post.odds || null, post.imageUrl || null],
       );
     } catch (e) { console.warn('[feed] db insert failed', e); }
   }
@@ -191,7 +206,7 @@ export async function addComment(input: Omit<FeedComment, 'id' | 'createdAt'>): 
       await query(
         `INSERT INTO feed_comments (id, post_id, user_id, author_name, author_avatar, content, created_at)
          VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [comment.id, comment.postId, comment.userId, comment.authorName, comment.authorAvatar || null, comment.content]
+        [comment.id, comment.postId, comment.userId, sanitise(comment.authorName), comment.authorAvatar || null, sanitise(comment.content)]
       );
       await query(`UPDATE feed_posts SET comment_count = comment_count + 1 WHERE id = ?`, [comment.postId]);
     } catch (e) { console.warn('[feed] db addComment failed', e); }
