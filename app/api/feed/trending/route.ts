@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json(g.__trendingCache.data);
   }
 
-  const posts = await listPosts({ limit: 50 });
+  const posts = await listPosts(50);
 
   const since = now - 24 * 60 * 60 * 1000;
   const recent = posts.filter(p => new Date(p.createdAt).getTime() >= since);

@@ -55,6 +55,9 @@ interface RecommendedTipster {
   isPro: boolean;
   specialty: string;
   following?: boolean;
+  isTipsterOfWeek?: boolean;
+  tipsThisWeek?: number;
+  wonThisWeek?: number;
 }
 
 interface TrendingPick {
@@ -362,23 +365,37 @@ function RecommendedTipstersRail() {
           ) : tipsters.length === 0 ? (
             <p className="py-3 text-center text-[11px] text-muted-foreground">No tipsters yet. Be the first!</p>
           ) : tipsters.map(t => (
-            <div key={t.id} className="group flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted/50">
+            <div key={t.id} className={cn('group flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted/50', t.isTipsterOfWeek && 'ring-1 ring-amber-400/50 bg-amber-500/5')}>
               <Link href={tipsterHref(t.username || t.displayName, t.username || t.id)} className="shrink-0">
                 <div className={cn('relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-bold text-white', gradientFor(t.displayName))}>
                   {avatarInitials(t.displayName)}
-                  {t.isPro && (
+                  {t.isTipsterOfWeek ? (
+                    <span title="Tipster of the Week" className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-[7px] font-bold text-amber-950">★</span>
+                  ) : t.isPro ? (
                     <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[7px] font-bold text-amber-950">P</span>
-                  )}
+                  ) : null}
                 </div>
               </Link>
               <Link href={tipsterHref(t.username || t.displayName, t.username || t.id)} className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
                   <span className="truncate text-xs font-semibold group-hover:text-primary">{t.displayName}</span>
+                  {t.isTipsterOfWeek && (
+                    <span className="shrink-0 rounded-full bg-amber-400/20 px-1 py-0 text-[8px] font-bold text-amber-500">WEEK</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 text-[10px]">
                   <span className="text-emerald-500 font-semibold">{t.winRate}%</span>
-                  <span className="text-muted-foreground">·</span>
-                  <span className="text-amber-500">{t.specialty}</span>
+                  {t.tipsThisWeek ? (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-muted-foreground">{t.wonThisWeek}/{t.tipsThisWeek} this wk</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-amber-500">{t.specialty}</span>
+                    </>
+                  )}
                 </div>
               </Link>
               <FollowTipsterButton tipsterId={t.id} tipsterName={t.displayName} variant="pill" className="h-6 px-2 text-[10px]" />

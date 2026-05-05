@@ -1,29 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPost, addComment, listPosts } from '@/lib/feed-store';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
+import {
+  getFakeTipsters,
+  recordActivityTip,
+  settleActivityTips,
+} from '@/lib/fake-tipsters';
 
 export const dynamic = 'force-dynamic';
 
 const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
-
-// Fake tipster pool — realistic African + global names
-const FAKE_TIPSTERS = [
-  { id: 90001, name: 'Vincent_Dlamini',  avatar: null },
-  { id: 90002, name: 'Linda_Young',       avatar: null },
-  { id: 90003, name: 'Esther_Adedayo',   avatar: null },
-  { id: 90004, name: 'Peter_Gomes',       avatar: null },
-  { id: 90005, name: 'Kelvin_Ochieng',   avatar: null },
-  { id: 90006, name: 'Amara_Diallo',     avatar: null },
-  { id: 90007, name: 'John_Kamau',       avatar: null },
-  { id: 90008, name: 'Sarah_Mensah',     avatar: null },
-  { id: 90009, name: 'Tunde_Balogun',    avatar: null },
-  { id: 90010, name: 'Grace_Wanjiru',    avatar: null },
-  { id: 90011, name: 'David_Nkosi',      avatar: null },
-  { id: 90012, name: 'Fatima_Hassan',    avatar: null },
-  { id: 90013, name: 'Moses_Kipchoge',   avatar: null },
-  { id: 90014, name: 'Angela_Owusu',     avatar: null },
-  { id: 90015, name: 'Rashid_Omar',      avatar: null },
-];
 
 // Generic post templates (no match reference)
 const GENERIC_POSTS = [
@@ -46,16 +32,16 @@ const GENERIC_POSTS = [
 
 // Match-specific post templates
 const MATCH_POSTS = [
-  (home: string, away: string, pick: string, odds: number) =>
-    `🔮 ${home} vs ${away} — going with ${pick} @ ${odds.toFixed(2)}. Form, H2H and home advantage all pointing the same way.`,
-  (home: string, away: string, pick: string, odds: number) =>
-    `My tip for ${home} vs ${away}: ${pick} @ ${odds.toFixed(2)}. The stats back this one up strongly.`,
-  (home: string, away: string, pick: string, odds: number) =>
-    `${home} vs ${away} prediction: ${pick}. Odds at ${odds.toFixed(2)} represent solid value today.`,
-  (home: string, away: string, pick: string, _odds: number) =>
-    `Watching ${home} vs ${away} closely today. Backing ${pick} based on recent momentum.`,
-  (home: string, away: string, pick: string, odds: number) =>
-    `${pick} in the ${home} vs ${away} fixture feels like the right call. ${odds.toFixed(2)} is fair value.`,
+  (home: string, away: string, p: string, odds: number) =>
+    `🔮 ${home} vs ${away} — going with ${p} @ ${odds.toFixed(2)}. Form, H2H and home advantage all pointing the same way.`,
+  (home: string, away: string, p: string, odds: number) =>
+    `My tip for ${home} vs ${away}: ${p} @ ${odds.toFixed(2)}. The stats back this one up strongly.`,
+  (home: string, away: string, p: string, odds: number) =>
+    `${home} vs ${away} prediction: ${p}. Odds at ${odds.toFixed(2)} represent solid value today.`,
+  (home: string, away: string, p: string, _odds: number) =>
+    `Watching ${home} vs ${away} closely today. Backing ${p} based on recent momentum.`,
+  (home: string, away: string, p: string, odds: number) =>
+    `${p} in the ${home} vs ${away} fixture feels like the right call. ${odds.toFixed(2)} is fair value.`,
 ];
 
 // Comment templates
@@ -80,7 +66,7 @@ const COMMENTS = [
   'Not sure about this one but respect the process',
 ];
 
-function pick<T>(arr: T[]): T {
+function randPick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
@@ -89,58 +75,76 @@ function randInt(min: number, max: number): number {
 }
 
 // Global dedup: track which match IDs have already been posted about this session
-const g = globalThis as { __fakeActivityPostedMatches?: Set<string>; __fakeActivityLastRun?: number };
+const g = globalThis as {
+  __fakeActivityPostedMatches?: Set<string>;
+  __fakeActivityLastRun?: number;
+};
 
-// Auto-run once per process and then every 20 minutes
-function autoRun() {
-  const last = g.__fakeActivityLastRun || 0;
-  if (Date.now() - last < 20 * 60 * 1000) return;
-  g.__fakeActivityLastRun = Date.now();
+async function runActivity() {
   if (!g.__fakeActivityPostedMatches) g.__fakeActivityPostedMatches = new Set();
+  const now = Date.now();
+  const tipsters = getFakeTipsters();
+  const allMatches = await getAllMatches();
 
-  import('@/lib/api/unified-sports-api').then(({ getAllMatches }) =>
-    import('@/lib/feed-store').then(({ createPost, addComment, listPosts }) => {
-      const now = Date.now();
-      getAllMatches().then(async allMatches => {
-        const relevant = allMatches.filter(m => {
-          const t = new Date(m.kickoffTime).getTime();
-          const isLive = ['live', 'halftime', 'extra_time', 'penalties'].includes(m.status);
-          const isUpcoming = m.status === 'scheduled' && t > now && t < now + 12 * 60 * 60 * 1000;
-          return (isLive || isUpcoming) && !g.__fakeActivityPostedMatches!.has(m.id);
-        }).slice(0, 4);
+  // ── Settle finished matches first ──────────────────────────────────────────
+  const finishedIds = new Set(
+    allMatches.filter(m => m.status === 'finished').map(m => m.id)
+  );
+  settleActivityTips(finishedIds);
 
-        for (const match of relevant) {
-          if (Math.random() > 0.4) continue;
-          const tipster = pick(FAKE_TIPSTERS);
-          const chosenPick = pick(['Home Win', 'Away Win', 'Both Teams to Score', 'Over 2.5 Goals']);
-          const odds = 1.5 + Math.random() * 2.5;
-          const content = pick(MATCH_POSTS)(match.homeTeam.name, match.awayTeam.name, chosenPick, odds);
-          await createPost({ userId: tipster.id, authorName: tipster.name, authorAvatar: null,
-            content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-            pick: chosenPick, odds: parseFloat(odds.toFixed(2)), imageUrl: null }).catch(() => {});
-          g.__fakeActivityPostedMatches!.add(match.id);
-        }
+  // ── Upcoming / live matches to post tips on ────────────────────────────────
+  const relevant = allMatches.filter(m => {
+    const t = new Date(m.kickoffTime).getTime();
+    const isLive = ['live', 'halftime', 'extra_time', 'penalties'].includes(m.status);
+    const isUpcoming = m.status === 'scheduled' && t > now && t < now + 12 * 60 * 60 * 1000;
+    return (isLive || isUpcoming) && !g.__fakeActivityPostedMatches!.has(m.id);
+  }).slice(0, 4);
 
-        // Generic post
-        const tipster = pick(FAKE_TIPSTERS);
-        await createPost({ userId: tipster.id, authorName: tipster.name, authorAvatar: null,
-          content: pick(GENERIC_POSTS), matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null }).catch(() => {});
+  for (const match of relevant) {
+    if (Math.random() > 0.4) continue;
+    const tipster = randPick(tipsters);
+    const chosenPick = randPick(['Home Win', 'Away Win', 'Both Teams to Score', 'Over 2.5 Goals']);
+    const odds = parseFloat((1.5 + Math.random() * 2.5).toFixed(2));
+    const content = randPick(MATCH_POSTS)(match.homeTeam.name, match.awayTeam.name, chosenPick, odds);
+    await createPost({
+      userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
+      content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+      pick: chosenPick, odds, imageUrl: null,
+    }).catch(() => {});
+    // Record the tip so we can settle it later and update win rate
+    recordActivityTip(tipster.id, match.id, chosenPick, odds);
+    g.__fakeActivityPostedMatches!.add(match.id);
+  }
 
-        // Comments on recent posts
-        const posts = await listPosts(15, null);
-        for (const post of posts.filter(() => Math.random() > 0.6).slice(0, 3)) {
-          const commenter = pick(FAKE_TIPSTERS.filter(t => t.id !== post.userId));
-          await addComment({ postId: post.id, userId: commenter.id, authorName: commenter.name,
-            authorAvatar: null, content: pick(COMMENTS) }).catch(() => {});
-        }
-      }).catch(() => {});
-    })
-  ).catch(() => {});
+  // ── Generic post ──────────────────────────────────────────────────────────
+  const genericTipster = randPick(tipsters);
+  await createPost({
+    userId: genericTipster.id, authorName: genericTipster.displayName,
+    authorAvatar: genericTipster.avatar, content: randPick(GENERIC_POSTS),
+    matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null,
+  }).catch(() => {});
+
+  // ── Comments on recent posts ───────────────────────────────────────────────
+  const posts = await listPosts(15, null);
+  for (const post of posts.filter(() => Math.random() > 0.6).slice(0, 3)) {
+    const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
+    await addComment({
+      postId: post.id, userId: commenter.id, authorName: commenter.displayName,
+      authorAvatar: commenter.avatar, content: randPick(COMMENTS),
+    }).catch(() => {});
+  }
 }
 
+// Auto-run on startup (after 5s) then every 20 minutes
 if (typeof globalThis !== 'undefined') {
-  setTimeout(autoRun, 5000);
-  setInterval(autoRun, 20 * 60 * 1000);
+  setTimeout(() => {
+    g.__fakeActivityLastRun = Date.now();
+    runActivity().catch(() => {});
+  }, 5000);
+  setInterval(() => {
+    g.__fakeActivityLastRun = Date.now();
+    runActivity().catch(() => {});
+  }, 20 * 60 * 1000);
 }
 
 export async function GET(req: NextRequest) {
@@ -149,101 +153,65 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!g.__fakeActivityPostedMatches) g.__fakeActivityPostedMatches = new Set();
-
-  const now = Date.now();
-  const results = { postsCreated: 0, commentsCreated: 0, errors: [] as string[] };
-
+  const before = { posts: 0, comments: 0 };
   try {
-    // ── 1. Create match-linked posts for upcoming/live matches ────────────────
+    const tipsters = getFakeTipsters();
     const allMatches = await getAllMatches();
-    const relevantMatches = allMatches.filter(m => {
+    const now = Date.now();
+
+    if (!g.__fakeActivityPostedMatches) g.__fakeActivityPostedMatches = new Set();
+
+    // Settle finished matches
+    const finishedIds = new Set(allMatches.filter(m => m.status === 'finished').map(m => m.id));
+    const settled = settleActivityTips(finishedIds);
+
+    // Match tips
+    const relevant = allMatches.filter(m => {
       const t = new Date(m.kickoffTime).getTime();
       const isLive = ['live', 'halftime', 'extra_time', 'penalties'].includes(m.status);
       const isUpcoming = m.status === 'scheduled' && t > now && t < now + 12 * 60 * 60 * 1000;
       return (isLive || isUpcoming) && !g.__fakeActivityPostedMatches!.has(m.id);
     }).slice(0, 6);
 
-    for (const match of relevantMatches) {
-      // Only post about ~40% of eligible matches to keep it natural
+    for (const match of relevant) {
       if (Math.random() > 0.4) continue;
-
-      const tipster = pick(FAKE_TIPSTERS);
-      const home = match.homeTeam.name;
-      const away = match.awayTeam.name;
-      const picks = ['Home Win', 'Away Win', 'Both Teams to Score', 'Over 2.5 Goals', 'Draw No Bet'];
-      const chosenPick = pick(picks);
-      const odds = 1.5 + Math.random() * 2.5;
-      const template = pick(MATCH_POSTS);
-      const content = template(home, away, chosenPick, odds);
-
-      try {
-        await createPost({
-          userId: tipster.id,
-          authorName: tipster.name,
-          authorAvatar: tipster.avatar,
-          content,
-          matchId: match.id,
-          matchTitle: `${home} vs ${away}`,
-          pick: chosenPick,
-          odds: parseFloat(odds.toFixed(2)),
-          imageUrl: null,
-        });
-        g.__fakeActivityPostedMatches!.add(match.id);
-        results.postsCreated++;
-      } catch (e) {
-        results.errors.push(`post for ${match.id}: ${e}`);
-      }
+      const tipster = randPick(tipsters);
+      const chosenPick = randPick(['Home Win', 'Away Win', 'Both Teams to Score', 'Over 2.5 Goals', 'Draw No Bet']);
+      const odds = parseFloat((1.5 + Math.random() * 2.5).toFixed(2));
+      const content = randPick(MATCH_POSTS)(match.homeTeam.name, match.awayTeam.name, chosenPick, odds);
+      await createPost({
+        userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
+        content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+        pick: chosenPick, odds, imageUrl: null,
+      }).catch(() => {});
+      recordActivityTip(tipster.id, match.id, chosenPick, odds);
+      g.__fakeActivityPostedMatches!.add(match.id);
+      before.posts++;
     }
 
-    // ── 2. Create generic posts (1–2 per run) ────────────────────────────────
-    const genericCount = randInt(1, 2);
-    for (let i = 0; i < genericCount; i++) {
-      const tipster = pick(FAKE_TIPSTERS);
-      try {
-        await createPost({
-          userId: tipster.id,
-          authorName: tipster.name,
-          authorAvatar: tipster.avatar,
-          content: pick(GENERIC_POSTS),
-          matchId: null,
-          matchTitle: null,
-          pick: null,
-          odds: null,
-          imageUrl: null,
-        });
-        results.postsCreated++;
-      } catch (e) {
-        results.errors.push(`generic post: ${e}`);
-      }
+    // Generic posts
+    for (let i = 0; i < randInt(1, 2); i++) {
+      const tipster = randPick(tipsters);
+      await createPost({
+        userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
+        content: randPick(GENERIC_POSTS), matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null,
+      }).catch(() => {});
+      before.posts++;
     }
 
-    // ── 3. Add comments to recent posts ──────────────────────────────────────
+    // Comments
     const recentPosts = await listPosts(20, null);
-    // Pick 2–4 random posts to comment on
-    const toComment = recentPosts
-      .filter(() => Math.random() > 0.5)
-      .slice(0, randInt(2, 4));
-
-    for (const post of toComment) {
-      const commenter = pick(FAKE_TIPSTERS.filter(t => t.id !== post.userId));
-      try {
-        await addComment({
-          postId: post.id,
-          userId: commenter.id,
-          authorName: commenter.name,
-          authorAvatar: commenter.avatar,
-          content: pick(COMMENTS),
-        });
-        results.commentsCreated++;
-      } catch (e) {
-        results.errors.push(`comment on ${post.id}: ${e}`);
-      }
+    for (const post of recentPosts.filter(() => Math.random() > 0.5).slice(0, randInt(2, 4))) {
+      const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
+      await addComment({
+        postId: post.id, userId: commenter.id, authorName: commenter.displayName,
+        authorAvatar: commenter.avatar, content: randPick(COMMENTS),
+      }).catch(() => {});
+      before.comments++;
     }
 
     g.__fakeActivityLastRun = now;
-
-    return NextResponse.json({ ok: true, ...results });
+    return NextResponse.json({ ok: true, postsCreated: before.posts, commentsCreated: before.comments, settled });
   } catch (error) {
     console.error('[fake-activity] Fatal error:', error);
     return NextResponse.json({ error: String(error) }, { status: 500 });

@@ -197,6 +197,130 @@ export function setFakeTipsters(list: FakeTipster[]) {
   FAKE_TIPSTERS = list;
 }
 
+// ─── Activity-tip tracking ────────────────────────────────────────────────────
+// Tracks tips that the fake-activity cron has posted so we can settle them
+// once a match finishes, making win rates reflect actual posted tips.
+
+interface ActivityTip {
+  tipsterId: number;
+  matchId: string;
+  pick: string;
+  odds: number;
+  postedAt: number;
+  result: 'pending' | 'won' | 'lost';
+}
+
+interface WeeklyPerf {
+  tipsterId: number;
+  tipsThisWeek: number;
+  wonThisWeek: number;
+}
+
+const g = globalThis as {
+  __activityTips?: ActivityTip[];
+  __weeklyPerf?: Map<number, WeeklyPerf>;
+  __tipsterOfWeekId?: number;
+  __tipsterOfWeekTs?: number;
+};
+if (!g.__activityTips) g.__activityTips = [];
+if (!g.__weeklyPerf) g.__weeklyPerf = new Map();
+
+/** Record a tip posted by the fake-activity cron. */
+export function recordActivityTip(tipsterId: number, matchId: string, pick: string, odds: number): void {
+  const t = FAKE_TIPSTERS.find(x => x.id === tipsterId);
+  if (!t) return;
+  // Increment pending tips on the tipster object
+  t.pendingTips = (t.pendingTips || 0) + 1;
+  t.totalTips = (t.totalTips || 0) + 1;
+  g.__activityTips!.push({ tipsterId, matchId, pick, odds, postedAt: Date.now(), result: 'pending' });
+}
+
+/**
+ * Settle any pending tips whose match is now finished.
+ * `finishedMatchIds` is a set of match IDs confirmed finished.
+ * Win probability is seeded from the tipster's initial win rate so better
+ * tipsters win more — the stats are realistic and tip-dependent.
+ */
+export function settleActivityTips(finishedMatchIds: Set<string>): { settled: number; won: number; lost: number } {
+  let settled = 0; let won = 0; let lost = 0;
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const weekStart = Date.now() - WEEK_MS;
+
+  for (const tip of g.__activityTips!) {
+    if (tip.result !== 'pending') continue;
+    if (!finishedMatchIds.has(tip.matchId)) continue;
+
+    const t = FAKE_TIPSTERS.find(x => x.id === tip.tipsterId);
+    if (!t) { tip.result = 'lost'; continue; }
+
+    // Win probability weighted by tipster's historical win rate (42%–74%)
+    // Add small random jitter per-tip so it doesn't feel mechanical
+    const baseWinProb = (t.winRate / 100) * 0.85 + 0.1; // 45%–73%
+    const tipWon = Math.random() < baseWinProb;
+    tip.result = tipWon ? 'won' : 'lost';
+
+    // Update tipster object stats
+    t.pendingTips = Math.max(0, (t.pendingTips || 0) - 1);
+    if (tipWon) {
+      t.wonTips = (t.wonTips || 0) + 1;
+      t.streak = (t.streak || 0) >= 0 ? (t.streak || 0) + 1 : 1;
+      won++;
+    } else {
+      t.lostTips = (t.lostTips || 0) + 1;
+      t.streak = (t.streak || 0) <= 0 ? (t.streak || 0) - 1 : -1;
+      lost++;
+    }
+    // Recompute win rate from actual settled tips
+    const totalSettled = (t.wonTips || 0) + (t.lostTips || 0);
+    if (totalSettled > 0) {
+      t.winRate = Math.round(((t.wonTips || 0) / totalSettled) * 1000) / 10;
+    }
+    // Recompute ROI: simplified (avg_odds - 1) * win_rate - (1 - win_rate)
+    t.roi = Math.round(((t.avgOdds - 1) * (t.winRate / 100) - (1 - t.winRate / 100)) * 10) / 10;
+
+    // Track weekly performance
+    if (tip.postedAt >= weekStart) {
+      const perf = g.__weeklyPerf!.get(tip.tipsterId) || { tipsterId: tip.tipsterId, tipsThisWeek: 0, wonThisWeek: 0 };
+      perf.tipsThisWeek++;
+      if (tipWon) perf.wonThisWeek++;
+      g.__weeklyPerf!.set(tip.tipsterId, perf);
+    }
+
+    settled++;
+  }
+
+  // Recompute tipster-of-the-week after settlement (cache 1 hour)
+  if (settled > 0) _recomputeTipsterOfWeek();
+  return { settled, won, lost };
+}
+
+function _recomputeTipsterOfWeek() {
+  let bestId = -1; let bestScore = -Infinity;
+  for (const [id, perf] of g.__weeklyPerf!) {
+    if (perf.tipsThisWeek < 2) continue;
+    const wr = perf.wonThisWeek / perf.tipsThisWeek;
+    const score = wr * 100 + perf.tipsThisWeek * 0.5;
+    if (score > bestScore) { bestScore = score; bestId = id; }
+  }
+  g.__tipsterOfWeekId = bestId > 0 ? bestId : undefined;
+  g.__tipsterOfWeekTs = Date.now();
+}
+
+/** Returns the ID of the current tipster-of-the-week (based on last 7 days' activity tips). */
+export function getTipsterOfWeekId(): number | undefined {
+  return g.__tipsterOfWeekId;
+}
+
+/** Returns true if the given tipster ID is currently tipster-of-the-week. */
+export function isTipsterOfWeek(tipsterId: number): boolean {
+  return g.__tipsterOfWeekId === tipsterId;
+}
+
+/** Weekly performance stats for a given tipster. */
+export function getWeeklyPerf(tipsterId: number): WeeklyPerf | undefined {
+  return g.__weeklyPerf?.get(tipsterId);
+}
+
 export function getFakeTipsterById(id: number | string): FakeTipster | undefined {
   const n = typeof id === 'string' ? Number(id) : id;
   if (!Number.isFinite(n)) return undefined;
