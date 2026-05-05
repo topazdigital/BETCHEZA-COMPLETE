@@ -1,0 +1,82 @@
+[root@mail betcheza]# grep -E "DB_HOST|DB_USER|DB_NAME|MYSQL" /home/admin/apps/betcheza/.env.local
+[root@mail betcheza]# pm2 logs betcheza --lines 100 --nostream 2>&1 | grep -i "google\|one-tap\|error\|db"
+/root/.pm2/logs/betcheza-error.log last 100 lines:
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+4|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+4|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+[root@mail betcheza]# ls ~/.pm2/logs/
+.pm2/logs/betcheza-error.log | tail -50backend-error-0.log  backend-out-0.log  betcheza-error.log  frontend-error-0.log  frontend-out-0.log  index-error.log
+backend-error-1.log  backend-out-1.log  betcheza-out.log    frontend-error-1.log  frontend-out-1.log  index-out.log
+backend-error-2.log  backend-out-2.log  dossy-error.log     frontend-error-5.log  frontend-out-5.log
+backend-error.log    backend-out.log    dossy-out.log       frontend-error.log    frontend-out.log
+[root@mail betcheza]# cat ~/.pm2/logs/betcheza-error.log | tail -50
+  errno: -98,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 5001
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+    at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 5001
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+    at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 5001
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+    at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 5001
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+    at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 5001
+}
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+    at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '127.0.0.1',
+  port: 5001
+}
+[root@mail betcheza]#
