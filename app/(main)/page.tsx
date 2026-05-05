@@ -86,9 +86,11 @@ export default function HomePage() {
   }, [matches]);
 
   // Get featured/upcoming matches — sorted by kickoff time ascending (soonest first)
+  // Only include matches whose kickoff time is genuinely in the future (with a 5-min grace window)
   const upcomingMatches = useMemo(() => {
+    const cutoff = Date.now() - 5 * 60 * 1000;
     return matches
-      .filter(m => m.status === 'scheduled')
+      .filter(m => m.status === 'scheduled' && new Date(m.kickoffTime).getTime() > cutoff)
       .sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime())
       .slice(0, 12);
   }, [matches]);

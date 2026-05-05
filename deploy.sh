@@ -13,7 +13,7 @@ npm run build
 echo -e "${YELLOW}[4/4] Restarting server...${NC}"
 fuser -k 5001/tcp 2>/dev/null || true
 sleep 1
-pm2 restart betcheza 2>/dev/null || pm2 start npm --name "betcheza" -- start
+pm2 restart betcheza --update-env 2>/dev/null || pm2 start npm --name "betcheza" -- start
 pm2 save
 echo -e "${GREEN}${BOLD}Deploy complete! betcheza.co.ke is live.${NC}"
 pm2 list
