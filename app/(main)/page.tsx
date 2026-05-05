@@ -85,12 +85,26 @@ export default function HomePage() {
     return counts;
   }, [matches]);
 
-  // Get featured/upcoming matches — sorted by kickoff time ascending (soonest first)
-  // Only include matches whose kickoff time is genuinely in the future (with a 5-min grace window)
+  // Get upcoming matches for TODAY only — sorted by kickoff time ascending (soonest first).
+  // Excludes anything whose kickoff is in the past or on a different day.
   const upcomingMatches = useMemo(() => {
-    const cutoff = Date.now() - 5 * 60 * 1000;
+    const now = Date.now();
+    const todayStr = new Date().toDateString();
+    const todayMatches = matches
+      .filter(m => {
+        if (m.status !== 'scheduled') return false;
+        const ko = new Date(m.kickoffTime);
+        if (ko.toDateString() !== todayStr) return false; // must be today
+        if (ko.getTime() <= now) return false; // must be in the future
+        return true;
+      })
+      .sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime())
+      .slice(0, 12);
+
+    // If no more matches today, fall back to the next available day's soonest 12
+    if (todayMatches.length > 0) return todayMatches;
     return matches
-      .filter(m => m.status === 'scheduled' && new Date(m.kickoffTime).getTime() > cutoff)
+      .filter(m => m.status === 'scheduled' && new Date(m.kickoffTime).getTime() > now)
       .sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime())
       .slice(0, 12);
   }, [matches]);
