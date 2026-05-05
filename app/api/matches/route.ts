@@ -349,11 +349,20 @@ export async function GET(request: NextRequest) {
     } else if (status && status !== 'all' && status !== 'live') {
       matches = matches.filter(m => m.status === status);
     } else if (!status || status === 'all') {
-      // Default: keep today's matches even if finished; drop finished from other days
+      // Default: keep today's matches even if finished; drop finished from other days.
+      // Also drop scheduled matches whose kickoff was more than 2 hours ago — these are
+      // stale entries whose status was never updated by the external API (e.g. April 18
+      // matches still tagged 'scheduled' days later).
+      const nowMs = Date.now();
+      const TWO_HOURS = 2 * 60 * 60 * 1000;
       matches = matches.filter(m => {
         if (m.status === 'cancelled' || m.status === 'postponed') return false;
         if (m.status === 'finished') {
           return getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
+        }
+        if (m.status === 'scheduled') {
+          // Discard if kickoff was more than 2 hours in the past
+          return new Date(m.kickoffTime).getTime() >= nowMs - TWO_HOURS;
         }
         return true;
       });
