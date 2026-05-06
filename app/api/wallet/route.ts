@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getWallet } from '@/lib/wallet-store';
+import { getReferralBalance } from '@/lib/referral-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,9 +12,11 @@ export async function GET() {
     return NextResponse.json({ success: false, error: 'Sign in required.' }, { status: 401 });
   }
   const w = getWallet(user.userId);
+  const referralBalance = await getReferralBalance(user.userId).catch(() => 0);
   return NextResponse.json({
     success: true,
     balances: w.balances,
     transactions: w.txns.slice(0, 50),
+    referralBalance,
   });
 }

@@ -47,14 +47,16 @@ A sports betting tipster community platform providing real-time sports data, AI-
 
 - Real-time match scores, odds, and lineups across 35+ sports
 - AI match predictions and conversational betting copilot (GPT-4o-mini, configurable via `OPENAI_MODEL`)
-- Tipster leaderboard, community feed, tip sharing with likes/comments
+- Tipster leaderboard, community feed, tip sharing with likes/comments; tipster profile pages show avatar images
 - Jackpot scraper for Kenyan bookmakers (SportPesa, Betika, etc.)
-- User wallet with deposit/withdraw and prize payouts
+- User wallet with deposit/withdraw and prize payouts; referral credit shown as separate non-withdrawable balance
 - Referral system: `/register?ref=CODE` → cookie → attribution at signup → KES 100/50 bonus on email verify
 - Referral dashboard at `/dashboard/referral` with link, tree, and stats
 - Admin dashboard for users, payments, settings, SEO, email, notifications
-- Web push notifications, 2FA, email verification (enforced — no skip)
+- Web push notifications, 2FA, email verification (enforced — no skip; modal race condition fixed)
 - Help Centre page at `/help` with full FAQ content
+- Team pages show correct current head coach (KNOWN_COACHES override for top 40+ clubs)
+- AI fallback covers 13 market/strategy patterns (1X2, Double Chance, Asian Handicap, BTTS, accas, bankroll, etc.)
 
 ## User preferences
 

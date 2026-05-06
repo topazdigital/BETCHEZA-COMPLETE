@@ -206,12 +206,14 @@ export function AuthModal() {
   const meta = TITLES[view] || TITLES.login;
 
   // Auto-close the modal when the user becomes authenticated
-  // (covers Google One Tap and any other provider that sets auth state directly)
+  // BUT NOT on the register view — after sign-up the user is immediately
+  // authenticated while still needing to verify their email. Closing here
+  // would swallow the VerifyEmailPanel before the user ever sees it.
   useEffect(() => {
-    if (isAuthenticated && isOpen) {
+    if (isAuthenticated && isOpen && view !== 'register') {
       close();
     }
-  }, [isAuthenticated, isOpen, close]);
+  }, [isAuthenticated, isOpen, close, view]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) close(); }}>

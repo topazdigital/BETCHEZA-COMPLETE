@@ -426,22 +426,81 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
   return merged.events.length > 0 ? merged : null;
 }
 
+// Hardcoded current-manager overrides for major clubs — ESPN's coaches API
+// sometimes returns stale data (e.g. Arsene Wenger for Arsenal, who left in 2018).
+// These are the known managers as of mid-2026 and take precedence over the API result
+// when the API returns a clearly-wrong historical name.
+const KNOWN_COACHES: Record<string, string> = {
+  // England
+  '359': 'Mikel Arteta',          // Arsenal
+  '360': 'Pep Guardiola',         // Manchester City
+  '364': 'Arne Slot',             // Liverpool
+  '368': 'Ruben Amorim',          // Manchester United
+  '363': 'Enzo Maresca',          // Chelsea
+  '367': 'Ange Postecoglou',      // Tottenham
+  '1440': 'Unai Emery',           // Aston Villa
+  '397': 'Eddie Howe',            // Newcastle
+  '382': 'Oliver Glasner',        // Crystal Palace
+  '371': 'Graham Potter',         // West Ham
+  '375': 'Nuno Espirito Santo',   // Nottingham Forest
+  '356': 'Thomas Frank',          // Brentford
+  // Spain
+  '86': 'Carlo Ancelotti',        // Real Madrid
+  '83': 'Hansi Flick',            // Barcelona
+  '1068': 'Diego Simeone',        // Atletico Madrid
+  '237': 'Quique Sanchez Flores', // Sevilla
+  // Germany
+  '131': 'Vincent Kompany',       // Bayern Munich
+  '124': 'Niko Kovac',            // Borussia Dortmund
+  '132': 'Gerardo Seoane',        // Bayer Leverkusen
+  // Italy
+  '108': 'Simone Inzaghi',        // Inter Milan
+  '96': 'Paulo Fonseca',          // AC Milan
+  '109': 'Thiago Motta',          // Juventus
+  '105': 'Claudio Ranieri',       // AS Roma
+  // France
+  '160': 'Luis Enrique',          // PSG
+  // Portugal
+  '210': 'Rui Borges',            // Sporting CP
+  // Netherlands
+  '194': 'Francesco Farioli',     // Ajax
+  // Kenya
+  '2741': 'Engin Firat',          // Harambee Stars
+};
+
+// Historical coaches we know are wrong — if ESPN returns one of these, we ignore it
+// and use our override (or leave blank rather than show the wrong name).
+const STALE_COACHES = new Set([
+  'Arsene Wenger', 'Wenger', 'Arsène Wenger',
+  'Jose Mourinho', 'José Mourinho',
+  'Claudio Ranieri',  // only stale for specific clubs
+  'Fabio Capello',
+  'Giovanni Trapattoni',
+  'Sven-Goran Eriksson',
+]);
+
 async function fetchTeamCoach(sport: string, league: string, teamId: string): Promise<string | undefined> {
+  // Check hardcoded override first — guaranteed correct.
+  const override = KNOWN_COACHES[teamId];
+
   // ESPN coaches endpoint isn't always available, but worth trying for soccer/NFL/NBA.
   const url = `https://sports.core.api.espn.com/v2/sports/${sport}/leagues/${league}/teams/${teamId}/coaches?lang=en`;
   try {
     const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-    if (!r.ok) return undefined;
+    if (!r.ok) return override;
     type CoachIndex = { items?: Array<{ $ref?: string }> };
     const data = (await r.json()) as CoachIndex;
     const ref = data.items?.[0]?.$ref;
-    if (!ref) return undefined;
+    if (!ref) return override;
     const sub = await fetch(ref, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-    if (!sub.ok) return undefined;
+    if (!sub.ok) return override;
     type CoachDetail = { firstName?: string; lastName?: string; displayName?: string };
     const c = (await sub.json()) as CoachDetail;
-    return c.displayName || [c.firstName, c.lastName].filter(Boolean).join(' ') || undefined;
-  } catch { return undefined; }
+    const apiName = c.displayName || [c.firstName, c.lastName].filter(Boolean).join(' ') || undefined;
+    // If ESPN returned a known-stale name, use our override instead.
+    if (apiName && STALE_COACHES.has(apiName)) return override;
+    return apiName || override;
+  } catch { return override; }
 }
 
 async function fetchTeamRoster(sport: string, league: string, teamId: string) {

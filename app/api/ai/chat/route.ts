@@ -250,18 +250,34 @@ async function buildMatchContext(pageContext: string): Promise<string> {
 
 // ----- Lightweight rules-based fallback if the LLM is unreachable -----
 const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
-  { patterns: [/over\s*2\.?5/i, /goals\s*over/i],
-    reply: "Over 2.5 lands more often when both teams average 1.5+ goals/game over their last 5 outings and have aggressive xG. Check the H2H tab for goals trends and Live Odds for the current line." },
+  { patterns: [/1x2.*double chance|double chance.*1x2|difference.*1x2|difference.*double chance|1x2 vs|double chance vs/i],
+    reply: "1X2 means you pick exactly one outcome: Home win (1), Draw (X), or Away win (2). Double Chance covers TWO of those three: 1X (home or draw), X2 (draw or away), or 12 (either team wins). Double Chance trades lower odds for much higher security — if you're confident a side won't lose but unsure if they'll draw, 1X or X2 around 1.20–1.40 is the play." },
+  { patterns: [/asian handicap|handicap/i],
+    reply: "Asian Handicap eliminates the draw by giving one side a virtual head-start. E.g. Arsenal -1.5 means Arsenal must win by 2+ goals for your bet to win. Half-ball lines (like -0.5, +1.5) give no refunds. Quarter-ball lines (-0.75) split your stake — half wins if they win by 1, the other half pushes if it's exactly 1. It's a sharper market with better value than 1X2 on lopsided games." },
+  { patterns: [/over\s*2\.?5|goals\s*over|under\s*2\.?5|total goals/i],
+    reply: "Over 2.5 goals lands most often when both teams average 1.5+ scored/conceded over their last 5. Key signals: fast tempo in first 15 min, weak defences, short H2H rest. Under 2.5 suits top-vs-top clashes where both sides play cautious. Check the H2H tab for goals averages — if it reads 3.2 avg, Over 2.5 at 1.85+ is value." },
   { patterns: [/btts|both teams to score/i],
-    reply: "BTTS Yes is value when both sides score in 60%+ of recent games AND concede in most. Look at the form badges on the match page — if both have 3+ wins with goals, BTTS Yes around 1.70+ is solid." },
-  { patterns: [/value bet|value/i],
-    reply: "Value = your estimated probability > implied probability from odds. If you think a side is 50% and the price is 2.20 (45% implied), that's a value bet. The Odds tab compares bookmakers for the best line." },
-  { patterns: [/bankroll|stake|how much/i],
-    reply: "Stake 1–3% of bankroll per pick (flat). Confidence-based staking can scale to 5% on HIGH confidence picks. Set a daily loss limit and never chase." },
-  { patterns: [/responsible|gambling problem|addict|chase|chasing|tilt/i],
-    reply: "If betting feels heavy, pause for the day. UK: GamCare 0808 8020 133. US: 1-800-GAMBLER. Internationally: BeGambleAware.org. We support deposit limits and cooling-off — please use them." },
+    reply: "BTTS Yes works when both sides score in 60%+ of recent games AND concede in most. Red flag: if either team kept 3+ clean sheets in last 5, skip it. BTTS Yes around 1.65–1.80 on mid-table clashes is typically where the edge lives. Check both teams' 'Goals Scored / Goals Conceded' split on the match Stats tab." },
+  { patterns: [/correct score|score prediction/i],
+    reply: "Correct Score is a high-risk, high-reward market. Focus on the most statistically common scorelines for that matchup: 1-0, 1-1, 2-1, and 2-0 cover around 45% of all football matches. Use H2H scoreline history from the match page as your baseline, then adjust for current form. Small stakes (0.5–1% of bankroll) only — variance is huge." },
+  { patterns: [/value bet|value|edge/i],
+    reply: "Value = your estimated probability > implied probability from the odds. Example: if you think a team has a 50% chance of winning and the price is 2.20 (45.5% implied), that's +4.5% edge — bet it. The Odds tab on any match page shows live lines from multiple bookmakers so you can line-shop for the best price." },
+  { patterns: [/bankroll|stake|how much|staking/i],
+    reply: "Flat-stake 1–3% of your total bankroll per pick. On a KES 10,000 bankroll that's KES 100–300 per bet. Scale to 4–5% only on HIGH-confidence picks. Set a daily stop-loss (e.g. -20% of bankroll) and never chase losses — that's how bankrolls evaporate. The Wallet page lets you track your balance in real time." },
+  { patterns: [/accumulator|acca|parlay|combo/i],
+    reply: "Accas multiply your odds but also multiply your risk. A 5-leg acca where each pick is 65% probability has only a 11.6% chance of landing. Stick to 2–3 leg accas max, use all confirmed favourites or value picks, and never include a team you're unsure about just to inflate the odds. KES 200 on a 3-leg acca beats a KES 200 single on a 5-leg fantasy." },
+  { patterns: [/responsible|gambling problem|addict|chase|chasing|tilt|too much/i],
+    reply: "If betting feels heavy, pause for the day. Kenya: Gambling Control Act helpline. UK: GamCare 0808 8020 133. US: 1-800-GAMBLER. Internationally: BeGambleAware.org. You can set deposit and session limits in the Wallet → Settings section." },
+  { patterns: [/how.*app.*work|what.*betcheza|features|leaderboard|tipster/i],
+    reply: "Betcheza is your full betting hub: /matches shows live + upcoming fixtures across 35+ sports with real odds. Each match page has a Prediction widget, H2H, Stats, Live Odds and Tips tabs. /tipsters ranks analysts by ROI and win-rate — follow the best to see their picks in your Dashboard feed. Post your own tips and climb the leaderboard." },
+  { patterns: [/ai prediction|how.*predict|prediction widget/i],
+    reply: "The AI Prediction widget (on every match page) combines real-time form strings, H2H goal averages, live odds implied probabilities, and home/away win rates to generate a confidence-rated pick with reasoning. It updates when odds move. It's a research tool, not a guarantee — combine it with your own judgement for best results." },
+  { patterns: [/mpesa|deposit|withdraw|wallet|payment/i],
+    reply: "Your Betcheza wallet supports M-Pesa (instant STK push), bank transfer, Visa/Mastercard, and crypto. Go to Dashboard → Wallet. Minimum deposit is KES 100. M-Pesa withdrawals typically land within 5 minutes; bank transfers take 1–3 business days. Your referral bonus (KES 50 welcome + KES 100 per verified referral) is in-platform credit — it boosts your balance but cannot be withdrawn directly." },
+  { patterns: [/referral|invite|refer|bonus/i],
+    reply: "Go to Dashboard → Refer & Earn to get your personal referral link. Share it — when a friend signs up and verifies their email, you earn KES 100 and they get KES 50. Your referral credit is in-platform only (used for entries, tips, and competitions) and can't be withdrawn." },
 ];
-const FALLBACK = "I'm here to help with picks, market analysis, value spotting and bankroll. Try asking about a specific match, BTTS, Over/Under or how the AI Prediction widget works.";
+const FALLBACK = "Ask me about a specific match, a market (BTTS, Over/Under, 1X2, Double Chance, Asian Handicap), bankroll strategy, or how any feature on the app works — I'll give you a concrete answer.";
 function localReply(userText: string): string {
   for (const h of TIPS_HINTS) if (h.patterns.some((p) => p.test(userText))) return h.reply;
   if (/^\s*(hi|hello|hey|sup|yo)\b/i.test(userText))

@@ -213,6 +213,43 @@ export async function onReferralVerified(referredUserId: number): Promise<void> 
   }
 }
 
+/**
+ * Returns the earned referral credit for a user (KES 100 per verified referral +
+ * KES 50 sign-up bonus if this user was themselves referred).
+ * This balance is for in-platform use only and is NOT withdrawable.
+ */
+export async function getReferralBalance(userId: number): Promise<number> {
+  await ensureTables();
+  let earned = 0;
+
+  if (getPool()) {
+    try {
+      // KES 100 per referral this user made that got verified
+      const referred = await query<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM referrals WHERE referrer_id = ? AND verified_at IS NOT NULL`,
+        [userId]
+      );
+      earned += (referred.rows[0]?.cnt ?? 0) * 100;
+
+      // KES 50 welcome bonus if this user was referred and is verified
+      const wasReferred = await query<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM referrals WHERE referred_user_id = ? AND verified_at IS NOT NULL`,
+        [userId]
+      );
+      if ((wasReferred.rows[0]?.cnt ?? 0) > 0) earned += 50;
+    } catch { /* fall through */ }
+    return earned;
+  }
+
+  // File fallback
+  const state = load();
+  const madeReferrals = state.records.filter(r => r.referrerId === userId && r.verifiedAt);
+  earned += madeReferrals.length * 100;
+  const wasReferred = state.records.find(r => r.referredUserId === userId && r.verifiedAt);
+  if (wasReferred) earned += 50;
+  return earned;
+}
+
 /** Get referral stats for a user */
 export async function getReferralStats(userId: number, username: string): Promise<ReferralStats> {
   await ensureTables();

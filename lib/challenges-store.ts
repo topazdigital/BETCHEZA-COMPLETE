@@ -165,7 +165,7 @@ export function seedFakeChallengesIfEmpty(): void {
       opponentId: pair.opponent.id,
       winnerId: status === 'finished' ? pair.challenger.id : null,
       stakePts: [100, 250, 50, 500][i] || 100,
-      prizePool: ['$20', '$50', null, '$100'][i] || null,
+      prizePool: ['KES 2,000', 'KES 5,000', null, 'KES 10,000'][i] || null,
       isPublic: true,
       maxTips: [10, 15, 8, 20][i] || 10,
       watchers: 10 + Math.floor(Math.abs((id * 11) % 90)),

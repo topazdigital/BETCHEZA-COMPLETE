@@ -35,6 +35,7 @@ interface WalletResponse {
   success: boolean;
   balances: Record<string, number>;
   transactions: Txn[];
+  referralBalance?: number;
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -84,6 +85,7 @@ export default function WalletPage() {
   );
 
   const balance = data?.balances?.KES ?? user?.balance ?? 0;
+  const referralBalance = data?.referralBalance ?? 0;
   const txns = data?.transactions ?? [];
 
   if (authLoading) {
@@ -101,27 +103,53 @@ export default function WalletPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 px-4 py-4">
-      {/* Balance card */}
-      <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-transparent to-emerald-500/5">
-        <CardContent className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
-                <Wallet className="h-3.5 w-3.5" /> Available Balance
+      {/* Balance cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-transparent to-emerald-500/5">
+          <CardContent className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <Wallet className="h-3.5 w-3.5" /> Available Balance
+                </div>
+                <div className="mt-1 text-3xl font-extrabold tracking-tight">
+                  {isLoading ? <Spinner className="h-6 w-6" /> : fmtMoney(balance)}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  Logged in as <span className="font-medium text-foreground">{user.displayName || user.username}</span>
+                </div>
               </div>
-              <div className="mt-1 text-3xl font-extrabold tracking-tight">
-                {isLoading ? <Spinner className="h-6 w-6" /> : fmtMoney(balance)}
-              </div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
-                Logged in as <span className="font-medium text-foreground">{user.displayName || user.username}</span>
-              </div>
+              <Badge variant="secondary" className="gap-1 text-[10px]">
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Verified
+              </Badge>
             </div>
-            <Badge variant="secondary" className="gap-1 text-[10px]">
-              <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Verified
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card className="border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-transparent to-amber-500/5">
+          <CardContent className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <Gift className="h-3.5 w-3.5" /> Referral Credit
+                </div>
+                <div className="mt-1 text-3xl font-extrabold tracking-tight text-amber-500">
+                  {isLoading ? <Spinner className="h-6 w-6" /> : fmtMoney(referralBalance)}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  In-platform only · <span className="font-medium text-foreground">Not withdrawable</span>
+                </div>
+              </div>
+              <Badge variant="outline" className="gap-1 text-[10px] border-amber-500/40 text-amber-600">
+                <Gift className="h-3 w-3" /> Bonus
+              </Badge>
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
+              Earned from referrals &amp; welcome bonus. Use for competition entries and platform spend — cannot be transferred to M-Pesa or bank.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       <Tabs defaultValue="deposit" className="space-y-3">
         <TabsList className="h-9 p-1">

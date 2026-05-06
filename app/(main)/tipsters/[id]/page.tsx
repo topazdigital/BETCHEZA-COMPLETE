@@ -164,8 +164,12 @@ export default function TipsterProfilePage({ params }: PageProps) {
             <div className="flex flex-col sm:flex-row sm:items-start gap-4">
               {/* Avatar */}
               <div className="relative flex-shrink-0">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-bold text-primary-foreground">
-                  {tipster.displayName.charAt(0)}
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-bold text-primary-foreground overflow-hidden">
+                  {tipster.avatar ? (
+                    <img src={tipster.avatar} alt={tipster.displayName} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  ) : (
+                    tipster.displayName.charAt(0)
+                  )}
                 </div>
                 {tipster.rank <= 3 && (
                   <div className={cn(
