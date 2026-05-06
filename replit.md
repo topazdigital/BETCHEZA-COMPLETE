@@ -28,9 +28,11 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - `lib/` — Business logic, DB abstraction, API integrations, utilities
 - `lib/db.ts` — MySQL pool wrapper (source of truth for DB access)
 - `lib/api/unified-sports-api.ts` — Unified multi-provider sports data
+- `lib/referral-store.ts` — Referral system (MySQL + file fallback)
 - `components/` — React UI components
 - `public/sw.js` — Service worker for push notifications
 - `.local/data/` — File-based fallback data store
+- `.local/state/referrals.json` — File-based referral state (no-DB fallback)
 
 ## Architecture decisions
 
@@ -39,16 +41,20 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - **OpenAI fallback**: AI chat uses a rules-based local fallback if no OpenAI key is configured — chat always works.
 - **File-based settings**: Site settings, email config, and API keys are persisted to `.local/data/` files and seeded from env vars at startup via `instrumentation.ts`.
 - **Match URL slugs**: `/matches/team-a-vs-team-b-NUMERICID` format for SEO.
+- **Auth context `updateUser()`**: Allows optimistic client-side user state updates (e.g., avatar changes) without full re-fetch.
 
 ## Product
 
 - Real-time match scores, odds, and lineups across 35+ sports
-- AI match predictions and conversational betting copilot
+- AI match predictions and conversational betting copilot (GPT-4o-mini, configurable via `OPENAI_MODEL`)
 - Tipster leaderboard, community feed, tip sharing with likes/comments
 - Jackpot scraper for Kenyan bookmakers (SportPesa, Betika, etc.)
 - User wallet with deposit/withdraw and prize payouts
+- Referral system: `/register?ref=CODE` → cookie → attribution at signup → KES 100/50 bonus on email verify
+- Referral dashboard at `/dashboard/referral` with link, tree, and stats
 - Admin dashboard for users, payments, settings, SEO, email, notifications
-- Web push notifications, 2FA, email verification
+- Web push notifications, 2FA, email verification (enforced — no skip)
+- Help Centre page at `/help` with full FAQ content
 
 ## User preferences
 
@@ -64,6 +70,8 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - VAPID keys must be set for push notifications to work.
 - OpenAI blueprint already installed — app checks `AI_INTEGRATIONS_OPENAI_API_KEY` first, then `OPENAI_API_KEY`.
 - `instrumentation.ts` seeds env vars into the in-memory settings store at startup.
+- Referral code = `username_prefix + hash_suffix` generated deterministically; stored in `referral_codes` table.
+- `/api/auth/me` overlays `user_profiles` (avatar, displayName) on top of `users` table for accurate header display.
 
 ## Pointers
 
@@ -71,4 +79,5 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - Auth logic: `lib/auth.ts`
 - DB wrapper: `lib/db.ts`
 - Site settings: `lib/site-settings.ts`
+- Referral system: `lib/referral-store.ts`, `app/(main)/dashboard/referral/page.tsx`
 - Deployment was originally DirectAdmin + PM2 + GitHub Actions SSH — now runs on Replit.

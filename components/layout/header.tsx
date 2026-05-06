@@ -188,6 +188,11 @@ export function Header() {
                       Wallet
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard/referral">
+                      Refer &amp; Earn
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href="/settings">

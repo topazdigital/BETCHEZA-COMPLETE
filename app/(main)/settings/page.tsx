@@ -94,7 +94,7 @@ const PRESET_AVATARS = [
 ];
 
 export default function SettingsPage() {
-  const { user, isLoading: loading, logout, refreshUser } = useAuth();
+  const { user, isLoading: loading, logout, refreshUser, updateUser } = useAuth();
   const { open } = useAuthModal();
   const { settings: globalSettings, setOddsFormat: setGlobalOddsFormat, setTimezone: setGlobalTimezone } = useUserSettings();
 
@@ -193,7 +193,8 @@ export default function SettingsPage() {
         toast.error('Failed to save avatar');
       } else {
         toast.success('Profile photo updated');
-        await refreshUser();
+        updateUser({ avatarUrl: url });
+        refreshUser();
       }
     } catch {
       toast.error('Network error — please try again');

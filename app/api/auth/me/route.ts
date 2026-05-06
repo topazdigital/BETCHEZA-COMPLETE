@@ -4,6 +4,7 @@ import { mockUsers } from '@/lib/mock-data';
 import { queryOne, getPool } from '@/lib/db';
 import { getBalance } from '@/lib/wallet-store';
 import { isVerified } from '@/lib/email-verification-store';
+import { getProfile } from '@/lib/user-profile-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,13 +62,16 @@ export async function GET() {
     const walletBalance = getBalance(user.id, 'KES');
     const balance = walletBalance > 0 ? walletBalance : user.balance;
 
+    // Overlay user_profiles overrides (avatar, displayName, etc.)
+    const profile = await getProfile(user.id).catch(() => null);
+
     return NextResponse.json({
       user: {
         id: user.id,
         email: user.email,
-        username: user.username,
-        displayName: user.display_name,
-        avatarUrl: user.avatar_url,
+        username: profile?.username || user.username,
+        displayName: profile?.displayName || user.display_name,
+        avatarUrl: profile?.avatarUrl || user.avatar_url,
         role: user.role,
         balance,
         isEmailVerified: !!user.is_verified || isVerified(user.id),

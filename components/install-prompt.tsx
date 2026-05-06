@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Download, Share, X, Smartphone } from "lucide-react"
+import { Download, Share, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -97,7 +97,7 @@ export function InstallPrompt() {
       <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/15 via-background to-background backdrop-blur-xl shadow-2xl p-4">
         <div className="flex gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg">
-            <Smartphone className="h-5 w-5 text-white" />
+            <img src="/icon.svg" alt="Betcheza" className="h-6 w-6 object-contain" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">

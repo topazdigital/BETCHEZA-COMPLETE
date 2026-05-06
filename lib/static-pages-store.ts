@@ -1,9 +1,9 @@
 import { query, execute, getPool } from './db';
 
-export type StaticPageSlug = 'about' | 'terms' | 'privacy' | 'responsible-gambling' | 'faq' | 'contact' | 'cookies';
+export type StaticPageSlug = 'about' | 'terms' | 'privacy' | 'responsible-gambling' | 'faq' | 'contact' | 'cookies' | 'help';
 
 export const STATIC_PAGE_SLUGS: StaticPageSlug[] = [
-  'about', 'terms', 'privacy', 'responsible-gambling', 'faq', 'contact', 'cookies',
+  'about', 'terms', 'privacy', 'responsible-gambling', 'faq', 'contact', 'cookies', 'help',
 ];
 
 export interface StaticPage {
@@ -463,6 +463,84 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 
 <h2>Contact</h2>
 <p>For questions about our use of cookies: <a href="mailto:privacy@betcheza.com">privacy@betcheza.com</a></p>
+    `.trim(),
+    updated_at: new Date(),
+  },
+
+  help: {
+    slug: 'help',
+    title: 'Help Centre',
+    meta_description: 'Find answers to common questions about Betcheza — accounts, tips, leaderboards, wallet, notifications, and more.',
+    body: `
+<h2>Welcome to the Betcheza Help Centre</h2>
+<p>Find answers to the most common questions below. If you can't find what you need, use the <a href="/contact">Contact Us</a> page to reach our support team.</p>
+
+<h2>Getting Started</h2>
+<h3>How do I create an account?</h3>
+<p>Click the <strong>Sign Up</strong> button at the top of any page and fill in your name, email, and a secure password. You'll receive a 6-digit verification code by email — enter it to activate your account and unlock all features.</p>
+
+<h3>Do I need to verify my email?</h3>
+<p>Yes. Email verification is required to post tips, follow tipsters, and participate in competitions. Check your inbox (and your spam/junk folder) for the code. If it doesn't arrive, click <strong>Resend code</strong> in the verification panel.</p>
+
+<h3>How do I sign in with Google?</h3>
+<p>Click the Google icon on the login or register screen. Your account is automatically created and verified — no separate email code required.</p>
+
+<h2>Tips & Predictions</h2>
+<h3>How do I post a tip?</h3>
+<p>Navigate to a match page, open the <strong>Tips</strong> tab, and click <strong>Add Tip</strong>. Select your market, prediction, odds, stake, and confidence level, then submit. Your tip is immediately visible on the community feed.</p>
+
+<h3>What does confidence level mean?</h3>
+<p>Confidence (50–95%) is your self-assessed certainty about the pick. It appears on your tip card and factors into your tipster ranking score. Be honest — over-stated confidence hurts your ROI metrics.</p>
+
+<h3>Can I edit or delete a tip after posting?</h3>
+<p>Tips cannot be edited after they are posted — this is deliberate to ensure the integrity of the prediction record. You can delete a tip before the match kicks off, but deleted tips are removed from your stats.</p>
+
+<h3>What is a Premium tip?</h3>
+<p>Pro Tipsters can mark tips as Premium. Premium tips are visible only to followers with an active subscription. The lock icon indicates a premium-only pick.</p>
+
+<h2>Leaderboard & Rankings</h2>
+<h3>How is the leaderboard calculated?</h3>
+<p>Tipsters are ranked by a composite score that weighs win rate, ROI (return on investment), total tips posted, and recent form (last 30 days). Only settled tips with verified results count.</p>
+
+<h3>How do I become a Pro Tipster?</h3>
+<p>Visit the <a href="/become-tipster">Become a Tipster</a> page and apply. We review your existing tip history and performance stats. Approved Pro Tipsters get a verified badge and can accept subscriptions.</p>
+
+<h2>AI Predictions</h2>
+<h3>How does the AI copilot work?</h3>
+<p>Our AI analyses live match data, team form, head-to-head records, injury news, and market odds to generate match predictions. You can ask it anything using the chat button (bottom right on match pages).</p>
+
+<h3>Are AI predictions guaranteed to win?</h3>
+<p>No prediction — human or AI — is guaranteed. AI tips are a research tool, not financial advice. Always gamble responsibly and within your means.</p>
+
+<h2>Wallet & Payments</h2>
+<h3>How do I deposit funds?</h3>
+<p>Go to <strong>Dashboard → Wallet</strong> and click <strong>Deposit</strong>. We support M-Pesa, bank transfer, and card payments. Minimum deposit is KES 100.</p>
+
+<h3>How long do withdrawals take?</h3>
+<p>M-Pesa withdrawals are usually processed within 5 minutes. Bank transfers take 1–3 business days. Large withdrawals may require additional verification.</p>
+
+<h3>What is the referral bonus?</h3>
+<p>Invite a friend using your unique referral link from <strong>Dashboard → Referrals</strong>. When they sign up and verify their email, you earn <strong>KES 100</strong> and they receive a <strong>KES 50</strong> welcome bonus automatically.</p>
+
+<h2>Notifications</h2>
+<h3>How do I enable push notifications?</h3>
+<p>Click the <strong>Notification Bell</strong> in the header and allow notifications when prompted by your browser. You can customise which alerts you receive in <strong>Settings → Notifications</strong>.</p>
+
+<h3>Why am I not receiving email notifications?</h3>
+<p>Check your spam/junk folder and add <strong>noreply@betcheza.com</strong> to your contacts. If the problem persists, verify that your email address is confirmed and that notifications are enabled in Settings.</p>
+
+<h2>Account & Security</h2>
+<h3>How do I change my password?</h3>
+<p>Go to <strong>Settings → Security</strong> and use the Change Password form. You'll need to enter your current password first.</p>
+
+<h3>How do I enable two-factor authentication (2FA)?</h3>
+<p>In <strong>Settings → Security</strong>, toggle on Two-Factor Authentication. A code will be sent to your email each time you log in from a new device.</p>
+
+<h3>How do I delete my account?</h3>
+<p>Contact our support team via the <a href="/contact">Contact</a> page requesting account deletion. We will process the request within 7 days and send a confirmation email.</p>
+
+<h2>Still need help?</h2>
+<p>Our support team is available Monday–Friday, 8 AM–8 PM EAT. Reach us via the <a href="/contact">Contact Us</a> page or email <a href="mailto:support@betcheza.com">support@betcheza.com</a>.</p>
     `.trim(),
     updated_at: new Date(),
   },

@@ -676,13 +676,7 @@ function VerifyEmailPanel({
         >
           {resending ? 'Sending…' : 'Resend code'}
         </button>
-        <button
-          type="button"
-          onClick={onDone}
-          className="text-muted-foreground hover:text-foreground hover:underline"
-        >
-          I&apos;ll verify later
-        </button>
+        <span className="text-[10px] text-muted-foreground">Check spam if you don&apos;t see it</span>
       </div>
     </div>
   );

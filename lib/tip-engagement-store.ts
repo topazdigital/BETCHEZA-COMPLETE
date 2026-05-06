@@ -32,8 +32,8 @@ function hasDb(): boolean {
 export const COMMENT_TEMPLATES = [
   "Solid analysis, I'm on this one too!",
   "Great pick, the form supports it.",
-  "I've been watching this team closely, agree with the call.",
-  "Interesting take — odds look good value here.",
+  "I've been watching this team closely — agree with the call.",
+  "Interesting take, odds look good value here.",
   "This aligns with what I'm seeing in the stats.",
   "Good read on the match-up, following this tip.",
   "I like the thinking behind this, backing it.",
@@ -50,7 +50,74 @@ export const COMMENT_TEMPLATES = [
   "The recent form tells the same story, well played.",
   "Tactical insight is on point here.",
   "I trust this tipster's track record, going in.",
+  "Bookies haven't adjusted yet — good time to get on.",
+  "Same read on my end. The price is too big.",
+  "Late team news helps this selection even more.",
+  "Seen this pattern play out three times this season already.",
+  "Form chart says the same thing. Confident follow.",
+  "Weather conditions favour this pick — smart angle.",
+  "Checked the xG data too, fully agree with the call.",
+  "Disciplined pick given the context. Backing it.",
+  "Nice value here. The public has it wrong.",
+  "Got on at slightly better odds — both ways value.",
+  "Away form is often overlooked. Good spot.",
+  "Referee stats support this selection too.",
+  "Injury to their key midfielder changes everything.",
+  "Manager rotation pattern confirmed this is the right call.",
+  "Market moved my way already — still got juice left.",
+  "Their defensive record away from home is shocking.",
+  "Followed this tipster's last 10 picks, on a roll.",
+  "Home crowd advantage is massive here, backing the hosts.",
+  "This league has a clear trend for overs this month.",
+  "Took a bit more stake on this one, confident it lands.",
+  "Their top scorer is back fit — changes the dynamic.",
+  "Road record is underrated, this side travels well.",
+  "Early-season blip behind them, back to full strength now.",
+  "Love this market. Undervalued by at least 15%.",
+  "Momentum is everything in this competition. Right side here.",
+  "Followed the line movement, syndicates are on this.",
+  "Classic bounce-back game after last week's loss.",
+  "Closing line says the same thing. Sharp play.",
+  "This one jumped out at me from the model too.",
+  "Double chance makes sense at these odds, less variance.",
+  "Clean sheets in 3 of last 4 away, back the under.",
 ];
+
+// ─── CONTEXTUAL COMMENT GENERATORS ───────────────
+const FAKE_AUTHORS = [
+  'BetSmart_Ke', 'TipKing254', 'OddsWatcher', 'PuntPro', 'SportsFan',
+  'SharpBettor', 'DataDriven', 'FormGuide', 'ValueHunter', 'AccaKing',
+  'MatchAnalyst', 'NairobiNaps', 'MombasaBets', 'KisumeTips', 'NakuruPicks',
+  'EPLExpert', 'LaLigaLens', 'BundesligaBet', 'Serie_A_Pro', 'ChampionsEdge',
+  'GoalMachine', 'CleanSheet', 'BothTeams', 'OverUnder', 'AsianHandicap',
+];
+
+function buildContextComment(
+  rand: () => number,
+  home: string,
+  away: string,
+  market: string,
+  league?: string,
+): string {
+  const contextual = [
+    `${home} at home in this form — the price is wrong. On it.`,
+    `${away}'s away record tells the real story. Good spot.`,
+    `Both ${home} and ${away} have been scoring freely lately.`,
+    `${home} haven't lost at home in 6 — market is slow to price that.`,
+    `${away} travel in terrible form. ${home} should take this.`,
+    `${league ? league + ' ' : ''}fixtures like this tend to go one way — backing the tip.`,
+    `Checked the H2H for ${home} vs ${away}. Makes sense.`,
+    `${market} is exactly what I was looking for in this game.`,
+    `${home} line-up looks strong. Good value at these odds.`,
+    `${away} have key players suspended — changes the picture completely.`,
+    `Been watching ${home} closely this campaign, fully agree.`,
+    `This ${market} selection in ${league || 'this fixture'} is the move.`,
+    `Spotted the same thing on the line. Solid value.`,
+    `${home} vs ${away} — ${market} has paid out in 4 of their last 5 meetings.`,
+    `The stats on both sides scream ${market}. No brainer.`,
+  ];
+  return contextual[Math.floor(rand() * contextual.length)];
+}
 
 // ─── LIKES ────────────────────────────────────────
 const FAKE_LIKE_SEED: Record<string, number> = {};
@@ -175,31 +242,106 @@ export async function addComment(tipId: string, userId: number, authorName: stri
 }
 
 // ─── SEEDING ─────────────────────────────────────
-export async function seedTipEngagement(tipId: string, count = 3): Promise<void> {
+interface SeedContext {
+  likes?: number;
+  comments?: number;
+  tipsters?: Array<{ id: number; username: string; displayName: string; avatar?: string }>;
+  homeTeam?: string;
+  awayTeam?: string;
+  venue?: string;
+  confidence?: number;
+  createdAt?: string;
+  league?: string;
+  market?: string;
+  odds?: number;
+}
+
+function rng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 0xffffffff;
+  };
+}
+
+function hashStr(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return Math.abs(h) || 1;
+}
+
+export async function seedTipEngagement(tipId: string, ctx: SeedContext | number = 3): Promise<void> {
   if (hasDb()) return;
   const existing = s.likes.get(tipId);
   if (existing && existing.size > 0) return;
+
+  const numericCount = typeof ctx === 'number' ? ctx : (ctx.likes ?? 3);
+  const rand = rng(hashStr(tipId));
+
   const fakeSet = new Set<number>();
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < numericCount; i++) {
     fakeSet.add(-(1000 + i));
   }
   s.likes.set(tipId, fakeSet);
 
   const existing2 = s.comments.get(tipId);
   if (existing2 && existing2.length > 0) return;
-  const commentCount = 1 + (Math.abs(tipId.charCodeAt(0) ?? 0) % 3);
+
+  const richCtx = typeof ctx === 'object' ? ctx : {};
+  const commentCount = typeof ctx === 'object'
+    ? Math.min(ctx.comments ?? 2, 5)
+    : 1 + (Math.abs(tipId.charCodeAt(0) ?? 0) % 3);
+
+  const home = richCtx.homeTeam || '';
+  const away = richCtx.awayTeam || '';
+  const market = richCtx.market || '';
+  const league = richCtx.league || '';
+  const baseTs = richCtx.createdAt ? new Date(richCtx.createdAt).getTime() : Date.now();
+
+  // Build a pool of potential authors: fake tipsters + generic author names
+  const tipsterAuthors = (richCtx.tipsters || []).map(t => ({
+    name: t.displayName,
+    avatar: t.avatar,
+    id: t.id,
+  }));
+  const genericAuthors = FAKE_AUTHORS.map((name, i) => ({ name, avatar: undefined, id: -(3000 + i) }));
+  const authorPool = [...tipsterAuthors, ...genericAuthors];
+
   const fakeComments: TipCommentRow[] = [];
+  const usedAuthors = new Set<string>();
+
   for (let i = 0; i < commentCount; i++) {
-    const idx = Math.abs((tipId.charCodeAt(i % tipId.length) ?? 0) + i) % COMMENT_TEMPLATES.length;
+    // Pick a unique author per comment
+    let author = authorPool[Math.floor(rand() * authorPool.length)];
+    let tries = 0;
+    while (usedAuthors.has(author.name) && tries < 20) {
+      author = authorPool[Math.floor(rand() * authorPool.length)];
+      tries++;
+    }
+    usedAuthors.add(author.name);
+
+    // Mix contextual and generic comments
+    const useContextual = home && away && rand() > 0.4;
+    const content = useContextual
+      ? buildContextComment(rand, home, away, market, league)
+      : COMMENT_TEMPLATES[Math.floor(rand() * COMMENT_TEMPLATES.length)];
+
+    // Spread timestamps naturally after the tip was created
+    const minutesLater = Math.floor(rand() * 120) + i * 15;
+    const createdAt = new Date(baseTs + minutesLater * 60_000).toISOString();
+
     fakeComments.push({
       id: `fake_${tipId}_${i}`,
       tipId,
-      userId: -(2000 + i),
-      authorName: ['SportsFan', 'BetSmarter', 'TipKing', 'OddsWatcher', 'PuntPro'][i % 5],
-      content: COMMENT_TEMPLATES[idx],
-      createdAt: new Date(Date.now() - (commentCount - i) * 600_000).toISOString(),
+      userId: author.id,
+      authorName: author.name,
+      authorAvatar: author.avatar,
+      content,
+      createdAt,
     });
   }
+  // Sort by timestamp ascending
+  fakeComments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   s.comments.set(tipId, fakeComments);
 }
 

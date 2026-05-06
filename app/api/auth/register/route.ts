@@ -9,6 +9,7 @@ import { issueVerification } from '@/lib/email-verification-store';
 import { buildVerificationEmail } from '@/lib/email-templates/verification-email';
 import { recordSignup } from '@/lib/affiliate-clicks-store';
 import { cookies } from 'next/headers';
+import { getReferrerByCode, recordReferral } from '@/lib/referral-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -237,6 +238,26 @@ export async function POST(request: Request) {
       }
     } catch (e) {
       console.warn('[auth/register] affiliate attribution failed:', e);
+    }
+
+    // ── Referral attribution: check bz_ref cookie or body.referralCode
+    try {
+      const cookieStore = await cookies();
+      const refCode = (body as { referralCode?: string }).referralCode
+        || cookieStore.get('bz_ref')?.value;
+      if (refCode) {
+        const referrerId = await getReferrerByCode(refCode);
+        if (referrerId && referrerId !== newUser.id) {
+          await recordReferral({
+            referrerId,
+            referredUserId: newUser.id,
+            referredEmail: newUser.email,
+            referredUsername: newUser.username,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[auth/register] referral attribution failed:', e);
     }
 
     // Set auth cookie — user is logged in immediately, but flagged as

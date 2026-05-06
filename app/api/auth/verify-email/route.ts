@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { verifyByCode, verifyByToken } from '@/lib/email-verification-store';
 import { mockUsers } from '@/lib/mock-data';
+import { onReferralVerified } from '@/lib/referral-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
     if (!result.ok) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     const u = mockUsers.find(x => x.id === result.userId);
     if (u) u.is_verified = true;
+    // Trigger referral bonus if applicable
+    onReferralVerified(result.userId).catch(() => {});
     return NextResponse.json({ success: true, userId: result.userId });
   }
 
@@ -34,5 +37,7 @@ export async function POST(request: Request) {
   if (!result.ok) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
   const u = mockUsers.find(x => x.id === auth.userId);
   if (u) u.is_verified = true;
+  // Trigger referral bonus if applicable
+  onReferralVerified(auth.userId).catch(() => {});
   return NextResponse.json({ success: true, userId: auth.userId });
 }

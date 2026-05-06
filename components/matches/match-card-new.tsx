@@ -236,7 +236,7 @@ export function MatchCardNew({
             <div className="flex min-w-0 items-center gap-1.5">
               <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport.slug} size="xs" />
               <span className={cn(
-                'truncate text-sm font-medium',
+                'min-w-0 flex-1 text-sm font-medium leading-tight break-words',
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.homeScore > match.awayScore && 'text-success'
               )}>
@@ -254,7 +254,7 @@ export function MatchCardNew({
             <div className="flex min-w-0 items-center gap-1.5">
               <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport.slug} size="xs" />
               <span className={cn(
-                'truncate text-sm font-medium',
+                'min-w-0 flex-1 text-sm font-medium leading-tight break-words',
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.awayScore > match.homeScore && 'text-success'
               )}>

@@ -41,6 +41,7 @@ interface AuthContextType {
   loginWithGoogleOneTap: (credential: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updateUser: (patch: Partial<AuthUser>) => void;
 }
 
 interface RegisterData {
@@ -273,6 +274,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await checkAuth();
   };
 
+  const updateUser = (patch: Partial<AuthUser>) => {
+    setUser((u) => (u ? { ...u, ...patch } : u));
+  };
+
   const loginWithGoogleOneTap = async (credential: string) => {
     try {
       const res = await fetch('/api/auth/google-one-tap', {
@@ -306,6 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginWithGoogleOneTap,
         logout,
         refreshUser,
+        updateUser,
       }}
     >
       {children}
