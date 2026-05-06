@@ -202,7 +202,16 @@ const TITLES: Record<string, { title: string; desc: string }> = {
 
 export function AuthModal() {
   const { isOpen, view, setView, close } = useAuthModal();
+  const { isAuthenticated } = useAuth();
   const meta = TITLES[view] || TITLES.login;
+
+  // Auto-close the modal when the user becomes authenticated
+  // (covers Google One Tap and any other provider that sets auth state directly)
+  useEffect(() => {
+    if (isAuthenticated && isOpen) {
+      close();
+    }
+  }, [isAuthenticated, isOpen, close]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) close(); }}>

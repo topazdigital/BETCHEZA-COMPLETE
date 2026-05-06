@@ -41,10 +41,10 @@ function getOpenAI(): OpenAI | null {
   }
 }
 
-// Default model — overridable via env. We use gpt-5-mini through Replit AI
+// Default model — overridable via env. We use gpt-4o-mini through Replit AI
 // Integrations: cost-effective, fast and chat-optimised. Override with
-// OPENAI_MODEL=gpt-5.4 etc. if you want a smarter (more expensive) brain.
-const MODEL = process.env.OPENAI_MODEL || 'gpt-5-mini';
+// OPENAI_MODEL=gpt-4o etc. if you want a smarter (more expensive) brain.
+const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 // ----- App-knowledge system prompt -----
 // Detailed, opinionated, structured. The LLM answers grounded in this app's

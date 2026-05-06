@@ -38,7 +38,7 @@ function getOpenAI(): OpenAI | null {
   }
 }
 
-const MODEL = process.env.OPENAI_MODEL || 'gpt-5-mini'
+const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
 
 // Deterministic fallback so the predictor still feels useful when no LLM is
 // configured. Uses a hash of the team names for stable, varied results.

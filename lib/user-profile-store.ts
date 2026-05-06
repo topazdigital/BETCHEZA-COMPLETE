@@ -107,6 +107,12 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
           merged.avatarUrl ?? null,
         ]
       );
+      if (patch.avatarUrl !== undefined) {
+        await query(
+          'UPDATE users SET avatar_url = ? WHERE id = ?',
+          [merged.avatarUrl ?? null, userId]
+        ).catch(() => {});
+      }
     } catch { /* ignore — file fallback saved */ }
   }
 

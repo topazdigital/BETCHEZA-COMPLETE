@@ -12,6 +12,37 @@ import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 
+const PRESET_AVATARS = [
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Mia&backgroundColor=d1d4f9',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Leo&backgroundColor=ffd5dc',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Zoe&backgroundColor=ffdfbf',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Kai&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Sam&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex&backgroundColor=d1d4f9',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan&backgroundColor=ffd5dc',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Taylor&backgroundColor=ffdfbf',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Morgan&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=River&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Robo1&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Robo2&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/bottts/svg?seed=Robo3&backgroundColor=d1d4f9',
+  'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix1&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix2&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/pixel-art/svg?seed=Pix3&backgroundColor=d1d4f9',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore1&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Lore2&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji1&backgroundColor=b6e3f4',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Emoji2&backgroundColor=c0aede',
+  'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb1&backgroundColor=b6e3f4&shapeColor=0a5b83,1c799f,69d2e7',
+  'https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb2&backgroundColor=c0aede&shapeColor=6b4c8e,9b59b6,d8a9f7',
+];
+
+function randomAvatar(): string {
+  return PRESET_AVATARS[Math.floor(Math.random() * PRESET_AVATARS.length)];
+}
+
 function buildRegistrationEmail(opts: { displayName: string; username: string; email: string; appUrl: string }) {
   const { displayName, username, email, appUrl } = opts;
   const text = `Welcome to Betcheza, ${displayName}!
@@ -150,15 +181,16 @@ export async function POST(request: Request) {
           return NextResponse.json({ success: false, error: 'Username already taken' }, { status: 400 });
         }
         // Insert into DB
+        const assignedAvatar = randomAvatar();
         const result = await execute(
           `INSERT INTO users (email, phone, country_code, password_hash, google_id, username, display_name, avatar_url, bio, role, balance, timezone, odds_format, is_verified, created_at, updated_at)
-           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, NULL, 'user', 0, 'Africa/Nairobi', 'decimal', 0, NOW(), NOW())`,
-          [email, phone || null, countryCode || null, passwordHash, username, displayName]
+           VALUES (?, ?, ?, ?, NULL, ?, ?, ?, NULL, 'user', 0, 'Africa/Nairobi', 'decimal', 0, NOW(), NOW())`,
+          [email, phone || null, countryCode || null, passwordHash, username, displayName, assignedAvatar]
         );
         newUser = {
           id: result.insertId, email, phone: phone || null, country_code: countryCode || null,
           password_hash: passwordHash, google_id: null, username, display_name: displayName,
-          avatar_url: null, bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
+          avatar_url: assignedAvatar, bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
           odds_format: 'decimal', is_verified: false, created_at: new Date(),
         };
       } catch (dbErr) {
@@ -178,7 +210,7 @@ export async function POST(request: Request) {
       newUser = {
         id: mockUsers.length + 1, email, phone: phone || null, country_code: countryCode || null,
         password_hash: passwordHash, google_id: null, username, display_name: displayName,
-        avatar_url: null, bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
+        avatar_url: randomAvatar(), bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
         odds_format: 'decimal', is_verified: false, created_at: new Date(),
       };
       mockUsers.push(newUser);

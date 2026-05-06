@@ -210,6 +210,33 @@ export default function AdminSettingsPage() {
     }
   }
 
+  const saveSettingNow = async (key: keyof Settings, value: string) => {
+    const updated = { ...settings, [key]: value };
+    setSettings(updated);
+    setIsSaving(true);
+    setSaveStatus('idle');
+    setErrorMessage('');
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: updated }),
+      });
+      if (response.ok) {
+        setSaveStatus('success');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+      } else {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save');
+      }
+    } catch (error) {
+      setSaveStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const updateSetting = (key: keyof Settings, value: string) => {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
@@ -670,8 +697,8 @@ export default function AdminSettingsPage() {
                   <Input id="logoUrl" placeholder="https://… or /uploads/logo.png" value={settings.logo_url} onChange={(e) => updateSetting('logo_url', e.target.value)} />
                   <BrandingFileUpload
                     label="Upload light logo"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    onUploaded={(url) => updateSetting('logo_url', url)}
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
+                    onUploaded={(url) => saveSettingNow('logo_url', url)}
                   />
                   {settings.logo_url && (
                     <div className="rounded-md border border-border bg-muted/40 p-3"><img src={settings.logo_url} alt="logo preview" className="h-10 object-contain" /></div>
@@ -682,8 +709,8 @@ export default function AdminSettingsPage() {
                   <Input id="logoDarkUrl" placeholder="https://… or /uploads/logo-dark.png" value={settings.logo_dark_url} onChange={(e) => updateSetting('logo_dark_url', e.target.value)} />
                   <BrandingFileUpload
                     label="Upload dark logo"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    onUploaded={(url) => updateSetting('logo_dark_url', url)}
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
+                    onUploaded={(url) => saveSettingNow('logo_dark_url', url)}
                   />
                   {settings.logo_dark_url && (
                     <div className="rounded-md border border-border bg-slate-900 p-3"><img src={settings.logo_dark_url} alt="dark logo preview" className="h-10 object-contain" /></div>
@@ -695,8 +722,8 @@ export default function AdminSettingsPage() {
                 <Input id="faviconUrl" placeholder="https://… or /uploads/favicon.png" value={settings.favicon_url} onChange={(e) => updateSetting('favicon_url', e.target.value)} />
                 <BrandingFileUpload
                   label="Upload favicon"
-                  accept="image/png,image/x-icon,image/svg+xml,image/vnd.microsoft.icon"
-                  onUploaded={(url) => updateSetting('favicon_url', url)}
+                  accept="image/png,image/x-icon,image/svg+xml,image/vnd.microsoft.icon,.png,.ico,.svg"
+                  onUploaded={(url) => saveSettingNow('favicon_url', url)}
                 />
                 {settings.favicon_url && (
                   <div className="flex items-center gap-3 rounded-md border border-border bg-muted/40 p-3">
