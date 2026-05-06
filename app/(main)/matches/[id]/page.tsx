@@ -1293,7 +1293,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                       {formatTime(match.kickoffTime, timezone)}
                     </p>
                     <p className="mt-1 text-[10px] text-white/40">
-                      {getDayLabel(match.kickoffTime, timezone)} • {formatDate(match.kickoffTime, timezone)}
+                      {getDayLabel(match.kickoffTime, timezone)}
                     </p>
                     <div className="mt-2 text-xl text-white/20 font-light">vs</div>
                   </>
@@ -2814,6 +2814,7 @@ function MatchInfoRail({
   h2h: H2HGame[]
   onJumpToTab: (tab: string) => void
 }) {
+  const timezone = getBrowserTimezone()
   const NO_DRAW = new Set(['basketball', 'baseball', 'tennis', 'mma'])
   const isTwoWay = NO_DRAW.has(match.sport.slug)
   const consensus = bookmakerOdds.length > 0 ? bookmakerOdds[0] : null
@@ -2873,7 +2874,7 @@ function MatchInfoRail({
           )}
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-xs">{new Date(match.kickoffTime).toLocaleString()}</span>
+            <span className="text-xs">{formatDate(match.kickoffTime, timezone)} · {formatTime(match.kickoffTime, timezone)}</span>
           </div>
           {match.attendance && (
             <div className="flex items-center gap-2">

@@ -3477,8 +3477,11 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
   const activeKeys = await getActiveOutrightKeys();
   const callableKeys = sportKeys.filter(k => activeKeys.has(k));
   if (callableKeys.length === 0) {
-    setCache(cacheKey, []);
-    return [];
+    // No active outright keys from The Odds API — try standings fallback before giving up.
+    const standingsFallback = await buildOutrightFromStandings(leagueId).catch(() => null);
+    const result = standingsFallback ? [standingsFallback] : sgoOutrights;
+    setCache(cacheKey, result);
+    return result;
   }
 
   // Probe all callable outright keys in parallel.

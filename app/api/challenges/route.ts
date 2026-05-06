@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getChallenges, createChallenge, type ScoringMethod } from '@/lib/challenges-store';
+import { getChallenges, createChallenge, seedFakeChallengesIfEmpty, type ScoringMethod } from '@/lib/challenges-store';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get('status') || 'all';
   try {
+    seedFakeChallengesIfEmpty();
     const challenges = await getChallenges(status as 'all' | 'pending' | 'active' | 'finished' | 'cancelled');
     return NextResponse.json({ challenges });
   } catch (e) {

@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { useUserSettings } from '@/contexts/user-settings-context';
-import { formatTime, formatDateTime, getDayLabel } from '@/lib/utils/timezone';
+import { formatTime, formatDate, getDayLabel } from '@/lib/utils/timezone';
 import { LiveIndicator } from './live-indicator';
 import type { MatchWithDetails } from '@/lib/types';
 
@@ -110,8 +110,12 @@ export function MatchHeader({ match }: MatchHeaderProps) {
       {/* Match Info */}
       <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
         <span>{match.country?.name || 'International'}</span>
-        <span className="h-1 w-1 rounded-full bg-muted-foreground"></span>
-        <span>{formatDateTime(kickoffTime, settings.timezone)}</span>
+        {!isLive && !isFinished && (
+          <>
+            <span className="h-1 w-1 rounded-full bg-muted-foreground"></span>
+            <span>{formatDate(kickoffTime, settings.timezone)}</span>
+          </>
+        )}
       </div>
     </div>
   );

@@ -98,6 +98,95 @@ function persistToDisk() {
   try { fileStoreSet('challenges', { challenges: cStore.challenges, nextId: cStore.nextId }); } catch {}
 }
 
+const FAKE_TIPSTER_PAIRS: { challenger: { id: number; name: string; streak: number }; opponent: { id: number; name: string; streak: number } }[] = [
+  { challenger: { id: 1001, name: 'Victor Okoye', streak: 7 }, opponent: { id: 1002, name: 'James Kariuki', streak: 4 } },
+  { challenger: { id: 1003, name: 'Amara Diallo', streak: 5 }, opponent: { id: 1004, name: 'Kwame Asante', streak: 9 } },
+  { challenger: { id: 1005, name: 'Luca Romano', streak: 3 }, opponent: { id: 1006, name: 'Mehmet Yilmaz', streak: 6 } },
+  { challenger: { id: 1007, name: 'Ivan Petrov', streak: 11 }, opponent: { id: 1008, name: 'Carlos Mendez', streak: 8 } },
+];
+
+const FAKE_CHALLENGE_TEMPLATES: { title: string; description: string; sport: string; scoringMethod: ScoringMethod }[] = [
+  { title: 'EPL Prediction Showdown', description: 'Who can nail the most Premier League results this weekend?', sport: 'football', scoringMethod: 'win_rate' },
+  { title: 'Champions League ROI Battle', description: 'Best return on investment across all UCL fixtures wins.', sport: 'football', scoringMethod: 'roi' },
+  { title: 'NBA Hot Streak Challenge', description: 'Longest consecutive winning run across NBA picks this week.', sport: 'basketball', scoringMethod: 'streak' },
+  { title: 'Weekend Warrior Cup', description: 'Multi-sport clash — highest win rate across football & basketball.', sport: 'football', scoringMethod: 'win_rate' },
+];
+
+const FAKE_TIPSTER_BY_ID = new Map<number, { name: string; streak: number }>();
+FAKE_TIPSTER_PAIRS.forEach(p => {
+  FAKE_TIPSTER_BY_ID.set(p.challenger.id, { name: p.challenger.name, streak: p.challenger.streak });
+  FAKE_TIPSTER_BY_ID.set(p.opponent.id, { name: p.opponent.name, streak: p.opponent.streak });
+});
+
+function buildFakeParticipant(id: number, name: string, streak: number, wonRate = 0.62): ChallengeParticipant {
+  const total = 40 + Math.floor(Math.abs((id * 17) % 60));
+  const won = Math.round(total * wonRate);
+  return {
+    userId: id,
+    username: name.toLowerCase().replace(/\s/g, '_'),
+    displayName: name,
+    avatar: null,
+    tips: total,
+    won,
+    lost: total - won,
+    streak,
+    roi: Math.round((wonRate * 1.9 - 1) * 100) / 10,
+  };
+}
+
+export function seedFakeChallengesIfEmpty(): void {
+  if (cStore.challenges.length > 0) return;
+  const now = new Date();
+
+  const statuses: ChallengeStatus[] = ['active', 'active', 'pending', 'finished'];
+
+  FAKE_CHALLENGE_TEMPLATES.forEach((tpl, i) => {
+    const pair = FAKE_TIPSTER_PAIRS[i];
+    const status = statuses[i];
+    const startOffset = status === 'finished' ? -10 : status === 'active' ? -3 : 1;
+    const endOffset = status === 'finished' ? -1 : 7;
+    const start = new Date(now); start.setDate(start.getDate() + startOffset);
+    const end = new Date(now); end.setDate(end.getDate() + endOffset);
+
+    const id = cStore.nextId++;
+    const votesC = 30 + Math.floor(Math.abs((id * 13) % 50));
+    const votesO = 20 + Math.floor(Math.abs((id * 7) % 40));
+
+    const entry: FileChallenge = {
+      id,
+      title: tpl.title,
+      description: tpl.description,
+      sport: tpl.sport,
+      scoringMethod: tpl.scoringMethod,
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      status,
+      challengerId: pair.challenger.id,
+      opponentId: pair.opponent.id,
+      winnerId: status === 'finished' ? pair.challenger.id : null,
+      stakePts: [100, 250, 50, 500][i] || 100,
+      prizePool: ['$20', '$50', null, '$100'][i] || null,
+      isPublic: true,
+      maxTips: [10, 15, 8, 20][i] || 10,
+      watchers: 10 + Math.floor(Math.abs((id * 11) % 90)),
+      createdAt: start.toISOString(),
+    };
+    cStore.challenges.push(entry);
+
+    // Seed some community votes for realism
+    vStore.push({ challengeId: id, userId: 9001 + i, side: 'challenger' });
+    vStore.push({ challengeId: id, userId: 9010 + i, side: 'opponent' });
+    for (let v = 0; v < Math.min(votesC - 1, 5); v++) {
+      vStore.push({ challengeId: id, userId: 8000 + i * 10 + v, side: 'challenger' });
+    }
+    for (let v = 0; v < Math.min(votesO - 1, 4); v++) {
+      vStore.push({ challengeId: id, userId: 7000 + i * 10 + v, side: 'opponent' });
+    }
+  });
+
+  persistToDisk();
+}
+
 function fakePart(userId: number, displayName: string, streak = 0): ChallengeParticipant {
   return { userId, username: displayName.toLowerCase().replace(/\s/g, '_'), displayName, avatar: null, tips: 0, won: 0, lost: 0, streak, roi: 0 };
 }
@@ -199,8 +288,8 @@ export async function getChallenges(status?: ChallengeStatus | 'all'): Promise<C
     ...c,
     votesChallenger: vStore.filter(v => v.challengeId === c.id && v.side === 'challenger').length,
     votesOpponent: vStore.filter(v => v.challengeId === c.id && v.side === 'opponent').length,
-    challenger: fakePart(c.challengerId, `Tipster${c.challengerId}`, 3),
-    opponent: c.opponentId ? fakePart(c.opponentId, `Tipster${c.opponentId}`, 1) : null,
+    challenger: (() => { const p = FAKE_TIPSTER_BY_ID.get(c.challengerId); return p ? buildFakeParticipant(c.challengerId, p.name, p.streak) : fakePart(c.challengerId, `Tipster${c.challengerId}`, 3); })(),
+    opponent: c.opponentId ? (() => { const p = FAKE_TIPSTER_BY_ID.get(c.opponentId!); return p ? buildFakeParticipant(c.opponentId!, p.name, p.streak) : fakePart(c.opponentId!, `Tipster${c.opponentId}`, 1); })() : null,
   }));
 }
 

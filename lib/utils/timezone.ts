@@ -54,11 +54,14 @@ export function formatDate(
 ): string {
   const dateObj = typeof date === 'string' ? new Date(date) : date;
   const showYear = options.year ?? (dateObj.getFullYear() !== new Date().getFullYear());
-  return formatInTimezone(date, timezone, {
+  // Build the format options directly (no inherited hour/minute from formatInTimezone defaults).
+  const fmtOptions: Intl.DateTimeFormatOptions = {
+    timeZone: timezone,
     month: 'short',
     day: 'numeric',
     ...(showYear ? { year: 'numeric' as const } : {}),
-  });
+  };
+  return new Intl.DateTimeFormat('en-US', fmtOptions).format(dateObj);
 }
 
 /**
