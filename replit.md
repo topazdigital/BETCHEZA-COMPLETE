@@ -1,87 +1,74 @@
 # Betcheza
 
-## Overview
+A sports betting tipster community platform providing real-time sports data, AI-powered predictions, and social tip sharing, leaderboards, and competitions — targeted at the Kenyan market but covering global sports.
 
-Betcheza is a sports betting tipster community platform providing real-time sports data, AI-powered predictions, and a social environment for tip sharing and tracking. Its purpose is to empower users with tools for informed betting decisions and foster community engagement through leaderboards. The project aims to be a leading online destination for sports betting and tipster communities.
+## Run & Operate
 
-## User Preferences
+- **Dev**: `npm run dev` (port 5000, bound to 0.0.0.0)
+- **Build**: `npm run build`
+- **Start**: `npm start` (port 5001)
+- **Lint**: `npm run lint`
+- **Required env vars**: `JWT_SECRET`, `FOOTBALL_DATA_API_KEY`, `SPORTSGAMEODDS_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+- **Optional DB**: `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` (MySQL). App runs without DB using in-memory/file fallback.
+- **OpenAI**: Uses Replit AI Integrations (`AI_INTEGRATIONS_OPENAI_API_KEY` + `AI_INTEGRATIONS_OPENAI_BASE_URL`) with `OPENAI_API_KEY` as fallback. Falls back to rules-based chat if neither is set.
 
-- I want iterative development.
-- I prefer detailed explanations.
-- Ask before making major changes.
-- I prefer simple language.
-- I like functional programming.
-- **🚨 CRITICAL — IMMUTABLE RULE: ALWAYS use MySQL only. NEVER use PostgreSQL, pg, $1/$2 placeholders, ON CONFLICT, or any PostgreSQL syntax — under ANY circumstances, in ANY new chat. The ONLY database driver allowed is `mysql2/promise`. All SQL placeholders must be `?`. All upserts must use `ON DUPLICATE KEY UPDATE`. All inserts must use `INSERT IGNORE`. Violating this rule is STRICTLY FORBIDDEN. The user will deploy to a live MySQL server (DirectAdmin hosting).**
-- Sport icons in `ALL_SPORTS` (lib/sports-data.ts) and `mockSports` (lib/mock-data.ts) must use emoji characters directly (e.g. '⚽', '🏀') — not text keys like 'soccer'.
+## Stack
 
-## System Architecture
+- **Framework**: Next.js 16 (App Router), React 19, TypeScript
+- **Styling**: Tailwind CSS v4, Radix UI, shadcn/ui
+- **Data fetching**: SWR
+- **Database**: MySQL via `mysql2/promise` (custom `lib/db.ts` wrapper) — **MySQL ONLY, never PostgreSQL**
+- **Auth**: Custom JWT (`jose` + `bcryptjs`) with Google OAuth support
+- **AI**: OpenAI (via Replit AI Integrations or direct API key)
+- **Notifications**: Web Push (VAPID) + Nodemailer
 
-The Betcheza platform is built with Next.js (App Router) and React, utilizing TypeScript. Styling uses Tailwind CSS v4, shadcn/ui, and Radix UI. State management and data fetching are handled by SWR. Authentication uses a custom JWT implementation with `jose` and `bcryptjs`, securing user sessions via HTTP-only cookies.
+## Where things live
 
-**Database: MySQL ONLY** — driver: `mysql2/promise` (env vars: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` or `MYSQL_HOST` etc.). All SQL placeholders use `?`. Upserts use `ON DUPLICATE KEY UPDATE x = VALUES(x)`. Conditional inserts use `INSERT IGNORE`. Tables use `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`. Never use pg, $1/$2, ON CONFLICT, RETURNING, or any PostgreSQL syntax.
+- `app/` — Next.js App Router (auth routes, main pages, admin, API routes)
+- `lib/` — Business logic, DB abstraction, API integrations, utilities
+- `lib/db.ts` — MySQL pool wrapper (source of truth for DB access)
+- `lib/api/unified-sports-api.ts` — Unified multi-provider sports data
+- `components/` — React UI components
+- `public/sw.js` — Service worker for push notifications
+- `.local/data/` — File-based fallback data store
 
-Key architectural decisions and features include:
+## Architecture decisions
 
-- **Modular Project Structure**: Designed for maintainability and scalability.
-- **Data Fallback Strategy**: Ensures system stability when external data sources are unavailable (in-memory / file-based fallback when DB is unavailable).
-- **AI Integration**: Features an AI copilot for match predictions and chat, powered by OpenAI, with a local rules-based fallback.
-- **Dynamic Content**: Utilizes server-side rendering and API routes for real-time sports data, odds, and community content.
-- **Admin Dashboard**: Provides comprehensive management for users, matches, news, platform settings, social logins, SEO, and URL rewrites.
-- **User Personalization**: Includes sidebar league grouping, team and tipster following, and personalized dashboards.
-- **Enhanced Security**: Implements Two-Factor Authentication (2FA), rate limiting, Captcha, and email verification.
-- **Notification System**: Supports web push and email notifications, including admin broadcasts and real-time in-app notifications.
-- **Content Management**: Features "My Bookmarks," a season selector, and an internal news reader.
-- **Expanded Data Coverage**: Integrates multiple sports APIs for wide match coverage across various sports and leagues.
-- **Tipster Community Features**: Tipster catalogue with comparison tools, role/permission system, auto-tip generation, persistent follows, and public tipster profiles. Fake tipsters have `isOnline`/`lastSeen` fields (~35% online at any time); tipster cards show green online dot.
-- **Community Engagement**: Comments and likes per tip, joinable competitions with leaderboards, and a community feed. Tip of the Day card on feed. Leaderboard has podium + Hot Streaks tab with responsive mobile card list (hidden sm:block for desktop table). Community Feed "Pulse" widget shows real-time online tipster count.
-- **H2H Challenge Voting**: Each `ChallengeCard` has a `CommunityVoteBar` — users vote for either side (challenger/opponent). Votes stored in `challenge_votes` table (MySQL) or in-process fallback. API: GET/POST `/api/challenges/[id]/vote`.
-- **Registration UX**: Phone required. Country picker shows flag emoji + dial code with live type-to-search filter (160+ countries). Country auto-detected from `navigator.language` on mount.
-- **Timezone Picker**: `ALL_TIMEZONES` (100+ IANA zones) in `lib/utils/timezone.ts`. Settings page uses a searchable custom dropdown instead of a static select.
-- **Static Content Pages**: About, Terms, Privacy, Responsible Gambling, FAQ, Contact, Cookies — all contain rich, real HTML content. `StaticPageRenderer` renders HTML via `dangerouslySetInnerHTML` with custom scoped CSS (`static-page-body` class).
-- **Dark Mode**: next-themes is the single source of truth for dark/light/system theme. `UserSettingsContext` delegates to `useTheme()` from next-themes — no conflicting DOM class toggle. Theme persisted in both `betcheza_settings` and next-themes localStorage.
-- **Match Page Mobile**: Betting Markets section always-expanded with tappable odds chips (1X2 hero row + additional markets). Lineups accordion shows full 11-player squad with jersey number, name, position in dark-themed inner card.
-- **Financial Features**: User wallet ledger with deposit/withdraw, prize payouts, and multi-provider payment gateway support.
-- **Affiliate Management**: Tracks affiliate clicks, sign-ups, and deposits.
-- **Persistence**: Critical settings and user data are persisted to local files for development and to MySQL for production.
-- **3-Column Layout**: Main pages use a 3-column flex layout.
-- **Match URL Slugs**: Match URLs use `team-a-vs-team-b-NUMERICID` format.
-- **Sports Filter**: Displays 8 popular sports as pills plus a "More" dropdown.
-- **Global Odds Format**: `contexts/user-settings-context.tsx` is the single source of truth for odds format.
-- **Match Caching**: Uses an in-process 20s TTL cache with promise deduplication for match data.
-- **Fake Votes System**: Seeds realistic, DB-persisted vote distributions for upcoming matches.
-- **DB-First Auth**: All auth routes query MySQL first and fall back to in-memory mock only when no DB pool is configured.
-- **Google OAuth**: OAuth callback saves Google users to DB; `/api/auth/google-client-id` exposes the client ID for frontend.
-- **Real Bookmaker Odds Only**: matches without bookmaker odds return `undefined` odds instead of computer-generated estimates.
-- **Jackpot Feature**: Scrapes Kenyan bookmakers (SportPesa, Betika, etc.) for jackpot games, AI predicts them (auto-triggered on sync), admin can edit. Each bookmaker has its own SEO page. Results section and recently-viewed widget included.
-- **Push Notifications**: Full browser push notification system using `web-push` + VAPID. Service worker at `public/sw.js`, subscription API at `/api/notifications/subscribe` (POST/DELETE), VAPID public key exposed at `/api/notifications/vapid-public-key`. Jackpot notifications sent automatically when new rounds are published. Bell UI on `/jackpots` page. VAPID keys stored as `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` env vars.
-- **GitHub Actions Deploy**: Configured for SSH-based auto-deployment on push to main.
-- **Health Check API**: `/api/health` returns uptime and timestamp.
+- **MySQL only**: App explicitly forbids PostgreSQL. All SQL uses `?` placeholders, `ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`.
+- **Graceful DB fallback**: `getPool()` returns `null` if DB env vars are absent; all queries return empty results rather than throwing, enabling the app to run without a database.
+- **OpenAI fallback**: AI chat uses a rules-based local fallback if no OpenAI key is configured — chat always works.
+- **File-based settings**: Site settings, email config, and API keys are persisted to `.local/data/` files and seeded from env vars at startup via `instrumentation.ts`.
+- **Match URL slugs**: `/matches/team-a-vs-team-b-NUMERICID` format for SEO.
 
-## Environment Variables (MySQL)
+## Product
 
-- `DB_HOST` or `MYSQL_HOST` — MySQL host
-- `DB_USER` or `MYSQL_USER` — MySQL username
-- `DB_PASSWORD` or `MYSQL_PASSWORD` — MySQL password
-- `DB_NAME` or `MYSQL_DATABASE` — MySQL database name
-- `JWT_SECRET` — Secret for JWT token signing
-- `FOOTBALL_DATA_API_KEY` — football-data.org API key
-- `SPORTSGAMEODDS_API_KEY` — SportsGameOdds API key
+- Real-time match scores, odds, and lineups across 35+ sports
+- AI match predictions and conversational betting copilot
+- Tipster leaderboard, community feed, tip sharing with likes/comments
+- Jackpot scraper for Kenyan bookmakers (SportPesa, Betika, etc.)
+- User wallet with deposit/withdraw and prize payouts
+- Admin dashboard for users, payments, settings, SEO, email, notifications
+- Web push notifications, 2FA, email verification
 
-## External Dependencies
+## User preferences
 
-- **OpenAI**: For AI-powered match predictions and conversational AI.
-- **ESPN Public API**: Primary source for real-time sports scores and match data.
-- **The Odds API**: For multi-bookmaker odds comparisons.
-- **TheSportsDB**: Supplemental data for events.
-- **FotMob**: Additional match data and league coverage.
-- **OpenLigaDB**: Additional match data.
-- **football-data.org**: Additional match data.
-- **flagcdn.com**: For dynamic flag icons.
-- **SportsGameOdds**: For additional bookmaker lines and outrights.
-- **Various Email-to-SMS Carrier Gateways**: For SMS notifications.
+- **CRITICAL — IMMUTABLE**: Always use MySQL only. NEVER PostgreSQL, `pg`, `$1/$2` placeholders, `ON CONFLICT`, or `RETURNING`.
+- SQL placeholders: `?`. Upserts: `ON DUPLICATE KEY UPDATE`. Conditional inserts: `INSERT IGNORE`.
+- Sport icons in `ALL_SPORTS` and `mockSports` must use emoji characters directly (e.g. `⚽`, `🏀`).
+- Iterative development. Ask before major changes. Simple language.
 
-## Development
+## Gotchas
 
-- App runs on port 5000 via the "Start application" workflow (`npm run dev`)
-- Production: DirectAdmin hosting with MySQL database, GitHub Actions SSH deploy
-- File-based fallback data stored in `.local/data/`
+- No DB = app still runs (in-memory/file fallback), but user data won't persist.
+- `next start` runs on port 5001 bound to 127.0.0.1 (production); dev runs on 5000 bound to 0.0.0.0.
+- VAPID keys must be set for push notifications to work.
+- OpenAI blueprint already installed — app checks `AI_INTEGRATIONS_OPENAI_API_KEY` first, then `OPENAI_API_KEY`.
+- `instrumentation.ts` seeds env vars into the in-memory settings store at startup.
+
+## Pointers
+
+- Sports API integration: `lib/api/unified-sports-api.ts`
+- Auth logic: `lib/auth.ts`
+- DB wrapper: `lib/db.ts`
+- Site settings: `lib/site-settings.ts`
+- Deployment was originally DirectAdmin + PM2 + GitHub Actions SSH — now runs on Replit.
