@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { credit } from '@/lib/wallet-store';
 import { recordDeposit } from '@/lib/affiliate-clicks-store';
+import { isConfigured, initiateStkPush, storePending } from '@/lib/payhero';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,6 +14,10 @@ interface Body {
   phone?: string;
   cardLast4?: string;
   reference?: string;
+}
+
+function generateRef(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -34,16 +39,40 @@ export async function POST(req: NextRequest) {
   if (!body.method) {
     return NextResponse.json({ success: false, error: 'Pick a payment method.' }, { status: 400 });
   }
-  if (body.method === 'mpesa' && !/^(\+?254|0)?7\d{8}$/.test((body.phone || '').replace(/\s/g, ''))) {
+  if (body.method === 'mpesa' && !/^(\+?254|0)?[17]\d{8}$/.test((body.phone || '').replace(/\s/g, ''))) {
     return NextResponse.json({ success: false, error: 'Enter a valid M-Pesa phone (e.g. 0712345678).' }, { status: 400 });
   }
 
-  // In production, this is where we'd call:
-  //   - Daraja STK push for M-Pesa
-  //   - Stripe PaymentIntent / Flutterwave / Paystack for card
-  //   - bank transfer / crypto webhook
-  // For now we credit the wallet immediately so the rest of the app
-  // (competition entry, ledger UI) can be exercised end-to-end.
+  // ── M-Pesa via PayHero STK push ──────────────────────────────────────────
+  if (body.method === 'mpesa' && isConfigured()) {
+    const reference = generateRef('BETCHEZA-D');
+    const result = await initiateStkPush(body.amount, body.phone!, reference);
+
+    if (!result.ok) {
+      console.error('[wallet/deposit] PayHero STK push failed:', result.error);
+      return NextResponse.json({ success: false, error: result.error || 'M-Pesa prompt failed. Try again.' }, { status: 502 });
+    }
+
+    storePending(reference, {
+      userId: user.userId,
+      amount: body.amount,
+      currency: body.currency || 'KES',
+      phone: body.phone!,
+      type: 'deposit',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      reference,
+      checkoutRequestId: result.checkoutRequestId,
+      message: 'M-Pesa prompt sent. Enter your PIN on your phone to complete.',
+    });
+  }
+
+  // ── Other methods (card, bank, crypto) or M-Pesa without PayHero configured ──
   const txn = credit(user.userId, body.amount, {
     type: 'deposit',
     currency: body.currency || 'KES',
@@ -59,9 +88,6 @@ export async function POST(req: NextRequest) {
             : 'Deposit via Crypto',
   });
 
-  // Roll the deposit into the bookmaker funnel if this user is
-  // attributed to one (i.e. they signed up via an affiliate click).
-  // Silently no-ops when no attribution exists.
   try {
     recordDeposit({
       userId: user.userId,
@@ -72,8 +98,5 @@ export async function POST(req: NextRequest) {
     console.warn('[wallet/deposit] affiliate attribution failed:', e);
   }
 
-  return NextResponse.json({
-    success: true,
-    transaction: txn,
-  });
+  return NextResponse.json({ success: true, transaction: txn });
 }

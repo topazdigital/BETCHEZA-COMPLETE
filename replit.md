@@ -11,6 +11,7 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - **Required env vars**: `JWT_SECRET`, `FOOTBALL_DATA_API_KEY`, `SPORTSGAMEODDS_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
 - **Optional DB**: `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` (MySQL). App runs without DB using in-memory/file fallback.
 - **OpenAI**: Uses Replit AI Integrations (`AI_INTEGRATIONS_OPENAI_API_KEY` + `AI_INTEGRATIONS_OPENAI_BASE_URL`) with `OPENAI_API_KEY` as fallback. Falls back to rules-based chat if neither is set.
+- **PayHero**: `PAYHERO_BASIC_TOKEN` (full `Basic ...` value) + `PAYHERO_ACCOUNT_ID` (channel_id integer). Used for real M-Pesa STK push deposits and withdrawals.
 
 ## Stack
 
@@ -49,7 +50,7 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - AI match predictions and conversational betting copilot (GPT-4o-mini, configurable via `OPENAI_MODEL`)
 - Tipster leaderboard, community feed, tip sharing with likes/comments; tipster profile pages show avatar images
 - Jackpot scraper for Kenyan bookmakers (SportPesa, Betika, etc.)
-- User wallet with deposit/withdraw and prize payouts; referral credit shown as separate non-withdrawable balance
+- User wallet with deposit/withdraw via PayHero (real M-Pesa STK push) and prize payouts; referral credit shown as separate non-withdrawable balance
 - Referral system: `/register?ref=CODE` → cookie → attribution at signup → KES 100/50 bonus on email verify
 - Referral dashboard at `/dashboard/referral` with link, tree, and stats
 - Admin dashboard for users, payments, settings, SEO, email, notifications

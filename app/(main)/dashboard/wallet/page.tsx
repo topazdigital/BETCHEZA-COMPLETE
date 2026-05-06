@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import useSWR from 'swr';
 import {
   Wallet, ArrowDownToLine, ArrowUpFromLine, Smartphone, CreditCard,
   Building2, Bitcoin, Loader2, CheckCircle2, AlertTriangle,
-  ArrowDownLeft, ArrowUpRight, Trophy, Gift, RotateCcw,
+  ArrowDownLeft, ArrowUpRight, Trophy, Gift, RotateCcw, Clock,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -223,7 +223,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
   const [bank, setBank] = useState('');
   const [crypto, setCrypto] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
+  const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'pending'; msg: string } | null>(null);
+  const [pendingRef, setPendingRef] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch active admin-configured gateways to know which methods to surface.
   // Falls back to the default DEPOSIT_METHODS list when none are configured.
@@ -256,11 +258,38 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
     return result.length > 0 ? result : DEPOSIT_METHODS;
   })();
 
+  // Poll PayHero status while an STK push is pending
+  useEffect(() => {
+    if (!pendingRef) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payhero/status?reference=${encodeURIComponent(pendingRef)}`);
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'completed') {
+          clearInterval(interval);
+          pollRef.current = null;
+          setPendingRef(null);
+          setStatus({ kind: 'ok', msg: 'Payment confirmed! Your balance has been updated.' });
+          await onDone();
+        } else if (data.status === 'failed') {
+          clearInterval(interval);
+          pollRef.current = null;
+          setPendingRef(null);
+          setStatus({ kind: 'err', msg: 'M-Pesa payment failed or was cancelled. Please try again.' });
+        }
+      } catch {}
+    }, 4000);
+    pollRef.current = interval;
+    return () => clearInterval(interval);
+  }, [pendingRef, onDone]);
+
   const submit = useCallback(async () => {
     setStatus(null);
+    setPendingRef(null);
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { setStatus({ kind: 'err', msg: 'Enter a positive amount.' }); return; }
-    if (method === 'mpesa' && !/^(\+?254|0)?7\d{8}$/.test(phone.replace(/\s/g, ''))) {
+    if (method === 'mpesa' && !/^(\+?254|0)?[17]\d{8}$/.test(phone.replace(/\s/g, ''))) {
       setStatus({ kind: 'err', msg: 'Enter a valid M-Pesa phone (e.g. 0712345678).' });
       return;
     }
@@ -286,6 +315,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         setStatus({ kind: 'err', msg: data.error || 'Deposit failed.' });
+      } else if (data.pending) {
+        setPendingRef(data.reference);
+        setStatus({ kind: 'pending', msg: `M-Pesa prompt sent to ${phone}. Enter your PIN on your phone to complete.` });
       } else {
         setStatus({ kind: 'ok', msg: `Deposited ${amt.toLocaleString()} KES — balance updated.` });
         await onDone();
@@ -405,17 +437,30 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
 
         {status && (
           <div className={cn(
-            'flex items-center gap-2 rounded-lg border p-2 text-xs',
+            'flex items-start gap-2 rounded-lg border p-3 text-xs',
             status.kind === 'ok'
               ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-              : 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400',
+              : status.kind === 'pending'
+                ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                : 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400',
           )}>
-            {status.kind === 'ok' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-            {status.msg}
+            {status.kind === 'ok'
+              ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-px" />
+              : status.kind === 'pending'
+                ? <Clock className="h-3.5 w-3.5 shrink-0 mt-px animate-pulse" />
+                : <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />}
+            <span>{status.msg}</span>
           </div>
         )}
 
-        <Button onClick={submit} disabled={submitting} className="w-full h-9 text-xs">
+        {pendingRef && (
+          <div className="flex items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            <span>Waiting for M-Pesa confirmation…</span>
+          </div>
+        )}
+
+        <Button onClick={submit} disabled={submitting || !!pendingRef} className="w-full h-9 text-xs">
           {submitting ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Processing…</> : <>Deposit KES {amount || '0'}</>}
         </Button>
       </CardContent>

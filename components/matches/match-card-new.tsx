@@ -233,14 +233,15 @@ export function MatchCardNew({
         {/* Teams */}
         <Link href={`/matches/${slug}`} className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport.slug} size="xs" />
               <span className={cn(
-                'min-w-0 flex-1 text-sm font-medium leading-tight break-words',
+                'min-w-0 flex-1 truncate text-sm font-medium leading-tight',
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.homeScore > match.awayScore && 'text-success'
               )}>
-                {match.homeTeam.name}
+                <span className="hidden sm:inline">{match.homeTeam.name}</span>
+                <span className="sm:hidden">{match.homeTeam.shortName || match.homeTeam.name}</span>
               </span>
               {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
             </div>
@@ -251,14 +252,15 @@ export function MatchCardNew({
             )}
           </div>
           <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport.slug} size="xs" />
               <span className={cn(
-                'min-w-0 flex-1 text-sm font-medium leading-tight break-words',
+                'min-w-0 flex-1 truncate text-sm font-medium leading-tight',
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.awayScore > match.homeScore && 'text-success'
               )}>
-                {match.awayTeam.name}
+                <span className="hidden sm:inline">{match.awayTeam.name}</span>
+                <span className="sm:hidden">{match.awayTeam.shortName || match.awayTeam.name}</span>
               </span>
               {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
             </div>
@@ -382,21 +384,24 @@ export function MatchCardNew({
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport.slug} size="sm" />
               <div className="min-w-0 flex-1">
-                <span className={cn(
-                  'inline-flex items-center truncate text-sm font-semibold',
-                  isFinished && match.homeScore !== null && match.awayScore !== null &&
-                  match.homeScore > match.awayScore && 'text-success'
-                )}>
-                  {match.homeTeam.name}
+                <div className="flex min-w-0 items-center gap-1">
+                  <span className={cn(
+                    'truncate text-sm font-semibold',
+                    isFinished && match.homeScore !== null && match.awayScore !== null &&
+                    match.homeScore > match.awayScore && 'text-success'
+                  )}>
+                    <span className="hidden sm:inline">{match.homeTeam.name}</span>
+                    <span className="sm:hidden">{match.homeTeam.shortName || match.homeTeam.name}</span>
+                  </span>
                   {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
-                </span>
+                </div>
                 {match.homeTeam.form && !isLive && !isFinished && (
                   <FormDots form={match.homeTeam.form} />
                 )}
               </div>
             </div>
             {(isLive || isFinished) && match.homeScore !== null && (
-              <span className={cn('font-mono text-xl font-bold', isLive && 'text-live')}>
+              <span className={cn('font-mono text-xl font-bold shrink-0', isLive && 'text-live')}>
                 {match.homeScore}
               </span>
             )}
@@ -405,21 +410,24 @@ export function MatchCardNew({
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport.slug} size="sm" />
               <div className="min-w-0 flex-1">
-                <span className={cn(
-                  'inline-flex items-center truncate text-sm font-semibold',
-                  isFinished && match.homeScore !== null && match.awayScore !== null &&
-                  match.awayScore > match.homeScore && 'text-success'
-                )}>
-                  {match.awayTeam.name}
+                <div className="flex min-w-0 items-center gap-1">
+                  <span className={cn(
+                    'truncate text-sm font-semibold',
+                    isFinished && match.homeScore !== null && match.awayScore !== null &&
+                    match.awayScore > match.homeScore && 'text-success'
+                  )}>
+                    <span className="hidden sm:inline">{match.awayTeam.name}</span>
+                    <span className="sm:hidden">{match.awayTeam.shortName || match.awayTeam.name}</span>
+                  </span>
                   {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
-                </span>
+                </div>
                 {match.awayTeam.form && !isLive && !isFinished && (
                   <FormDots form={match.awayTeam.form} />
                 )}
               </div>
             </div>
             {(isLive || isFinished) && match.awayScore !== null && (
-              <span className={cn('font-mono text-xl font-bold', isLive && 'text-live')}>
+              <span className={cn('font-mono text-xl font-bold shrink-0', isLive && 'text-live')}>
                 {match.awayScore}
               </span>
             )}
