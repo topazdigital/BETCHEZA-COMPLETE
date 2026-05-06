@@ -684,8 +684,88 @@ function VerifyEmailPanel({
   );
 }
 
-// Detect country from browser locale (e.g. "en-KE" → "KE")
+// Timezone → ISO country code mapping for reliable geo-detection
+const TIMEZONE_TO_COUNTRY: Record<string, string> = {
+  // Africa
+  'Africa/Nairobi': 'KE', 'Africa/Lagos': 'NG', 'Africa/Accra': 'GH',
+  'Africa/Johannesburg': 'ZA', 'Africa/Cairo': 'EG', 'Africa/Casablanca': 'MA',
+  'Africa/Algiers': 'DZ', 'Africa/Tunis': 'TN', 'Africa/Addis_Ababa': 'ET',
+  'Africa/Kampala': 'UG', 'Africa/Dar_es_Salaam': 'TZ', 'Africa/Kigali': 'RW',
+  'Africa/Lusaka': 'ZM', 'Africa/Harare': 'ZW', 'Africa/Douala': 'CM',
+  'Africa/Abidjan': 'CI', 'Africa/Dakar': 'SN', 'Africa/Maputo': 'MZ',
+  'Africa/Luanda': 'AO', 'Africa/Libreville': 'GA', 'Africa/Bamako': 'ML',
+  'Africa/Ouagadougou': 'BF', 'Africa/Conakry': 'GN', 'Africa/Freetown': 'SL',
+  'Africa/Lome': 'TG', 'Africa/Porto-Novo': 'BJ', 'Africa/Banjul': 'GM',
+  'Africa/Bissau': 'GW', 'Africa/Mogadishu': 'SO', 'Africa/Djibouti': 'DJ',
+  'Africa/Asmara': 'ER', 'Africa/Juba': 'SS', 'Africa/Khartoum': 'SD',
+  'Africa/Tripoli': 'LY', 'Africa/Mbabane': 'SZ', 'Africa/Blantyre': 'MW',
+  'Africa/Gaborone': 'BW', 'Africa/Windhoek': 'NA',
+  // Europe
+  'Europe/London': 'GB', 'Europe/Paris': 'FR', 'Europe/Berlin': 'DE',
+  'Europe/Madrid': 'ES', 'Europe/Rome': 'IT', 'Europe/Amsterdam': 'NL',
+  'Europe/Brussels': 'BE', 'Europe/Zurich': 'CH', 'Europe/Vienna': 'AT',
+  'Europe/Warsaw': 'PL', 'Europe/Prague': 'CZ', 'Europe/Budapest': 'HU',
+  'Europe/Bucharest': 'RO', 'Europe/Sofia': 'BG', 'Europe/Athens': 'GR',
+  'Europe/Istanbul': 'TR', 'Europe/Kiev': 'UA', 'Europe/Moscow': 'RU',
+  'Europe/Stockholm': 'SE', 'Europe/Oslo': 'NO', 'Europe/Copenhagen': 'DK',
+  'Europe/Helsinki': 'FI', 'Europe/Lisbon': 'PT', 'Europe/Dublin': 'IE',
+  'Europe/Riga': 'LV', 'Europe/Vilnius': 'LT', 'Europe/Tallinn': 'EE',
+  'Europe/Minsk': 'BY', 'Europe/Belgrade': 'RS', 'Europe/Zagreb': 'HR',
+  'Europe/Sarajevo': 'BA', 'Europe/Skopje': 'MK', 'Europe/Tirane': 'AL',
+  'Europe/Chisinau': 'MD', 'Europe/Nicosia': 'CY', 'Europe/Luxembourg': 'LU',
+  'Europe/Bratislava': 'SK', 'Europe/Ljubljana': 'SI',
+  // Americas
+  'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US',
+  'America/Los_Angeles': 'US', 'America/Phoenix': 'US', 'America/Anchorage': 'US',
+  'America/Honolulu': 'US', 'America/Detroit': 'US', 'America/Indiana/Indianapolis': 'US',
+  'America/Toronto': 'CA', 'America/Vancouver': 'CA', 'America/Montreal': 'CA',
+  'America/Winnipeg': 'CA', 'America/Halifax': 'CA', 'America/Edmonton': 'CA',
+  'America/Mexico_City': 'MX', 'America/Monterrey': 'MX', 'America/Tijuana': 'MX',
+  'America/Bogota': 'CO', 'America/Lima': 'PE', 'America/Santiago': 'CL',
+  'America/Caracas': 'VE', 'America/La_Paz': 'BO', 'America/Asuncion': 'PY',
+  'America/Montevideo': 'UY', 'America/Guayaquil': 'EC', 'America/Sao_Paulo': 'BR',
+  'America/Manaus': 'BR', 'America/Belem': 'BR', 'America/Buenos_Aires': 'AR',
+  'America/Argentina/Buenos_Aires': 'AR', 'America/Guatemala': 'GT',
+  'America/El_Salvador': 'SV', 'America/Tegucigalpa': 'HN',
+  'America/Managua': 'NI', 'America/Costa_Rica': 'CR', 'America/Panama': 'PA',
+  'America/Santo_Domingo': 'DO', 'America/Port-au-Prince': 'HT',
+  'America/Havana': 'CU', 'America/Kingston': 'JM', 'America/Guyana': 'GY',
+  // Asia
+  'Asia/Dubai': 'AE', 'Asia/Riyadh': 'SA', 'Asia/Kuwait': 'KW',
+  'Asia/Bahrain': 'BH', 'Asia/Qatar': 'QA', 'Asia/Muscat': 'OM',
+  'Asia/Baghdad': 'IQ', 'Asia/Tehran': 'IR', 'Asia/Jerusalem': 'IL',
+  'Asia/Amman': 'JO', 'Asia/Beirut': 'LB', 'Asia/Damascus': 'SY',
+  'Asia/Karachi': 'PK', 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN',
+  'Asia/Dhaka': 'BD', 'Asia/Kathmandu': 'NP', 'Asia/Colombo': 'LK',
+  'Asia/Kabul': 'AF', 'Asia/Tashkent': 'UZ', 'Asia/Almaty': 'KZ',
+  'Asia/Bishkek': 'KG', 'Asia/Dushanbe': 'TJ', 'Asia/Ashgabat': 'TM',
+  'Asia/Baku': 'AZ', 'Asia/Yerevan': 'AM', 'Asia/Tbilisi': 'GE',
+  'Asia/Bangkok': 'TH', 'Asia/Ho_Chi_Minh': 'VN', 'Asia/Jakarta': 'ID',
+  'Asia/Singapore': 'SG', 'Asia/Kuala_Lumpur': 'MY', 'Asia/Manila': 'PH',
+  'Asia/Hong_Kong': 'HK', 'Asia/Taipei': 'TW', 'Asia/Seoul': 'KR',
+  'Asia/Tokyo': 'JP', 'Asia/Shanghai': 'CN', 'Asia/Ulaanbaatar': 'MN',
+  'Asia/Rangoon': 'MM', 'Asia/Yangon': 'MM', 'Asia/Phnom_Penh': 'KH',
+  'Asia/Vientiane': 'LA', 'Asia/Makassar': 'ID', 'Asia/Jayapura': 'ID',
+  'Asia/Macau': 'MO', 'Asia/Brunei': 'BN', 'Asia/Dili': 'TL',
+  // Oceania
+  'Australia/Sydney': 'AU', 'Australia/Melbourne': 'AU', 'Australia/Brisbane': 'AU',
+  'Australia/Perth': 'AU', 'Australia/Adelaide': 'AU', 'Australia/Darwin': 'AU',
+  'Pacific/Auckland': 'NZ', 'Pacific/Fiji': 'FJ',
+};
+
+// Detect country from browser timezone (most reliable), then locale fallback
 function detectCountryCode(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && TIMEZONE_TO_COUNTRY[tz]) return TIMEZONE_TO_COUNTRY[tz];
+    // Try partial match (e.g. "Africa/Nairobi" → any "Africa/..." prefix)
+    const region = tz?.split('/')[0];
+    if (region) {
+      const match = Object.entries(TIMEZONE_TO_COUNTRY).find(([k]) => k.startsWith(region + '/') && k === tz);
+      if (match) return match[1];
+    }
+  } catch {}
+  // Fallback: browser locale (e.g. "en-KE" → "KE")
   try {
     const lang = navigator.language || '';
     const parts = lang.split('-');
