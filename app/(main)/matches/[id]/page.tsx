@@ -1336,8 +1336,8 @@ export default function MatchDetailPage({ params }: PageProps) {
             <HeroTimeline events={matchEvents} />
           )}
 
-          {/* Odds bar — always shown */}
-          {match.odds && (
+          {/* Odds bar — only shown when we have real bookmaker odds */}
+          {match.odds && hasRealOdds && (
             <div className="px-3 pb-3">
               <div className="rounded-lg bg-white/5 border border-white/10 p-2.5">
                 <div className="grid grid-cols-3 gap-2 mb-2">
@@ -1392,9 +1392,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                 <OddsProbBar home={match.odds.home} draw={match.odds.draw} away={match.odds.away} />
                 <div className="flex items-center justify-between mt-1.5">
                   <p className="text-[9px] text-white/30">
-                    {match.oddsIsComputed ? '📊 Estimated odds' : `Odds • ${match.odds.bookmaker || 'Market'}`}
+                    {`Odds • ${match.odds.bookmaker || 'Market'}`}
                   </p>
-                  {!hasRealOdds && <Badge variant="outline" className="text-[8px] border-white/20 text-white/30 py-0 h-3">Estimated</Badge>}
                 </div>
               </div>
             </div>
@@ -1446,7 +1445,7 @@ export default function MatchDetailPage({ params }: PageProps) {
           )}
 
           {(bookmakerOdds.length > 0 || (match.markets && match.markets.length > 0)) && (
-            <div className="px-3 pb-3">
+            <div className="px-3 pb-3 lg:hidden">
               <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
                 <div className="mb-2.5 flex items-center justify-between gap-2">
                   <h3 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
@@ -2885,14 +2884,14 @@ function MatchInfoRail({
         </CardContent>
       </Card>
 
-      {/* Odds comparison */}
-      {bookmakerOdds.length > 0 && (
+      {/* Odds comparison — only show when we have real bookmaker odds */}
+      {bookmakerOdds.length > 0 && hasRealOdds && (
         <Card>
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <TrendingUp className="h-3.5 w-3.5" />
-                {hasRealOdds ? 'Bookmaker Odds' : 'Estimated Odds'}
+                Bookmaker Odds
               </h3>
             </div>
             {/* Column headers */}
@@ -3106,46 +3105,50 @@ function H2HRow({ game, timezone, homeName }: { game: H2HGame; timezone: string;
 
   return (
     <div className="rounded-xl border border-border/40 bg-muted/20 hover:bg-muted/40 transition-colors text-sm overflow-hidden">
-      <div className="grid w-full grid-cols-[1fr_auto_1fr_auto] items-center gap-2 px-3 py-2.5">
-        <button
-          type="button"
-          onClick={() => setExpanded(v => !v)}
-          className="contents text-left"
-          aria-expanded={expanded}
-          aria-label="Toggle match details"
-        >
-          <div className="flex items-center gap-2 justify-end min-w-0">
-            <span className={cn("truncate font-medium", homeWon && "font-bold text-emerald-600")}>{game.home.name}</span>
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="w-full text-left"
+        aria-expanded={expanded}
+        aria-label="Toggle match details"
+      >
+        <div className="flex items-center gap-1 px-2 py-2.5 sm:gap-2 sm:px-3">
+          {/* Home team */}
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
+            <span className={cn("truncate text-xs font-medium sm:text-sm", homeWon && "font-bold text-emerald-600")}>{game.home.name}</span>
             <TeamLogo teamName={game.home.name} logoUrl={game.home.logo} size="sm" />
           </div>
-          <div className="flex flex-col items-center min-w-[60px]">
-            <div className="font-mono font-bold tabular-nums">
+          {/* Score */}
+          <div className="flex shrink-0 flex-col items-center px-1">
+            <div className="font-mono text-xs font-bold tabular-nums sm:text-sm whitespace-nowrap">
               <span className={cn(homeWon && "text-emerald-600")}>{game.home.score ?? '?'}</span>
               {' — '}
               <span className={cn(awayWon && "text-emerald-600")}>{game.away.score ?? '?'}</span>
             </div>
-            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <div className="flex items-center gap-0.5 text-[9px] text-muted-foreground sm:text-[10px]">
               {game.date ? formatDate(game.date, timezone, { year: true }) : ''}
-              {game.league ? ` • ${game.league}` : ''}
               <ChevronDown className={cn("h-3 w-3 transition-transform", expanded && "rotate-180")} />
             </div>
           </div>
-          <div className="flex items-center gap-2 min-w-0">
+          {/* Away team */}
+          <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
             <TeamLogo teamName={game.away.name} logoUrl={game.away.logo} size="sm" />
-            <span className={cn("truncate font-medium", awayWon && "font-bold text-emerald-600")}>{game.away.name}</span>
+            <span className={cn("truncate text-xs font-medium sm:text-sm", awayWon && "font-bold text-emerald-600")}>{game.away.name}</span>
           </div>
-        </button>
-        {detailHref ? (
-          <Link
-            href={detailHref}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-            aria-label="Open this match's full details"
-            title="Open match details"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        ) : <div className="w-7" />}
-      </div>
+          {/* Detail link */}
+          {detailHref ? (
+            <Link
+              href={detailHref}
+              onClick={e => e.stopPropagation()}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+              aria-label="Open match details"
+              title="Open match details"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          ) : <div className="w-6 shrink-0" />}
+        </div>
+      </button>
       {expanded && (
         <div className="border-t border-border/40 bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground space-y-1.5">
           <div className="grid grid-cols-2 gap-2">

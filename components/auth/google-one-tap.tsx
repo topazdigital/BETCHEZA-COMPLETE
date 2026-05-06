@@ -19,11 +19,15 @@ declare global {
 }
 
 export function GoogleOneTap() {
-  const { isAuthenticated, loginWithGoogleOneTap } = useAuth();
+  const { isAuthenticated, loginWithGoogleOneTap, isLoading } = useAuth();
   const initialized = useRef(false);
 
   useEffect(() => {
-    if (isAuthenticated || initialized.current) return;
+    // Wait for auth state to be confirmed before showing one-tap.
+    // Without this, the prompt fires on every page load while the auth
+    // cookie is still being verified — causing the popup to appear for
+    // already-logged-in users (especially on mobile).
+    if (isLoading || isAuthenticated || initialized.current) return;
 
     let cancelled = false;
 

@@ -114,7 +114,40 @@ const COMMENTS = [
   'The stats really do support this pick.',
   'Draw is always overlooked at these prices.',
   'H2H record strongly favours this outcome.',
+  'Been watching this team all season, this is the right call.',
+  'Good spot. The home side has been conceding early lately.',
+  'Risky but the market is mispriced here, I agree.',
+  'Followed. Your tips have been sharp lately.',
+  'Nice one. What is your stake on this?',
+  'Patience pays — this pick makes total sense at these odds.',
+  'The xG data is telling the same story, back it.',
+  'Finally someone saying what everyone is thinking.',
+  'Strong reasoning. I would adjust the stake slightly higher though.',
+  'Bookies are slow to react here, grab it before the line moves.',
+  'Posted the same pick earlier, glad others see it too.',
+  'Injuries in the squad change everything on this one.',
+  'Referee profile for this game also leans that way.',
+  'Big game mentality counts for a lot here, good pick.',
+  'Watch the weather forecast — could affect this one.',
+  'I backed the same angle last week and cashed easily.',
 ];
+
+function smartComment(post: { content: string; pick?: string | null; matchTitle?: string | null }): string {
+  const base = randPick(COMMENTS);
+  if (!post.pick && !post.matchTitle) return base;
+  const extras = [
+    post.pick ? `That ${post.pick} call is interesting.` : '',
+    post.matchTitle ? `Big game in ${post.matchTitle.split(' vs ')[0] || 'this fixture'}.` : '',
+    'The odds reflect the market consensus too.',
+    'Have you looked at the recent form run?',
+    'Solid value at those odds for sure.',
+    'Combining this with an Over in the same game.',
+    'Makes sense given the context going into this one.',
+  ].filter(Boolean);
+  return Math.random() > 0.5 && extras.length > 0
+    ? `${randPick(extras)} ${base}`
+    : base;
+}
 
 function randPick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -171,13 +204,13 @@ async function runActivity() {
     matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null,
   }).catch(() => {});
 
-  // Comments on recent posts
+  // Comments on recent posts — use smartComment for context-aware replies
   const posts = await listPosts(15, null);
   for (const post of posts.filter(() => Math.random() > 0.6).slice(0, 3)) {
     const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
     await addComment({
       postId: post.id, userId: commenter.id, authorName: commenter.displayName,
-      authorAvatar: commenter.avatar, content: randPick(COMMENTS),
+      authorAvatar: commenter.avatar, content: smartComment(post),
     }).catch(() => {});
   }
 }
@@ -245,14 +278,14 @@ export async function GET(req: NextRequest) {
       } catch (e) { results.errors.push(`generic post: ${e}`); }
     }
 
-    // Comments
+    // Comments — use smartComment for context-aware replies
     const recentPosts = await listPosts(20, null);
     for (const post of recentPosts.filter(() => Math.random() > 0.5).slice(0, randInt(2, 4))) {
       const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
       try {
         await addComment({
           postId: post.id, userId: commenter.id, authorName: commenter.displayName,
-          authorAvatar: commenter.avatar, content: randPick(COMMENTS),
+          authorAvatar: commenter.avatar, content: smartComment(post),
         });
         results.commentsCreated++;
       } catch (e) { results.errors.push(`comment ${post.id}: ${e}`); }

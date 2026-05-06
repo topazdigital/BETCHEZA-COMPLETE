@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button';
 import {
   Heart, MessageCircle, Send, Sparkles, Loader2, Flame, TrendingUp, Users, Lock,
-  Crown, Trophy, Star, BarChart3, Activity, Zap,
+  Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -573,7 +573,7 @@ function TrendingRail() {
 
 export default function FeedPage() {
   const { data: meRes } = useSWR<Me>('/api/auth/me', fetcher);
-  const { data: postsRes, isLoading } = useSWR<{ posts: Post[] }>(POSTS_KEY, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[] }>(POSTS_KEY, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
   const posts = postsRes?.posts ?? [];
 
   const refresh = () => mutate(POSTS_KEY);
@@ -618,10 +618,29 @@ export default function FeedPage() {
               <Composer me={meRes?.user ?? null} onPosted={refresh} />
 
               {/* Feed */}
-              {isLoading ? (
+              {postsError ? (
+                <Card className="border-border/60">
+                  <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+                    <WifiOff className="h-8 w-8 text-muted-foreground/50" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Something went wrong</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">The feed failed to load. Check your connection and try again.</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => mutate(POSTS_KEY)}>
+                      <RefreshCcw className="h-3.5 w-3.5" />Try again
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : isLoading ? (
                 <div className="flex h-32 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               ) : posts.length === 0 ? (
-                <Card><CardContent className="p-6 text-center text-xs text-muted-foreground">No posts yet. Be the first to share!</CardContent></Card>
+                <Card><CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+                  <div className="text-3xl">📭</div>
+                  <div>
+                    <p className="text-sm font-semibold">No posts yet</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Be the first to share a tip with the community!</p>
+                  </div>
+                </CardContent></Card>
               ) : (
                 <div className="space-y-2.5">
                   {posts.map(p => <PostCard key={p.id} post={p} />)}
