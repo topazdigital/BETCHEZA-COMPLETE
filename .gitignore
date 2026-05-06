@@ -1,3 +1,6 @@
+# Replit agent attached assets (screenshots, SQL dumps, etc.)
+attached_assets/
+
 # v0 sandbox internal files
 __v0_runtime_loader.js
 __v0_devtools.tsx
