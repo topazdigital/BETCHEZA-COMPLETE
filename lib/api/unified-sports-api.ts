@@ -3820,10 +3820,12 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
     const found = allMatches.find(m => m.id === matchId);
     if (found) return found;
 
-    // Handle new human-readable URL format (espn_eventid_NNNNN) — scan by numeric event ID
-    const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
-    if (eventIdOnly) {
-      const numericId = eventIdOnly[1];
+    // Scan by trailing numeric event ID — handles both the espn_eventid_ new-format
+    // AND legacy-format mismatches where dots were (re)introduced into the league key
+    // (e.g. looking for espn_eng.1_740936 while cache holds espn_eng1_740936).
+    const numericSuffix = matchId.match(/_(\d+)$/);
+    if (numericSuffix) {
+      const numericId = numericSuffix[1];
       const byEventId = allMatches.find(m => m.id.endsWith(`_${numericId}`));
       if (byEventId) return byEventId;
     }
@@ -3831,22 +3833,30 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
     console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
   }
 
-  // Handle new human-readable URL format via direct ESPN lookup
+  // Handle new human-readable URL format (espn_eventid_NNNNN) via parallel ESPN lookup.
+  // Runs all leagues concurrently (Promise.any) with a 6-second safety timeout so
+  // a single slow/blocked league doesn't stall the whole request.
   const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
   if (eventIdOnly) {
     const numericId = eventIdOnly[1];
-    for (const cfg of ESPN_LEAGUES) {
-      try {
-        const summary = await fetchESPNSummary(cfg.sport, cfg.league, numericId);
-        const competition = summary?.header?.competitions?.[0];
-        if (!competition) continue;
-        const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
-        if (!homeComp) continue;
-        const resolvedId = `espn_${cfg.league}_${numericId}`;
-        return getMatchById(resolvedId);
-      } catch { continue; }
+    try {
+      const resolvedId = await Promise.race([
+        Promise.any(
+          ESPN_LEAGUES.map(async cfg => {
+            const summary = await fetchESPNSummary(cfg.sport, cfg.league, numericId);
+            const competition = summary?.header?.competitions?.[0];
+            if (!competition) throw new Error('no competition');
+            const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
+            if (!homeComp) throw new Error('no home competitor');
+            return `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${numericId}`;
+          })
+        ),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000)),
+      ]);
+      return getMatchById(resolvedId as string);
+    } catch {
+      return null;
     }
-    return null;
   }
 
   try {

@@ -97,26 +97,38 @@ const LEAGUE_KEY_MAP: Record<string, string> = {
 /**
  * Convert a clean URL slug back to the internal match ID.
  * Handles three formats:
- *   1. Full ESPN ID:  espn_ita.1_737421 → pass through
- *   2. Legacy format: ita1-737421       → espn_ita.1_737421
+ *   1. Full ESPN ID:  espn_ita.1_737421  → pass through (normalised to no-dot form)
+ *   2. Legacy format: ita1-737421        → espn_ita1_737421
  *   3. New format:    team-a-vs-team-b-737421 → espn_eventid_737421 (resolved later)
+ *
+ * IMPORTANT: cached match IDs are generated with
+ *   `espn_${league.replace(/[^a-z0-9]/gi, '')}_${eventId}`
+ * so dots and hyphens in league keys are always stripped. slugToMatchId MUST
+ * produce the same no-dot form so the fast-path cache scan hits correctly.
  */
 export function slugToMatchId(slug: string): string {
   const decoded = decodeURIComponent(slug)
 
-  // Already a full ESPN ID
-  if (decoded.startsWith('espn_')) return decoded
+  // Already a full ESPN ID — normalise to the no-dot cache format
+  if (decoded.startsWith('espn_')) {
+    // Strip dots/hyphens from the league segment only
+    return decoded.replace(/^(espn_)([^_]+)(_\d+)$/, (_m, prefix, league, suffix) =>
+      `${prefix}${league.replace(/[^a-z0-9]/gi, '')}${suffix}`
+    )
+  }
 
   // Legacy format: single-segment leagueSlug + numericId
   const legacyMatch = decoded.match(/^([a-z0-9]+)-(\d+)$/i)
   if (legacyMatch) {
     const leagueSlugFromUrl = legacyMatch[1].toLowerCase()
     const eventId = legacyMatch[2]
-    const originalLeagueKey = LEAGUE_KEY_MAP[leagueSlugFromUrl]
-    if (originalLeagueKey) {
-      return `espn_${originalLeagueKey}_${eventId}`
-    }
-    return `espn_${leagueSlugFromUrl}_${eventId}`
+    // LEAGUE_KEY_MAP may return a value with dots (e.g. 'eng.1') or hyphens
+    // ('womens-college-basketball') — strip them to match the cache format.
+    const mappedKey = LEAGUE_KEY_MAP[leagueSlugFromUrl]
+    const cleanKey = mappedKey
+      ? mappedKey.replace(/[^a-z0-9]/gi, '')
+      : leagueSlugFromUrl
+    return `espn_${cleanKey}_${eventId}`
   }
 
   // New format: anything-vs-anything-NUMERICID

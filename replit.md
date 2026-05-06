@@ -68,6 +68,7 @@ A sports betting tipster community platform providing real-time sports data, AI-
 
 ## Gotchas
 
+- **Match URL slug bug (fixed)**: Cached match IDs use no-dot league keys (e.g. `espn_eng1_740936`). `slugToMatchId` was reintroducing dots via `LEAGUE_KEY_MAP` (e.g. `espn_eng.1_740936`), causing cache misses. Fix: strip dots/hyphens from LEAGUE_KEY_MAP values in `match-url.ts`, and add a numeric event-ID suffix scan in `getMatchById` as a safety net.
 - No DB = app still runs (in-memory/file fallback), but user data won't persist.
 - `next start` runs on port 5001 bound to 127.0.0.1 (production); dev runs on 5000 bound to 0.0.0.0.
 - VAPID keys must be set for push notifications to work.
