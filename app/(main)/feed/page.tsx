@@ -410,6 +410,50 @@ function RecommendedTipstersRail() {
   );
 }
 
+function TipOfDay() {
+  const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 300000, revalidateOnFocus: false });
+  const top = data?.trending?.find(p => p.pick && p.odds) ?? data?.trending?.[0];
+
+  if (!top) return null;
+
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-card p-4">
+      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-amber-400/20 blur-2xl" />
+      <div className="relative">
+        <div className="mb-2 flex items-center gap-1.5">
+          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500">Tip of the Day</span>
+        </div>
+        {top.matchTitle && (
+          <p className="mb-1 text-[11px] text-muted-foreground truncate">{top.matchTitle}</p>
+        )}
+        <div className="flex items-center gap-3">
+          {top.pick && (
+            <div className="flex-1 rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2">
+              <div className="text-[9px] uppercase tracking-wide text-amber-600 font-medium">Pick</div>
+              <div className="text-base font-black text-foreground leading-tight truncate">{top.pick}</div>
+            </div>
+          )}
+          {top.odds && (
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-center">
+              <div className="text-[9px] uppercase tracking-wide text-emerald-600 font-medium">Odds</div>
+              <div className="text-base font-black text-emerald-500">{top.odds.toFixed(2)}</div>
+            </div>
+          )}
+        </div>
+        <div className="mt-2 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span>by</span>
+            <span className="font-semibold text-foreground">{top.authorName}</span>
+            <span className="flex items-center gap-0.5"><Heart className="h-2.5 w-2.5 text-rose-400" />{top.likes}</span>
+          </div>
+          <span className="text-[9px] text-amber-500 font-semibold">Community favourite</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TrendingRail() {
   const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60_000 });
   const trending = data?.trending ?? [];
@@ -566,6 +610,9 @@ export default function FeedPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Tip of the Day */}
+              <TipOfDay />
 
               {/* Composer */}
               <Composer me={meRes?.user ?? null} onPosted={refresh} />

@@ -1004,7 +1004,6 @@ export default function MatchDetailPage({ params }: PageProps) {
   const [savedMatch, setSavedMatch] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
   const [showMobileLineups, setShowMobileLineups] = useState(false)
-  const [showMobileMarkets, setShowMobileMarkets] = useState(false)
   const [tipSubmitted, setTipSubmitted] = useState<null | { label: string; odds: number }>(null)
   const [shareToast, setShareToast] = useState<string | null>(null)
   // Add-Tip modal — auth-aware: signed-out users see a friendly sign-in prompt
@@ -1403,37 +1402,43 @@ export default function MatchDetailPage({ params }: PageProps) {
 
           {(lineups?.home || lineups?.away) && (
             <div className="px-3 pb-3">
-              <div className="rounded-lg border border-border/60 bg-card p-2.5">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider">Lineups & Formation</h3>
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowMobileLineups(v => !v)}>
-                    Open
-                  </Button>
-                </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
+                <button
+                  className="flex w-full items-center justify-between mb-1"
+                  onClick={() => setShowMobileLineups(v => !v)}
+                >
+                  <h3 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
+                    <Shirt className="h-3 w-3 text-white/60" />
+                    Lineups & Formation
+                  </h3>
+                  <ChevronDown className={cn("h-3.5 w-3.5 text-white/40 transition-transform", showMobileLineups && "rotate-180")} />
+                </button>
                 {showMobileLineups && (
-                  <div className="space-y-2">
-                    {lineups.home && (
-                      <div className="rounded-md bg-muted/30 px-2.5 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold truncate">{match.homeTeam.name}</span>
-                          {lineups.home.formation && <span className="text-[10px] text-muted-foreground">{lineups.home.formation}</span>}
+                  <div className="space-y-2 mt-2">
+                    {[
+                      { roster: lineups.home, team: match.homeTeam, dotColor: 'bg-rose-400' },
+                      { roster: lineups.away, team: match.awayTeam, dotColor: 'bg-sky-400' },
+                    ].map(({ roster, team, dotColor }) => roster ? (
+                      <div key={team.name} className="rounded-md border border-white/10 bg-white/5 overflow-hidden">
+                        <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-white/10">
+                          <div className={cn("h-2 w-2 rounded-full shrink-0", dotColor)} />
+                          <TeamLogo teamName={team.name} logoUrl={team.logo} size="xs" />
+                          <span className="text-[11px] font-bold text-white/90 truncate flex-1">{team.name}</span>
+                          {roster.formation && (
+                            <span className="text-[9px] text-white/50 shrink-0 bg-white/10 px-1.5 py-0.5 rounded-full">{roster.formation}</span>
+                          )}
                         </div>
-                        <p className="mt-1 text-[10px] text-muted-foreground truncate">
-                          {lineups.home.starting.slice(0, 4).map(p => p.name).join(' • ')}
-                        </p>
-                      </div>
-                    )}
-                    {lineups.away && (
-                      <div className="rounded-md bg-muted/30 px-2.5 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold truncate">{match.awayTeam.name}</span>
-                          {lineups.away.formation && <span className="text-[10px] text-muted-foreground">{lineups.away.formation}</span>}
+                        <div className="p-1.5 space-y-px">
+                          {roster.starting.slice(0, 11).map((p, i) => (
+                            <div key={i} className="flex items-center gap-1.5 py-0.5 px-0.5">
+                              <span className="w-4 text-center text-[9px] font-mono text-white/30 shrink-0">{p.jersey || (i + 1)}</span>
+                              <span className="text-[10px] text-white/80 truncate flex-1">{p.name}</span>
+                              {p.position && <span className="text-[8px] font-semibold text-white/40 uppercase shrink-0">{p.position.slice(0, 3)}</span>}
+                            </div>
+                          ))}
                         </div>
-                        <p className="mt-1 text-[10px] text-muted-foreground truncate">
-                          {lineups.away.starting.slice(0, 4).map(p => p.name).join(' • ')}
-                        </p>
                       </div>
-                    )}
+                    ) : null)}
                   </div>
                 )}
               </div>
@@ -1442,49 +1447,101 @@ export default function MatchDetailPage({ params }: PageProps) {
 
           {(bookmakerOdds.length > 0 || (match.markets && match.markets.length > 0)) && (
             <div className="px-3 pb-3">
-              <div className="rounded-lg border border-border/60 bg-card p-2.5">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider">Bet Markets</h3>
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowMobileMarkets(v => !v)}>
-                    Open
-                  </Button>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
+                    <TrendingUp className="h-3 w-3 text-white/60" />
+                    Betting Markets
+                  </h3>
+                  <span className="text-[9px] text-white/30">Tap to add to slip</span>
                 </div>
-                {showMobileMarkets && (
-                  <>
-                    {bookmakerOdds.length > 0 && (
-                      <div className="space-y-2">
-                        {bookmakerOdds.slice(0, 2).map((o, i) => (
-                          <div key={i} className="rounded-md bg-muted/30 px-2.5 py-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-semibold truncate">{o.bookmaker}</span>
-                              <span className="text-[10px] text-muted-foreground">{o.home.toFixed(2)} / {o.draw !== undefined ? o.draw.toFixed(2) : '—'} / {o.away.toFixed(2)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {match.markets && match.markets.length > 0 && (
-                      <div className="mt-2 space-y-2">
-                        {match.markets.slice(0, 2).map((mkt) => (
-                          <div key={mkt.key} className="rounded-md bg-muted/30 px-2.5 py-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-semibold truncate">{mkt.name}</span>
-                              <span className="text-[10px] text-muted-foreground">{mkt.outcomes.length} options</span>
-                            </div>
-                            <div className="mt-1 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
-                              {mkt.outcomes.slice(0, 3).map((o, i) => (
-                                <div key={i} className="rounded border border-border/40 bg-background px-2 py-1 text-center">
-                                  <div className="text-[9px] uppercase text-muted-foreground truncate">{o.name}</div>
-                                  <div className="font-mono text-xs font-bold">{o.price.toFixed(2)}</div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
+                {/* 1X2 odds hero row */}
+                {match.odds && (
+                  <div className="mb-2">
+                    <p className="mb-1 text-[9px] uppercase tracking-wider text-white/40 font-semibold">Match Result (1X2)</p>
+                    <div className={cn('grid gap-1.5', match.odds.draw !== undefined ? 'grid-cols-3' : 'grid-cols-2')}>
+                      {[
+                        { label: '1', sublabel: match.homeTeam.name.split(' ')[0], value: match.odds.home, outcome: match.homeTeam.name },
+                        ...(match.odds.draw !== undefined ? [{ label: 'X', sublabel: 'Draw', value: match.odds.draw, outcome: 'Draw' }] : []),
+                        { label: '2', sublabel: match.awayTeam.name.split(' ')[0], value: match.odds.away, outcome: match.awayTeam.name },
+                      ].map((o) => {
+                        const sel = isSelected(match.id, 'h2h', o.outcome)
+                        return (
+                          <button
+                            key={o.label}
+                            onClick={() => addSelection({
+                              matchId: match.id,
+                              matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                              marketKey: 'h2h',
+                              marketName: 'Match Result',
+                              outcomeName: o.outcome,
+                              price: o.value,
+                              matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                            })}
+                            className={cn(
+                              'flex flex-col items-center rounded-lg border py-2 px-1 transition-all active:scale-95',
+                              sel
+                                ? 'bg-primary/20 border-primary text-primary'
+                                : 'bg-white/8 border-white/15 text-white hover:bg-white/15',
+                            )}
+                          >
+                            <span className="text-[9px] text-white/50 leading-none truncate w-full text-center">{o.sublabel}</span>
+                            <span className={cn('text-sm font-black tabular-nums mt-0.5', sel ? 'text-primary' : 'text-white')}>{o.value.toFixed(2)}</span>
+                            <span className={cn('text-[8px] font-bold', sel ? 'text-primary/70' : 'text-white/30')}>{o.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 )}
+                {/* Additional markets (BTTS, Over/Under etc.) */}
+                {match.markets && match.markets.length > 0 && (
+                  <div className="space-y-1.5">
+                    {match.markets
+                      .filter(m => m.key !== 'h2h' && m.outcomes && m.outcomes.length > 0)
+                      .slice(0, 3)
+                      .map((mkt) => (
+                        <div key={mkt.key}>
+                          <p className="mb-1 text-[9px] uppercase tracking-wider text-white/40 font-semibold">{mkt.name}</p>
+                          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
+                            {mkt.outcomes.slice(0, 3).map((o, oi) => {
+                              const sel = isSelected(match.id, mkt.key, o.name)
+                              return (
+                                <button
+                                  key={oi}
+                                  onClick={() => addSelection({
+                                    matchId: match.id,
+                                    matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                                    marketKey: mkt.key,
+                                    marketName: mkt.name,
+                                    outcomeName: o.name,
+                                    price: o.price,
+                                    matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                                  })}
+                                  className={cn(
+                                    'flex flex-col items-center rounded-md border py-1.5 px-1 text-center transition-all active:scale-95',
+                                    sel
+                                      ? 'bg-primary/20 border-primary text-primary'
+                                      : 'bg-white/8 border-white/10 text-white hover:bg-white/15',
+                                  )}
+                                >
+                                  <span className="text-[9px] leading-tight text-white/50 truncate w-full text-center">{o.name}</span>
+                                  <span className={cn('text-xs font-black tabular-nums mt-0.5', sel ? 'text-primary' : 'text-white')}>{o.price.toFixed(2)}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                {/* "See all" link → Odds tab */}
+                <button
+                  onClick={() => setActiveTab('odds')}
+                  className="mt-2.5 w-full text-center text-[10px] font-semibold text-white/40 hover:text-white/70 transition-colors"
+                >
+                  All markets & bookmaker comparison →
+                </button>
               </div>
             </div>
           )}

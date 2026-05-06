@@ -33,7 +33,9 @@ Key architectural decisions and features include:
 - **Content Management**: Features "My Bookmarks," a season selector, and an internal news reader.
 - **Expanded Data Coverage**: Integrates multiple sports APIs for wide match coverage across various sports and leagues.
 - **Tipster Community Features**: Tipster catalogue with comparison tools, role/permission system, auto-tip generation, persistent follows, and public tipster profiles.
-- **Community Engagement**: Comments and likes per tip, joinable competitions with leaderboards, and a community feed.
+- **Community Engagement**: Comments and likes per tip, joinable competitions with leaderboards, and a community feed. Tip of the Day card on feed. Leaderboard has podium + Hot Streaks tab with responsive mobile card list (hidden sm:block for desktop table).
+- **Dark Mode**: next-themes is the single source of truth for dark/light/system theme. `UserSettingsContext` delegates to `useTheme()` from next-themes — no conflicting DOM class toggle. Theme persisted in both `betcheza_settings` and next-themes localStorage.
+- **Match Page Mobile**: Betting Markets section always-expanded with tappable odds chips (1X2 hero row + additional markets). Lineups accordion shows full 11-player squad with jersey number, name, position in dark-themed inner card.
 - **Financial Features**: User wallet ledger with deposit/withdraw, prize payouts, and multi-provider payment gateway support.
 - **Affiliate Management**: Tracks affiliate clicks, sign-ups, and deposits.
 - **Persistence**: Critical settings and user data are persisted to local files for development and to MySQL for production.

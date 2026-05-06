@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { useTheme } from 'next-themes';
 import type { OddsFormat } from '@/lib/types';
 import { getBrowserTimezone } from '@/lib/utils/timezone';
 
@@ -29,11 +30,11 @@ const UserSettingsContext = createContext<UserSettingsContextType | undefined>(u
 const STORAGE_KEY = 'betcheza_settings';
 const LEGACY_KEY = 'bz_prefs';
 
-export function UserSettingsProvider({ children }: { children: ReactNode }) {
+function UserSettingsInner({ children }: { children: ReactNode }) {
+  const { setTheme: setNextTheme } = useTheme();
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load settings from localStorage on mount — merge both keys so legacy prefs are respected
   useEffect(() => {
     let loaded: Partial<UserSettings> = {};
     try {
@@ -48,17 +49,20 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
 
     const browserTimezone = getBrowserTimezone();
+    const savedTheme = (loaded.theme as 'light' | 'dark' | 'system') || 'system';
+
     setSettings({
       ...defaultSettings,
       ...loaded,
-      // Always prefer browser timezone over stored 'UTC' default.
-      // Only keep the saved value if the user explicitly chose a non-UTC timezone.
       timezone: (loaded.timezone && loaded.timezone !== 'UTC') ? loaded.timezone : browserTimezone,
+      theme: savedTheme,
     });
-    setIsLoaded(true);
-  }, []);
 
-  // Save to STORAGE_KEY + keep bz_prefs in sync whenever settings change
+    // Apply theme via next-themes so it handles the class toggling correctly
+    setNextTheme(savedTheme);
+    setIsLoaded(true);
+  }, [setNextTheme]);
+
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
@@ -73,31 +77,19 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
   }, [settings, isLoaded]);
 
-  // Listen for storage events so multiple tabs + settings page stay in sync
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY && e.key !== LEGACY_KEY) return;
       if (!e.newValue) return;
       try {
         const parsed = JSON.parse(e.newValue);
+        if (parsed.theme) setNextTheme(parsed.theme);
         setSettings(prev => ({ ...prev, ...parsed }));
       } catch { /* ignore */ }
     };
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
-  }, []);
-
-  // Apply theme
-  useEffect(() => {
-    if (!isLoaded) return;
-    const root = document.documentElement;
-    if (settings.theme === 'system') {
-      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      root.classList.toggle('dark', systemDark);
-    } else {
-      root.classList.toggle('dark', settings.theme === 'dark');
-    }
-  }, [settings.theme, isLoaded]);
+  }, [setNextTheme]);
 
   const setTimezone = useCallback((timezone: string) => {
     setSettings(prev => ({ ...prev, timezone }));
@@ -109,13 +101,18 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((theme: 'light' | 'dark' | 'system') => {
     setSettings(prev => ({ ...prev, theme }));
-  }, []);
+    setNextTheme(theme);
+  }, [setNextTheme]);
 
   return (
     <UserSettingsContext.Provider value={{ settings, setTimezone, setOddsFormat, setTheme, isLoaded }}>
       {children}
     </UserSettingsContext.Provider>
   );
+}
+
+export function UserSettingsProvider({ children }: { children: ReactNode }) {
+  return <UserSettingsInner>{children}</UserSettingsInner>;
 }
 
 export function useUserSettings() {

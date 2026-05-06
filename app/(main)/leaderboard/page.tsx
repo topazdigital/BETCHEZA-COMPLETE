@@ -343,91 +343,143 @@ export default function LeaderboardPage() {
                 {/* Period Tabs */}
                 <Tabs value={period} onValueChange={(v) => setPeriod(v as typeof period)} className="mb-4">
                   <TabsList className="grid w-full grid-cols-4 h-8">
-                    <TabsTrigger value="daily" className="text-xs px-2"><Calendar className="mr-1 h-3 w-3" />Daily</TabsTrigger>
-                    <TabsTrigger value="weekly" className="text-xs px-2"><Calendar className="mr-1 h-3 w-3" />Weekly</TabsTrigger>
-                    <TabsTrigger value="monthly" className="text-xs px-2"><Calendar className="mr-1 h-3 w-3" />Monthly</TabsTrigger>
-                    <TabsTrigger value="alltime" className="text-xs px-2"><Trophy className="mr-1 h-3 w-3" />All Time</TabsTrigger>
+                    <TabsTrigger value="daily" className="text-xs px-1"><Calendar className="mr-1 h-3 w-3 hidden sm:inline" />Daily</TabsTrigger>
+                    <TabsTrigger value="weekly" className="text-xs px-1"><Calendar className="mr-1 h-3 w-3 hidden sm:inline" />Weekly</TabsTrigger>
+                    <TabsTrigger value="monthly" className="text-xs px-1"><Calendar className="mr-1 h-3 w-3 hidden sm:inline" />Monthly</TabsTrigger>
+                    <TabsTrigger value="alltime" className="text-xs px-1"><Trophy className="mr-1 h-3 w-3 hidden sm:inline" />All Time</TabsTrigger>
                   </TabsList>
                 </Tabs>
 
-                {/* Full Leaderboard Table */}
-                <div className="rounded-lg border border-border bg-card overflow-hidden">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/30">
-                        <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Rank</th>
-                        <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Tipster</th>
-                        <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Win Rate</th>
-                        <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Tips</th>
-                        <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider">ROI</th>
-                        <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Streak</th>
-                        <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Change</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.map((entry, index) => (
-                        <tr
-                          key={entry.id}
-                          className={cn(
-                            'border-b border-border transition-colors hover:bg-muted/30',
-                            index < 3 && 'bg-muted/10',
-                          )}
-                        >
-                          <td className="px-3 py-1.5">
-                            <div className={cn(
-                              'flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold',
-                              entry.rank === 1 && 'bg-yellow-500 text-yellow-950',
-                              entry.rank === 2 && 'bg-gray-300 text-gray-700',
-                              entry.rank === 3 && 'bg-amber-700 text-amber-100',
-                              entry.rank > 3 && 'bg-muted text-muted-foreground',
-                            )}>
-                              {entry.rank}
-                            </div>
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Link href={tipsterHref(entry.username, entry.username)} className="flex items-center gap-2.5 hover:text-primary">
-                              {entry.avatarUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={entry.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover bg-muted shrink-0" />
-                              ) : (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shrink-0">{entry.avatar}</div>
-                              )}
-                              <div className="min-w-0">
-                                <div className="font-medium text-xs truncate flex items-center gap-1">
-                                  {entry.displayName}
-                                  {entry.verified && <Star className="h-2.5 w-2.5 fill-primary text-primary" />}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground truncate">@{entry.username}</div>
-                              </div>
-                            </Link>
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            <div className="font-semibold text-xs text-success">{entry.winRate}%</div>
-                            <div className="text-[10px] text-muted-foreground">{entry.won}/{entry.tips}</div>
-                          </td>
-                          <td className="px-3 py-1.5 text-center font-medium text-xs">{entry.tips}</td>
-                          <td className="px-3 py-1.5 text-center">
-                            <span className={cn('font-semibold text-xs', entry.roi >= 0 ? 'text-primary' : 'text-destructive')}>
-                              {entry.roi >= 0 ? '+' : ''}{entry.roi}%
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            {entry.streak > 0 && (
-                              <div className="inline-flex items-center gap-0.5 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                                <Flame className="h-2.5 w-2.5" />
-                                {entry.streak}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-center text-[10px]">
-                            {entry.change > 0 && <span className="text-success">+{entry.change}</span>}
-                            {entry.change < 0 && <span className="text-destructive">{entry.change}</span>}
-                            {entry.change === 0 && <span className="text-muted-foreground">-</span>}
-                          </td>
+                {/* Mobile card list — shown only on small screens */}
+                <div className="sm:hidden space-y-1.5 mb-4">
+                  {data.map((entry) => (
+                    <Link
+                      key={entry.id}
+                      href={tipsterHref(entry.username, entry.username)}
+                      className={cn(
+                        'flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2 hover:bg-muted/30 transition-colors',
+                        entry.rank <= 3 && 'bg-muted/10',
+                      )}
+                    >
+                      <div className={cn(
+                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                        entry.rank === 1 && 'bg-yellow-500 text-yellow-950',
+                        entry.rank === 2 && 'bg-gray-300 text-gray-700',
+                        entry.rank === 3 && 'bg-amber-700 text-amber-100',
+                        entry.rank > 3 && 'bg-muted text-muted-foreground',
+                      )}>
+                        {entry.rank}
+                      </div>
+                      {entry.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={entry.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover bg-muted shrink-0" />
+                      ) : (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shrink-0">{entry.avatar}</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-xs truncate flex items-center gap-1">
+                          {entry.displayName}
+                          {entry.verified && <Star className="h-2.5 w-2.5 fill-primary text-primary shrink-0" />}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">@{entry.username}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-bold text-xs text-success">{entry.winRate}%</div>
+                        {entry.streak > 0 && (
+                          <div className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 font-semibold">
+                            <Flame className="h-2.5 w-2.5" />{entry.streak}
+                          </div>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-[10px]">
+                        {entry.change > 0 && <span className="text-success">+{entry.change}</span>}
+                        {entry.change < 0 && <span className="text-destructive">{entry.change}</span>}
+                        {entry.change === 0 && <span className="text-muted-foreground">–</span>}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+
+                {/* Desktop/tablet table — hidden on small screens */}
+                <div className="hidden sm:block rounded-lg border border-border bg-card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/30">
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Rank</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Tipster</th>
+                          <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Win Rate</th>
+                          <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider hidden md:table-cell">Tips</th>
+                          <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider hidden md:table-cell">ROI</th>
+                          <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider">Streak</th>
+                          <th className="px-3 py-2 text-center text-[11px] font-medium uppercase text-muted-foreground tracking-wider hidden md:table-cell">Change</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {data.map((entry, index) => (
+                          <tr
+                            key={entry.id}
+                            className={cn(
+                              'border-b border-border transition-colors hover:bg-muted/30',
+                              index < 3 && 'bg-muted/10',
+                            )}
+                          >
+                            <td className="px-3 py-1.5">
+                              <div className={cn(
+                                'flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold',
+                                entry.rank === 1 && 'bg-yellow-500 text-yellow-950',
+                                entry.rank === 2 && 'bg-gray-300 text-gray-700',
+                                entry.rank === 3 && 'bg-amber-700 text-amber-100',
+                                entry.rank > 3 && 'bg-muted text-muted-foreground',
+                              )}>
+                                {entry.rank}
+                              </div>
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <Link href={tipsterHref(entry.username, entry.username)} className="flex items-center gap-2.5 hover:text-primary">
+                                {entry.avatarUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={entry.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover bg-muted shrink-0" />
+                                ) : (
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shrink-0">{entry.avatar}</div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="font-medium text-xs truncate flex items-center gap-1">
+                                    {entry.displayName}
+                                    {entry.verified && <Star className="h-2.5 w-2.5 fill-primary text-primary" />}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground truncate">@{entry.username}</div>
+                                </div>
+                              </Link>
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              <div className="font-semibold text-xs text-success">{entry.winRate}%</div>
+                              <div className="text-[10px] text-muted-foreground">{entry.won}/{entry.tips}</div>
+                            </td>
+                            <td className="px-3 py-1.5 text-center font-medium text-xs hidden md:table-cell">{entry.tips}</td>
+                            <td className="px-3 py-1.5 text-center hidden md:table-cell">
+                              <span className={cn('font-semibold text-xs', entry.roi >= 0 ? 'text-primary' : 'text-destructive')}>
+                                {entry.roi >= 0 ? '+' : ''}{entry.roi}%
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {entry.streak > 0 && (
+                                <div className="inline-flex items-center gap-0.5 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                                  <Flame className="h-2.5 w-2.5" />
+                                  {entry.streak}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-center text-[10px] hidden md:table-cell">
+                              {entry.change > 0 && <span className="text-success">+{entry.change}</span>}
+                              {entry.change < 0 && <span className="text-destructive">{entry.change}</span>}
+                              {entry.change === 0 && <span className="text-muted-foreground">-</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </>
             )}
