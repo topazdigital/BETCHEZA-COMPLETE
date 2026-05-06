@@ -72,20 +72,26 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Other methods (card, bank, crypto) or M-Pesa without PayHero configured ──
+  // ── M-Pesa without PayHero configured — block rather than fake-credit ──
+  if (body.method === 'mpesa') {
+    return NextResponse.json(
+      { success: false, error: 'M-Pesa payments are temporarily unavailable. Please try again later or use another payment method.' },
+      { status: 503 },
+    );
+  }
+
+  // ── Other methods (card, bank, crypto) ──
   const txn = credit(user.userId, body.amount, {
     type: 'deposit',
     currency: body.currency || 'KES',
     method: body.method,
     reference: body.reference,
     description:
-      body.method === 'mpesa'
-        ? `Deposit via M-Pesa · ${body.phone}`
-        : body.method === 'card'
-          ? `Deposit via Card · ****${body.cardLast4 || ''}`
-          : body.method === 'bank'
-            ? 'Deposit via Bank Transfer'
-            : 'Deposit via Crypto',
+      body.method === 'card'
+        ? `Deposit via Card · ****${body.cardLast4 || ''}`
+        : body.method === 'bank'
+          ? 'Deposit via Bank Transfer'
+          : 'Deposit via Crypto',
   });
 
   try {
