@@ -1041,7 +1041,16 @@ function RegisterPanel() {
                 disabled={isLoading}
                 className="flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <span className="text-base leading-none">{selectedCountry?.flag}</span>
+                {selectedCountry && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`https://flagcdn.com/w20/${selectedCountry.code.toLowerCase()}.png`}
+                    width={20}
+                    height={15}
+                    alt={selectedCountry.name}
+                    className="rounded-[2px] object-cover"
+                  />
+                )}
                 <span className="text-muted-foreground">{selectedCountry?.dialCode}</span>
                 <span className="text-muted-foreground text-[9px]">▾</span>
               </button>
@@ -1071,7 +1080,14 @@ function RegisterPanel() {
                         }}
                         className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted ${formData.countryCode === c.code ? 'bg-primary/10 text-primary font-medium' : ''}`}
                       >
-                        <span className="text-sm">{c.flag}</span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`https://flagcdn.com/w20/${c.code.toLowerCase()}.png`}
+                          width={20}
+                          height={15}
+                          alt={c.name}
+                          className="rounded-[2px] object-cover shrink-0"
+                        />
                         <span className="truncate flex-1">{c.name}</span>
                         <span className="shrink-0 text-muted-foreground text-[10px]">{c.dialCode}</span>
                       </button>

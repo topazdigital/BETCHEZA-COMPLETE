@@ -3477,9 +3477,20 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
   const activeKeys = await getActiveOutrightKeys();
   const callableKeys = sportKeys.filter(k => activeKeys.has(k));
   if (callableKeys.length === 0) {
-    // No active outright keys from The Odds API — try standings fallback before giving up.
+    // No active outright keys from The Odds API — prefer curated static odds,
+    // then SGO, then standings (in that order of quality).
+    if (sgoOutrights.length > 0) {
+      setCache(cacheKey, sgoOutrights);
+      return sgoOutrights;
+    }
+    const { getStaticOutrights } = await import('@/lib/api/static-outrights');
+    const staticData = getStaticOutrights(leagueId);
+    if (staticData.length > 0) {
+      setCache(cacheKey, staticData);
+      return staticData;
+    }
     const standingsFallback = await buildOutrightFromStandings(leagueId).catch(() => null);
-    const result = standingsFallback ? [standingsFallback] : sgoOutrights;
+    const result = standingsFallback ? [standingsFallback] : [];
     setCache(cacheKey, result);
     return result;
   }
@@ -3545,13 +3556,19 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
     }
   }
 
-  // ─── Deterministic fallback ─────────────────────────────────────────────
-  // If both providers returned nothing, derive a "Title Race" outright from
-  // the live standings table — top 6 teams scored by points + goal-difference.
-  // This guarantees the league/competition outright section never goes empty
-  // for active league seasons (EPL, La Liga, MLS, etc.) even when neither
-  // The Odds API nor SGO covers them.
+  // ─── Curated static fallback ────────────────────────────────────────────
+  // If both live providers returned nothing, use hand-curated bookmaker odds
+  // sourced from Oddschecker / UK/EU sportsbooks. These are far more realistic
+  // than the standings-derived computation and cover all major leagues.
   if (outrights.length === 0) {
+    const { getStaticOutrights } = await import('@/lib/api/static-outrights');
+    const staticData = getStaticOutrights(leagueId);
+    if (staticData.length > 0) {
+      setCache(cacheKey, staticData);
+      return staticData;
+    }
+    // Last resort: derive from live standings (better than nothing for leagues
+    // not covered by static data).
     const fallback = await buildOutrightFromStandings(leagueId).catch(() => null);
     if (fallback) outrights.push(fallback);
   }

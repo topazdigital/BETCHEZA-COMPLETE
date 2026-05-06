@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLeagueOutrights } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 1800; // Revalidate every 30 minutes
 
 export async function GET(
   request: NextRequest,
