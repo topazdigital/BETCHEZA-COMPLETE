@@ -79,6 +79,7 @@ interface TrendingResponse {
     totalLikes: number;
     totalComments: number;
     activeUsers: number;
+    onlineTipsters: number;
   };
 }
 
@@ -504,6 +505,12 @@ function TrendingRail() {
           <div className="mb-2.5 flex items-center gap-1.5">
             <Activity className="h-3.5 w-3.5 text-emerald-500" />
             <h3 className="text-xs font-bold">Community Pulse</h3>
+            {(stats?.onlineTipsters ?? 0) > 0 && (
+              <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0 text-[9px] font-semibold text-emerald-600">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {stats!.onlineTipsters} online
+              </span>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-1.5 text-center">
             <div className="rounded-lg bg-emerald-500/10 p-1.5">
@@ -516,13 +523,27 @@ function TrendingRail() {
             </div>
             <div className="rounded-lg bg-blue-500/10 p-1.5">
               <div className="text-sm font-bold text-blue-500">{stats?.totalComments ?? '–'}</div>
-              <div className="text-[9px] uppercase text-muted-foreground">Reply</div>
+              <div className="text-[9px] uppercase text-muted-foreground">Comments</div>
             </div>
             <div className="rounded-lg bg-purple-500/10 p-1.5">
               <div className="text-sm font-bold text-purple-500">{stats?.activeUsers ?? '–'}</div>
               <div className="text-[9px] uppercase text-muted-foreground">Active</div>
             </div>
           </div>
+          {(stats?.onlineTipsters ?? 0) > 0 && (
+            <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2 py-1.5 flex items-center gap-2">
+              <div className="flex -space-x-1">
+                {[...Array(Math.min(3, stats!.onlineTipsters))].map((_, i) => (
+                  <div key={i} className="h-5 w-5 rounded-full border border-background bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-[7px] font-bold text-white">
+                    {String.fromCharCode(65 + i)}
+                  </div>
+                ))}
+              </div>
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+                {stats!.onlineTipsters} tipster{stats!.onlineTipsters !== 1 ? 's' : ''} online now
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

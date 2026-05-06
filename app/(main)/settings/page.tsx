@@ -17,10 +17,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut, Save, CheckCircle2, KeyRound, Eye, EyeOff, Camera,
+  Settings as SettingsIcon, User, Bell, Shield, Wallet, ArrowRight, LogOut, Save, CheckCircle2, KeyRound, Eye, EyeOff, Camera, Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ALL_TIMEZONES } from '@/lib/utils/timezone';
 
 // Predefined avatars using DiceBear — multiple styles for variety
 const PRESET_AVATARS = [
@@ -93,7 +94,7 @@ const PRESET_AVATARS = [
 ];
 
 export default function SettingsPage() {
-  const { user, isLoading: loading, logout } = useAuth();
+  const { user, isLoading: loading, logout, refreshUser } = useAuth();
   const { open } = useAuthModal();
   const { settings: globalSettings, setOddsFormat: setGlobalOddsFormat, setTimezone: setGlobalTimezone } = useUserSettings();
 
@@ -113,6 +114,10 @@ export default function SettingsPage() {
   const [notifTipsters, setNotifTipsters] = useState(true);
   const [notifPromos, setNotifPromos] = useState(false);
   const [prefSaved, setPrefSaved] = useState(false);
+
+  // Timezone search
+  const [tzSearch, setTzSearch] = useState('');
+  const [tzOpen, setTzOpen] = useState(false);
 
   // Password change
   const [currentPassword, setCurrentPassword] = useState('');
@@ -188,6 +193,7 @@ export default function SettingsPage() {
         toast.error('Failed to save avatar');
       } else {
         toast.success('Profile photo updated');
+        await refreshUser();
       }
     } catch {
       toast.error('Network error — please try again');
@@ -514,20 +520,50 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="relative">
               <Label className="text-xs">Timezone</Label>
-              <Select value={timezone} onValueChange={setTimezone}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Africa/Nairobi">Nairobi (EAT)</SelectItem>
-                  <SelectItem value="Africa/Lagos">Lagos (WAT)</SelectItem>
-                  <SelectItem value="Africa/Johannesburg">Johannesburg (SAST)</SelectItem>
-                  <SelectItem value="Europe/London">London (GMT/BST)</SelectItem>
-                  <SelectItem value="Europe/Paris">Paris (CET)</SelectItem>
-                  <SelectItem value="America/New_York">New York (ET)</SelectItem>
-                  <SelectItem value="UTC">UTC</SelectItem>
-                </SelectContent>
-              </Select>
+              <button
+                type="button"
+                onClick={() => setTzOpen(o => !o)}
+                className="mt-1 flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <span className="truncate text-xs">
+                  {ALL_TIMEZONES.find(z => z.value === timezone)?.label || timezone}
+                </span>
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </button>
+              {tzOpen && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
+                  <div className="p-1.5">
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search timezone…"
+                      value={tzSearch}
+                      onChange={e => setTzSearch(e.target.value)}
+                      className="w-full rounded border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="max-h-52 overflow-y-auto">
+                    {ALL_TIMEZONES.filter(z =>
+                      !tzSearch.trim() ||
+                      z.label.toLowerCase().includes(tzSearch.toLowerCase()) ||
+                      z.value.toLowerCase().includes(tzSearch.toLowerCase()) ||
+                      z.group.toLowerCase().includes(tzSearch.toLowerCase())
+                    ).map(z => (
+                      <button
+                        key={z.value}
+                        type="button"
+                        onClick={() => { setTimezone(z.value); setTzOpen(false); setTzSearch(''); }}
+                        className={`flex w-full items-start gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted ${timezone === z.value ? 'bg-primary/10 text-primary font-medium' : ''}`}
+                      >
+                        <span className="truncate flex-1">{z.label}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">{z.group}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

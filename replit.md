@@ -32,8 +32,12 @@ Key architectural decisions and features include:
 - **Notification System**: Supports web push and email notifications, including admin broadcasts and real-time in-app notifications.
 - **Content Management**: Features "My Bookmarks," a season selector, and an internal news reader.
 - **Expanded Data Coverage**: Integrates multiple sports APIs for wide match coverage across various sports and leagues.
-- **Tipster Community Features**: Tipster catalogue with comparison tools, role/permission system, auto-tip generation, persistent follows, and public tipster profiles.
-- **Community Engagement**: Comments and likes per tip, joinable competitions with leaderboards, and a community feed. Tip of the Day card on feed. Leaderboard has podium + Hot Streaks tab with responsive mobile card list (hidden sm:block for desktop table).
+- **Tipster Community Features**: Tipster catalogue with comparison tools, role/permission system, auto-tip generation, persistent follows, and public tipster profiles. Fake tipsters have `isOnline`/`lastSeen` fields (~35% online at any time); tipster cards show green online dot.
+- **Community Engagement**: Comments and likes per tip, joinable competitions with leaderboards, and a community feed. Tip of the Day card on feed. Leaderboard has podium + Hot Streaks tab with responsive mobile card list (hidden sm:block for desktop table). Community Feed "Pulse" widget shows real-time online tipster count.
+- **H2H Challenge Voting**: Each `ChallengeCard` has a `CommunityVoteBar` — users vote for either side (challenger/opponent). Votes stored in `challenge_votes` table (MySQL) or in-process fallback. API: GET/POST `/api/challenges/[id]/vote`.
+- **Registration UX**: Phone required. Country picker shows flag emoji + dial code with live type-to-search filter (160+ countries). Country auto-detected from `navigator.language` on mount.
+- **Timezone Picker**: `ALL_TIMEZONES` (100+ IANA zones) in `lib/utils/timezone.ts`. Settings page uses a searchable custom dropdown instead of a static select.
+- **Static Content Pages**: About, Terms, Privacy, Responsible Gambling, FAQ, Contact, Cookies — all contain rich, real HTML content. `StaticPageRenderer` renders HTML via `dangerouslySetInnerHTML` with custom scoped CSS (`static-page-body` class).
 - **Dark Mode**: next-themes is the single source of truth for dark/light/system theme. `UserSettingsContext` delegates to `useTheme()` from next-themes — no conflicting DOM class toggle. Theme persisted in both `betcheza_settings` and next-themes localStorage.
 - **Match Page Mobile**: Betting Markets section always-expanded with tappable odds chips (1X2 hero row + additional markets). Lineups accordion shows full 11-player squad with jersey number, name, position in dark-themed inner card.
 - **Financial Features**: User wallet ledger with deposit/withdraw, prize payouts, and multi-provider payment gateway support.

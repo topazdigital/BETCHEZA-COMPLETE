@@ -6,7 +6,7 @@ import useSWR, { mutate } from 'swr';
 import {
   Swords, Trophy, Crown, Flame, Clock, Plus, Users, ChevronRight,
   CheckCircle2, X, Search, Loader2, AlertCircle, Calendar, Target,
-  TrendingUp, Star
+  TrendingUp, Star, ThumbsUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +56,106 @@ function AvatarCircle({ displayName, avatar, size = 'md' }: { displayName: strin
   return (
     <div className={cn('shrink-0 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary', s)}>
       {(displayName || '?').charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+function CommunityVoteBar({ challengeId, initialVotesChallenger, initialVotesOpponent, challengerName, opponentName }: {
+  challengeId: number;
+  initialVotesChallenger: number;
+  initialVotesOpponent: number;
+  challengerName: string;
+  opponentName: string | null;
+}) {
+  const { isAuthenticated } = useAuth();
+  const { open: openAuthModal } = useAuthModal();
+  const [vc, setVc] = useState(initialVotesChallenger);
+  const [vo, setVo] = useState(initialVotesOpponent);
+  const [myVote, setMyVote] = useState<'challenger' | 'opponent' | null>(null);
+  const [voting, setVoting] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/challenges/${challengeId}/vote`).then(r => r.ok ? r.json() : null).then(d => {
+      if (d) {
+        setVc(d.votesChallenger ?? initialVotesChallenger);
+        setVo(d.votesOpponent ?? initialVotesOpponent);
+        setMyVote(d.myVote ?? null);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challengeId]);
+
+  const vote = async (side: 'challenger' | 'opponent') => {
+    if (!isAuthenticated) { openAuthModal('login'); return; }
+    if (voting) return;
+    setVoting(true);
+    const optimisticVc = side === 'challenger' ? (myVote === 'opponent' ? vc + 1 : (myVote ? vc : vc + 1)) : (myVote === 'challenger' ? vc - 1 : vc);
+    const optimisticVo = side === 'opponent' ? (myVote === 'challenger' ? vo + 1 : (myVote ? vo : vo + 1)) : (myVote === 'opponent' ? vo - 1 : vo);
+    setVc(optimisticVc);
+    setVo(optimisticVo);
+    setMyVote(side);
+    try {
+      const r = await fetch(`/api/challenges/${challengeId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ side }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setVc(d.votesChallenger ?? optimisticVc);
+        setVo(d.votesOpponent ?? optimisticVo);
+        setMyVote(d.myVote ?? side);
+      }
+    } catch {}
+    setVoting(false);
+  };
+
+  const total = vc + vo;
+  const vcPct = total > 0 ? Math.round((vc / total) * 100) : 50;
+  const voPct = total > 0 ? 100 - vcPct : 50;
+
+  return (
+    <div className="mx-4 mb-3 space-y-1.5">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <span className="font-semibold">Community Vote</span>
+        <span>{total} vote{total !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="flex gap-1.5">
+        <button
+          onClick={() => vote('challenger')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1 rounded-lg border py-1.5 text-[10px] font-semibold transition-all',
+            myVote === 'challenger'
+              ? 'border-emerald-500 bg-emerald-500/15 text-emerald-600'
+              : 'border-border bg-muted/30 text-muted-foreground hover:border-emerald-400/50 hover:bg-emerald-500/5 hover:text-emerald-600',
+          )}
+        >
+          <ThumbsUp className="h-3 w-3" />
+          <span className="truncate max-w-[70px]">{challengerName}</span>
+          <span className="shrink-0">({vcPct}%)</span>
+        </button>
+        <button
+          onClick={() => vote('opponent')}
+          disabled={!opponentName}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1 rounded-lg border py-1.5 text-[10px] font-semibold transition-all',
+            !opponentName ? 'cursor-default opacity-40 border-border bg-muted/20 text-muted-foreground' :
+            myVote === 'opponent'
+              ? 'border-blue-500 bg-blue-500/15 text-blue-600'
+              : 'border-border bg-muted/30 text-muted-foreground hover:border-blue-400/50 hover:bg-blue-500/5 hover:text-blue-600',
+          )}
+        >
+          <ThumbsUp className="h-3 w-3 scale-x-[-1]" />
+          <span className="truncate max-w-[70px]">{opponentName || 'Open'}</span>
+          <span className="shrink-0">({voPct}%)</span>
+        </button>
+      </div>
+      {total > 0 && (
+        <div className="flex h-1 gap-0.5 overflow-hidden rounded-full">
+          <div className="bg-emerald-500 transition-all rounded-full" style={{ width: `${vcPct}%` }} />
+          <div className="bg-blue-500 transition-all rounded-full flex-1" />
+        </div>
+      )}
     </div>
   );
 }
@@ -168,6 +268,14 @@ function ChallengeCard({ c, onWatch }: { c: Challenge; onWatch?: (id: number) =>
           </div>
         )}
       </div>
+
+      <CommunityVoteBar
+        challengeId={c.id}
+        initialVotesChallenger={c.votesChallenger}
+        initialVotesOpponent={c.votesOpponent}
+        challengerName={p1?.displayName || 'Challenger'}
+        opponentName={p2?.displayName || null}
+      />
 
       <div className="flex items-center justify-between px-4 pb-3 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-3">

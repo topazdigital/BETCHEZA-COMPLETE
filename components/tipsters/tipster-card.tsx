@@ -12,6 +12,8 @@ interface TipsterCardProps {
   profile: Pick<TipsterProfile, 'win_rate' | 'roi' | 'total_tips' | 'won_tips' | 'streak' | 'rank' | 'followers_count' | 'is_pro'> & {
     /** Optional — when true a small verified checkmark sits next to the name. */
     is_verified?: boolean;
+    /** Optional — shows a green online dot when true */
+    is_online?: boolean;
   };
   compact?: boolean;
 }
@@ -25,10 +27,15 @@ export function TipsterCard({ user, profile, compact = false }: TipsterCardProps
         <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-sm">
           {/* Avatar */}
           <div className="relative">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-lg font-semibold text-primary-foreground">
-              {user.display_name.charAt(0).toUpperCase()}
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-lg font-semibold text-primary-foreground overflow-hidden">
+              {user.avatar_url
+                ? <img src={user.avatar_url} alt={user.display_name} className="h-full w-full object-cover" />
+                : user.display_name.charAt(0).toUpperCase()}
             </div>
-            {profile.is_pro && (
+            {profile.is_online && (
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" title="Online now" />
+            )}
+            {profile.is_pro && !profile.is_online && (
               <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-warning text-[8px] font-bold text-warning-foreground">
                 PRO
               </div>
@@ -71,9 +78,14 @@ export function TipsterCard({ user, profile, compact = false }: TipsterCardProps
         {/* Avatar */}
         <Link href={`/tipsters/${user.username}`}>
           <div className="relative">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-xl font-semibold text-primary-foreground">
-              {user.display_name.charAt(0).toUpperCase()}
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-xl font-semibold text-primary-foreground overflow-hidden">
+              {user.avatar_url
+                ? <img src={user.avatar_url} alt={user.display_name} className="h-full w-full object-cover" />
+                : user.display_name.charAt(0).toUpperCase()}
             </div>
+            {profile.is_online && (
+              <span className="absolute bottom-0.5 right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card bg-emerald-500" title="Online now" />
+            )}
             {profile.is_pro && (
               <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-warning text-[8px] font-bold text-warning-foreground">
                 PRO

@@ -34,6 +34,10 @@ export interface FakeTipster {
   isVerified: boolean;
   joinedAt: string;
   isFake: true;
+  /** True when this tipster is currently "online" — refreshed every 3 minutes */
+  isOnline: boolean;
+  /** ISO timestamp of last simulated activity */
+  lastSeen: string;
 }
 
 const FIRST_NAMES = [
@@ -180,6 +184,9 @@ export function generateFakeTipsters(count = 100, seed = 42, startId = 1000): Fa
       isVerified: rand() < 0.55,
       joinedAt: new Date(Date.now() - pickInt(rand, 14, 720) * 86400_000).toISOString(),
       isFake: true,
+      // ~35% chance online; use deterministic seed so regenerate is stable
+      isOnline: rand() < 0.35,
+      lastSeen: new Date(Date.now() - pickInt(rand, 1, 120) * 60_000).toISOString(),
     });
   }
   return out;

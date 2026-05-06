@@ -13,6 +13,7 @@ function fakeAsPublic(t: FakeTipster) {
     avgOdds: t.avgOdds, streak: t.streak, rank: 0, followers: t.followersCount,
     isPro: t.isPro, subscriptionPrice: t.subscriptionPrice, verified: t.isVerified,
     countryCode: t.countryCode, joinedAt: t.joinedAt,
+    isOnline: t.isOnline ?? false, lastSeen: t.lastSeen ?? null,
   };
 }
 

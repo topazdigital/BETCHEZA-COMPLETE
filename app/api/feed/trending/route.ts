@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { listPosts } from '@/lib/feed-store';
+import { getFakeTipsters } from '@/lib/fake-tipsters';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,8 @@ export async function GET() {
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
   const totalComments = posts.reduce((s, p) => s + p.commentCount, 0);
   const activeUsers = new Set(posts.map(p => p.userId)).size;
+  const fakeTipsters = getFakeTipsters();
+  const onlineTipsters = fakeTipsters.filter(t => t.isOnline).length;
 
   const payload = {
     trending,
@@ -46,6 +49,7 @@ export async function GET() {
       totalLikes,
       totalComments,
       activeUsers,
+      onlineTipsters,
     },
   };
 

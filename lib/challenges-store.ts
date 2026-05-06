@@ -33,6 +33,8 @@ export interface Challenge {
   isPublic: boolean;
   maxTips: number;
   watchers: number;
+  votesChallenger: number;
+  votesOpponent: number;
   challenger: ChallengeParticipant | null;
   opponent: ChallengeParticipant | null;
   createdAt: string;
@@ -77,6 +79,11 @@ interface FileChallenge {
   createdAt: string;
 }
 
+interface FileVote { challengeId: number; userId: number; side: 'challenger' | 'opponent' }
+const gv = globalThis as { __challengeVotes?: FileVote[] };
+if (!gv.__challengeVotes) gv.__challengeVotes = [];
+const vStore = gv.__challengeVotes!;
+
 const g = globalThis as { __challengeStore?: { challenges: FileChallenge[]; nextId: number } };
 if (!g.__challengeStore) {
   const saved = fileStoreGet<{ challenges: FileChallenge[]; nextId: number }>('challenges', {
@@ -113,6 +120,8 @@ function shapeFromDb(row: Record<string, unknown>, challenger: ChallengeParticip
     isPublic: Boolean(row.is_public),
     maxTips: Number(row.max_tips || 10),
     watchers: Number(row.watchers || 0),
+    votesChallenger: Number(row.votes_challenger || 0),
+    votesOpponent: Number(row.votes_opponent || 0),
     challenger,
     opponent,
     createdAt: String(row.created_at || ''),
@@ -188,6 +197,8 @@ export async function getChallenges(status?: ChallengeStatus | 'all'): Promise<C
   if (status && status !== 'all') list = list.filter((c) => c.status === status);
   return list.map((c) => ({
     ...c,
+    votesChallenger: vStore.filter(v => v.challengeId === c.id && v.side === 'challenger').length,
+    votesOpponent: vStore.filter(v => v.challengeId === c.id && v.side === 'opponent').length,
     challenger: fakePart(c.challengerId, `Tipster${c.challengerId}`, 3),
     opponent: c.opponentId ? fakePart(c.opponentId, `Tipster${c.opponentId}`, 1) : null,
   }));
@@ -210,6 +221,8 @@ export async function getChallengeById(id: number): Promise<Challenge | null> {
   if (!c) return null;
   return {
     ...c,
+    votesChallenger: vStore.filter(v => v.challengeId === c.id && v.side === 'challenger').length,
+    votesOpponent: vStore.filter(v => v.challengeId === c.id && v.side === 'opponent').length,
     challenger: fakePart(c.challengerId, `Tipster${c.challengerId}`, 3),
     opponent: c.opponentId ? fakePart(c.opponentId, `Tipster${c.opponentId}`, 1) : null,
   };
@@ -268,6 +281,8 @@ export async function createChallenge(input: CreateChallengeInput): Promise<Chal
   persistToDisk();
   return {
     ...entry,
+    votesChallenger: 0,
+    votesOpponent: 0,
     challenger: fakePart(input.challengerId, `Tipster${input.challengerId}`),
     opponent: input.opponentId ? fakePart(input.opponentId, `Tipster${input.opponentId}`) : null,
   };
@@ -319,4 +334,86 @@ export async function incrementWatchers(challengeId: number): Promise<void> {
   }
   const c = cStore.challenges.find((x) => x.id === challengeId);
   if (c) { c.watchers++; persistToDisk(); }
+}
+
+export async function voteCommunity(
+  challengeId: number,
+  userId: number,
+  side: 'challenger' | 'opponent',
+): Promise<{ votesChallenger: number; votesOpponent: number; myVote: 'challenger' | 'opponent' | null }> {
+  if (hasDb()) {
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS challenge_votes (
+          challenge_id INT NOT NULL,
+          user_id INT NOT NULL,
+          side ENUM('challenger','opponent') NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (challenge_id, user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      await query(
+        `INSERT INTO challenge_votes (challenge_id, user_id, side) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE side = VALUES(side)`,
+        [challengeId, userId, side],
+      );
+      const rows = await query<{ side: string; cnt: number }>(
+        `SELECT side, COUNT(*) AS cnt FROM challenge_votes WHERE challenge_id = ? GROUP BY side`,
+        [challengeId],
+      );
+      let vc = 0, vo = 0;
+      for (const r of rows) {
+        if (r.side === 'challenger') vc = Number(r.cnt);
+        else if (r.side === 'opponent') vo = Number(r.cnt);
+      }
+      return { votesChallenger: vc, votesOpponent: vo, myVote: side };
+    } catch { /* fall through */ }
+  }
+  const existing = vStore.find(v => v.challengeId === challengeId && v.userId === userId);
+  if (existing) { existing.side = side; }
+  else { vStore.push({ challengeId, userId, side }); }
+  const vc = vStore.filter(v => v.challengeId === challengeId && v.side === 'challenger').length;
+  const vo = vStore.filter(v => v.challengeId === challengeId && v.side === 'opponent').length;
+  return { votesChallenger: vc, votesOpponent: vo, myVote: side };
+}
+
+export async function getCommunityVotes(
+  challengeId: number,
+  userId?: number,
+): Promise<{ votesChallenger: number; votesOpponent: number; myVote: 'challenger' | 'opponent' | null }> {
+  if (hasDb()) {
+    try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS challenge_votes (
+          challenge_id INT NOT NULL,
+          user_id INT NOT NULL,
+          side ENUM('challenger','opponent') NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (challenge_id, user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      const rows = await query<{ side: string; cnt: number }>(
+        `SELECT side, COUNT(*) AS cnt FROM challenge_votes WHERE challenge_id = ? GROUP BY side`,
+        [challengeId],
+      );
+      let vc = 0, vo = 0;
+      for (const r of rows) {
+        if (r.side === 'challenger') vc = Number(r.cnt);
+        else if (r.side === 'opponent') vo = Number(r.cnt);
+      }
+      let myVote: 'challenger' | 'opponent' | null = null;
+      if (userId) {
+        const mv = await query<{ side: string }>(
+          `SELECT side FROM challenge_votes WHERE challenge_id = ? AND user_id = ? LIMIT 1`,
+          [challengeId, userId],
+        );
+        if (mv[0]) myVote = mv[0].side as 'challenger' | 'opponent';
+      }
+      return { votesChallenger: vc, votesOpponent: vo, myVote };
+    } catch { /* fall through */ }
+  }
+  const vc = vStore.filter(v => v.challengeId === challengeId && v.side === 'challenger').length;
+  const vo = vStore.filter(v => v.challengeId === challengeId && v.side === 'opponent').length;
+  const myVoteEntry = userId ? vStore.find(v => v.challengeId === challengeId && v.userId === userId) : null;
+  return { votesChallenger: vc, votesOpponent: vo, myVote: myVoteEntry?.side ?? null };
 }
