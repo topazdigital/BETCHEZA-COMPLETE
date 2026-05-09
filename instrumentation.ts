@@ -37,6 +37,35 @@ export async function register() {
     console.warn('[instrumentation] env seed failed:', e);
   }
 
+  // Seed PayHero credentials from env vars into the file store so M-Pesa
+  // payments work immediately without the admin needing to re-enter credentials.
+  try {
+    const phToken = (process.env.PAYHERO_BASIC_TOKEN || '').trim();
+    const phAccountId = (process.env.PAYHERO_ACCOUNT_ID || '').trim();
+    if (phToken && phAccountId) {
+      const { fileStoreGet, fileStoreSet } = await import('./lib/file-store');
+      type GW = { id: string; enabled: boolean; credentials: Record<string, string> };
+      const gateways = fileStoreGet<GW[] | null>('payment-gateways', null);
+      const gw = gateways?.find((g: GW) => g.id === 'payhero');
+      // Only seed if credentials are empty — don't overwrite admin-saved values
+      if (!gw?.credentials?.basic_token || gw.credentials.basic_token.length < 10) {
+        const { DEFAULT_GATEWAYS } = await import('./app/api/admin/payment-gateways/route').catch(() => ({ DEFAULT_GATEWAYS: null }));
+        const base = (DEFAULT_GATEWAYS || gateways || []) as GW[];
+        const updated = base.map((g: GW) =>
+          g.id === 'payhero'
+            ? { ...g, enabled: true, credentials: { ...g.credentials, basic_token: phToken, account_id: phAccountId } }
+            : g
+        );
+        const g2 = globalThis as { __gwStore?: GW[] };
+        g2.__gwStore = updated;
+        fileStoreSet('payment-gateways', updated);
+        console.log('[instrumentation] PayHero credentials seeded from environment variables');
+      }
+    }
+  } catch (e) {
+    console.warn('[instrumentation] PayHero seed failed:', e);
+  }
+
   // Seed SMTP env vars into the email config file store so sendMail() works
   // immediately without the admin needing to open Email Setup and click Save.
   try {

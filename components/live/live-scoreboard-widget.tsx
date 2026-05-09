@@ -17,7 +17,7 @@ interface LiveMatch {
   league?: { name?: string };
 }
 
-const POLL_INTERVAL = 30_000;
+const POLL_INTERVAL = 10_000;
 const GOAL_HIDE_DELAY = 60_000; // hide the popup after 60 s of no new goals
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 

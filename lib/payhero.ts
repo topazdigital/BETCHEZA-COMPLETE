@@ -146,12 +146,10 @@ export async function initiateWithdrawal(
       body: JSON.stringify({
         amount,
         phone_number: normalizedPhone,
-        network: 'safaricom',
         channel_id: channelId,
         provider: 'm-pesa',
         external_reference: reference,
         callback_url: getCallbackUrl(),
-        account_id: channelId,
       }),
     });
 

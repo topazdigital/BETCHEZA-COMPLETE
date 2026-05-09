@@ -4,13 +4,19 @@
 //
 // Jackpot auto-sync runs every 60 minutes — checks all bookmakers for newly
 // published jackpots and adds them automatically without wiping live rounds.
+// Daily strategy auto-posts at 9:00 AM EAT (06:00 UTC) every day.
 
 const TICK_MS = 5 * 60_000; // 5 min base tick
 const JACKPOT_SYNC_EVERY_N_TICKS = 12; // 12 × 5min = 60min
 
-interface CronState { started: boolean; timer: NodeJS.Timeout | null; tickCount: number }
+interface CronState {
+  started: boolean;
+  timer: NodeJS.Timeout | null;
+  tickCount: number;
+  lastStrategyDate: string;
+}
 const g = globalThis as { __betchezaCron?: CronState };
-g.__betchezaCron = g.__betchezaCron || { started: false, timer: null, tickCount: 0 };
+g.__betchezaCron = g.__betchezaCron || { started: false, timer: null, tickCount: 0, lastStrategyDate: '' };
 const state = g.__betchezaCron;
 
 function getBaseUrl(): string {
@@ -51,13 +57,44 @@ async function runJackpotSync(): Promise<void> {
   }
 }
 
+async function runDailyStrategy(): Promise<void> {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (state.lastStrategyDate === todayStr) return; // already ran today
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/daily-strategy`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron'}` },
+    });
+    if (!r.ok) {
+      console.warn('[cron] daily-strategy failed:', r.status);
+    } else {
+      state.lastStrategyDate = todayStr;
+      const data = await r.json() as { date?: string; picks?: unknown[]; message?: string };
+      console.log(`[cron] daily-strategy: ${data.message ?? `posted ${data.picks?.length ?? 0} picks for ${data.date}`}`);
+    }
+  } catch (e) {
+    console.warn('[cron] daily-strategy error', e instanceof Error ? e.message : e);
+  }
+}
+
+function isStrategyTime(): boolean {
+  const now = new Date();
+  // 9:00 AM EAT = 06:00 UTC. Run if UTC hour is 6 and minutes 0–4 (within first 5-min tick window)
+  const utcHour = now.getUTCHours();
+  const utcMin = now.getUTCMinutes();
+  return utcHour === 6 && utcMin < 5;
+}
+
 async function tick(): Promise<void> {
   state.tickCount++;
   void runMatchReminders();
 
-  // Run jackpot sync every JACKPOT_SYNC_EVERY_N_TICKS ticks (every 60 minutes)
   if (state.tickCount % JACKPOT_SYNC_EVERY_N_TICKS === 0) {
     void runJackpotSync();
+  }
+
+  if (isStrategyTime()) {
+    void runDailyStrategy();
   }
 }
 
@@ -65,10 +102,19 @@ export function startCron(): void {
   if (state.started) return;
   state.started = true;
 
-  // First tick: match reminders after 30s, jackpot sync after 10s (initial population)
   setTimeout(() => { void runMatchReminders(); }, 30_000);
   setTimeout(() => { void runJackpotSync(); }, 10_000);
 
+  // Auto-post daily strategy on startup if it hasn't been posted today yet
+  // and it's past 9am EAT (6am UTC)
+  setTimeout(() => {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    if (utcHour >= 6) {
+      void runDailyStrategy();
+    }
+  }, 60_000);
+
   state.timer = setInterval(() => { void tick(); }, TICK_MS);
-  console.log('[cron] started — match-reminders (5 min), jackpot-sync (60 min, first run in 10s)');
+  console.log('[cron] started — match-reminders (5 min), jackpot-sync (60 min, first run in 10s), daily-strategy (9am EAT)');
 }
