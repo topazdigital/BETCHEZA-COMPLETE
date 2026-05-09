@@ -436,14 +436,14 @@ export async function voteCommunity(
         CREATE TABLE IF NOT EXISTS challenge_votes (
           challenge_id INT NOT NULL,
           user_id INT NOT NULL,
-          side ENUM('challenger','opponent') NOT NULL,
+          side VARCHAR(20) NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (challenge_id, user_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        )
       `);
       await query(
         `INSERT INTO challenge_votes (challenge_id, user_id, side) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE side = VALUES(side)`,
+         ON CONFLICT (challenge_id, user_id) DO UPDATE SET side = EXCLUDED.side`,
         [challengeId, userId, side],
       );
       const rows = await query<{ side: string; cnt: number }>(
@@ -451,7 +451,7 @@ export async function voteCommunity(
         [challengeId],
       );
       let vc = 0, vo = 0;
-      for (const r of rows) {
+      for (const r of rows.rows) {
         if (r.side === 'challenger') vc = Number(r.cnt);
         else if (r.side === 'opponent') vo = Number(r.cnt);
       }
@@ -476,17 +476,17 @@ export async function getCommunityVotes(
         CREATE TABLE IF NOT EXISTS challenge_votes (
           challenge_id INT NOT NULL,
           user_id INT NOT NULL,
-          side ENUM('challenger','opponent') NOT NULL,
+          side VARCHAR(20) NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (challenge_id, user_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        )
       `);
       const rows = await query<{ side: string; cnt: number }>(
         `SELECT side, COUNT(*) AS cnt FROM challenge_votes WHERE challenge_id = ? GROUP BY side`,
         [challengeId],
       );
       let vc = 0, vo = 0;
-      for (const r of rows) {
+      for (const r of rows.rows) {
         if (r.side === 'challenger') vc = Number(r.cnt);
         else if (r.side === 'opponent') vo = Number(r.cnt);
       }

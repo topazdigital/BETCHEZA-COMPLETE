@@ -78,7 +78,7 @@ async function ensureTables(): Promise<void> {
         user_id INT NOT NULL PRIMARY KEY,
         code VARCHAR(20) NOT NULL UNIQUE,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      )
     `);
     await query(`
       CREATE TABLE IF NOT EXISTS referrals (
@@ -89,11 +89,9 @@ async function ensureTables(): Promise<void> {
         referred_username VARCHAR(100) NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         verified_at TIMESTAMP NULL,
-        referrer_bonus_paid TINYINT(1) NOT NULL DEFAULT 0,
-        referee_bonus_paid TINYINT(1) NOT NULL DEFAULT 0,
-        INDEX idx_referrer (referrer_id),
-        INDEX idx_referred (referred_user_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        referrer_bonus_paid BOOLEAN NOT NULL DEFAULT FALSE,
+        referee_bonus_paid BOOLEAN NOT NULL DEFAULT FALSE
+      )
     `);
     tableReady = true;
   } catch { /* ignore — no DB */ }
@@ -107,7 +105,7 @@ export async function getReferralCode(userId: number, username: string): Promise
   if (getPool()) {
     try {
       await execute(
-        `INSERT IGNORE INTO referral_codes (user_id, code) VALUES (?, ?)`,
+        `INSERT INTO referral_codes (user_id, code) VALUES (?, ?) ON CONFLICT DO NOTHING`,
         [userId, code]
       );
       const r = await query<{ code: string }>(
@@ -161,9 +159,9 @@ export async function recordReferral(opts: {
   if (getPool()) {
     try {
       await execute(
-        `INSERT IGNORE INTO referrals
+        `INSERT INTO referrals
          (id, referrer_id, referred_user_id, referred_email, referred_username, created_at)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
+         VALUES (?, ?, ?, ?, ?, NOW()) ON CONFLICT DO NOTHING`,
         [id, referrerId, referredUserId, referredEmail, referredUsername]
       );
       return;

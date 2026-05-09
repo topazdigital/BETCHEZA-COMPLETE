@@ -32,14 +32,13 @@ async function ensureTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS match_votes (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        id BIGSERIAL PRIMARY KEY,
         match_id VARCHAR(191) NOT NULL,
         voter_id VARCHAR(191) NOT NULL,
         pick VARCHAR(10) NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_match_voter (match_id, voter_id),
-        KEY idx_match_votes_match (match_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        UNIQUE (match_id, voter_id)
+      )
     `);
     tableReady = true;
   } catch (e) {
@@ -113,7 +112,7 @@ export async function castVote(
     await ensureTable();
     try {
       await execute(
-        `INSERT IGNORE INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?)`,
+        `INSERT INTO match_votes (match_id, voter_id, pick) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
         [matchId, voterId, pick],
       );
       const totals = await getVoteTotals(matchId);

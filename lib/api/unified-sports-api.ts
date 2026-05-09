@@ -2949,8 +2949,8 @@ async function _ensureMatchCacheTable(): Promise<void> {
       `CREATE TABLE IF NOT EXISTS match_cache (
          cache_key  VARCHAR(100) PRIMARY KEY,
          cached_at  BIGINT       NOT NULL,
-         payload    LONGTEXT     NOT NULL
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+         payload    TEXT         NOT NULL
+       )`
     );
   } catch { /* DB unavailable — graceful fallback */ }
 }
@@ -2976,8 +2976,8 @@ async function _writeDbCache(data: UnifiedMatch[]): Promise<void> {
     const now = Date.now();
     await query(
       `INSERT INTO match_cache (cache_key, cached_at, payload)
-       VALUES ('all_matches', ?, ?)
-       ON DUPLICATE KEY UPDATE cached_at = VALUES(cached_at), payload = VALUES(payload)`,
+       VALUES ('all_matches', $1, $2)
+       ON CONFLICT (cache_key) DO UPDATE SET cached_at = EXCLUDED.cached_at, payload = EXCLUDED.payload`,
       [now, payload]
     );
   } catch { /* non-fatal */ }
