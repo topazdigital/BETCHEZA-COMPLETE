@@ -221,7 +221,7 @@ async function buildParticipant(userId: number | null): Promise<ChallengePartici
   if (!userId) return null;
   if (hasDb()) {
     try {
-      const rows = await query<{
+      const { rows } = await query<{
         user_id: number; username: string; display_name: string; avatar_url: string | null;
         total_tips: number; won_tips: number; lost_tips: number; streak: number; roi: number;
       }>(
@@ -266,9 +266,9 @@ export async function getChallenges(status?: ChallengeStatus | 'all'): Promise<C
         params.push(status);
       }
       sql += ` ORDER BY created_at DESC LIMIT 100`;
-      const rows = await query<Record<string, unknown>>(sql, params);
+      const result = await query<Record<string, unknown>>(sql, params);
       const challenges = await Promise.all(
-        rows.map(async (r) => {
+        result.rows.map(async (r) => {
           const [challenger, opponent] = await Promise.all([
             buildParticipant(Number(r.challenger_id)),
             r.opponent_id ? buildParticipant(Number(r.opponent_id)) : Promise.resolve(null),
@@ -296,9 +296,9 @@ export async function getChallenges(status?: ChallengeStatus | 'all'): Promise<C
 export async function getChallengeById(id: number): Promise<Challenge | null> {
   if (hasDb()) {
     try {
-      const rows = await query<Record<string, unknown>>(`SELECT * FROM tipster_challenges WHERE id = ?`, [id]);
-      if (!rows.length) return null;
-      const r = rows[0];
+      const result = await query<Record<string, unknown>>(`SELECT * FROM tipster_challenges WHERE id = ?`, [id]);
+      if (!result.rows.length) return null;
+      const r = result.rows[0];
       const [challenger, opponent] = await Promise.all([
         buildParticipant(Number(r.challenger_id)),
         r.opponent_id ? buildParticipant(Number(r.opponent_id)) : Promise.resolve(null),
@@ -443,7 +443,7 @@ export async function voteCommunity(
       `);
       await query(
         `INSERT INTO challenge_votes (challenge_id, user_id, side) VALUES (?, ?, ?)
-         ON CONFLICT (challenge_id, user_id) DO UPDATE SET side = EXCLUDED.side`,
+         ON DUPLICATE KEY UPDATE side = VALUES(side)`,
         [challengeId, userId, side],
       );
       const rows = await query<{ side: string; cnt: number }>(

@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
       await execute(
         `INSERT INTO site_settings (setting_key, setting_value)
          VALUES (?, ?)
-         ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value`,
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
         [key, String(value ?? '')],
       );
     } catch (err) {

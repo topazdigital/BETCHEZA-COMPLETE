@@ -202,77 +202,79 @@ export function MatchCardNew({
   if (variant === 'compact') {
     return (
       <div className={cn(
-        'flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/50 hover:bg-card/80',
+        'flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-2 transition-all hover:border-primary/50 hover:bg-card/80',
         isLive && 'border-live/30 bg-live/5'
       )}>
-        {/* Time / Status */}
-        <div className="w-12 shrink-0 text-center">
+        {/* Time / Status — fixed narrow column, never grows */}
+        <div className="w-[42px] shrink-0 text-center">
           {isLive ? (
-            <div className="flex flex-col items-center">
-              <span className="relative flex h-2 w-2">
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-live"></span>
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-live"></span>
               </span>
-              <span className="mt-1 text-[10px] font-bold text-live">
+              <span className="text-[10px] font-bold leading-none text-live">
                 {liveStatusLabel(match.sport.slug, statusForLabel, liveMinute)}
               </span>
             </div>
           ) : isFinished ? (
-            <div className="text-xs text-muted-foreground">
-              <div className="font-bold text-foreground/80">FT</div>
-              <div className="text-[10px]">{timeStr}</div>
+            <div className="leading-tight text-muted-foreground">
+              <div className="text-[10px] font-bold uppercase text-foreground/70">FT</div>
+              <div className="text-[9px]">{timeStr}</div>
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground">
-              <div className="font-medium">{timeStr}</div>
-              <div className="text-[10px]">{dateStr}</div>
+            <div className="leading-tight text-muted-foreground">
+              <div className="text-[11px] font-semibold tabular-nums text-foreground">{timeStr}</div>
+              <div className="text-[9px]">{dateStr === 'Today' ? '' : dateStr}</div>
             </div>
           )}
         </div>
 
-        {/* Teams */}
-        <Link href={`/matches/${slug}`} className="min-w-0 flex-1 space-y-1">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {/* Teams — takes all remaining space, truncates names */}
+        <Link href={`/matches/${slug}`} className="min-w-0 flex-1">
+          {/* Home */}
+          <div className="flex min-w-0 items-center justify-between gap-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1">
               <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport.slug} size="xs" />
               <span className={cn(
-                'min-w-0 flex-1 truncate text-sm font-medium leading-tight',
+                'min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight',
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.homeScore > match.awayScore && 'text-success'
               )}>
                 <span className="hidden sm:inline">{match.homeTeam.name}</span>
                 <span className="sm:hidden">{match.homeTeam.shortName || match.homeTeam.name}</span>
+                {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
               </span>
-              {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
             </div>
             {(isLive || isFinished) && match.homeScore !== null && (
-              <span className={cn('font-mono text-sm font-bold shrink-0', isLive && 'text-live')}>
+              <span className={cn('shrink-0 font-mono text-sm font-bold tabular-nums', isLive && 'text-live')}>
                 {match.homeScore}
               </span>
             )}
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          {/* Away */}
+          <div className="flex min-w-0 items-center justify-between gap-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1">
               <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport.slug} size="xs" />
               <span className={cn(
-                'min-w-0 flex-1 truncate text-sm font-medium leading-tight',
+                'min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight',
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.awayScore > match.homeScore && 'text-success'
               )}>
                 <span className="hidden sm:inline">{match.awayTeam.name}</span>
                 <span className="sm:hidden">{match.awayTeam.shortName || match.awayTeam.name}</span>
+                {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
               </span>
-              {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
             </div>
             {(isLive || isFinished) && match.awayScore !== null && (
-              <span className={cn('font-mono text-sm font-bold shrink-0', isLive && 'text-live')}>
+              <span className={cn('shrink-0 font-mono text-sm font-bold tabular-nums', isLive && 'text-live')}>
                 {match.awayScore}
               </span>
             )}
           </div>
         </Link>
 
-        {/* League flag */}
+        {/* League flag — desktop only */}
         {showLeague && (
           <Link
             href={`/leagues/${match.league.slug || match.league.name.toLowerCase().replace(/\s+/g, '-')}`}
@@ -283,9 +285,9 @@ export function MatchCardNew({
           </Link>
         )}
 
-        {/* Odds */}
+        {/* Odds — fixed-width boxes so they never push team names off-screen */}
         {match.odds && !isFinished && (
-          <div className="flex shrink-0 gap-0.5 sm:gap-1">
+          <div className="flex shrink-0 gap-0.5">
             <OddsButton
               value={match.odds.home}
               label={isTwoWay ? 'H' : '1'}
