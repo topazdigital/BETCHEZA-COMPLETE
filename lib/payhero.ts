@@ -38,11 +38,15 @@ function getChannelId(): number {
 }
 
 function getCallbackUrl(): string {
-  const domain =
+  // 1. Explicit app URL set in .env (e.g. APP_URL=https://betcheza.co.ke) — BEST for production
+  if (process.env.APP_URL) return `${process.env.APP_URL}/api/payhero/callback`;
+  // 2. Replit dev domain (set automatically on Replit)
+  const replitDomain =
     process.env.REPLIT_DEV_DOMAIN ||
     (process.env.REPLIT_DOMAINS || '').split(',')[0]?.trim();
-  if (!domain) return 'https://localhost:5000/api/payhero/callback';
-  return `https://${domain}/api/payhero/callback`;
+  if (replitDomain) return `https://${replitDomain}/api/payhero/callback`;
+  // 3. Production fallback — never localhost, always the real domain
+  return 'https://betcheza.co.ke/api/payhero/callback';
 }
 
 export function isConfigured(): boolean {
