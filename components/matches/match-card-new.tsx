@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, ExternalLink, Lightbulb } from 'lucide-react';
@@ -16,9 +16,11 @@ import { getTeamCategoryBadge } from '@/lib/utils/team-category';
 
 /**
  * Ticking live-minute hook for match cards.
- * - Parses ESPN's displayClock string (period field) immediately.
- * - Falls back to computing elapsed time from kickoff for minute-ticking sports.
- * - Ticks every 15 s so the displayed minute stays fresh between API polls.
+ * - Uses storedMinute (from API) as the authoritative base.
+ * - Records the wall-clock time when that minute was received.
+ * - Ticks every 10 s and advances the display by the real elapsed time.
+ * - This way the displayed minute stays in sync with the API rather than
+ *   drifting behind between 10-second polls.
  */
 function useLiveCardMinute(
   storedMinute: number | undefined,
@@ -28,53 +30,35 @@ function useLiveCardMinute(
   period?: string,
 ): number {
   const [minute, setMinute] = useState(storedMinute ?? 0);
+  // Track when we last received a fresh minute from the API
+  const baseRef = useRef<{ minute: number; receivedAt: number } | null>(null);
 
-  // Sync to fresh API value whenever it changes
-  useEffect(() => { setMinute(storedMinute ?? 0); }, [storedMinute]);
+  // When storedMinute changes (fresh API data), record it with the current timestamp
+  useEffect(() => {
+    const m = storedMinute ?? 0;
+    setMinute(m);
+    baseRef.current = { minute: m, receivedAt: Date.now() };
+  }, [storedMinute]);
 
   useEffect(() => {
     const isLive = status === 'live' || status === 'extra_time' || status === 'penalties';
     const isHalftime = status === 'halftime';
 
-    // Parse ESPN displayClock first (most accurate)
-    if (period) {
-      const text = period.trim();
-      const plusMatch = text.match(/^(\d+)(?:\+(\d+))?'?$/);
-      if (plusMatch) {
-        const parsed = parseInt(plusMatch[1], 10) + (plusMatch[2] ? parseInt(plusMatch[2], 10) : 0);
-        setMinute(parsed);
-        if (!isLive) return;
-        // Still tick from this base for minute-ticking sports
-        if (isMinuteTickingSport(sportSlug)) {
-          const parseMs = Date.now();
-          const id = setInterval(() => {
-            setMinute(parsed + Math.floor((Date.now() - parseMs) / 60000));
-          }, 15_000);
-          return () => clearInterval(id);
-        }
-        return;
-      }
-      const mmssMatch = text.match(/^(\d+):(\d+)$/);
-      if (mmssMatch) {
-        const mins = parseInt(mmssMatch[1], 10);
-        setMinute(isHalftime ? 45 : mins);
-        return;
-      }
-    }
-
     if (isHalftime) { setMinute(45); return; }
     if (!isLive || !isMinuteTickingSport(sportSlug)) return;
 
-    const kickoff = new Date(kickoffTime).getTime();
-    if (isNaN(kickoff)) return;
+    // Tick every 10 s: advance display by elapsed real seconds ÷ 60
     const tick = () => {
-      const elapsed = Math.max(0, Math.floor((Date.now() - kickoff) / 60000));
-      setMinute(Math.min(elapsed, 120));
+      if (baseRef.current) {
+        const elapsedMs = Date.now() - baseRef.current.receivedAt;
+        const advance = Math.floor(elapsedMs / 60000);
+        setMinute(Math.min(baseRef.current.minute + advance, 120));
+      }
     };
     tick();
-    const id = setInterval(tick, 15_000);
+    const id = setInterval(tick, 10_000);
     return () => clearInterval(id);
-  }, [status, sportSlug, kickoffTime, period]);
+  }, [status, sportSlug, kickoffTime, period, storedMinute]);
 
   return minute;
 }
@@ -241,8 +225,7 @@ export function MatchCardNew({
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.homeScore > match.awayScore && 'text-success'
               )}>
-                <span className="hidden sm:inline">{match.homeTeam.name}</span>
-                <span className="sm:hidden">{match.homeTeam.shortName || match.homeTeam.name}</span>
+                {match.homeTeam.name}
                 {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
               </span>
             </div>
@@ -261,8 +244,7 @@ export function MatchCardNew({
                 isFinished && match.homeScore !== null && match.awayScore !== null &&
                 match.awayScore > match.homeScore && 'text-success'
               )}>
-                <span className="hidden sm:inline">{match.awayTeam.name}</span>
-                <span className="sm:hidden">{match.awayTeam.shortName || match.awayTeam.name}</span>
+                {match.awayTeam.name}
                 {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
               </span>
             </div>
@@ -392,8 +374,7 @@ export function MatchCardNew({
                     isFinished && match.homeScore !== null && match.awayScore !== null &&
                     match.homeScore > match.awayScore && 'text-success'
                   )}>
-                    <span className="hidden sm:inline">{match.homeTeam.name}</span>
-                    <span className="sm:hidden">{match.homeTeam.shortName || match.homeTeam.name}</span>
+                    {match.homeTeam.name}
                   </span>
                   {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
                 </div>
@@ -418,8 +399,7 @@ export function MatchCardNew({
                     isFinished && match.homeScore !== null && match.awayScore !== null &&
                     match.awayScore > match.homeScore && 'text-success'
                   )}>
-                    <span className="hidden sm:inline">{match.awayTeam.name}</span>
-                    <span className="sm:hidden">{match.awayTeam.shortName || match.awayTeam.name}</span>
+                    {match.awayTeam.name}
                   </span>
                   {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
                 </div>

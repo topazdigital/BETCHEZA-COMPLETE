@@ -1,14 +1,40 @@
 import fs from 'fs';
 import path from 'path';
+import { fileStoreGet } from './file-store';
 
 const BASE_URL = 'https://backend.payhero.co.ke/api/v2';
 
+interface SavedGateway {
+  id: string;
+  enabled: boolean;
+  credentials: Record<string, string>;
+}
+
+/** Read PayHero credentials: admin-panel file store takes priority, then env vars. */
+function getCredentials(): { token: string | null; channelId: number } {
+  // Check admin-panel saved gateways first (file store / DB-backed)
+  try {
+    const gateways = fileStoreGet<SavedGateway[] | null>('payment-gateways', null);
+    const gw = gateways?.find((g) => g.id === 'payhero');
+    if (gw?.credentials?.basic_token && gw.credentials.basic_token.length > 10) {
+      const token = gw.credentials.basic_token;
+      const channelId = parseInt(gw.credentials.account_id || '0', 10);
+      return { token, channelId };
+    }
+  } catch { /* fall through */ }
+  // Fall back to environment variables
+  return {
+    token: process.env.PAYHERO_BASIC_TOKEN || null,
+    channelId: parseInt(process.env.PAYHERO_ACCOUNT_ID || '0', 10),
+  };
+}
+
 function getToken(): string | null {
-  return process.env.PAYHERO_BASIC_TOKEN || null;
+  return getCredentials().token;
 }
 
 function getChannelId(): number {
-  return parseInt(process.env.PAYHERO_ACCOUNT_ID || '0', 10);
+  return getCredentials().channelId;
 }
 
 function getCallbackUrl(): string {
