@@ -8,6 +8,8 @@ import { fetchTSDBMatches } from './the-sports-db';
 import { fetchOpenLigaDBMatches } from './openligadb';
 import { fetchFootballDataOrgMatches } from './football-data-org';
 import { fetchFotMobMatches } from './fotmob';
+import { fetchCamel1Matches } from './camel1';
+import { fetchSofaScoreMatches } from './sofascore';
 
 // ============================================
 // Types
@@ -3104,6 +3106,8 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     fdMatches,
     fmMatches,
     globalEspnMatches,
+    camel1Matches,
+    sofaScoreMatches,
   ] = await Promise.all([
     Promise.allSettled(ESPN_LEAGUES.map(config => getESPNMatches(config))),
     buildRealOddsIndex(),
@@ -3112,6 +3116,8 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     fetchFootballDataOrgMatches().catch(() => [] as UnifiedMatch[]),
     fetchFotMobMatches().catch(() => [] as UnifiedMatch[]),
     fetchESPNGlobalAll().catch(() => [] as UnifiedMatch[]),
+    fetchCamel1Matches().catch(() => [] as UnifiedMatch[]),
+    fetchSofaScoreMatches().catch(() => [] as UnifiedMatch[]),
   ]);
 
   for (const result of espnResults) {
@@ -3160,8 +3166,10 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // ESPN per-league already added above. Then ESPN /all/scoreboard (covers
   // every other ESPN league we don't explicitly configure), then
   // football-data.org (top-tier), then OpenLigaDB (German depth),
-  // then TheSportsDB (African/exotic), then FotMob (catch-all).
-  const supplementarySources: UnifiedMatch[][] = [novelGlobalEspnMatches, fdMatches, oldbMatches, tsdbMatches, fmMatches];
+  // then TheSportsDB (African/exotic), then FotMob (catch-all),
+  // then camel1.tv (RSC-scraped featured matches with team logos),
+  // then SofaScore (broad coverage — works on production VPS, no-ops on Replit).
+  const supplementarySources: UnifiedMatch[][] = [novelGlobalEspnMatches, fdMatches, oldbMatches, tsdbMatches, fmMatches, sofaScoreMatches, camel1Matches];
   for (const source of supplementarySources) {
     for (const match of source) {
       if (realOddsIndex.size > 0) {

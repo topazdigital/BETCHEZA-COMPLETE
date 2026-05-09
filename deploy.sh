@@ -5,6 +5,8 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 echo -e "${BOLD}Betcheza Deploy${NC}"
 echo -e "${YELLOW}[1/4] Pulling latest changes...${NC}"
+# Discard any local changes to package-lock.json that would block git pull
+git checkout -- package-lock.json 2>/dev/null || true
 git pull origin main
 echo -e "${YELLOW}[2/4] Installing dependencies...${NC}"
 npm install --prefer-offline

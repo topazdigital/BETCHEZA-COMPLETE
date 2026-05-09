@@ -10,7 +10,7 @@ import type { UnifiedMatch } from './unified-sports-api';
 
 const FM_BASE = 'https://www.fotmob.com/api';
 // Browser-like User-Agent — FotMob's edge sometimes 403s default Node UA.
-const UA = 'Mozilla/5.0 (compatible; BetcheraBot/1.0; +https://betcheza.co.ke)';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 interface FMTeam {
   id?: number;
@@ -143,7 +143,13 @@ async function fetchDay(dateStr: string): Promise<UnifiedMatch[]> {
   const url = `${FM_BASE}/matches?date=${dateStr}`;
   try {
     const r = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': UA },
+      headers: {
+        'User-Agent': UA,
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Referer: 'https://www.fotmob.com/',
+        Origin: 'https://www.fotmob.com',
+      },
       next: { revalidate: 600 },
     });
     if (!r.ok) {
