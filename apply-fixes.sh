@@ -1,3 +1,282 @@
+#!/bin/bash
+# Betcheza bug fixes - run this on your server as root
+# cd /home/admin/apps/betcheza && bash apply-fixes.sh
+
+set -e
+APP_DIR="/home/admin/apps/betcheza"
+cd "$APP_DIR"
+
+echo "Applying fixes to $APP_DIR ..."
+
+# ── 1. lib/db.ts ──────────────────────────────────────────────────────────────
+cat > lib/db.ts << 'ENDOFFILE'
+import mysql from 'mysql2/promise';
+import fs from 'fs';
+import path from 'path';
+
+let pool: mysql.Pool | null = null;
+
+interface FileDbConfig {
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  database?: string;
+}
+
+function getFileConfig(): FileDbConfig | null {
+  try {
+    const configFile = path.join(process.cwd(), '.local', 'state', 'admin', 'db-config.json');
+    if (fs.existsSync(configFile)) {
+      return JSON.parse(fs.readFileSync(configFile, 'utf8')) as FileDbConfig;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+export function getPool(): mysql.Pool | null {
+  const envHost     = process.env.DB_HOST     || process.env.MYSQL_HOST;
+  const envUser     = process.env.DB_USER     || process.env.MYSQL_USER;
+  const envPassword = process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD;
+  const envDatabase = process.env.DB_NAME     || process.env.MYSQL_DATABASE;
+
+  // Fall back to admin-panel saved config when env vars are not set
+  const fileCfg = (!envHost || !envUser || !envDatabase) ? getFileConfig() : null;
+
+  const host     = envHost     || fileCfg?.host;
+  const user     = envUser     || fileCfg?.user;
+  const password = envPassword || fileCfg?.password;
+  const database = envDatabase || fileCfg?.database;
+
+  if (!host || !user || !database) return null;
+
+  if (!pool) {
+    pool = mysql.createPool({
+      host,
+      port: fileCfg?.port || parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306'),
+      user,
+      password: password || '',
+      database,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      charset: 'utf8mb4',
+    });
+  }
+
+  return pool;
+}
+
+/** Reset the pool so the next call to getPool() picks up new config. */
+export function resetPool(): void {
+  if (pool) {
+    pool.end().catch(() => { /* ignore */ });
+    pool = null;
+  }
+}
+
+export interface QueryResult<T> {
+  rows: T[];
+  affectedRows?: number;
+}
+
+export async function query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
+  const p = getPool();
+  if (!p) {
+    return { rows: [] };
+  }
+  const [rows] = await p.execute(sql, params);
+  return { rows: rows as T[], affectedRows: undefined };
+}
+
+export async function queryOne<T>(sql: string, params?: unknown[]): Promise<T | null> {
+  const result = await query<T>(sql, params);
+  return result.rows[0] || null;
+}
+
+export interface ExecuteResult {
+  insertId: number;
+  affectedRows: number;
+}
+
+export async function execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
+  const p = getPool();
+  if (!p) {
+    throw new Error('No MySQL database connection available');
+  }
+  const [result] = await p.execute(sql, params);
+  const r = result as mysql.ResultSetHeader;
+  return { insertId: r.insertId, affectedRows: r.affectedRows };
+}
+
+export async function withTransaction<T>(
+  callback: (conn: mysql.PoolConnection) => Promise<T>
+): Promise<T> {
+  const p = getPool();
+  if (!p) {
+    throw new Error('No MySQL database connection available');
+  }
+  const conn = await p.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await callback(conn);
+    await conn.commit();
+    return result;
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function closePool(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
+}
+ENDOFFILE
+echo "✓ lib/db.ts written"
+
+# ── 2. app/api/admin/db-config/route.ts ──────────────────────────────────────
+mkdir -p app/api/admin/db-config
+cat > app/api/admin/db-config/route.ts << 'ENDOFFILE'
+import { NextRequest, NextResponse } from 'next/server'
+import { getCurrentUser } from '@/lib/auth'
+import { getPool, resetPool } from '@/lib/db'
+import { fileStoreGet, fileStoreSet } from '@/lib/file-store'
+import fs from 'fs'
+import path from 'path'
+
+interface DbConfig {
+  host: string
+  port: number
+  user: string
+  password: string
+  database: string
+  ssl: boolean
+}
+
+const CONFIG_KEY = 'db-config'
+const STATE_DIR = path.join(process.cwd(), '.local', 'state', 'admin')
+const CONFIG_FILE = path.join(STATE_DIR, `${CONFIG_KEY}.json`)
+
+export async function GET() {
+  try {
+    const session = await getCurrentUser()
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const envHost = process.env.DB_HOST || process.env.MYSQL_HOST
+    const envUser = process.env.DB_USER || process.env.MYSQL_USER
+    const envDb   = process.env.DB_NAME || process.env.MYSQL_DATABASE
+    const hasEnvVar = !!(envHost && envUser && envDb)
+
+    const fileConfig = fileStoreGet<DbConfig | null>(CONFIG_KEY, null)
+    const fromFile = !hasEnvVar && !!fileConfig
+    const source: 'env' | 'file' | 'none' = hasEnvVar ? 'env' : fromFile ? 'file' : 'none'
+
+    return NextResponse.json({
+      source,
+      hasEnvVar,
+      config: hasEnvVar
+        ? {
+            host: envHost || '',
+            port: parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306'),
+            user: envUser || '',
+            password: '••••••••••••',
+            database: envDb || '',
+            ssl: false,
+          }
+        : fileConfig ?? null,
+    })
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getCurrentUser()
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    resetPool()
+    const pool = getPool()
+    if (!pool) {
+      return NextResponse.json({ success: false, message: 'No MySQL database connection configured.' })
+    }
+
+    try {
+      const conn = await pool.getConnection()
+      await conn.query('SELECT 1')
+      conn.release()
+      return NextResponse.json({ success: true, message: 'MySQL connection successful!' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      return NextResponse.json({ success: false, message: `Connection failed: ${msg}` })
+    }
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const session = await getCurrentUser()
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await req.json() as DbConfig
+    if (!body.host || !body.user || !body.database) {
+      return NextResponse.json({ error: 'host, user and database are required' }, { status: 400 })
+    }
+
+    fileStoreSet<DbConfig>(CONFIG_KEY, {
+      host: body.host,
+      port: body.port || 3306,
+      user: body.user,
+      password: body.password || '',
+      database: body.database,
+      ssl: body.ssl || false,
+    })
+
+    resetPool()
+
+    return NextResponse.json({ success: true, message: 'Configuration saved. Restart the server to fully apply.' })
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+
+export async function DELETE() {
+  try {
+    const session = await getCurrentUser()
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    try {
+      if (fs.existsSync(CONFIG_FILE)) fs.unlinkSync(CONFIG_FILE)
+    } catch { /* ignore */ }
+
+    resetPool()
+
+    return NextResponse.json({ success: true, message: 'Database configuration removed.' })
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+  }
+}
+ENDOFFILE
+echo "✓ app/api/admin/db-config/route.ts written"
+
+# ── 3. app/api/admin/payment-gateways/route.ts ────────────────────────────────
+mkdir -p app/api/admin/payment-gateways
+cat > app/api/admin/payment-gateways/route.ts << 'ENDOFFILE'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin-auth'
 import { query } from '@/lib/db'
@@ -63,32 +342,15 @@ async function loadGateways(): Promise<PaymentGateway[]> {
   return g.__gwStore;
 }
 
-async function ensureAdminSettingsTable(): Promise<void> {
-  try {
-    await query(`
-      CREATE TABLE IF NOT EXISTS admin_settings (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL,
-        value LONGTEXT,
-        type VARCHAR(50) DEFAULT 'text',
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-    `);
-  } catch { /* ignore — no DB connected */ }
-}
-
 async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
   g.__gwStore = gateways;
   fileStoreSet('payment-gateways', gateways);
   try {
-    await ensureAdminSettingsTable();
     await query(
       `INSERT INTO admin_settings (name, value, type, description) VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration') ON DUPLICATE KEY UPDATE value = VALUES(value)`,
       [JSON.stringify(gateways)]
     );
-  } catch { /* file store is the reliable fallback */ }
+  } catch {}
 }
 
 async function loadPayoutSettings(): Promise<PayoutSettings> {
@@ -219,3 +481,17 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to toggle gateway' }, { status: 500 })
   }
 }
+ENDOFFILE
+echo "✓ app/api/admin/payment-gateways/route.ts written"
+
+# ── Rebuild & restart ─────────────────────────────────────────────────────────
+echo ""
+echo "Building..."
+npm run build 2>&1 | tail -20
+
+echo ""
+echo "Restarting PM2..."
+pm2 restart betcheza --update-env
+
+echo ""
+echo "All done! Check betcheza.co.ke/admin/payment-gateways"
