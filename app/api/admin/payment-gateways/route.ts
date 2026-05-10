@@ -48,6 +48,21 @@ const DEFAULT_PAYOUT_SETTINGS: PayoutSettings = {
 
 const g = globalThis as { __gwStore?: PaymentGateway[]; __pwStore?: PayoutSettings };
 
+function hydrateEnvCredentials(gateways: PaymentGateway[]): PaymentGateway[] {
+  return gateways.map((gw) => {
+    if (gw.id === 'payhero') {
+      return {
+        ...gw,
+        credentials: {
+          basic_token: gw.credentials.basic_token || process.env.PAYHERO_BASIC_TOKEN || '',
+          account_id: gw.credentials.account_id || process.env.PAYHERO_ACCOUNT_ID || '',
+        },
+      };
+    }
+    return gw;
+  });
+}
+
 async function loadGateways(): Promise<PaymentGateway[]> {
   if (g.__gwStore) return g.__gwStore;
   try {
@@ -55,10 +70,16 @@ async function loadGateways(): Promise<PaymentGateway[]> {
       "SELECT value FROM admin_settings WHERE name = 'payment_gateways' LIMIT 1"
     );
     const rows = result.rows;
-    if (rows?.length && rows[0].value) { g.__gwStore = JSON.parse(rows[0].value); return g.__gwStore!; }
+    if (rows?.length && rows[0].value) {
+      g.__gwStore = hydrateEnvCredentials(JSON.parse(rows[0].value));
+      return g.__gwStore!;
+    }
   } catch {}
   const stored = fileStoreGet<PaymentGateway[] | null>('payment-gateways', null);
-  if (stored && stored.length > 0) { g.__gwStore = stored; return g.__gwStore; }
+  if (stored && stored.length > 0) {
+    g.__gwStore = hydrateEnvCredentials(stored);
+    return g.__gwStore;
+  }
   g.__gwStore = DEFAULT_GATEWAYS;
   return g.__gwStore;
 }
