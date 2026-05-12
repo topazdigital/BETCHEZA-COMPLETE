@@ -48,10 +48,17 @@ export async function generateMetadata(): Promise<Metadata> {
   const keywords = seoEntry?.keywords
     ? seoEntry.keywords.split(',').map((k) => k.trim()).filter(Boolean)
     : [
-        'betting tips', 'sports predictions', 'free betting tips',
-        'football tips today', 'tipster community', 'expert predictions',
-        'betting advice', 'sports betting Kenya', 'odds comparison',
-        'win rate tipsters', 'AI sports predictions', 'bet of the day',
+        'SportPesa tips', 'SportPesa mega jackpot predictions', 'SportPesa jackpot this week',
+        'Betika grand jackpot tips', 'Betika tips today', 'Odibets predictions',
+        'Betway Kenya tips', 'Mozzartbet Kenya', '1xBet Kenya predictions',
+        'free betting tips Kenya', 'sports betting Kenya', 'betting tips Kenya today',
+        'football tips today Kenya', 'Kenya Premier League tips', 'KPL predictions',
+        'Premier League tips', 'Champions League predictions', 'correct score today',
+        'BTTS tips', 'over 2.5 goals tips', 'accumulator tips today',
+        'jackpot predictions Kenya', 'mega jackpot tips', 'grand jackpot banker',
+        'AI football predictions', 'free sports tips', 'tipster community Kenya',
+        'best tipsters Kenya', 'win rate tipsters', 'expert betting advice',
+        'M-Pesa betting', 'bet of the day', 'double chance tips', 'Asian handicap',
       ];
 
   // Build the icons list. If the admin uploaded a custom favicon, prefer it.
@@ -110,6 +117,35 @@ export const viewport: Viewport = {
   userScalable: false,
 }
 
+const websiteJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'Betcheza',
+  url: 'https://betcheza.co.ke',
+  description: "Kenya's #1 sports betting tips community. AI-powered predictions, SportPesa jackpot tips, tipster leaderboard and community.",
+  inLanguage: 'en',
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: 'https://betcheza.co.ke/search?q={search_term_string}',
+    'query-input': 'required name=search_term_string',
+  },
+};
+
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Betcheza',
+  url: 'https://betcheza.co.ke',
+  logo: 'https://betcheza.co.ke/icon.svg',
+  description: "Kenya's leading sports betting tipster community platform with AI predictions.",
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'customer service',
+    url: 'https://betcheza.co.ke/contact',
+  },
+  sameAs: [],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -117,6 +153,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <ThemeProvider
           attribute="class"
