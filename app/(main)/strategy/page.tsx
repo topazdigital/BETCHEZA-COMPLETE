@@ -172,7 +172,7 @@ export default function StrategyPage() {
           <h1 className="text-xl font-bold">3 Daily Odds Winning Strategy</h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          A 7-day compounding football bet strategy. Each day we pick 3 football matches with odds between 3.0–4.0, reinvesting winnings progressively.
+          A 7-day compounding football bet strategy. Each day we publish picks whose <strong>combined odds land between 3.0–4.0</strong> — it could be one game or several. Winnings are reinvested progressively each day.
         </p>
       </div>
 

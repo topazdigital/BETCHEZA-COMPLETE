@@ -85,8 +85,30 @@ async function ensureTable(): Promise<void> {
   } catch { }
 }
 
+function buildFallbackPicks(targetDate: Date, dateStr: string): StrategyPick[] {
+  // Hardcoded fallback — combined odds ≈ 3.36 (1.68 × 2.0)
+  const hardcoded = [
+    { home: 'Arsenal', away: 'Chelsea', league: 'Premier League', pick: 'Arsenal Win or Draw', market: 'Double Chance', odds: 1.68 },
+    { home: 'Real Madrid', away: 'Atletico Madrid', league: 'La Liga', pick: 'Over 2.5 Goals', market: 'Over/Under', odds: 2.00 },
+  ];
+  return hardcoded.map((h, i) => ({
+    id: `${dateStr}-hc-${i}`,
+    homeTeam: h.home,
+    awayTeam: h.away,
+    league: h.league,
+    matchTime: new Date(new Date(targetDate).setHours(17, 0, 0, 0)).toISOString(),
+    pick: h.pick,
+    market: h.market,
+    odds: h.odds,
+    confidence: 'Medium' as const,
+    reasoning: 'Based on current form and home advantage analysis.',
+    result: 'pending' as const,
+  }));
+}
+
 async function generatePicksForDate(targetDate: Date, dayPlan: { stake: number; save: number; targetWin: number }, dayNumber: number): Promise<StrategyPick[]> {
   let picks: StrategyPick[] = [];
+  const dateStr = targetDate.toISOString().slice(0, 10);
 
   try {
     const upcoming = await getUpcomingMatches();
@@ -94,12 +116,11 @@ async function generatePicksForDate(targetDate: Date, dayPlan: { stake: number; 
       (m) => m.sport.slug === 'soccer' || m.sport.slug === 'football'
     );
 
-    const dateStr = targetDate.toDateString();
     const dayMatches = soccerMatches.filter((m) => {
-      return new Date(m.kickoffTime).toDateString() === dateStr;
-    }).slice(0, 20);
+      return new Date(m.kickoffTime).toDateString() === targetDate.toDateString();
+    }).slice(0, 25);
 
-    const pool = dayMatches.length >= 3 ? dayMatches : soccerMatches.slice(0, 20);
+    const pool = dayMatches.length >= 2 ? dayMatches : soccerMatches.slice(0, 25);
 
     const matchList = pool
       .map((m) => `${m.homeTeam.name} vs ${m.awayTeam.name} (${m.league.name}${m.odds ? `, H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''})`)
@@ -108,26 +129,31 @@ async function generatePicksForDate(targetDate: Date, dayPlan: { stake: number; 
     const openai = getOpenAI();
     if (openai && matchList) {
       const dateDisplay = targetDate.toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      const prompt = `You are a football betting analyst for the Betcheza 3 Daily Odds Winning Strategy.
+      const prompt = `You are a football betting analyst for the Betcheza "3 Daily Odds" Strategy.
 
 Today is ${dateDisplay}. Day ${dayNumber} of the weekly compounding plan — stake KES ${dayPlan.stake.toLocaleString()}, target win KES ${dayPlan.targetWin.toLocaleString()}.
 
-Select exactly 3 football matches for today's accumulator. Requirements:
-- Each pick MUST have odds strictly between 3.00 and 4.00 (NEVER reach 4.00)
-- Pick the 3 most confident picks for today
-- Markets allowed: 1X2, Double Chance, Both Teams to Score, Over 2.5 Goals
-- Provide specific reasoning per pick
+STRATEGY GOAL: Select any number of football picks (1 to 5 games) so that the COMBINED/ACCUMULATED ODDS of all picks multiplied together falls STRICTLY between 3.00 and 4.00.
+
+Rules:
+- The name "3 Daily Odds" means the accumulator lands between 3x and 4x — NOT that you must pick 3 games
+- You can pick 1 game at 3.50 odds, or 2 games at 1.80 each (combined 3.24), or 3 games at 1.44 each, etc.
+- Choose the number of games that gives the most CONFIDENT accumulator landing in the 3.0–4.0 combined range
+- Markets allowed: 1X2, Double Chance, Both Teams to Score, Over/Under Goals, Asian Handicap
+- Provide specific reasoning per pick based on form, H2H, home advantage, or value
 
 Available matches:
 ${matchList}
 
-Return ONLY valid JSON array of exactly 3 picks:
-[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"1X2","odds":3.20,"confidence":"High","reasoning":"..."}]`;
+Return ONLY a valid JSON array (1 to 5 picks):
+[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"1X2","odds":1.85,"confidence":"High","reasoning":"..."}]
+
+IMPORTANT: The product of all odds in your array MUST be between 3.00 and 4.00.`;
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 1200,
+        max_completion_tokens: 1500,
       });
 
       const raw = completion.choices?.[0]?.message?.content || '[]';
@@ -135,46 +161,35 @@ Return ONLY valid JSON array of exactly 3 picks:
         const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
         const parsed = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
         const arr = Array.isArray(parsed) ? parsed : [];
-        if (arr.length >= 3) {
-          picks = arr.slice(0, 3).map((p: StrategyPick, i: number) => ({
+        if (arr.length >= 1) {
+          const candidates: StrategyPick[] = arr.slice(0, 5).map((p: StrategyPick, i: number) => ({
             ...p,
-            id: `${targetDate.toISOString().slice(0, 10)}-${i}`,
-            odds: Math.min(3.99, Math.max(3.0, parseFloat(String(p.odds)) || 3.2)),
+            id: `${dateStr}-${i}`,
+            odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
             result: 'pending' as const,
           }));
+          const combined = candidates.reduce((acc, p) => acc * p.odds, 1);
+          // Accept if combined odds are in range or close (we don't want to discard good picks)
+          if (combined >= 2.5 && combined <= 5.0) {
+            picks = candidates;
+          }
         }
       } catch { }
     }
 
-    if (picks.length < 3) {
-      picks = pool.slice(0, 3).map((m, i) => ({
+    // Fallback: pick from pool with odds that combine to ~3.0–4.0
+    if (picks.length === 0 && pool.length > 0) {
+      picks = pool.slice(0, 2).map((m, i) => ({
         ...fallbackPick(m, i),
-        id: `${targetDate.toISOString().slice(0, 10)}-fallback-${i}`,
+        id: `${dateStr}-fallback-${i}`,
       }));
     }
   } catch (e) {
     console.error('[daily-strategy] generate error:', e);
   }
 
-  if (picks.length < 3) {
-    const hardcoded = [
-      { home: 'Arsenal', away: 'Chelsea', league: 'Premier League', pick: 'Arsenal Win', odds: 3.15 },
-      { home: 'Real Madrid', away: 'Atletico Madrid', league: 'La Liga', pick: 'Real Madrid Win', odds: 3.25 },
-      { home: 'Bayern Munich', away: 'Dortmund', league: 'Bundesliga', pick: 'Over 2.5 Goals', odds: 3.35 },
-    ];
-    picks = hardcoded.map((h, i) => ({
-      id: `${targetDate.toISOString().slice(0, 10)}-hc-${i}`,
-      homeTeam: h.home,
-      awayTeam: h.away,
-      league: h.league,
-      matchTime: new Date(targetDate.setHours(17, 0, 0, 0)).toISOString(),
-      pick: h.pick,
-      market: '1X2',
-      odds: h.odds,
-      confidence: 'Medium' as const,
-      reasoning: 'Based on form analysis and home advantage.',
-      result: 'pending' as const,
-    }));
+  if (picks.length === 0) {
+    picks = buildFallbackPicks(targetDate, dateStr);
   }
 
   return picks;

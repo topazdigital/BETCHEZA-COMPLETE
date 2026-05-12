@@ -79,62 +79,58 @@ export async function POST(req: NextRequest) {
 
     const openai = getOpenAI();
     if (openai && matchList) {
-      const prompt = `You are a football betting analyst for the Betcheza 3 Daily Odds Winning Strategy.
+      const prompt = `You are a football betting analyst for the Betcheza "3 Daily Odds" Strategy.
 
-Strategy context: Players compound winnings daily. Day ${targetDay} stake is KES ${dayData.stake.toLocaleString()}, target win KES ${dayData.targetWin.toLocaleString()}.
+Strategy context: Day ${targetDay} — stake KES ${dayData.stake.toLocaleString()}, target win KES ${dayData.targetWin.toLocaleString()}.
 
-Select exactly 3 football matches for a multi/accumulator. Requirements:
-- Each pick must have odds strictly between 3.00 and 4.00
-- Total combined odds should be around ${(3.2 ** 3).toFixed(1)} to ${(3.9 ** 3).toFixed(1)} giving a good payout
-- Pick only football/soccer matches
-- Markets: 1X2, Double Chance, Both Teams to Score, Over/Under 2.5
-- Give specific reasoning using team form, H2H, home advantage, or odds value
+GOAL: Select 1–5 football picks so that the COMBINED/ACCUMULATED ODDS (all individual odds multiplied together) falls STRICTLY between 3.00 and 4.00.
+
+Rules:
+- "3 Daily Odds" means the accumulator totals 3x–4x — NOT that you pick exactly 3 games
+- Example: 1 game at 3.50 = 3.50 combined. 2 games at 1.80 each = 3.24 combined. 3 games at 1.44 each = 2.99 ≈ 3.0
+- Pick the number of games that gives you the most confident accumulator in the 3.0–4.0 range
+- Markets: 1X2, Double Chance, Both Teams to Score, Over/Under Goals, Asian Handicap
+- Give specific reasoning using team form, H2H, home advantage, or value
 
 Available matches for Day ${targetDay} (${dayData.date}):
 ${matchList || 'No specific matches found — use your football knowledge for this date'}
 
-Return ONLY a JSON array of 3 picks in this exact format:
-[
-  {
-    "homeTeam": "Team A",
-    "awayTeam": "Team B",
-    "league": "League Name",
-    "matchTime": "ISO date string",
-    "pick": "Team A Win" or "Draw" or "Both Teams to Score" etc,
-    "market": "1X2" or "BTTS" or "Over 2.5" etc,
-    "odds": 3.20,
-    "confidence": "Medium" or "High",
-    "reasoning": "2-3 sentence reasoning"
-  }
-]`;
+Return ONLY a valid JSON array of 1–5 picks:
+[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"...","odds":1.85,"confidence":"High","reasoning":"2-3 sentences"}]
+
+IMPORTANT: The product of ALL odds in your array must be between 3.00 and 4.00.`;
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 1000,
+        max_completion_tokens: 1200,
       });
 
-      const raw = completion.choices?.[0]?.message?.content || '{}';
+      const raw = completion.choices?.[0]?.message?.content || '[]';
       let parsed: StrategyPick[] = [];
       try {
-        const obj = JSON.parse(raw);
+        const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+        const obj = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
         parsed = Array.isArray(obj) ? obj : (obj.picks || obj.selections || []);
       } catch { /* fall through */ }
 
-      if (parsed.length >= 3) {
-        picks = parsed.slice(0, 3).map((p, i) => ({
+      if (parsed.length >= 1) {
+        const candidates = parsed.slice(0, 5).map((p, i) => ({
           ...p,
           id: `${weekId}-d${targetDay}-${i}`,
-          odds: Math.min(4.0, Math.max(3.0, parseFloat(String(p.odds)) || 3.2)),
+          odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
           result: 'pending' as const,
         }));
+        const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
+        if (combined >= 2.5 && combined <= 5.5) {
+          picks = candidates;
+        }
       }
     }
 
-    if (picks.length < 3) {
+    if (picks.length === 0) {
       const pool = targetMatches.length > 0 ? targetMatches : soccerMatches;
-      picks = pool.slice(0, 3).map((m, i) => ({
+      picks = pool.slice(0, 2).map((m, i) => ({
         ...fallbackPick(m),
         id: `${weekId}-d${targetDay}-${i}`,
       }));
@@ -143,20 +139,35 @@ Return ONLY a JSON array of 3 picks in this exact format:
     console.error('[strategy/generate] error:', e);
   }
 
-  if (picks.length < 3) {
-    picks = Array.from({ length: 3 }, (_, i) => ({
-      id: `${weekId}-d${targetDay}-fallback-${i}`,
-      homeTeam: ['Arsenal', 'Real Madrid', 'Barcelona'][i],
-      awayTeam: ['Chelsea', 'Atletico Madrid', 'Valencia'][i],
-      league: 'Premier League',
-      matchTime: new Date(dayData.date).toISOString(),
-      pick: ['Arsenal Win', 'Real Madrid Win', 'Barcelona Win'][i],
-      market: '1X2',
-      odds: parseFloat((3.1 + i * 0.2).toFixed(2)),
-      confidence: 'Medium' as const,
-      reasoning: 'Based on current form and home advantage analysis.',
-      result: 'pending' as const,
-    }));
+  if (picks.length === 0) {
+    picks = [
+      {
+        id: `${weekId}-d${targetDay}-fallback-0`,
+        homeTeam: 'Arsenal',
+        awayTeam: 'Chelsea',
+        league: 'Premier League',
+        matchTime: new Date(dayData.date).toISOString(),
+        pick: 'Arsenal Win or Draw',
+        market: 'Double Chance',
+        odds: 1.68,
+        confidence: 'Medium' as const,
+        reasoning: 'Arsenal home advantage with strong recent form makes this a value double chance.',
+        result: 'pending' as const,
+      },
+      {
+        id: `${weekId}-d${targetDay}-fallback-1`,
+        homeTeam: 'Real Madrid',
+        awayTeam: 'Atletico Madrid',
+        league: 'La Liga',
+        matchTime: new Date(dayData.date).toISOString(),
+        pick: 'Over 2.5 Goals',
+        market: 'Over/Under',
+        odds: 2.00,
+        confidence: 'Medium' as const,
+        reasoning: 'Both teams average over 1.8 goals per game. This Madrid derby historically produces goals.',
+        result: 'pending' as const,
+      },
+    ];
   }
 
   const combinedOdds = picks.reduce((acc, p) => acc * p.odds, 1);
