@@ -10,6 +10,7 @@
 import type { UnifiedMatch } from './unified-sports-api';
 
 const CAMEL_URL = 'https://camel1.tv/en';
+const CAMEL_FOOTBALL_URL = 'https://camel1.tv/en/football';
 const CACHE_MS = 10 * 60 * 1000;
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -30,6 +31,9 @@ interface CamelMatch {
   competition: { name: string; name_en: string };
   home_team: CamelTeam;
   away_team: CamelTeam;
+  // Optional timing fields present in some payloads
+  timer?: number | null;
+  minute?: number | null;
 }
 
 interface FaceoffMatch {
@@ -48,6 +52,9 @@ function statusFromId(id: number): UnifiedMatch['status'] {
     case 2: return 'live';
     case 3: return 'halftime';
     case 4: return 'finished';
+    case 5: return 'live';       // extra time
+    case 6: return 'live';       // penalties
+    case 7: return 'postponed';
     case 8: return 'cancelled';
     default: return 'scheduled';
   }
@@ -73,6 +80,12 @@ function mapHotMatch(m: CamelMatch): UnifiedMatch | null {
   const kickoff = new Date(m.match_time * 1000);
   const hs = scoreFromArr(m.home_scores);
   const as_ = scoreFromArr(m.away_scores);
+  const status = statusFromId(m.status_id);
+  // Extract live minute from timer field (seconds elapsed) or minute field
+  const minute: number | undefined =
+    typeof m.minute === 'number' ? m.minute :
+    typeof m.timer === 'number' ? Math.floor(m.timer / 60) :
+    undefined;
   return {
     id: `camel1_${m.id}`,
     externalId: m.id,
@@ -94,9 +107,10 @@ function mapHotMatch(m: CamelMatch): UnifiedMatch | null {
       logo: m.away_team.logo || undefined,
     },
     kickoffTime: kickoff,
-    status: statusFromId(m.status_id),
+    status,
     homeScore: hs,
     awayScore: as_,
+    minute: status === 'live' && minute !== undefined ? minute : undefined,
     league: {
       id: leagueId,
       name: comp,
@@ -150,16 +164,49 @@ function mapFaceoff(f: FaceoffMatch): UnifiedMatch | null {
   };
 }
 
+/**
+ * Extract a JSON array from a decoded RSC string given a field name.
+ * Handles nested brackets/braces for robustness.
+ */
+function extractJsonArray(decoded: string, fieldName: string): unknown[] | null {
+  const idx = decoded.indexOf(`"${fieldName}":`)
+  if (idx < 0) return null;
+  const start = decoded.indexOf('[', idx)
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < Math.min(start + 600000, decoded.length); i++) {
+    const ch = decoded[i]
+    if (ch === '[' || ch === '{') depth++;
+    else if (ch === ']' || ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(decoded.slice(start, i + 1)) as unknown[];
+        } catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
 function parseRSC(html: string): UnifiedMatch[] {
   const out: UnifiedMatch[] = [];
 
-  // Extract all RSC push payloads
+  // Extract all RSC push payloads (standard Next.js streaming format)
   const pushRegex = /self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)/g;
   let m: RegExpExecArray | null;
   const payloads: string[] = [];
   while ((m = pushRegex.exec(html)) !== null) {
     payloads.push(m[1]);
   }
+
+  // Also try the inline script payload format used on newer Next.js versions
+  const inlineRegex = /\\"hotTeamMatches\\":|"hotTeamMatches":/g;
+  if (payloads.length === 0 && inlineRegex.test(html)) {
+    payloads.push(html);
+  }
+
+  const seenIds = new Set<string>();
 
   for (const raw of payloads) {
     let decoded: string;
@@ -170,51 +217,42 @@ function parseRSC(html: string): UnifiedMatch[] {
     }
 
     // --- hotTeamMatches ---
-    const hotIdx = decoded.indexOf('"hotTeamMatches":');
-    if (hotIdx >= 0) {
-      // Extract the JSON array
-      let depth = 0;
-      let start = decoded.indexOf('[', hotIdx);
-      if (start >= 0) {
-        let end = start;
-        for (let i = start; i < Math.min(start + 500000, decoded.length); i++) {
-          if (decoded[i] === '[' || decoded[i] === '{') depth++;
-          else if (decoded[i] === ']' || decoded[i] === '}') {
-            depth--;
-            if (depth === 0) { end = i; break; }
-          }
-        }
-        try {
-          const arr = JSON.parse(decoded.slice(start, end + 1)) as CamelMatch[];
-          for (const match of arr) {
-            const u = mapHotMatch(match);
-            if (u) out.push(u);
-          }
-        } catch { /* ignore parse errors */ }
+    const hotArr = extractJsonArray(decoded, 'hotTeamMatches');
+    if (hotArr) {
+      for (const match of hotArr as CamelMatch[]) {
+        if (!match?.id || seenIds.has(String(match.id))) continue;
+        const u = mapHotMatch(match);
+        if (u) { seenIds.add(String(match.id)); out.push(u); }
+      }
+    }
+
+    // --- matchList (alternative field name used in some pages) ---
+    const listArr = extractJsonArray(decoded, 'matchList');
+    if (listArr) {
+      for (const match of listArr as CamelMatch[]) {
+        if (!match?.id || seenIds.has(String(match.id))) continue;
+        const u = mapHotMatch(match);
+        if (u) { seenIds.add(String(match.id)); out.push(u); }
+      }
+    }
+
+    // --- liveMatches ---
+    const liveArr = extractJsonArray(decoded, 'liveMatches');
+    if (liveArr) {
+      for (const match of liveArr as CamelMatch[]) {
+        if (!match?.id || seenIds.has(String(match.id))) continue;
+        const u = mapHotMatch(match);
+        if (u) { seenIds.add(String(match.id)); out.push(u); }
       }
     }
 
     // --- faceoffMatches ---
-    const faceIdx = decoded.indexOf('"faceoffMatches":');
-    if (faceIdx >= 0) {
-      let depth = 0;
-      let start = decoded.indexOf('[', faceIdx);
-      if (start >= 0) {
-        let end = start;
-        for (let i = start; i < Math.min(start + 300000, decoded.length); i++) {
-          if (decoded[i] === '[' || decoded[i] === '{') depth++;
-          else if (decoded[i] === ']' || decoded[i] === '}') {
-            depth--;
-            if (depth === 0) { end = i; break; }
-          }
-        }
-        try {
-          const arr = JSON.parse(decoded.slice(start, end + 1)) as FaceoffMatch[];
-          for (const f of arr) {
-            const u = mapFaceoff(f);
-            if (u) out.push(u);
-          }
-        } catch { /* ignore parse errors */ }
+    const faceArr = extractJsonArray(decoded, 'faceoffMatches');
+    if (faceArr) {
+      for (const f of faceArr as FaceoffMatch[]) {
+        if (!f?.faceoffId || seenIds.has(String(f.faceoffId))) continue;
+        const u = mapFaceoff(f);
+        if (u) { seenIds.add(String(f.faceoffId)); out.push(u); }
       }
     }
   }
@@ -222,32 +260,53 @@ function parseRSC(html: string): UnifiedMatch[] {
   return out;
 }
 
+async function fetchPage(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': UA,
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Cache-Control': 'no-cache',
+    },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
 export async function fetchCamel1Matches(): Promise<UnifiedMatch[]> {
   if (process.env.DISABLE_CAMEL1 === 'true') return [];
   if (cache && cache.expires > Date.now()) return cache.data;
 
   try {
-    const res = await fetch(CAMEL_URL, {
-      headers: {
-        'User-Agent': UA,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-      },
-      cache: 'no-store',
-    });
+    // Fetch homepage and football page in parallel for maximum coverage
+    const [homeHtml, footballHtml] = await Promise.allSettled([
+      fetchPage(CAMEL_URL),
+      fetchPage(CAMEL_FOOTBALL_URL),
+    ]);
 
-    if (!res.ok) {
-      cache = { data: [], expires: Date.now() + CACHE_MS };
-      return [];
+    const seenIds = new Set<string>();
+    const allMatches: UnifiedMatch[] = [];
+
+    const addAll = (matches: UnifiedMatch[]) => {
+      for (const m of matches) {
+        if (!seenIds.has(m.id)) {
+          seenIds.add(m.id);
+          allMatches.push(m);
+        }
+      }
+    };
+
+    if (homeHtml.status === 'fulfilled') {
+      addAll(parseRSC(homeHtml.value));
+    }
+    if (footballHtml.status === 'fulfilled') {
+      addAll(parseRSC(footballHtml.value));
     }
 
-    const html = await res.text();
-    const matches = parseRSC(html);
-
-    cache = { data: matches, expires: Date.now() + CACHE_MS };
-    return matches;
+    cache = { data: allMatches, expires: Date.now() + CACHE_MS };
+    return allMatches;
   } catch {
     cache = { data: [], expires: Date.now() + CACHE_MS };
     return [];

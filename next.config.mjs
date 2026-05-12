@@ -17,6 +17,15 @@ const nextConfig = {
     '*.sisko.replit.dev',
     '*.worf.replit.dev',
   ],
+  async redirects() {
+    return [
+      {
+        source: '/3-daily-odds-strategy',
+        destination: '/strategy',
+        permanent: true,
+      },
+    ]
+  },
 }
 
 export default nextConfig

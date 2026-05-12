@@ -3,6 +3,7 @@
  * Converts internal match IDs (espn_ita.1_737421) to readable URL slugs.
  * New format: team-a-vs-team-b-737421
  * Legacy format (still supported for reading): ita1-737421
+ * Also handles fd_ (football-data.org) and camel1_ prefixes.
  */
 
 function espnLeagueToSlug(leagueKey: string): string {
@@ -17,6 +18,22 @@ function teamNameToSlug(name: string): string {
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .slice(0, 30)
+}
+
+/**
+ * Stable numeric hash of a string (for non-numeric IDs like camel1f_abc123xyz).
+ */
+function stableNumericSuffix(str: string): string {
+  // Extract any digits first — use them directly if present
+  const digits = str.replace(/[^0-9]/g, '').slice(0, 8)
+  if (digits.length >= 4) return digits
+  // Fall back to a simple djb2-style hash
+  let h = 5381
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) + str.charCodeAt(i)
+    h = h & 0x7fffffff
+  }
+  return String(h % 1000000).padStart(6, '0')
 }
 
 /**
@@ -35,15 +52,41 @@ export function matchIdToSlug(matchId: string): string {
 
 /**
  * Convert match to a human-readable URL slug using team names.
- * espn_eng.1_740942, "Leeds United", "Burnley" → leeds-united-vs-burnley-740942
+ * Works for ALL match ID formats:
+ *   espn_eng.1_740942  → leeds-united-vs-burnley-740942
+ *   fd_544563          → rc-celta-de-vigo-vs-levante-ud-544563
+ *   camel1_12345       → afghanistan-u20-vs-turkmenistan-u20-12345
+ *   camel1f_xyz        → team-a-vs-team-b-<hash>
  */
 export function matchToSlug(matchId: string, homeTeam: string, awayTeam: string): string {
-  const m = matchId.match(/^espn_([a-z0-9.]+)_(\d+)$/i)
-  if (!m) return encodeURIComponent(matchId)
-  const numericId = m[2]
   const homeSlug = teamNameToSlug(homeTeam)
   const awaySlug = teamNameToSlug(awayTeam)
-  return `${homeSlug}-vs-${awaySlug}-${numericId}`
+
+  // ESPN format: espn_ita.1_737421
+  const espnMatch = matchId.match(/^espn_([a-z0-9.]+)_(\d+)$/i)
+  if (espnMatch) {
+    return `${homeSlug}-vs-${awaySlug}-${espnMatch[2]}`
+  }
+
+  // Football-data.org format: fd_544563
+  const fdMatch = matchId.match(/^fd_(\d+)$/)
+  if (fdMatch) {
+    return `${homeSlug}-vs-${awaySlug}-${fdMatch[1]}`
+  }
+
+  // Camel1 formats: camel1_12345678 or camel1f_abc123
+  const camelMatch = matchId.match(/^camel1[f]?_(.+)$/)
+  if (camelMatch) {
+    return `${homeSlug}-vs-${awaySlug}-${stableNumericSuffix(camelMatch[1])}`
+  }
+
+  // Any other format with a trailing numeric ID
+  const genericNumeric = matchId.match(/_(\d{4,})$/)
+  if (genericNumeric) {
+    return `${homeSlug}-vs-${awaySlug}-${genericNumeric[1]}`
+  }
+
+  return encodeURIComponent(matchId)
 }
 
 // Maps slugified league key → original league key with dots
@@ -96,10 +139,11 @@ const LEAGUE_KEY_MAP: Record<string, string> = {
 
 /**
  * Convert a clean URL slug back to the internal match ID.
- * Handles three formats:
+ * Handles four formats:
  *   1. Full ESPN ID:  espn_ita.1_737421  → pass through (normalised to no-dot form)
  *   2. Legacy format: ita1-737421        → espn_ita1_737421
  *   3. New format:    team-a-vs-team-b-737421 → espn_eventid_737421 (resolved later)
+ *   4. fd_/camel1 raw: fd_544563        → returned as-is (direct ID lookup works)
  *
  * IMPORTANT: cached match IDs are generated with
  *   `espn_${league.replace(/[^a-z0-9]/gi, '')}_${eventId}`
@@ -111,19 +155,21 @@ export function slugToMatchId(slug: string): string {
 
   // Already a full ESPN ID — normalise to the no-dot cache format
   if (decoded.startsWith('espn_')) {
-    // Strip dots/hyphens from the league segment only
     return decoded.replace(/^(espn_)([^_]+)(_\d+)$/, (_m, prefix, league, suffix) =>
       `${prefix}${league.replace(/[^a-z0-9]/gi, '')}${suffix}`
     )
   }
 
-  // Legacy format: single-segment leagueSlug + numericId
+  // Raw fd_ or camel1_ ID — return as-is, getMatchById will find it directly
+  if (decoded.startsWith('fd_') || decoded.startsWith('camel1')) {
+    return decoded
+  }
+
+  // Legacy format: single-segment leagueSlug + numericId (e.g. ita1-737421)
   const legacyMatch = decoded.match(/^([a-z0-9]+)-(\d+)$/i)
   if (legacyMatch) {
     const leagueSlugFromUrl = legacyMatch[1].toLowerCase()
     const eventId = legacyMatch[2]
-    // LEAGUE_KEY_MAP may return a value with dots (e.g. 'eng.1') or hyphens
-    // ('womens-college-basketball') — strip them to match the cache format.
     const mappedKey = LEAGUE_KEY_MAP[leagueSlugFromUrl]
     const cleanKey = mappedKey
       ? mappedKey.replace(/[^a-z0-9]/gi, '')
@@ -131,9 +177,9 @@ export function slugToMatchId(slug: string): string {
     return `espn_${cleanKey}_${eventId}`
   }
 
-  // New format: anything-vs-anything-NUMERICID
-  // Extract the trailing numeric ID (5-9 digits)
-  const numericMatch = decoded.match(/-(\d{5,9})$/)
+  // New human-readable format: anything-vs-anything-NUMERICID
+  // Extract the trailing numeric ID (4-9 digits)
+  const numericMatch = decoded.match(/-(\d{4,9})$/)
   if (numericMatch) {
     return `espn_eventid_${numericMatch[1]}`
   }

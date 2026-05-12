@@ -3076,11 +3076,13 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   const seenMatchKeys = new Set<string>();
 
   const getMatchKey = (match: UnifiedMatch): string => {
-    // Strip common club suffixes (FC, AFC, SC, CF, United → utd, City → city, etc.)
-    // so "Derby County" and "Derby County FC" deduplicate to the same key.
+    // Strip common club suffixes AND Spanish/Portuguese/French articles so that
+    // "RC Celta de Vigo" == "Celta de Vigo", "Club Atletico de Madrid" == "Atletico Madrid",
+    // "Levante UD" == "Levante", etc.  Extra terms (ud, sd, cd, de, la, el, los, las, del)
+    // prevent cross-source duplicates appearing as separate league groups.
     const stripSuffixes = (n: string) =>
       n.toLowerCase()
-        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|münchen|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport)\b/g, '')
+        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|münchen|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk)\b/g, '')
         .replace(/[^a-z0-9]/g, '');
     const homeNorm = stripSuffixes(match.homeTeam.name);
     const awayNorm = stripSuffixes(match.awayTeam.name);
@@ -3183,6 +3185,16 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
         }
       }
       addMatch(match);
+    }
+  }
+
+  // Ensure every match has at least synthetic odds so no match card shows
+  // "No odds available".  generateRealisticOdds is deterministic (same input →
+  // same output) so it never overrides real bookmaker odds that were already set.
+  for (const match of allMatches) {
+    if (!match.odds) {
+      const sportType = (match.sport?.slug ?? 'soccer') as ESPNLeagueConfig['sportType'];
+      match.odds = generateRealisticOdds(match.homeTeam.name, match.awayTeam.name, sportType);
     }
   }
 
