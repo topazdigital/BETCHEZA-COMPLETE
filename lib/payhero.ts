@@ -37,6 +37,25 @@ function getCallbackUrl(): string {
   return 'https://betcheza.co.ke/api/payhero/callback';
 }
 
+/** Extract a human-readable error from a PayHero API response.
+ *  PayHero uses Django REST Framework which puts errors in `detail`, not `message`. */
+function extractPayHeroError(data: Record<string, unknown>, status: number): string {
+  const msg =
+    (data.detail as string) ||
+    (data.message as string) ||
+    (data.error as string) ||
+    (data.description as string) ||
+    (data.errors as string) ||
+    null;
+  if (msg) return msg;
+  // Surface any non-empty string value in the response
+  for (const v of Object.values(data)) {
+    if (typeof v === 'string' && v.length > 0) return v;
+    if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'string') return v[0];
+  }
+  return `PayHero returned HTTP ${status} — check your credentials and channel ID in Admin → Gateways.`;
+}
+
 export function isConfigured(): boolean {
   const token = getToken();
   const channelId = getChannelId();
@@ -69,8 +88,9 @@ export async function initiateStkPush(amount: number, phone: string, reference: 
     let data: Record<string, unknown> = {};
     try { data = await res.json(); } catch {}
     console.log(`[payhero] STK response (${res.status}):`, JSON.stringify(data));
-    if (res.status === 401) return { ok: false, reference, error: 'PayHero authentication failed. Check your API credentials in the admin panel.' };
-    if (!res.ok || data.success === false) return { ok: false, reference, error: (data.message as string) || 'STK push failed' };
+    if (res.status === 401) return { ok: false, reference, error: 'PayHero authentication failed — check your Basic Token in Admin → Gateways.' };
+    const errMsg = extractPayHeroError(data, res.status);
+    if (!res.ok || data.success === false) return { ok: false, reference, error: errMsg };
     return { ok: true, reference, checkoutRequestId: (data.CheckoutRequestID || data.checkout_request_id) as string | undefined };
   } catch (e: unknown) {
     console.error('[payhero] STK push error:', e);

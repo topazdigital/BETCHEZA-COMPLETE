@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react"
 import {
   CreditCard, Smartphone, Building2, Bitcoin, Globe, Wallet,
   ChevronDown, ChevronUp, Save, ToggleLeft, ToggleRight,
-  Percent, DollarSign, AlertCircle, CheckCircle2, RefreshCw, Settings
+  Percent, DollarSign, AlertCircle, CheckCircle2, RefreshCw, Settings,
+  FlaskConical, X
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -87,6 +88,16 @@ const CREDENTIAL_LABELS: Record<string, string> = {
   gateway: 'Underlying Gateway (stripe / adyen / braintree)',
 }
 
+interface TestResult {
+  ok: boolean
+  httpStatus?: number
+  responseBody?: Record<string, unknown>
+  credentials?: { tokenPreview: string; startsWithBasic: boolean; channelId: number }
+  hint?: string | null
+  error?: string
+  networkError?: string | null
+}
+
 function GatewayCard({
   gateway,
   onToggle,
@@ -100,6 +111,11 @@ function GatewayCard({
   const [draft, setDraft] = useState<PaymentGateway>(gateway)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testPhone, setTestPhone] = useState('')
+  const [testAmount, setTestAmount] = useState('1')
+  const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const [showTestPanel, setShowTestPanel] = useState(false)
 
   const meta = TYPE_META[gateway.type]
   const Icon = meta.icon
@@ -114,6 +130,24 @@ function GatewayCard({
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/admin/payhero-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: testPhone, amount: Number(testAmount) || 1 }),
+      })
+      const data = await res.json()
+      setTestResult(data)
+    } catch (e) {
+      setTestResult({ ok: false, error: String(e) })
+    } finally {
+      setTesting(false)
+    }
   }
 
   return (
@@ -192,7 +226,7 @@ function GatewayCard({
                 <li><strong>Basic Token</strong> — PayHero → API Keys → copy the full token (starts with "Basic ")</li>
                 <li><strong>Channel ID</strong> — PayHero → Payment Channels → copy the Channel ID number (e.g. 7470)</li>
               </ol>
-              <p className="text-amber-600 dark:text-amber-500 mt-1">Your Channel ID is <strong>7470</strong> — different from Account ID 5107.</p>
+              <p className="text-amber-600 dark:text-amber-500 mt-1">Your Channel ID is found in <strong>PayHero → Payment Channels</strong> — it is different from your Account ID.</p>
             </div>
           )}
 
@@ -220,22 +254,122 @@ function GatewayCard({
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               <AlertCircle className="h-3.5 w-3.5" />
               Credentials are stored securely and never exposed to clients.
             </p>
-            <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
-              {saving ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : saved ? (
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-2">
+              {gateway.id === 'payhero' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { setShowTestPanel(!showTestPanel); setTestResult(null) }}
+                  className="gap-1.5 h-8 text-xs"
+                >
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  Test Connection
+                </Button>
               )}
-              {saved ? 'Saved!' : 'Save Credentials'}
-            </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+                {saving ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : saved ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                {saved ? 'Saved!' : 'Save Credentials'}
+              </Button>
+            </div>
           </div>
+
+          {/* PayHero test panel */}
+          {gateway.id === 'payhero' && showTestPanel && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold flex items-center gap-1.5">
+                  <FlaskConical className="h-3.5 w-3.5 text-blue-500" />
+                  Live Connection Test
+                </p>
+                <button onClick={() => { setShowTestPanel(false); setTestResult(null) }} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                This sends a REAL STK push using the saved credentials. Enter a valid M-Pesa number and small amount to confirm the integration is working. The payment will be real — cancel on your phone if just testing.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs mb-1 block">M-Pesa Phone</Label>
+                  <Input
+                    className="h-8 text-xs"
+                    placeholder="0712345678"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block">Amount (KES)</Label>
+                  <Input
+                    className="h-8 text-xs"
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    value={testAmount}
+                    onChange={(e) => setTestAmount(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleTest}
+                disabled={testing || !testPhone}
+                className="w-full h-8 text-xs gap-1.5"
+              >
+                {testing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
+                {testing ? 'Sending STK push…' : 'Send Test STK Push'}
+              </Button>
+
+              {testResult && (
+                <div className={cn(
+                  "rounded-md p-3 text-xs space-y-2",
+                  testResult.ok
+                    ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800"
+                    : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+                )}>
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    {testResult.ok
+                      ? <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /><span className="text-emerald-700 dark:text-emerald-400">STK push sent! Check your phone.</span></>
+                      : <><AlertCircle className="h-3.5 w-3.5 text-red-600" /><span className="text-red-700 dark:text-red-400">Test failed</span></>
+                    }
+                  </div>
+
+                  {testResult.credentials && (
+                    <div className="space-y-0.5 text-muted-foreground">
+                      <p>Token preview: <code className="font-mono">{testResult.credentials.tokenPreview}</code> {testResult.credentials.startsWithBasic ? '✓ starts with "Basic "' : '✗ does NOT start with "Basic " — re-copy from PayHero'}</p>
+                      <p>Channel ID: <code className="font-mono">{testResult.credentials.channelId}</code></p>
+                    </div>
+                  )}
+
+                  {testResult.hint && (
+                    <p className="font-medium text-amber-700 dark:text-amber-400">{testResult.hint}</p>
+                  )}
+
+                  {(testResult.error || testResult.networkError) && (
+                    <p className="font-mono break-all">{testResult.error || testResult.networkError}</p>
+                  )}
+
+                  <div>
+                    <p className="font-semibold text-muted-foreground mb-1">PayHero raw response (HTTP {testResult.httpStatus}):</p>
+                    <pre className="font-mono text-[10px] whitespace-pre-wrap break-all bg-background/60 rounded p-2 max-h-40 overflow-auto">
+                      {JSON.stringify(testResult.responseBody, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Card>
