@@ -41,7 +41,8 @@ function getCallbackUrl(): string {
  *  PayHero uses Django REST Framework which puts errors in `detail`, not `message`. */
 function extractPayHeroError(data: Record<string, unknown>, status: number): string {
   const msg =
-    (data.detail as string) ||
+    (data.error_message as string) ||   // PayHero's own error key
+    (data.detail as string) ||           // Django REST style
     (data.message as string) ||
     (data.error as string) ||
     (data.description as string) ||

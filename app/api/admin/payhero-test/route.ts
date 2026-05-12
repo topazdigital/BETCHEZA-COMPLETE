@@ -103,7 +103,9 @@ export async function POST(req: Request) {
       : status === 401
         ? 'HTTP 401 = wrong or expired token. Re-copy the full Basic token from PayHero → API Keys.'
         : status === 400
-          ? 'HTTP 400 = bad request. Check the channel ID and phone format.'
+          ? (String((body as Record<string,unknown>).error_message || '').toLowerCase().includes('insufficient')
+              ? 'Insufficient balance in your PayHero float — log in to app.payhero.co.ke → Wallet → Add Money, top up (even KES 500 is enough to start), then try again.'
+              : 'HTTP 400 = bad request. Check the channel ID and phone format.')
           : status === 404
             ? 'HTTP 404 = channel not found. Double-check the Channel ID (from PayHero → Payment Channels).'
             : null,
