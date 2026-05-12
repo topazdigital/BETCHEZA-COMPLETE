@@ -17,6 +17,40 @@ const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron';
 
 interface RawGame { home: string; away: string; league?: string; kickoffTime?: string }
 
+// Build jackpot games from real upcoming matches in the ESPN cache.
+// Used as a reliable fallback when bookmaker APIs are blocked (Cloudflare etc.).
+async function buildJackpotFromEspn(count: number, daysAhead: number = 10): Promise<RawGame[] | null> {
+  try {
+    const { getUpcomingMatches } = await import('@/lib/api/unified-sports-api');
+    const upcoming = await getUpcomingMatches();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + daysAhead);
+
+    const soccer = upcoming.filter(m => {
+      const t = new Date(m.kickoffTime).getTime();
+      return (m.sport.slug === 'soccer' || m.sport.slug === 'football') && t <= cutoff.getTime();
+    });
+
+    // Prefer top European leagues for authentic jackpot feel
+    const topLeagues = [1, 2, 3, 4, 5, 6, 7, 9, 10, 14, 15, 41];
+    const top = soccer.filter(m => topLeagues.includes(m.leagueId));
+    const rest = soccer.filter(m => !topLeagues.includes(m.leagueId));
+    const pool = [...top, ...rest].slice(0, count);
+
+    if (pool.length < 5) return null; // Not enough real data
+
+    return pool.map(m => ({
+      home: m.homeTeam.name,
+      away: m.awayTeam.name,
+      league: m.league.name,
+      kickoffTime: m.kickoffTime instanceof Date ? m.kickoffTime.toISOString() : String(m.kickoffTime),
+    }));
+  } catch (e) {
+    console.warn('[jackpot-sync] ESPN fallback builder failed:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // ─── Bookmaker fetchers ────────────────────────────────────────────────────────
 
 async function tryJsonFetch(urls: string[], extraHeaders?: Record<string, string>): Promise<unknown> {
@@ -94,13 +128,23 @@ async function fetchBetikaGames(count: number): Promise<BookmakerResult> {
 }
 
 async function fetchSportPesaGames(count: number): Promise<RawGame[] | null> {
+  // SportPesa is behind Cloudflare bot protection — their API returns an HTML
+  // challenge page, not JSON.  Try several endpoints; if all fail use the ESPN
+  // upcoming-match cache so the jackpot page always has real games.
   const data = await tryJsonFetch([
+    'https://ke.sportpesa.com/api/v2/jackpots',
+    'https://ke.sportpesa.com/api/v1/jackpots/mega',
     'https://www.sportpesa.co.ke/api/v1/jackpots',
     'https://www.sportpesa.co.ke/api/v1/jackpots/pool-of-the-week',
     'https://ke.sportpesa.com/api/v1/jackpots',
     'https://api.sportpesa.co.ke/v1/jackpots',
-  ]);
-  return extractGames(data, count);
+  ], { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' });
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  // API blocked — use real upcoming matches from the ESPN cache
+  console.log('[jackpot-sync] SportPesa API unavailable, falling back to ESPN upcoming matches');
+  return buildJackpotFromEspn(count, 14);
 }
 
 async function fetchOdiBetsGames(count: number): Promise<RawGame[] | null> {

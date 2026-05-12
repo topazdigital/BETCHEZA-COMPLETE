@@ -645,6 +645,143 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
 ];
 
 // ============================================
+// Canonical League Normalization Map
+// ============================================
+// Maps variant league names (from TSDB, camel1, football-data.org, etc.) to the
+// canonical ESPN metadata so supplementary-source matches merge into the same UI
+// league group as ESPN matches.  Key = lowercase, trimmed league name variant.
+
+interface CanonicalLeagueMeta { leagueId: number; leagueName: string; country: string; countryCode: string }
+const CANONICAL_LEAGUE_MAP: Record<string, CanonicalLeagueMeta> = {
+  // La Liga (Spain) — common aliases from TSDB / camel1 / football-data
+  'la liga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'laliga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'spanish la liga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'spain la liga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'primera division': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'primera división': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'spain primera': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'liga bbva': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'liga santander': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'laliga santander': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'laliga ea sports': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  // fd_ leagueId 7002 for La Liga — remap to ESPN's 2
+  // Premier League (England)
+  'premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'english premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'england premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'epl': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'barclays premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  // Bundesliga (Germany)
+  'bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  '1. bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  'german bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  'germany bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  'fußball-bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  // Serie A (Italy)
+  'serie a': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'italian serie a': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'italy serie a': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'serie a tim': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'serie a enilive': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  // Ligue 1 (France)
+  'ligue 1': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'french ligue 1': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'france ligue 1': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'ligue 1 uber eats': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'ligue 1 mcdonald\'s': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  // Eredivisie (Netherlands)
+  'eredivisie': { leagueId: 6, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL' },
+  'dutch eredivisie': { leagueId: 6, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL' },
+  'netherlands eredivisie': { leagueId: 6, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL' },
+  // Primeira Liga (Portugal)
+  'primeira liga': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'liga nos': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'portuguese primeira liga': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'portugal primeira liga': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'liga portugal': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'liga portugal bwin': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  // Champions League
+  'champions league': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  'uefa champions league': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  'ucl': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  'uefa cl': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  // Europa League
+  'europa league': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  'uefa europa league': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  'uel': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  'uefa el': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  // Conference League
+  'conference league': { leagueId: 26, leagueName: 'Conference League', country: 'Europe', countryCode: 'EU' },
+  'uefa conference league': { leagueId: 26, leagueName: 'Conference League', country: 'Europe', countryCode: 'EU' },
+  'uecl': { leagueId: 26, leagueName: 'Conference League', country: 'Europe', countryCode: 'EU' },
+  // MLS
+  'mls': { leagueId: 11, leagueName: 'MLS', country: 'USA', countryCode: 'US' },
+  'major league soccer': { leagueId: 11, leagueName: 'MLS', country: 'USA', countryCode: 'US' },
+  // Brazilian Serie A
+  'brasileirao': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'brazilian serie a': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'brazil serie a': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'brasileirão': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'série a': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  // Argentine Primera
+  'argentine primera': { leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR' },
+  'liga profesional': { leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR' },
+  'argentina primera division': { leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR' },
+  // Saudi Pro League
+  'saudi pro league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi professional football league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi arabian league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'roshn saudi league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi division 1': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'spfl': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  // Turkish Super Lig
+  'super lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  'turkish super lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  'turkey super lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  'süper lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  // Belgian Pro League
+  'belgian pro league': { leagueId: 16, leagueName: 'Belgian Pro League', country: 'Belgium', countryCode: 'BE' },
+  'jupiler pro league': { leagueId: 16, leagueName: 'Belgian Pro League', country: 'Belgium', countryCode: 'BE' },
+  'belgium pro league': { leagueId: 16, leagueName: 'Belgian Pro League', country: 'Belgium', countryCode: 'BE' },
+  // Scottish Premiership
+  'scottish premiership': { leagueId: 8, leagueName: 'Scottish Premiership', country: 'Scotland', countryCode: 'GB-SCT' },
+  'spfl premiership': { leagueId: 8, leagueName: 'Scottish Premiership', country: 'Scotland', countryCode: 'GB-SCT' },
+  // EFL Championship
+  'championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  'efl championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  'sky bet championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  'english championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  // Copa Libertadores
+  'copa libertadores': { leagueId: 25, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA' },
+  'conmebol libertadores': { leagueId: 25, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA' },
+  // Liga MX
+  'liga mx': { leagueId: 27, leagueName: 'Liga MX', country: 'Mexico', countryCode: 'MX' },
+  'mexican liga mx': { leagueId: 27, leagueName: 'Liga MX', country: 'Mexico', countryCode: 'MX' },
+  // J League
+  'j league': { leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP' },
+  'j1 league': { leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP' },
+  'meiji yasuda j1 league': { leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP' },
+};
+
+// Apply canonical metadata to a match from a supplementary source
+function canonicalizeLeague(match: UnifiedMatch): void {
+  const rawName = (match.league?.name || '').trim();
+  const key = rawName.toLowerCase();
+  const canon = CANONICAL_LEAGUE_MAP[key];
+  if (!canon) return;
+  match.leagueId = canon.leagueId;
+  match.league = {
+    ...match.league,
+    id: canon.leagueId,
+    name: canon.leagueName,
+    country: canon.country,
+    countryCode: canon.countryCode,
+  };
+}
+
+// ============================================
 // Cache Configuration
 // ============================================
 
@@ -3082,7 +3219,8 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     // prevent cross-source duplicates appearing as separate league groups.
     const stripSuffixes = (n: string) =>
       n.toLowerCase()
-        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|münchen|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk)\b/g, '')
+        .replace(/ñ/g, 'n').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u')
+        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk|balompi|balompie|balompiés|balompes|futbol|fútbol|calcio)\b/g, '')
         .replace(/[^a-z0-9]/g, '');
     const homeNorm = stripSuffixes(match.homeTeam.name);
     const awayNorm = stripSuffixes(match.awayTeam.name);
@@ -3174,6 +3312,9 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   const supplementarySources: UnifiedMatch[][] = [novelGlobalEspnMatches, fdMatches, oldbMatches, tsdbMatches, fmMatches, sofaScoreMatches, camel1Matches];
   for (const source of supplementarySources) {
     for (const match of source) {
+      // Normalize league name to canonical ESPN metadata before dedup so
+      // "Spanish La Liga" (TSDB) merges into the same group as "La Liga" (ESPN).
+      canonicalizeLeague(match);
       if (realOddsIndex.size > 0) {
         const homeNorm = normalizeTeamName(match.homeTeam.name);
         const awayNorm = normalizeTeamName(match.awayTeam.name);
@@ -3188,15 +3329,10 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     }
   }
 
-  // Ensure every match has at least synthetic odds so no match card shows
-  // "No odds available".  generateRealisticOdds is deterministic (same input →
-  // same output) so it never overrides real bookmaker odds that were already set.
-  for (const match of allMatches) {
-    if (!match.odds) {
-      const sportType = (match.sport?.slug ?? 'soccer') as ESPNLeagueConfig['sportType'];
-      match.odds = generateRealisticOdds(match.homeTeam.name, match.awayTeam.name, sportType);
-    }
-  }
+  // Only show REAL bookmaker odds. Matches with no odds from a live provider
+  // simply have match.odds = undefined — the UI shows no odds panel.
+  // generateRealisticOdds() is still available for internal use (e.g. strategy
+  // pick selection) but is NOT applied globally here.
 
   // Fire-and-forget: persist teams + leagues into MySQL when available.
   // Never blocks, never throws — silently no-ops on free tier without DB.
