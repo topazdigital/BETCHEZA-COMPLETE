@@ -100,7 +100,6 @@ export async function initiateWithdrawal(amount: number, phone: string, referenc
   }
 }
 
-import path from 'path';
 const STORE_PATH = path.join(process.cwd(), '.local', 'state', 'payhero-pending.json');
 const g = globalThis as { __phPending?: Map<string, PendingTx> };
 

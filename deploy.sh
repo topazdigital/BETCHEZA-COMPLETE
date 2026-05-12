@@ -2,15 +2,20 @@
 set -e
 BOLD='\033[1m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
-# Always run from the app directory (works whether you call ./deploy.sh or bash deploy.sh from anywhere)
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
 echo -e "${BOLD}Betcheza Deploy — $(pwd)${NC}"
 
 echo -e "${YELLOW}[1/4] Pulling latest changes...${NC}"
-# Stash ALL local changes (auto-tips.json, package-lock.json, etc.) so git pull never blocks
-git stash --include-untracked 2>/dev/null || true
+# Stop tracking runtime-generated files that should never block a pull.
+# Safe to run every time — a no-op once already untracked.
+git rm -r --cached .local/state/ 2>/dev/null || true
+git rm -r --cached .local/data/ 2>/dev/null || true
+
+# Stash any remaining local modifications (package-lock changes, etc.)
+git stash push --include-untracked -m "auto-stash before deploy $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+
 git pull origin main
 
 echo -e "${YELLOW}[2/4] Installing dependencies...${NC}"
