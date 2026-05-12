@@ -22,10 +22,18 @@ interface CachedMaintenance {
 }
 
 const TTL_MS = 30_000;
+// Extend initial back-off so we don't hit API routes before Turbopack compiles them.
+// The in-memory cache primes as null so the first real fetch happens after 2 minutes
+// from server start — by which time Turbopack has compiled the routes on first page hit.
+const STARTUP_DELAY_MS = 2 * 60 * 1000;
+const startedAt = Date.now();
+
 let rewriteCache: CachedRewrites | null = null;
 let maintenanceCache: CachedMaintenance | null = null;
 
 async function loadRewrites(origin: string): Promise<CachedRewrites['rules']> {
+  // Skip self-fetches during the startup warm-up window to avoid 404 loops.
+  if (Date.now() - startedAt < STARTUP_DELAY_MS) return rewriteCache?.rules ?? [];
   if (rewriteCache && Date.now() - rewriteCache.ts < TTL_MS) return rewriteCache.rules;
   try {
     const res = await fetch(`${origin}/api/site-settings/rewrites`, { cache: 'no-store' });
@@ -43,6 +51,8 @@ async function loadRewrites(origin: string): Promise<CachedRewrites['rules']> {
 }
 
 async function loadMaintenance(origin: string): Promise<CachedMaintenance> {
+  // Skip self-fetches during the startup warm-up window.
+  if (Date.now() - startedAt < STARTUP_DELAY_MS) return maintenanceCache ?? { enabled: false, message: '', ts: 0 };
   if (maintenanceCache && Date.now() - maintenanceCache.ts < TTL_MS) return maintenanceCache;
   try {
     const res = await fetch(`${origin}/api/site-settings/maintenance`, { cache: 'no-store' });

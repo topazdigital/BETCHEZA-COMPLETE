@@ -12,23 +12,51 @@ interface FileDbConfig {
   database?: string;
 }
 
+// Circuit breaker: after a connection failure, stop attempting for COOLDOWN_MS.
+// This prevents every API route from hanging for 3s on every request when the
+// remote DB is unreachable (e.g. firewall blocks Replit → VPS MySQL port).
+const COOLDOWN_MS = 30_000;
+const g = globalThis as {
+  __dbCircuitOpen?: boolean;
+  __dbCircuitOpenAt?: number;
+};
+
+function isCircuitOpen(): boolean {
+  if (!g.__dbCircuitOpen) return false;
+  if (Date.now() - (g.__dbCircuitOpenAt ?? 0) > COOLDOWN_MS) {
+    g.__dbCircuitOpen = false;
+    return false;
+  }
+  return true;
+}
+
+function openCircuit(): void {
+  g.__dbCircuitOpen = true;
+  g.__dbCircuitOpenAt = Date.now();
+  if (pool) {
+    pool.end().catch(() => { });
+    pool = null;
+  }
+}
+
 function getFileConfig(): FileDbConfig | null {
   try {
     const configFile = path.join(process.cwd(), '.local', 'state', 'admin', 'db-config.json');
     if (fs.existsSync(configFile)) {
       return JSON.parse(fs.readFileSync(configFile, 'utf8')) as FileDbConfig;
     }
-  } catch { /* ignore */ }
+  } catch { }
   return null;
 }
 
 export function getPool(): mysql.Pool | null {
+  if (isCircuitOpen()) return null;
+
   const envHost     = process.env.DB_HOST     || process.env.MYSQL_HOST;
   const envUser     = process.env.DB_USER     || process.env.MYSQL_USER;
   const envPassword = process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD;
   const envDatabase = process.env.DB_NAME     || process.env.MYSQL_DATABASE;
 
-  // Fall back to admin-panel saved config when env vars are not set
   const fileCfg = (!envHost || !envUser || !envDatabase) ? getFileConfig() : null;
 
   const host     = envHost     || fileCfg?.host;
@@ -46,21 +74,22 @@ export function getPool(): mysql.Pool | null {
       password: password || '',
       database,
       waitForConnections: true,
-      connectionLimit: 10,
+      connectionLimit: 5,
       queueLimit: 0,
       charset: 'utf8mb4',
+      connectTimeout: 3000,
     });
   }
 
   return pool;
 }
 
-/** Reset the pool so the next call to getPool() picks up new config. */
 export function resetPool(): void {
   if (pool) {
-    pool.end().catch(() => { /* ignore */ });
+    pool.end().catch(() => { });
     pool = null;
   }
+  g.__dbCircuitOpen = false;
 }
 
 export interface QueryResult<T> {
@@ -70,11 +99,17 @@ export interface QueryResult<T> {
 
 export async function query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
   const p = getPool();
-  if (!p) {
-    return { rows: [] };
+  if (!p) return { rows: [] };
+  try {
+    const [rows] = await p.execute(sql, params);
+    return { rows: rows as T[], affectedRows: undefined };
+  } catch (err: unknown) {
+    const e = err as { code?: string; errno?: string };
+    if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND' || e?.errno === 'ETIMEDOUT') {
+      openCircuit();
+    }
+    throw err;
   }
-  const [rows] = await p.execute(sql, params);
-  return { rows: rows as T[], affectedRows: undefined };
 }
 
 export async function queryOne<T>(sql: string, params?: unknown[]): Promise<T | null> {
@@ -89,21 +124,25 @@ export interface ExecuteResult {
 
 export async function execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
   const p = getPool();
-  if (!p) {
-    throw new Error('No MySQL database connection available');
+  if (!p) throw new Error('No MySQL database connection available');
+  try {
+    const [result] = await p.execute(sql, params);
+    const r = result as mysql.ResultSetHeader;
+    return { insertId: r.insertId, affectedRows: r.affectedRows };
+  } catch (err: unknown) {
+    const e = err as { code?: string; errno?: string };
+    if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND' || e?.errno === 'ETIMEDOUT') {
+      openCircuit();
+    }
+    throw err;
   }
-  const [result] = await p.execute(sql, params);
-  const r = result as mysql.ResultSetHeader;
-  return { insertId: r.insertId, affectedRows: r.affectedRows };
 }
 
 export async function withTransaction<T>(
   callback: (conn: mysql.PoolConnection) => Promise<T>
 ): Promise<T> {
   const p = getPool();
-  if (!p) {
-    throw new Error('No MySQL database connection available');
-  }
+  if (!p) throw new Error('No MySQL database connection available');
   const conn = await p.getConnection();
   try {
     await conn.beginTransaction();

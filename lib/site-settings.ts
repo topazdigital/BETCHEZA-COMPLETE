@@ -107,14 +107,23 @@ export async function getSiteSettings(): Promise<SiteSettings> {
   const pool = getPool();
   if (pool) {
     try {
-      const result = await query<{ setting_key: string; setting_value: string }>(
-        'SELECT setting_key, setting_value FROM site_settings'
-      );
-      result.rows.forEach((row) => {
-        merged[row.setting_key] = row.setting_value;
-      });
+      // Race against a 2-second timeout so a slow/unreachable DB never blocks
+      // the root layout (which is called for every request including API routes).
+      const dbResult = await Promise.race([
+        query<{ setting_key: string; setting_value: string }>(
+          'SELECT setting_key, setting_value FROM site_settings'
+        ),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('site_settings query timeout')), 2000)
+        ),
+      ]);
+      if (dbResult) {
+        dbResult.rows.forEach((row) => {
+          merged[row.setting_key] = row.setting_value;
+        });
+      }
     } catch {
-      // Table missing — keep defaults / memory.
+      // DB unreachable or table missing — keep defaults / memory settings.
     }
   }
   // Layer in any in-memory writes from /api/admin/settings (so non-DB

@@ -102,8 +102,11 @@ export function startCron(): void {
   if (state.started) return;
   state.started = true;
 
-  setTimeout(() => { void runMatchReminders(); }, 30_000);
-  setTimeout(() => { void runJackpotSync(); }, 10_000);
+  // Delay startup cron jobs to allow Turbopack to lazy-compile API routes first.
+  // Next.js 16 with Turbopack compiles routes on first request — if we hit them
+  // too early we get 404. These delays give the server time to warm up.
+  setTimeout(() => { void runMatchReminders(); }, 120_000);   // 2 min
+  setTimeout(() => { void runJackpotSync(); }, 180_000);       // 3 min
 
   // Auto-post daily strategy on startup if it hasn't been posted today yet
   // and it's past 9am EAT (6am UTC)
@@ -113,7 +116,7 @@ export function startCron(): void {
     if (utcHour >= 6) {
       void runDailyStrategy();
     }
-  }, 60_000);
+  }, 240_000); // 4 min
 
   state.timer = setInterval(() => { void tick(); }, TICK_MS);
   console.log('[cron] started — match-reminders (5 min), jackpot-sync (60 min, first run in 10s), daily-strategy (9am EAT)');

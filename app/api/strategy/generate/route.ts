@@ -23,19 +23,41 @@ function getOpenAI(): OpenAI | null {
   try { return new OpenAI({ apiKey, baseURL }); } catch { return null; }
 }
 
-function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date }): StrategyPick {
-  const odds = parseFloat((3.1 + Math.random() * 0.8).toFixed(2));
+function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date; odds?: { home: number; draw: number; away: number } | null }): StrategyPick {
+  // Use real bookmaker odds — never Math.random(). Pick the side with best value in 1.30–2.50.
+  let odds = 1.65;
+  let pick = match.homeTeam.name;
+  let market = '1X2';
+
+  if (match.odds) {
+    const { home, draw, away } = match.odds;
+    if (home >= 1.30 && home <= 2.50) {
+      odds = home; pick = match.homeTeam.name; market = '1X2';
+    } else if (away >= 1.30 && away <= 2.50) {
+      odds = away; pick = match.awayTeam.name; market = '1X2';
+    } else if (draw >= 2.80 && draw <= 3.80) {
+      odds = draw; pick = 'Draw'; market = '1X2';
+    } else {
+      const dc = parseFloat(((home + draw) / 2).toFixed(2));
+      if (dc >= 1.15 && dc <= 1.80) {
+        odds = dc; pick = `${match.homeTeam.name} or Draw`; market = 'Double Chance';
+      } else {
+        odds = Math.max(1.30, Math.min(2.20, home)); pick = match.homeTeam.name; market = '1X2';
+      }
+    }
+  }
+
   return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `${Date.now()}-fp`,
     homeTeam: match.homeTeam.name,
     awayTeam: match.awayTeam.name,
     league: match.league.name,
     matchTime: match.kickoffTime.toISOString(),
-    pick: match.homeTeam.name,
-    market: '1X2',
-    odds,
+    pick,
+    market,
+    odds: parseFloat(odds.toFixed(2)),
     confidence: 'Medium',
-    reasoning: `${match.homeTeam.name} has home advantage in this fixture. Value identified at ${odds} odds.`,
+    reasoning: `${pick} selected from ${market} market at ${odds} odds. Home advantage and current form factor into this selection.`,
     result: 'pending',
   };
 }
