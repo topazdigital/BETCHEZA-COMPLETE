@@ -9,9 +9,22 @@
 
 import type { UnifiedMatch } from './unified-sports-api';
 
-const CAMEL_URL = 'https://camel1.tv/en';
-const CAMEL_FOOTBALL_URL = 'https://camel1.tv/en/football';
+const CAMEL_BASE = 'https://camel1.tv/en';
+const CAMEL_URL = CAMEL_BASE;
+const CAMEL_FOOTBALL_URL = `${CAMEL_BASE}/football`;
 const CACHE_MS = 10 * 60 * 1000;
+
+// All sport pages available on camel1.tv
+const CAMEL_SPORT_PAGES: Array<{ url: string; sportId: number; sportKey: string; sportName: string; icon: string }> = [
+  { url: `${CAMEL_BASE}/basketball`, sportId: 2, sportKey: 'basketball', sportName: 'Basketball', icon: '🏀' },
+  { url: `${CAMEL_BASE}/tennis`,     sportId: 6, sportKey: 'tennis',     sportName: 'Tennis',     icon: '🎾' },
+  { url: `${CAMEL_BASE}/baseball`,   sportId: 7, sportKey: 'baseball',   sportName: 'Baseball',   icon: '⚾' },
+  { url: `${CAMEL_BASE}/ice-hockey`, sportId: 9, sportKey: 'hockey',     sportName: 'Ice Hockey', icon: '🏒' },
+  { url: `${CAMEL_BASE}/volleyball`, sportId: 14, sportKey: 'volleyball', sportName: 'Volleyball', icon: '🏐' },
+  { url: `${CAMEL_BASE}/rugby`,      sportId: 12, sportKey: 'rugby',      sportName: 'Rugby',      icon: '🏉' },
+  { url: `${CAMEL_BASE}/american-football`, sportId: 4, sportKey: 'football', sportName: 'American Football', icon: '🏈' },
+  { url: `${CAMEL_BASE}/handball`,   sportId: 24, sportKey: 'handball',   sportName: 'Handball',   icon: '🤾' },
+];
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -73,7 +86,10 @@ function leagueIdFromName(name: string): number {
   return 9000 + h;
 }
 
-function mapHotMatch(m: CamelMatch): UnifiedMatch | null {
+interface SportMeta { sportId: number; sportKey: string; sportName: string; icon: string }
+const SOCCER_META: SportMeta = { sportId: 1, sportKey: 'soccer', sportName: 'Football', icon: '⚽' };
+
+function mapHotMatch(m: CamelMatch, sport: SportMeta = SOCCER_META): UnifiedMatch | null {
   if (!m.home_team?.name || !m.away_team?.name) return null;
   const comp = m.competition?.name_en || m.competition?.name || 'Unknown';
   const leagueId = leagueIdFromName(comp);
@@ -81,7 +97,6 @@ function mapHotMatch(m: CamelMatch): UnifiedMatch | null {
   const hs = scoreFromArr(m.home_scores);
   const as_ = scoreFromArr(m.away_scores);
   const status = statusFromId(m.status_id);
-  // Extract live minute from timer field (seconds elapsed) or minute field
   const minute: number | undefined =
     typeof m.minute === 'number' ? m.minute :
     typeof m.timer === 'number' ? Math.floor(m.timer / 60) :
@@ -90,8 +105,8 @@ function mapHotMatch(m: CamelMatch): UnifiedMatch | null {
     id: `camel1_${m.id}`,
     externalId: m.id,
     source: 'sportsdata-io',
-    sportId: 1,
-    sportKey: 'soccer',
+    sportId: sport.sportId,
+    sportKey: sport.sportKey,
     leagueId,
     leagueKey: `camel1_${leagueId}`,
     homeTeam: {
@@ -119,12 +134,12 @@ function mapHotMatch(m: CamelMatch): UnifiedMatch | null {
       countryCode: 'INT',
       tier: 2,
     },
-    sport: { id: 1, name: 'Football', slug: 'soccer', icon: '⚽' },
+    sport: { id: sport.sportId, name: sport.sportName, slug: sport.sportKey, icon: sport.icon },
     tipsCount: 0,
   };
 }
 
-function mapFaceoff(f: FaceoffMatch): UnifiedMatch | null {
+function mapFaceoff(f: FaceoffMatch, sport: SportMeta = SOCCER_META): UnifiedMatch | null {
   if (!f.homeTeam || !f.awayTeam) return null;
   const comp = f.competitionName || 'Unknown';
   const leagueId = leagueIdFromName(comp);
@@ -133,8 +148,8 @@ function mapFaceoff(f: FaceoffMatch): UnifiedMatch | null {
     id: `camel1f_${f.faceoffId}`,
     externalId: f.faceoffId,
     source: 'sportsdata-io',
-    sportId: 1,
-    sportKey: 'soccer',
+    sportId: sport.sportId,
+    sportKey: sport.sportKey,
     leagueId,
     leagueKey: `camel1_${leagueId}`,
     homeTeam: {
@@ -159,7 +174,7 @@ function mapFaceoff(f: FaceoffMatch): UnifiedMatch | null {
       countryCode: 'INT',
       tier: 2,
     },
-    sport: { id: 1, name: 'Football', slug: 'soccer', icon: '⚽' },
+    sport: { id: sport.sportId, name: sport.sportName, slug: sport.sportKey, icon: sport.icon },
     tipsCount: 0,
   };
 }
@@ -189,7 +204,7 @@ function extractJsonArray(decoded: string, fieldName: string): unknown[] | null 
   return null;
 }
 
-function parseRSC(html: string): UnifiedMatch[] {
+function parseRSC(html: string, sport: SportMeta = SOCCER_META): UnifiedMatch[] {
   const out: UnifiedMatch[] = [];
 
   // Extract all RSC push payloads (standard Next.js streaming format)
@@ -201,7 +216,7 @@ function parseRSC(html: string): UnifiedMatch[] {
   }
 
   // Also try the inline script payload format used on newer Next.js versions
-  const inlineRegex = /\\"hotTeamMatches\\":|"hotTeamMatches":/g;
+  const inlineRegex = /\\"hotTeamMatches\\":|"hotTeamMatches":|"matchList":|"liveMatches":/g;
   if (payloads.length === 0 && inlineRegex.test(html)) {
     payloads.push(html);
   }
@@ -221,7 +236,7 @@ function parseRSC(html: string): UnifiedMatch[] {
     if (hotArr) {
       for (const match of hotArr as CamelMatch[]) {
         if (!match?.id || seenIds.has(String(match.id))) continue;
-        const u = mapHotMatch(match);
+        const u = mapHotMatch(match, sport);
         if (u) { seenIds.add(String(match.id)); out.push(u); }
       }
     }
@@ -231,7 +246,7 @@ function parseRSC(html: string): UnifiedMatch[] {
     if (listArr) {
       for (const match of listArr as CamelMatch[]) {
         if (!match?.id || seenIds.has(String(match.id))) continue;
-        const u = mapHotMatch(match);
+        const u = mapHotMatch(match, sport);
         if (u) { seenIds.add(String(match.id)); out.push(u); }
       }
     }
@@ -241,7 +256,7 @@ function parseRSC(html: string): UnifiedMatch[] {
     if (liveArr) {
       for (const match of liveArr as CamelMatch[]) {
         if (!match?.id || seenIds.has(String(match.id))) continue;
-        const u = mapHotMatch(match);
+        const u = mapHotMatch(match, sport);
         if (u) { seenIds.add(String(match.id)); out.push(u); }
       }
     }
@@ -251,7 +266,7 @@ function parseRSC(html: string): UnifiedMatch[] {
     if (faceArr) {
       for (const f of faceArr as FaceoffMatch[]) {
         if (!f?.faceoffId || seenIds.has(String(f.faceoffId))) continue;
-        const u = mapFaceoff(f);
+        const u = mapFaceoff(f, sport);
         if (u) { seenIds.add(String(f.faceoffId)); out.push(u); }
       }
     }
@@ -280,11 +295,19 @@ export async function fetchCamel1Matches(): Promise<UnifiedMatch[]> {
   if (cache && cache.expires > Date.now()) return cache.data;
 
   try {
-    // Fetch homepage and football page in parallel for maximum coverage
-    const [homeHtml, footballHtml] = await Promise.allSettled([
-      fetchPage(CAMEL_URL),
-      fetchPage(CAMEL_FOOTBALL_URL),
-    ]);
+    // Fetch homepage, football page, and all other sport pages in parallel
+    const pagesToFetch: Array<{ url: string; sport: SportMeta }> = [
+      { url: CAMEL_URL, sport: SOCCER_META },
+      { url: CAMEL_FOOTBALL_URL, sport: SOCCER_META },
+      ...CAMEL_SPORT_PAGES.map(p => ({
+        url: p.url,
+        sport: { sportId: p.sportId, sportKey: p.sportKey, sportName: p.sportName, icon: p.icon },
+      })),
+    ];
+
+    const results = await Promise.allSettled(
+      pagesToFetch.map(p => fetchPage(p.url))
+    );
 
     const seenIds = new Set<string>();
     const allMatches: UnifiedMatch[] = [];
@@ -298,13 +321,14 @@ export async function fetchCamel1Matches(): Promise<UnifiedMatch[]> {
       }
     };
 
-    if (homeHtml.status === 'fulfilled') {
-      addAll(parseRSC(homeHtml.value));
-    }
-    if (footballHtml.status === 'fulfilled') {
-      addAll(parseRSC(footballHtml.value));
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === 'fulfilled') {
+        addAll(parseRSC(result.value, pagesToFetch[i].sport));
+      }
     }
 
+    console.log(`[camel1] fetched ${allMatches.length} matches from ${results.filter(r => r.status === 'fulfilled').length}/${pagesToFetch.length} pages`);
     cache = { data: allMatches, expires: Date.now() + CACHE_MS };
     return allMatches;
   } catch {

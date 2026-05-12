@@ -3213,15 +3213,81 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   const seenMatchKeys = new Set<string>();
 
   const getMatchKey = (match: UnifiedMatch): string => {
-    // Strip common club suffixes AND Spanish/Portuguese/French articles so that
-    // "RC Celta de Vigo" == "Celta de Vigo", "Club Atletico de Madrid" == "Atletico Madrid",
-    // "Levante UD" == "Levante", etc.  Extra terms (ud, sd, cd, de, la, el, los, las, del)
-    // prevent cross-source duplicates appearing as separate league groups.
-    const stripSuffixes = (n: string) =>
-      n.toLowerCase()
-        .replace(/ñ/g, 'n').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u')
-        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk|balompi|balompie|balompiés|balompes|futbol|fútbol|calcio)\b/g, '')
+    // Known cross-source team name aliases (canonical → variants).
+    // Ensures "RC Celta" == "Celta Vigo", "Man Utd" == "Manchester United", etc.
+    const TEAM_ALIASES: Record<string, string> = {
+      'rc celta': 'celta', 'celta vigo': 'celta', 'rc celta de vigo': 'celta', 'celta de vigo': 'celta',
+      'manchester united': 'manchesterunited', 'man utd': 'manchesterunited', 'man united': 'manchesterunited',
+      'manchester city': 'manchestercity', 'man city': 'manchestercity',
+      'tottenham hotspur': 'tottenham', 'spurs': 'tottenham',
+      'wolverhampton wanderers': 'wolves', 'wolverhampton': 'wolves',
+      'west ham united': 'westham', 'west ham': 'westham',
+      'newcastle united': 'newcastle',
+      'brighton & hove albion': 'brighton', 'brighton and hove albion': 'brighton',
+      'nottingham forest': 'nottmforest', "nott'm forest": 'nottmforest', 'notts forest': 'nottmforest',
+      'sheffield united': 'sheffieldutd', 'sheffield utd': 'sheffieldutd',
+      'queens park rangers': 'qpr',
+      'atletico madrid': 'atletico', 'atletico de madrid': 'atletico', 'club atletico de madrid': 'atletico',
+      'real madrid': 'realmadrid', 'real madrid cf': 'realmadrid',
+      'real betis': 'betis', 'real betis balompie': 'betis',
+      'athletic bilbao': 'bilbao', 'athletic club': 'bilbao',
+      'rayo vallecano': 'rayo',
+      'levante ud': 'levante',
+      'rc deportivo': 'deportivo', 'deportivo la coruna': 'deportivo',
+      'internazionale': 'inter', 'inter milan': 'inter', 'fc internazionale': 'inter',
+      'ac milan': 'milan', 'milan': 'milan',
+      'hellas verona': 'verona',
+      'us sassuolo': 'sassuolo',
+      'ssc napoli': 'napoli',
+      'as roma': 'roma',
+      'ss lazio': 'lazio',
+      'juventus fc': 'juventus',
+      'atalanta bc': 'atalanta',
+      'us lecce': 'lecce',
+      'fc porto': 'porto',
+      'sl benfica': 'benfica',
+      'sporting cp': 'sporting', 'sporting clube': 'sporting',
+      'paris saint-germain': 'psg', 'paris saint germain': 'psg', 'psg': 'psg',
+      'olympique marseille': 'marseille', 'om': 'marseille',
+      'olympique lyonnais': 'lyon',
+      'as monaco': 'monaco',
+      'borussia dortmund': 'dortmund', 'bvb': 'dortmund',
+      'borussia monchengladbach': 'gladbach', 'monchengladbach': 'gladbach',
+      'bayer leverkusen': 'leverkusen',
+      'rb leipzig': 'leipzig', 'rasenballsport leipzig': 'leipzig',
+      'fc schalke 04': 'schalke', 'schalke 04': 'schalke',
+      'eintracht frankfurt': 'frankfurt',
+      'vfb stuttgart': 'stuttgart',
+      'ajax amsterdam': 'ajax', 'afc ajax': 'ajax',
+      'psv eindhoven': 'psv',
+      'feyenoord rotterdam': 'feyenoord',
+      'celtic fc': 'celtic',
+      'rangers fc': 'rangers',
+      'club brugge': 'brugge', 'fc bruges': 'brugge',
+      'galatasaray sk': 'galatasaray',
+      'fenerbahce sk': 'fenerbahce',
+      'besiktas jk': 'besiktas',
+      'shakhtar donetsk': 'shakhtar',
+      'dinamo zagreb': 'dinamo',
+      'red bull salzburg': 'salzburg', 'fc salzburg': 'salzburg',
+    };
+
+    // Strip common club prefixes/suffixes, city names, articles, and diacritics
+    const stripSuffixes = (raw: string) => {
+      const lower = raw.toLowerCase()
+        .replace(/ñ/g, 'n').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i')
+        .replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ü/g, 'u').replace(/ä/g, 'a').replace(/ö/g, 'o')
+        .trim();
+
+      // Check alias map first (exact match after basic normalisation)
+      const aliasKey = lower.replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+      if (TEAM_ALIASES[aliasKey]) return TEAM_ALIASES[aliasKey];
+
+      return lower
+        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk|vigo|madrid|milan|london|paris|rome|roma|lyon|porto|lisbon|zagreb|moscow|amsterdam|brussels|brussels|vienna|warsaw|bucharest|sofia|budapest|prague|belgrade|athens)\b/g, '')
         .replace(/[^a-z0-9]/g, '');
+    };
+
     const homeNorm = stripSuffixes(match.homeTeam.name);
     const awayNorm = stripSuffixes(match.awayTeam.name);
     const dateKey = new Date(match.kickoffTime).toISOString().split('T')[0];
