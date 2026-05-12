@@ -53,7 +53,9 @@ const TYPE_META: Record<GatewayType, { label: string; icon: React.ElementType; c
   regional: { label: 'Regional Gateway', icon: Globe, color: 'text-cyan-500' },
 }
 
+// channel_id added
 const CREDENTIAL_LABELS: Record<string, string> = {
+  channel_id: 'Payment Channel ID',
   publishable_key: 'Publishable Key',
   secret_key: 'Secret Key',
   webhook_secret: 'Webhook Secret',
@@ -180,6 +182,19 @@ function GatewayCard({
           </div>
 
           <Separator />
+
+
+          {/* PayHero instructions */}
+          {gateway.id === 'payhero' && (
+            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs space-y-1">
+              <p className="font-semibold text-amber-800 dark:text-amber-300">How to get your PayHero credentials:</p>
+              <ol className="list-decimal list-inside space-y-0.5 text-amber-700 dark:text-amber-400">
+                <li><strong>Basic Token</strong> — PayHero → API Keys → copy the full token (starts with "Basic ")</li>
+                <li><strong>Channel ID</strong> — PayHero → Payment Channels → copy the Channel ID number (e.g. 7470)</li>
+              </ol>
+              <p className="text-amber-600 dark:text-amber-500 mt-1">Your Channel ID is <strong>7470</strong> — different from Account ID 5107.</p>
+            </div>
+          )}
 
           {/* Credentials */}
           <div className="space-y-3">

@@ -30,7 +30,7 @@ export interface PayoutSettings {
 }
 
 const DEFAULT_GATEWAYS: PaymentGateway[] = [
-  { id: 'payhero', name: 'PayHero (M-Pesa)', provider: 'payhero', enabled: true, countries: ['KE'], currencies: ['KES'], type: 'mobile_money', credentials: { basic_token: process.env.PAYHERO_BASIC_TOKEN || '', account_id: process.env.PAYHERO_ACCOUNT_ID || '' }, fees: { percent: 0, fixed: 0, currency: 'KES' }, minAmount: 1, maxAmount: 300000, supportsPayouts: true },
+  { id: 'payhero', name: 'PayHero (M-Pesa)', provider: 'payhero', enabled: true, countries: ['KE'], currencies: ['KES'], type: 'mobile_money', credentials: { basic_token: process.env.PAYHERO_BASIC_TOKEN || '', channel_id: process.env.PAYHERO_CHANNEL_ID || process.env.PAYHERO_ACCOUNT_ID || '' }, fees: { percent: 0, fixed: 0, currency: 'KES' }, minAmount: 1, maxAmount: 300000, supportsPayouts: true },
   { id: 'stripe', name: 'Stripe', provider: 'stripe', enabled: false, countries: ['US','GB','CA','AU','EU'], currencies: ['USD','GBP','EUR','AUD','CAD'], type: 'card', credentials: { publishable_key: '', secret_key: '', webhook_secret: '' }, fees: { percent: 2.9, fixed: 0.30, currency: 'USD' }, minAmount: 1, maxAmount: 999999, supportsPayouts: true, logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Stripe_Logo%2C_revised_2016.svg' },
   { id: 'paypal', name: 'PayPal', provider: 'paypal', enabled: false, countries: ['US','GB','CA','AU','EU'], currencies: ['USD','GBP','EUR','AUD','CAD'], type: 'ewallet', credentials: { client_id: '', client_secret: '', mode: 'sandbox' }, fees: { percent: 3.49, fixed: 0.49, currency: 'USD' }, minAmount: 1, maxAmount: 10000, supportsPayouts: true, logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg' },
   { id: 'mpesa', name: 'M-Pesa (Daraja)', provider: 'safaricom', enabled: false, countries: ['KE','TZ','UG'], currencies: ['KES','TZS','UGX'], type: 'mobile_money', credentials: { consumer_key: '', consumer_secret: '', passkey: '', shortcode: '' }, fees: { percent: 1.5, fixed: 0, currency: 'KES' }, minAmount: 1, maxAmount: 300000, supportsPayouts: true },
@@ -55,7 +55,7 @@ function hydrateEnvCredentials(gateways: PaymentGateway[]): PaymentGateway[] {
         ...gw,
         credentials: {
           basic_token: gw.credentials.basic_token || process.env.PAYHERO_BASIC_TOKEN || '',
-          account_id: gw.credentials.account_id || process.env.PAYHERO_ACCOUNT_ID || '',
+          channel_id: gw.credentials.channel_id || gw.credentials.account_id || process.env.PAYHERO_CHANNEL_ID || process.env.PAYHERO_ACCOUNT_ID || '',
         },
       };
     }
@@ -63,6 +63,14 @@ function hydrateEnvCredentials(gateways: PaymentGateway[]): PaymentGateway[] {
   });
 }
 
+
+function mergeWithDefaults(stored) {
+  return DEFAULT_GATEWAYS.map((def) => {
+    const saved = stored.find((g) => g.id === def.id)
+    if (!saved) return def
+    return { ...def, ...saved, credentials: { ...def.credentials, ...saved.credentials } }
+  })
+}
 async function loadGateways(): Promise<PaymentGateway[]> {
   if (g.__gwStore) return g.__gwStore;
   try {
@@ -71,13 +79,13 @@ async function loadGateways(): Promise<PaymentGateway[]> {
     );
     const rows = result.rows;
     if (rows?.length && rows[0].value) {
-      g.__gwStore = hydrateEnvCredentials(JSON.parse(rows[0].value));
+      const parsed = JSON.parse(rows[0].value); g.__gwStore = hydrateEnvCredentials(mergeWithDefaults(parsed));
       return g.__gwStore!;
     }
   } catch {}
   const stored = fileStoreGet<PaymentGateway[] | null>('payment-gateways', null);
   if (stored && stored.length > 0) {
-    g.__gwStore = hydrateEnvCredentials(stored);
+    g.__gwStore = hydrateEnvCredentials(mergeWithDefaults(stored));
     return g.__gwStore;
   }
   g.__gwStore = DEFAULT_GATEWAYS;
@@ -101,8 +109,9 @@ async function ensureAdminSettingsTable(): Promise<void> {
 }
 
 async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
-  g.__gwStore = gateways;
+  g.__gwStore = undefined;
   fileStoreSet('payment-gateways', gateways);
+  g.__gwStore = gateways;
   try {
     await ensureAdminSettingsTable();
     await query(
