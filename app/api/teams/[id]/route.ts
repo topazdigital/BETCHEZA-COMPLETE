@@ -748,6 +748,72 @@ export async function GET(
   // tag each fixture on the team page so a Champions League match shows
   // "UCL" / "Champions League" instead of being lumped under Ligue 1.
   const COMP_LABEL: Record<string, { short: string; full: string }> = {
+    // ── European domestic top flights ──────────────────────────────────────
+    'eng.1': { short: 'PL', full: 'Premier League' },
+    'eng.2': { short: 'Championship', full: 'EFL Championship' },
+    'eng.3': { short: 'League One', full: 'EFL League One' },
+    'eng.4': { short: 'League Two', full: 'EFL League Two' },
+    'esp.1': { short: 'La Liga', full: 'La Liga' },
+    'esp.2': { short: 'La Liga 2', full: 'La Liga 2' },
+    'ita.1': { short: 'Serie A', full: 'Serie A' },
+    'ita.2': { short: 'Serie B', full: 'Serie B' },
+    'ger.1': { short: 'Bundesliga', full: 'Bundesliga' },
+    'ger.2': { short: '2. Bundesliga', full: '2. Bundesliga' },
+    'fra.1': { short: 'Ligue 1', full: 'Ligue 1' },
+    'fra.2': { short: 'Ligue 2', full: 'Ligue 2' },
+    'ned.1': { short: 'Eredivisie', full: 'Eredivisie' },
+    'ned.2': { short: 'Eerste Div', full: 'Eerste Divisie' },
+    'por.1': { short: 'Primeira', full: 'Primeira Liga' },
+    'sco.1': { short: 'Premiership', full: 'Scottish Premiership' },
+    'bel.1': { short: 'Pro League', full: 'Belgian Pro League' },
+    'tur.1': { short: 'Süper Lig', full: 'Süper Lig' },
+    'gre.1': { short: 'Super League', full: 'Super League Greece' },
+    'rus.1': { short: 'Premier', full: 'Russian Premier League' },
+    'ukr.1': { short: 'UPL', full: 'Ukrainian Premier League' },
+    'den.1': { short: 'Superliga', full: 'Danish Superliga' },
+    'swe.1': { short: 'Allsvenskan', full: 'Allsvenskan' },
+    'nor.1': { short: 'Eliteserien', full: 'Eliteserien' },
+    'sui.1': { short: 'Super League', full: 'Swiss Super League' },
+    'aut.1': { short: 'Bundesliga', full: 'Austrian Bundesliga' },
+    'cze.1': { short: 'Fortuna Liga', full: 'Czech First League' },
+    'pol.1': { short: 'Ekstraklasa', full: 'PKO BP Ekstraklasa' },
+    'rou.1': { short: 'Liga I', full: 'Romanian Liga I' },
+    'srb.1': { short: 'SuperLiga', full: 'Serbian SuperLiga' },
+    'hrv.1': { short: 'HNL', full: 'Croatian HNL' },
+    'bgr.1': { short: 'First PFL', full: 'Bulgarian First PFL' },
+    'hun.1': { short: 'OTP Bank Liga', full: 'OTP Bank Liga' },
+    'svk.1': { short: 'Super Liga', full: 'Slovak Super Liga' },
+    'isr.1': { short: 'Premier', full: 'Israeli Premier League' },
+    // ── Americas ───────────────────────────────────────────────────────────
+    'usa.1': { short: 'MLS', full: 'MLS' },
+    'usa.2': { short: 'USL', full: 'USL Championship' },
+    'mex.1': { short: 'Liga MX', full: 'Liga MX' },
+    'bra.1': { short: 'Brasileirão', full: 'Brasileirão Série A' },
+    'bra.2': { short: 'Série B', full: 'Brasileirão Série B' },
+    'arg.1': { short: 'Liga Prof.', full: 'Liga Profesional Argentina' },
+    'col.1': { short: 'Liga BetPlay', full: 'Liga BetPlay Dimayor' },
+    'chi.1': { short: 'Primera', full: 'Primera División Chile' },
+    'per.1': { short: 'Liga 1', full: 'Liga 1 Peru' },
+    'uru.1': { short: 'Primera', full: 'Uruguayan Primera División' },
+    // ── Africa & Middle East ───────────────────────────────────────────────
+    'ken.1': { short: 'FKF PL', full: 'FKF Premier League' },
+    'nga.1': { short: 'NPFL', full: 'Nigerian Professional Football League' },
+    'gha.1': { short: 'GPL', full: 'Ghana Premier League' },
+    'egy.1': { short: 'Premier', full: 'Egyptian Premier League' },
+    'rsa.1': { short: 'PSL', full: 'Betway Premiership' },
+    'sau.1': { short: 'SPL', full: 'Saudi Pro League' },
+    // ── Asia / Oceania ─────────────────────────────────────────────────────
+    'jpn.1': { short: 'J1 League', full: 'J1 League' },
+    'kor.1': { short: 'K League 1', full: 'K League 1' },
+    'aus.1': { short: 'A-League', full: 'A-League Men' },
+    'ind.1': { short: 'ISL', full: 'Indian Super League' },
+    'chn.1': { short: 'CSL', full: 'Chinese Super League' },
+    // ── Non-soccer ─────────────────────────────────────────────────────────
+    'nba': { short: 'NBA', full: 'NBA' },
+    'nfl': { short: 'NFL', full: 'NFL' },
+    'mlb': { short: 'MLB', full: 'MLB' },
+    'nhl': { short: 'NHL', full: 'NHL' },
+    // ── International / continental cups ──────────────────────────────────
     'uefa.champions': { short: 'UCL', full: 'Champions League' },
     'uefa.europa': { short: 'UEL', full: 'Europa League' },
     'uefa.europa.conf': { short: 'UECL', full: 'Conference League' },
@@ -759,15 +825,25 @@ export async function GET(
     'fifa.cwc': { short: 'CWC', full: 'Club World Cup' },
     'conmebol.libertadores': { short: 'Libertadores', full: 'Copa Libertadores' },
     'conmebol.sudamericana': { short: 'Sudamericana', full: 'Copa Sudamericana' },
+    'conmebol.america': { short: 'Copa América', full: 'Copa América' },
     'concacaf.champions': { short: 'CCL', full: 'CONCACAF Champions Cup' },
+    'concacaf.gold': { short: 'Gold Cup', full: 'CONCACAF Gold Cup' },
     'caf.champions': { short: 'CAF CL', full: 'CAF Champions League' },
+    'caf.cup_of_nations': { short: 'AFCON', full: 'Africa Cup of Nations' },
+    'caf.confed': { short: 'CAF CC', full: 'CAF Confederation Cup' },
     'afc.champions': { short: 'ACL', full: 'AFC Champions League' },
+    'afc.asian': { short: 'Asian Cup', full: 'AFC Asian Cup' },
+    // ── Domestic cups ─────────────────────────────────────────────────────
     'eng.fa': { short: 'FA Cup', full: 'FA Cup' },
     'eng.league_cup': { short: 'EFL Cup', full: 'EFL Cup' },
     'esp.copa_del_rey': { short: 'Copa', full: 'Copa del Rey' },
     'fra.coupe_de_france': { short: 'Coupe', full: 'Coupe de France' },
     'ita.coppa_italia': { short: 'Coppa', full: 'Coppa Italia' },
     'ger.dfb_pokal': { short: 'Pokal', full: 'DFB-Pokal' },
+    'ned.knvb': { short: 'KNVB Cup', full: 'KNVB Cup' },
+    'por.cup': { short: 'Taça de Portugal', full: 'Taça de Portugal' },
+    'sco.league_cup': { short: 'League Cup', full: 'Scottish League Cup' },
+    'bra.copa_do_brazil': { short: 'Copa do Brasil', full: 'Copa do Brasil' },
   };
 
   const readScore = (s: CompScore | undefined): number | null => {
@@ -863,11 +939,11 @@ export async function GET(
   const past = events
     .filter((e: EventOut) => e.status === 'finished')
     .sort(byDateDesc)
-    .slice(0, 12);
+    .slice(0, 30);
   const upcoming = events
     .filter((e: EventOut) => e.status === 'scheduled' || e.status === 'live')
     .sort(byDateAsc)
-    .slice(0, 12);
+    .slice(0, 20);
 
   // ----- Roster (multiple ESPN response shapes: athletes:[…] or athletes:[{position, items:[…]}]) -----
   type RawAthlete = {

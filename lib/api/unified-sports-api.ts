@@ -1074,7 +1074,11 @@ async function resolveGlobalLeagueInfo(
   if (cached) return cached;
 
   // 1. Curated map wins — most accurate names.
-  const known = KNOWN_GLOBAL_LEAGUES[espnLeagueId];
+  // Only apply soccer-specific league IDs to soccer events; non-soccer sports
+  // (baseball, basketball, hockey, football) have different ESPN numeric league
+  // IDs that happen to share values with soccer ones causing cross-sport
+  // contamination (e.g. MLB teams appearing under Estonian Meistriliiga).
+  const known = sport === 'soccer' ? KNOWN_GLOBAL_LEAGUES[espnLeagueId] : undefined;
   if (known) {
     const info: GlobalLeagueInfo = { name: known.name, slug: known.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), country: known.country, countryCode: known.countryCode };
     globalLeagueInfoCache.set(ck, info);
@@ -3901,13 +3905,37 @@ export async function buildOutrightFromStandings(leagueId: number): Promise<Outr
   const standings = await getLeagueStandings(leagueId).catch(() => []);
   if (!standings || standings.length < 4) return null;
 
+  // Deterministic-but-team-seeded jitter so odds look bookmaker-natural
+  // without changing on every render (same team always gets same nudge).
+  function teamJitter(name: string): number {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
+    // Maps to ±4% range
+    return 1 + ((h & 0xff) / 255 - 0.5) * 0.08;
+  }
+
+  // Round to the nearest bookmaker increment:
+  //   < 2.0  → 0.05 steps  (e.g. 1.65, 1.70, 1.80)
+  //   < 4.0  → 0.10 steps  (e.g. 2.20, 2.50, 3.60)
+  //   < 10   → 0.25 steps  (e.g. 4.25, 5.50, 7.75)
+  //   < 20   → 0.50 steps  (e.g. 11.0, 14.5, 19.0)
+  //   ≥ 20   → 1.00 steps  (e.g. 21.0, 34.0, 67.0)
+  function bookmakerRound(price: number): number {
+    if (price < 2.0) return Math.round(price / 0.05) * 0.05;
+    if (price < 4.0) return Math.round(price / 0.10) * 0.10;
+    if (price < 10)  return Math.round(price / 0.25) * 0.25;
+    if (price < 20)  return Math.round(price / 0.50) * 0.50;
+    return Math.round(price);
+  }
+
   // Score each team — points dominate, GD is tertiary, position adds decay.
+  // Use a softer 0.62 decay (vs old 0.55) so 2nd/3rd place get realistic
+  // non-trivial odds rather than astronomical prices.
   const scored = standings
     .map(s => {
       const ptsScore = Math.max(0, s.points);
-      const gdScore = Math.max(0, s.goalDifference) * 0.1;
-      // Position decay — leader = 1.0, 2nd = 0.55, 3rd = 0.32, etc.
-      const decay = Math.pow(0.55, Math.max(0, s.position - 1));
+      const gdScore  = Math.max(0, s.goalDifference) * 0.12;
+      const decay    = Math.pow(0.62, Math.max(0, s.position - 1));
       return { team: s.team, raw: (ptsScore + gdScore) * decay };
     })
     .filter(s => s.raw > 0);
@@ -3917,24 +3945,26 @@ export async function buildOutrightFromStandings(leagueId: number): Promise<Outr
   const total = scored.reduce((acc, s) => acc + s.raw, 0);
   if (total === 0) return null;
 
-  const top = scored.slice(0, 6).map(s => ({
-    name: s.team.name,
-    // Add 7% house margin (typical bookmaker overround) so prices look real.
-    price: Math.round((1 / (s.raw / total)) * 0.93 * 100) / 100,
-  }));
+  // 8% overround (typical bookmaker margin for outrights)
+  const MARGIN = 0.92;
+
+  const top = scored.slice(0, 6).map(s => {
+    const trueProb = s.raw / total;
+    const rawPrice = (1 / trueProb) * MARGIN;
+    const jittered  = rawPrice * teamJitter(s.team.name);
+    return { name: s.team.name, price: bookmakerRound(Math.max(1.05, jittered)) };
+  });
 
   // Long-tail "Field" outcome
   const tailRaw = scored.slice(6).reduce((acc, s) => acc + s.raw, 0);
   if (tailRaw > 0) {
-    top.push({
-      name: 'Any other team',
-      price: Math.round((1 / (tailRaw / total)) * 0.93 * 100) / 100,
-    });
+    const rawPrice = (1 / (tailRaw / total)) * MARGIN;
+    top.push({ name: 'Any other team', price: bookmakerRound(Math.max(1.50, rawPrice)) });
   }
 
   return {
     id: `synthetic-outright-${leagueId}`,
-    name: 'Title Winner (computed from current standings)',
+    name: 'Title Winner',
     outcomes: top.sort((a, b) => a.price - b.price),
   };
 }

@@ -1,24 +1,48 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Search, X, Trophy, Users, Calendar, UserCheck, Loader2, Radio,
+  Search, X, Trophy, Users, Calendar, UserCheck, Loader2, Radio, Clock, ArrowUpRight,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TeamLogo, LeagueLogo } from '@/components/ui/team-logo';
 import { cn } from '@/lib/utils';
 
-// Header search with debounced typeahead — matches the API contract in
-// /app/api/search/route.ts. Designed to feel snappy, fail quietly, and stay
-// keyboard-friendly (↑/↓ to navigate, Enter to open, Esc to close).
 type SearchHit =
   | { type: 'league'; id: string; title: string; subtitle: string; href: string; logoUrl?: string; sportSlug?: string }
   | { type: 'team'; id: string; title: string; subtitle: string; href: string; logoUrl?: string; sportSlug?: string }
   | { type: 'match'; id: string; title: string; subtitle: string; href: string; status: string; kickoffIso?: string }
   | { type: 'tipster'; id: string; title: string; subtitle: string; href: string; avatar?: string | null; verified?: boolean };
+
+type RecentSearch = { q: string; href?: string; title?: string; ts: number };
+
+const RECENT_KEY = 'betcheza_recent_searches';
+const MAX_RECENT = 5;
+
+function loadRecent(): RecentSearch[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    return raw ? (JSON.parse(raw) as RecentSearch[]) : [];
+  } catch { return []; }
+}
+
+function saveRecent(item: RecentSearch) {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = loadRecent().filter(r => r.q !== item.q);
+    const updated = [item, ...existing].slice(0, MAX_RECENT);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+  } catch { /* ignore */ }
+}
+
+function clearRecent() {
+  if (typeof window === 'undefined') return;
+  try { localStorage.removeItem(RECENT_KEY); } catch { /* ignore */ }
+}
 
 const KIND_META = {
   match: { label: 'Matches', icon: Calendar },
@@ -30,84 +54,83 @@ const KIND_META = {
 const KIND_ORDER: Array<keyof typeof KIND_META> = ['match', 'league', 'team', 'tipster'];
 
 interface HeaderSearchProps {
-  /** When true, render an always-visible full-width input (used in the
-   *  page header). When false (default), render a magnifier icon-button
-   *  that expands into the search input on click. */
   inline?: boolean;
-  /** Additional className applied to the outer wrapper. */
   className?: string;
-  /** Custom placeholder shown in the input. */
   placeholder?: string;
 }
 
 export function HeaderSearch({ inline = false, className, placeholder }: HeaderSearchProps = {}) {
   const router = useRouter();
-  // In inline mode the input is always shown — `open` controls whether
-  // the dropdown is visible (mirrors a focused/blurred state).
   const [open, setOpen] = useState(inline);
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const ctrlRef = useRef<AbortController | null>(null);
 
-  // Debounced fetch — 150ms debounce, keeps previous hits visible while
-  // loading new results so the dropdown never flashes empty.
+  const refreshRecent = useCallback(() => {
+    setRecentSearches(loadRecent());
+  }, []);
+
+  useEffect(() => {
+    refreshRecent();
+  }, [refreshRecent]);
+
+  // Instant search — fires immediately on each keystroke, uses AbortController
+  // to cancel the previous in-flight request so results are never stale.
   useEffect(() => {
     if (!open) return;
     const trimmed = q.trim();
     if (trimmed.length < 2) {
       setHits([]);
       setLoading(false);
+      ctrlRef.current?.abort();
       return;
     }
-    setLoading(true);
+
+    // Cancel any previous in-flight request
+    ctrlRef.current?.abort();
     const ctrl = new AbortController();
-    const t = setTimeout(async () => {
-      try {
-        const r = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&limit=12`, { signal: ctrl.signal });
+    ctrlRef.current = ctrl;
+
+    setLoading(true);
+
+    fetch(`/api/search?q=${encodeURIComponent(trimmed)}&limit=12`, { signal: ctrl.signal })
+      .then(async r => {
         if (!r.ok) throw new Error('bad response');
         const data = (await r.json()) as { hits: SearchHit[] };
-        setHits(data.hits || []);
-        setActiveIdx(0);
-      } catch (err) {
-        // On abort, keep previous hits visible — don't flash empty
+        if (!ctrl.signal.aborted) {
+          setHits(data.hits || []);
+          setActiveIdx(0);
+        }
+      })
+      .catch(err => {
         if ((err as Error).name !== 'AbortError') setHits([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 80);
-    return () => {
-      ctrl.abort();
-      clearTimeout(t);
-    };
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false);
+      });
+
+    return () => ctrl.abort();
   }, [q, open]);
 
-  // Show dropdown control: in inline mode the input stays mounted, but we
-  // hide the dropdown when the user clicks away or hits Escape.
-  const [showDropdown, setShowDropdown] = useState(false);
-
-  // Close on outside click / Esc.
+  // Close on outside click / Esc
   useEffect(() => {
     if (!open && !inline) return;
     const onDown = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        if (inline) {
-          setShowDropdown(false);
-        } else {
-          close();
-        }
+        if (inline) setShowDropdown(false);
+        else close();
       }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (inline) {
-          setShowDropdown(false);
-          inputRef.current?.blur();
-        } else {
-          close();
-        }
+        if (inline) { setShowDropdown(false); inputRef.current?.blur(); }
+        else close();
       }
     };
     document.addEventListener('mousedown', onDown);
@@ -120,26 +143,37 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
 
   const close = () => {
     if (inline) {
-      // Inline mode never collapses — just clear the dropdown state.
-      setQ('');
-      setHits([]);
-      setActiveIdx(0);
-      setShowDropdown(false);
+      setQ(''); setHits([]); setActiveIdx(0); setShowDropdown(false);
       return;
     }
-    setOpen(false);
-    setQ('');
-    setHits([]);
-    setActiveIdx(0);
+    setOpen(false); setQ(''); setHits([]); setActiveIdx(0);
   };
 
   const go = (hit: SearchHit) => {
+    saveRecent({ q: hit.title, href: hit.href, title: hit.title, ts: Date.now() });
+    refreshRecent();
     close();
     router.push(hit.href);
   };
 
-  // Group hits by kind so we can render them with section headers, while
-  // still respecting flat keyboard navigation order.
+  const goRecent = (r: RecentSearch) => {
+    if (r.href) {
+      close();
+      router.push(r.href);
+    } else {
+      setQ(r.q);
+      setShowDropdown(true);
+      inputRef.current?.focus();
+    }
+  };
+
+  const saveQuerySearch = (query: string) => {
+    if (query.trim().length >= 2) {
+      saveRecent({ q: query.trim(), ts: Date.now() });
+      refreshRecent();
+    }
+  };
+
   const grouped: Record<string, SearchHit[]> = {};
   for (const kind of KIND_ORDER) grouped[kind] = [];
   for (const h of hits) grouped[h.type].push(h);
@@ -156,15 +190,13 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
       e.preventDefault();
       const h = flatOrdered[activeIdx];
       if (h) go(h);
+      else if (q.trim().length >= 2) saveQuerySearch(q.trim());
     }
   };
 
-  // Whether to actually paint the dropdown right now.
-  const dropdownVisible =
-    q.trim().length >= 2 && (inline ? showDropdown : true);
+  const showingQuery = q.trim().length >= 2;
+  const dropdownVisible = inline ? showDropdown && (showingQuery || recentSearches.length > 0) : showingQuery || recentSearches.length > 0;
 
-  // Inline mode: full-width input, dropdown spans the input width and is
-  // anchored under it — used by /(main) and /admin headers.
   if (inline) {
     return (
       <div ref={wrapRef} className={cn('relative', className)}>
@@ -176,22 +208,14 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
             placeholder={placeholder ?? 'Search matches, teams, tipsters…'}
             className="pl-9"
             value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setShowDropdown(true);
-            }}
-            onFocus={() => setShowDropdown(true)}
+            onChange={(e) => { setQ(e.target.value); setShowDropdown(true); }}
+            onFocus={() => { refreshRecent(); setShowDropdown(true); }}
             onKeyDown={onKeyDown}
           />
           {q && (
             <button
               type="button"
-              onClick={() => {
-                setQ('');
-                setHits([]);
-                setActiveIdx(0);
-                inputRef.current?.focus();
-              }}
+              onClick={() => { setQ(''); setHits([]); setActiveIdx(0); inputRef.current?.focus(); }}
               aria-label="Clear search"
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted"
             >
@@ -200,17 +224,25 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
           )}
         </div>
         {dropdownVisible && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[28rem] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
-            <SearchDropdown
-              loading={loading}
-              hits={hits}
-              q={q}
-              grouped={grouped}
-              flatOrdered={flatOrdered}
-              activeIdx={activeIdx}
-              setActiveIdx={setActiveIdx}
-              go={go}
-            />
+          <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[32rem] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
+            {!showingQuery && recentSearches.length > 0 ? (
+              <RecentDropdown
+                items={recentSearches}
+                onSelect={goRecent}
+                onClear={() => { clearRecent(); setRecentSearches([]); }}
+              />
+            ) : (
+              <SearchDropdown
+                loading={loading}
+                hits={hits}
+                q={q}
+                grouped={grouped}
+                flatOrdered={flatOrdered}
+                activeIdx={activeIdx}
+                setActiveIdx={setActiveIdx}
+                go={go}
+              />
+            )}
           </div>
         )}
       </div>
@@ -226,7 +258,7 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
           aria-label="Open search"
           onClick={() => {
             setOpen(true);
-            // Defer focus until the input mounts.
+            refreshRecent();
             setTimeout(() => inputRef.current?.focus(), 0);
           }}
         >
@@ -243,6 +275,7 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
               className="w-72 pl-7"
               value={q}
               onChange={(e) => setQ(e.target.value)}
+              onFocus={() => { refreshRecent(); }}
               onKeyDown={onKeyDown}
             />
           </div>
@@ -250,23 +283,68 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
             <X className="h-4 w-4" />
           </Button>
 
-          {/* Dropdown */}
-          {q.trim().length >= 2 && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-[24rem] max-h-[28rem] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
-              <SearchDropdown
-                loading={loading}
-                hits={hits}
-                q={q}
-                grouped={grouped}
-                flatOrdered={flatOrdered}
-                activeIdx={activeIdx}
-                setActiveIdx={setActiveIdx}
-                go={go}
-              />
+          {(showingQuery || recentSearches.length > 0) && (
+            <div className="absolute right-0 top-full z-50 mt-1 w-[24rem] max-h-[32rem] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
+              {!showingQuery && recentSearches.length > 0 ? (
+                <RecentDropdown
+                  items={recentSearches}
+                  onSelect={goRecent}
+                  onClear={() => { clearRecent(); setRecentSearches([]); }}
+                />
+              ) : (
+                <SearchDropdown
+                  loading={loading}
+                  hits={hits}
+                  q={q}
+                  grouped={grouped}
+                  flatOrdered={flatOrdered}
+                  activeIdx={activeIdx}
+                  setActiveIdx={setActiveIdx}
+                  go={go}
+                />
+              )}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RecentDropdown({ items, onSelect, onClear }: {
+  items: RecentSearch[];
+  onSelect: (r: RecentSearch) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="py-1">
+      <div className="flex items-center justify-between px-3 py-1">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <Clock className="h-3 w-3" />
+          Recent Searches
+        </span>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Clear all
+        </button>
+      </div>
+      {items.map((item, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onSelect(item)}
+          className="flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-accent/50 text-left"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground shrink-0">
+            <Clock className="h-3.5 w-3.5" />
+          </div>
+          <span className="flex-1 truncate font-medium">{item.title || item.q}</span>
+          <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+        </button>
+      ))}
     </div>
   );
 }
@@ -282,9 +360,7 @@ interface SearchDropdownProps {
   go: (hit: SearchHit) => void;
 }
 
-function SearchDropdown({
-  loading, hits, q, grouped, flatOrdered, activeIdx, setActiveIdx, go,
-}: SearchDropdownProps) {
+function SearchDropdown({ loading, hits, q, grouped, flatOrdered, activeIdx, setActiveIdx, go }: SearchDropdownProps) {
   return (
     <>
       {loading && hits.length === 0 && (
@@ -293,7 +369,7 @@ function SearchDropdown({
           Searching…
         </div>
       )}
-      {!loading && hits.length === 0 && (
+      {!loading && hits.length === 0 && q.trim().length >= 2 && (
         <div className="px-3 py-4 text-sm text-muted-foreground">
           No results for &ldquo;{q.trim()}&rdquo;.
         </div>
@@ -318,31 +394,21 @@ function SearchDropdown({
                     <Link
                       key={`${hit.type}-${hit.id}`}
                       href={hit.href}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        go(hit);
-                      }}
+                      onClick={(e) => { e.preventDefault(); go(hit); }}
                       onMouseEnter={() => setActiveIdx(flatIdx)}
                       className={cn(
                         'flex items-center gap-3 px-3 py-2 text-sm transition-colors',
                         isActive ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50',
                       )}
                     >
-                      {/* Visual */}
                       {hit.type === 'team' && (
-                        <TeamLogo
-                          teamName={hit.title}
-                          logoUrl={hit.logoUrl}
-                          sportSlug={hit.sportSlug}
-                          size="sm"
-                        />
+                        <TeamLogo teamName={hit.title} logoUrl={hit.logoUrl} sportSlug={hit.sportSlug} size="sm" />
                       )}
                       {hit.type === 'league' && (
                         <LeagueLogo leagueName={hit.title} size="sm" />
                       )}
                       {hit.type === 'tipster' && (
                         hit.avatar ? (
-                          // eslint-disable-next-line @next/next/no-img-element
                           <img src={hit.avatar} alt={hit.title} className="h-7 w-7 rounded-full object-cover" />
                         ) : (
                           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-semibold">
@@ -359,7 +425,6 @@ function SearchDropdown({
                         </div>
                       )}
 
-                      {/* Text */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate font-medium">{hit.title}</span>
