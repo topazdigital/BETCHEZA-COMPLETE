@@ -2,9 +2,37 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ALL_LEAGUES, ALL_SPORTS } from '@/lib/sports-data';
 import { getAllMatches, type UnifiedMatch } from '@/lib/api/unified-sports-api';
 import { query } from '@/lib/db';
-import { teamHref } from '@/lib/utils/slug';
-import { matchIdToSlug } from '@/lib/utils/match-url';
+import { teamHref, slugify } from '@/lib/utils/slug';
+import { matchToSlug } from '@/lib/utils/match-url';
 import { SENIOR_FOOTBALL_TEAMS, type CatalogTeam } from '@/lib/data/team-catalog';
+
+// Non-soccer sport slug → URL tag (injected into team URL to prevent cross-sport ID collision)
+// e.g. "basketball" → tag "nba" → URL /teams/utah-jazz-nba-26
+const SPORT_URL_TAG: Record<string, string> = {
+  'basketball': 'nba',
+  'baseball': 'mlb',
+  'ice-hockey': 'nhl',
+  'hockey': 'nhl',
+  'american-football': 'nfl',
+  'rugby': 'rugby',
+  'mma': 'mma',
+  'tennis': 'tennis',
+  'cricket': 'cricket',
+  'golf': 'golf',
+};
+
+function buildTeamHref(name: string, id: string, sportSlug?: string): string {
+  const tag = sportSlug ? SPORT_URL_TAG[sportSlug] : undefined;
+  if (tag) {
+    // Build sport-qualified URL: /teams/{name-slug}-{tag}-{numericId}
+    // This lets the team API extract the sport from the URL and avoid cross-sport ID collisions
+    const numeric = id.replace(/\D/g, '');
+    const nameSlug = slugify(name).slice(0, 30);
+    if (numeric && nameSlug) return `/teams/${nameSlug}-${tag}-${numeric}`;
+    if (numeric) return `/teams/${tag}-${numeric}`;
+  }
+  return teamHref(name, id);
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -192,9 +220,19 @@ export async function GET(request: NextRequest) {
         const existing = teamMap.get(dedupeKey);
         const candidate: TeamEntry = {
           score: ts, isWomen,
-          hit: { type: 'team', id: t.id, title: displayName, subtitle: `${m.league.name} • ${m.league.country}`, href: teamHref(displayName, t.id), logoUrl: t.logo, sportSlug: m.sport?.slug },
+          hit: { type: 'team', id: t.id, title: displayName, subtitle: `${m.league.name} • ${m.league.country}`, href: buildTeamHref(displayName, t.id, m.sport?.slug), logoUrl: t.logo, sportSlug: m.sport?.slug },
         };
         if (!existing) { teamMap.set(dedupeKey, candidate); continue; }
+
+        // Prefer candidates with a specific non-soccer/football sport tag over generic soccer ones.
+        // This prevents MLB/NBA teams from being stuck with a wrong "soccer" sport context from
+        // some feed that defaults sport to soccer (causing cross-sport ID collisions on the team page).
+        const isSoccerSport = (slug?: string) => !slug || slug === 'soccer' || slug === 'football';
+        const existingHasSportTag = !isSoccerSport(existing.hit.sportSlug) && !!SPORT_URL_TAG[existing.hit.sportSlug!];
+        const candidateHasSportTag = !isSoccerSport(m.sport?.slug) && !!SPORT_URL_TAG[m.sport?.slug!];
+        if (candidateHasSportTag && !existingHasSportTag) { teamMap.set(dedupeKey, candidate); continue; }
+        if (existingHasSportTag && !candidateHasSportTag) continue;
+
         if (!existing.isWomen && existing.hit.id && !existing.hit.id.startsWith('fd_team_') && !isWomen) continue;
         const existingIsFd = existing.hit.id.startsWith('fd_team_');
         const candidateIsFd = t.id.startsWith('fd_team_');
@@ -208,7 +246,7 @@ export async function GET(request: NextRequest) {
       if (matchScore > 0) {
         const HIDDEN_STATUSES: UnifiedMatch['status'][] = ['finished', 'cancelled', 'postponed'];
         if (HIDDEN_STATUSES.includes(m.status)) continue;
-        matchHits.push({ type: 'match', id: m.id, title: `${m.homeTeam.name} vs ${m.awayTeam.name}`, subtitle: `${m.league.name}${m.status === 'live' ? ' • LIVE' : ''}`, href: `/matches/${matchIdToSlug(m.id)}`, status: m.status, kickoffIso: m.kickoffTime instanceof Date ? m.kickoffTime.toISOString() : new Date(m.kickoffTime).toISOString() });
+        matchHits.push({ type: 'match', id: m.id, title: `${m.homeTeam.name} vs ${m.awayTeam.name}`, subtitle: `${m.league.name}${m.status === 'live' ? ' • LIVE' : ''}`, href: `/matches/${matchToSlug(m.id, m.homeTeam.name, m.awayTeam.name)}`, status: m.status, kickoffIso: m.kickoffTime instanceof Date ? m.kickoffTime.toISOString() : new Date(m.kickoffTime).toISOString() });
       }
     }
   } catch (err) {

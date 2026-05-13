@@ -467,9 +467,19 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
         )}
 
         {pendingRef && (
-          <div className="flex items-center justify-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
-            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-            <span>Waiting for M-Pesa confirmation…</span>
+          <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+            <div className="flex items-center gap-2 font-medium">
+              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+              <span>Waiting for M-Pesa confirmation…</span>
+            </div>
+            <ol className="ml-1 list-decimal list-inside space-y-1 text-[11px] text-amber-700/80 dark:text-amber-400/80">
+              <li>Check your phone — an M-Pesa prompt should appear.</li>
+              <li>Enter your M-Pesa PIN and press <strong>OK</strong>.</li>
+              <li>Your wallet will be credited automatically once confirmed.</li>
+            </ol>
+            <p className="text-[10px] text-amber-600/70 dark:text-amber-500/60">
+              Didn&apos;t get a prompt? Ensure your phone has a signal and try again. Times out after 3 minutes.
+            </p>
           </div>
         )}
 

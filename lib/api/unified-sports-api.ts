@@ -3211,6 +3211,10 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
 async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   const allMatches: UnifiedMatch[] = [];
   const seenMatchKeys = new Set<string>();
+  // Also track by ESPN event ID (extracted from match.id like "espn_eng1_740936")
+  // to catch the case where two feeds return the same match with different team
+  // name formatting (e.g. "Manchester City" vs "Manchester City FC").
+  const seenEspnIds = new Set<string>();
 
   const getMatchKey = (match: UnifiedMatch): string => {
     // Known cross-source team name aliases (canonical → variants).
@@ -3339,8 +3343,15 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
         .replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ü/g, 'u').replace(/ä/g, 'a').replace(/ö/g, 'o')
         .trim();
 
+      // Strip trailing FC/AFC/SC/CF BEFORE alias lookup so "Manchester City FC"
+      // and "Manchester City" both resolve to the same alias key "manchester city".
+      const preAlias = lower
+        .replace(/\s+\b(fc|afc|sc|cf|fk|bk|ac|as)\b\s*$/i, '')
+        .replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+
       // Check alias map first (exact match after basic normalisation)
       const aliasKey = lower.replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+      if (TEAM_ALIASES[preAlias]) return TEAM_ALIASES[preAlias];
       if (TEAM_ALIASES[aliasKey]) return TEAM_ALIASES[aliasKey];
 
       return lower
@@ -3355,6 +3366,16 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   };
 
   const addMatch = (match: UnifiedMatch) => {
+    // Fast-path: if two feeds return the exact same ESPN event ID, skip immediately.
+    // This catches "Manchester City" vs "Manchester City FC" from different feeds
+    // where the name-based key might differ due to FC suffix.
+    const espnIdMatch = match.id?.match(/^espn_[a-z0-9]+_(\d+)$/i);
+    if (espnIdMatch) {
+      const eid = espnIdMatch[1];
+      if (seenEspnIds.has(eid)) return;
+      seenEspnIds.add(eid);
+    }
+
     const key = getMatchKey(match);
     // Also build the reverse key to catch swapped home/away between providers
     const homeNormR = key.split('_')[0];

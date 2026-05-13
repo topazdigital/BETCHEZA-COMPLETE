@@ -220,6 +220,22 @@ async function resolveTeamSportLeague(
   return null;
 }
 
+// Sport tag → ESPN sport + default league. These tags are injected by the search
+// route into team URLs for non-soccer sports to prevent cross-sport ID collisions
+// (e.g. ESPN team ID 19 = Talleres in soccer, but also used for MLB teams).
+const SPORT_TAG_MAP: Record<string, { sport: string; league: string }> = {
+  nba:     { sport: 'basketball', league: 'nba' },
+  wnba:    { sport: 'basketball', league: 'wnba' },
+  mlb:     { sport: 'baseball',   league: 'mlb' },
+  nhl:     { sport: 'hockey',     league: 'nhl' },
+  nfl:     { sport: 'football',   league: 'nfl' },
+  rugby:   { sport: 'rugby',      league: 'rugbyunion' },
+  mma:     { sport: 'mma',        league: 'ufc' },
+  tennis:  { sport: 'tennis',     league: 'atp' },
+  cricket: { sport: 'cricket',    league: 'cricket' },
+  golf:    { sport: 'golf',       league: 'pga' },
+};
+
 function parseTeamId(teamId: string): { sport: string; league: string; espnTeamId: string; leagueId?: number } | null {
   // Legacy shape: espn_<league>_<id>
   const espn = teamId.match(/^espn_([a-z0-9.]+)_(\d+)$/i);
@@ -230,6 +246,19 @@ function parseTeamId(teamId: string): { sport: string; league: string; espnTeamI
     const cfg = getEspnLeagueConfigForId(fake);
     if (cfg) return { sport: cfg.sport, league: cfg.league, espnTeamId, leagueId: cfg.leagueId };
   }
+
+  // Sport-tagged shape: <name-slug>-{tag}-<id> e.g. "utah-jazz-nba-26"
+  // Detect by looking for a known sport tag token just before the trailing numeric ID.
+  const sportTagMatch = teamId.match(/-([a-z]+)-(\d+)$/i);
+  if (sportTagMatch) {
+    const tag = sportTagMatch[1].toLowerCase();
+    const espnTeamId = sportTagMatch[2];
+    const mapped = SPORT_TAG_MAP[tag];
+    if (mapped) {
+      return { sport: mapped.sport, league: mapped.league, espnTeamId };
+    }
+  }
+
   // New canonical shape: <slug>-<id> OR bare <id>.
   const numeric = extractNumericTeamId(teamId);
   if (numeric) {
