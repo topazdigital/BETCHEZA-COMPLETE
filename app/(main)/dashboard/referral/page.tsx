@@ -18,7 +18,11 @@ interface ReferralRecord {
   referredEmail: string;
   createdAt: string;
   verifiedAt?: string;
+  firstDepositAt?: string;
+  firstDepositAmount?: number;
+  firstBetAt?: string;
   referrerBonusPaid: boolean;
+  refereeBonusPaid: boolean;
 }
 
 interface ReferralStats {
@@ -26,6 +30,7 @@ interface ReferralStats {
   referralUrl: string;
   totalReferrals: number;
   verifiedReferrals: number;
+  qualifiedReferrals: number;
   pendingReferrals: number;
   totalEarned: number;
   referrals: ReferralRecord[];
@@ -115,11 +120,13 @@ export default function ReferralPage() {
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-center">
           <p className="text-2xl font-bold text-success">KES 100</p>
-          <p className="text-xs text-muted-foreground mt-1">You earn per referral</p>
+          <p className="text-xs text-muted-foreground mt-1">You earn per qualified referral</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">After friend deposits + bets</p>
         </div>
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-center">
           <p className="text-2xl font-bold text-primary">KES 50</p>
           <p className="text-xs text-muted-foreground mt-1">Your friend earns</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">On first deposit ≥ KES 200</p>
         </div>
       </div>
 
@@ -133,8 +140,8 @@ export default function ReferralPage() {
         </Card>
         <Card className="text-center">
           <CardContent className="p-3">
-            <p className="text-2xl font-bold text-success">{stats?.verifiedReferrals ?? 0}</p>
-            <p className="text-xs text-muted-foreground">Verified</p>
+            <p className="text-2xl font-bold text-success">{stats?.qualifiedReferrals ?? 0}</p>
+            <p className="text-xs text-muted-foreground">Qualified</p>
           </CardContent>
         </Card>
         <Card className="text-center">
@@ -199,19 +206,27 @@ export default function ReferralPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {[
-            { icon: Share2, step: '1', text: 'Share your unique referral link or code with friends.' },
-            { icon: Users, step: '2', text: 'Your friend signs up using your link and creates their account.' },
-            { icon: Check, step: '3', text: 'They verify their email address — bonuses are issued instantly.' },
-            { icon: Gift, step: '4', text: 'You get KES 100 and your friend gets KES 50, both added to your wallets.' },
-          ].map(({ icon: Icon, step, text }) => (
+            { icon: Share2, step: '1', text: 'Share your unique referral link or code with friends.', status: 'done' },
+            { icon: Users, step: '2', text: 'Your friend signs up using your link and verifies their email.', status: 'done' },
+            { icon: TrendingUp, step: '3', text: 'They make a first deposit of at least KES 200 — your friend instantly gets KES 50 added to their platform credit.', status: 'key' },
+            { icon: Gift, step: '4', text: 'Once they also place their first tip or bet on the platform, you earn KES 100 credited to your account.', status: 'key' },
+          ].map(({ icon: Icon, step, text, status }) => (
             <div key={step} className="flex items-start gap-3">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+              <div className={cn(
+                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+                status === 'key' ? "bg-success text-success-foreground" : "bg-primary text-primary-foreground"
+              )}>
                 {step}
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">{text}</p>
             </div>
           ))}
         </CardContent>
+        <div className="px-5 pb-4">
+          <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+            <strong>Fair play:</strong> Both bonuses are non-withdrawable platform credits, usable for tips &amp; competitions. No-show referrals don't count — your friend must actively deposit and bet.
+          </div>
+        </div>
       </Card>
 
       {/* Referral list */}
@@ -221,32 +236,56 @@ export default function ReferralPage() {
             <CardTitle className="text-sm">Your Referrals</CardTitle>
           </CardHeader>
           <CardContent className="divide-y divide-border">
-            {stats.referrals.map((ref) => (
-              <div key={ref.id} className="flex items-center justify-between py-2.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">@{ref.referredUsername}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Joined {new Date(ref.createdAt).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {ref.verifiedAt ? (
-                    <Badge variant="outline" className="border-success/50 text-success text-[10px]">
-                      <Check className="mr-1 h-2.5 w-2.5" />
-                      Verified
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground text-[10px]">
-                      <Clock className="mr-1 h-2.5 w-2.5" />
-                      Pending
-                    </Badge>
+            {stats.referrals.map((ref) => {
+              const steps = [
+                { done: !!ref.verifiedAt, label: 'Signed up' },
+                { done: !!ref.firstDepositAt, label: 'Deposited' },
+                { done: !!ref.firstBetAt, label: 'Placed bet' },
+              ];
+              const stepsDone = steps.filter(s => s.done).length;
+              const nextStep = steps.find(s => !s.done);
+              return (
+                <div key={ref.id} className="py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">@{ref.referredUsername}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Joined {new Date(ref.createdAt).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    {ref.referrerBonusPaid ? (
+                      <span className="text-xs font-bold text-success">+KES 100 earned</span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">{stepsDone}/3 steps</span>
+                    )}
+                  </div>
+                  {/* Progress steps */}
+                  <div className="flex items-center gap-1">
+                    {steps.map((s, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <div className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold",
+                          s.done ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"
+                        )}>
+                          {s.done ? '✓' : i + 1}
+                        </div>
+                        <span className={cn("text-[10px]", s.done ? "text-foreground" : "text-muted-foreground/60")}>
+                          {s.label}
+                        </span>
+                        {i < steps.length - 1 && (
+                          <div className={cn("h-px w-4", s.done ? "bg-success/50" : "bg-muted")} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {nextStep && !ref.referrerBonusPaid && (
+                    <p className="text-[10px] text-muted-foreground/60 mt-1">
+                      Waiting: {nextStep.label.toLowerCase()}
+                    </p>
                   )}
-                  {ref.referrerBonusPaid && (
-                    <span className="text-xs font-medium text-success">+KES 100</span>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}

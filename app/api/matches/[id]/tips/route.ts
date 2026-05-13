@@ -168,6 +168,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: matchId } = await params;
+  const { onReferralFirstBet } = await import('@/lib/referral-store');
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -230,6 +231,9 @@ export async function POST(
   const existing = submittedTipsStore.get(matchId) || [];
   existing.unshift(newTip);
   submittedTipsStore.set(matchId, existing);
+
+  // Track first bet for referral system (fire-and-forget)
+  onReferralFirstBet(user.userId).catch(() => {});
 
   return NextResponse.json({ tip: newTip, ok: true });
 }

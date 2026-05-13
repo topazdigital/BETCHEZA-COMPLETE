@@ -164,6 +164,61 @@ const organizationJsonLd = {
   sameAs: [],
 };
 
+const faqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: 'Is Betcheza free to use?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes, Betcheza is completely free. You can view AI predictions, follow tipsters, and access betting tips at no cost.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How does the AI football predictor work?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Betcheza uses AI (GPT-4o-mini) to analyse match data, team form, head-to-head records and odds to generate win probability and market recommendations for each game.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Can I get SportPesa jackpot tips on Betcheza?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes. Betcheza publishes free AI-powered predictions for SportPesa Midweek Jackpot, SportPesa Mega Jackpot, Betika Grand Jackpot and other Kenyan bookmaker jackpots — updated daily.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How do I follow a tipster?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Visit the Tipsters page, browse by win rate or ROI, and click any tipster to view their profile and full tip history. Create a free account to follow tipsters and get notifications.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How are tipster win rates calculated?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Win rates are calculated from settled tips only — the percentage of tips that resulted in a winning outcome. ROI factors in the odds of each pick to show long-term profitability.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Does Betcheza cover the Kenya Premier League (KPL)?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes. Betcheza covers the Kenya Premier League as well as 35+ other sports and leagues including the Premier League, Champions League, La Liga, Bundesliga and Serie A.',
+      },
+    },
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -180,6 +235,11 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+          suppressHydrationWarning
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
           suppressHydrationWarning
         />
       </head>

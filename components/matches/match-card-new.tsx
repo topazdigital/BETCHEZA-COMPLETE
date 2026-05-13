@@ -63,6 +63,16 @@ function useLiveCardMinute(
   return minute;
 }
 
+interface MarketOutcome {
+  name: string;
+  price: number;
+}
+interface MatchMarket {
+  key?: string;
+  name: string;
+  outcomes: MarketOutcome[];
+}
+
 interface Match {
   id: string;
   sportId: number;
@@ -109,6 +119,7 @@ interface Match {
     draw?: number;
     away: number;
   };
+  markets?: MatchMarket[];
   tipsCount: number;
 }
 
@@ -185,7 +196,7 @@ export function MatchCardNew({
 
   if (variant === 'compact') {
     const aiPick = (match.odds && !isFinished && !isLive)
-      ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name)
+      ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name, match.markets)
       : null;
 
     return (
@@ -273,6 +284,9 @@ export function MatchCardNew({
                 <Sparkles className="h-2.5 w-2.5 text-primary" />
                 <span className="text-[9px] font-bold text-primary uppercase tracking-wide">AI</span>
               </span>
+              {aiPick.market !== '1X2' && (
+                <span className="text-[8px] font-bold text-primary/70 leading-none">{aiPick.market}</span>
+              )}
               <span className="text-[13px] font-black text-foreground leading-none">{aiPick.pick}</span>
               <span className="text-[9px] font-semibold text-primary leading-none">{aiPick.confidence}%</span>
             </Link>
@@ -340,6 +354,9 @@ export function MatchCardNew({
           >
             <Sparkles className="h-3 w-3 shrink-0 text-primary" />
             <span className="font-semibold text-primary">AI Pick</span>
+            {aiPick.market !== '1X2' && (
+              <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary">{aiPick.market}</span>
+            )}
             <span className="text-muted-foreground">·</span>
             <span className="font-black text-foreground">{aiPick.pick}</span>
             <span className="truncate text-muted-foreground">{aiPick.label}</span>
@@ -511,6 +528,7 @@ export function MatchCardNew({
             homeTeam={match.homeTeam.name}
             awayTeam={match.awayTeam.name}
             matchSlug={slug}
+            markets={match.markets}
           />
         </div>
       )}
@@ -526,28 +544,108 @@ export function MatchCardNew({
   );
 }
 
+interface SmartPick {
+  pick: string;
+  label: string;
+  market: string;
+  confidence: number;
+}
+
+/**
+ * Evaluate ALL available markets and return the single highest-confidence pick.
+ * Considers: 1X2, BTTS, Over/Under 2.5, Double Chance.
+ * Confidence = margin-removed implied probability × 100.
+ */
 function computeSmartPick(
   odds: { home: number; draw?: number; away: number },
   homeTeam: string,
   awayTeam: string,
-): { pick: string; label: string; confidence: number } | null {
-  const homeProb = 1 / Math.max(odds.home, 1.01);
-  const drawProb = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
-  const awayProb = 1 / Math.max(odds.away, 1.01);
-  const total = homeProb + drawProb + awayProb;
-  if (!total) return null;
-  const h = homeProb / total;
-  const d = drawProb / total;
-  const a = awayProb / total;
-  const max = Math.max(h, d, a);
-  const confidence = Math.round(max * 100);
-  if (h === max) {
-    const shortName = homeTeam.split(' ')[0];
-    return { pick: '1', label: shortName, confidence };
+  markets?: MatchMarket[],
+): SmartPick | null {
+  const candidates: SmartPick[] = [];
+
+  // ── 1X2 ──────────────────────────────────────────────────────────────────
+  {
+    const hp = 1 / Math.max(odds.home, 1.01);
+    const dp = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
+    const ap = 1 / Math.max(odds.away, 1.01);
+    const total = hp + dp + ap;
+    if (total > 0) {
+      const h = hp / total;
+      const d = dp / total;
+      const a = ap / total;
+      const max = Math.max(h, d, a);
+      const conf = Math.round(max * 100);
+      if (h === max) {
+        candidates.push({ pick: '1', label: homeTeam.split(' ')[0], market: '1X2', confidence: conf });
+      } else if (d === max && odds.draw) {
+        candidates.push({ pick: 'X', label: 'Draw', market: '1X2', confidence: conf });
+      } else {
+        candidates.push({ pick: '2', label: awayTeam.split(' ')[0], market: '1X2', confidence: conf });
+      }
+    }
   }
-  if (d === max && odds.draw) return { pick: 'X', label: 'Draw', confidence };
-  const shortName = awayTeam.split(' ')[0];
-  return { pick: '2', label: shortName, confidence };
+
+  // ── Additional markets from the API ──────────────────────────────────────
+  if (markets && markets.length > 0) {
+    for (const mkt of markets) {
+      const key = (mkt.key || '').toLowerCase();
+      const outcomes = mkt.outcomes || [];
+      if (outcomes.length < 2) continue;
+
+      // BTTS
+      if (key === 'btts' || key.includes('both_teams') || mkt.name.toLowerCase().includes('both teams')) {
+        const yesOut = outcomes.find(o => o.name.toLowerCase().includes('yes'));
+        const noOut = outcomes.find(o => o.name.toLowerCase().includes('no'));
+        if (yesOut && noOut && yesOut.price > 1 && noOut.price > 1) {
+          const yp = 1 / yesOut.price;
+          const np = 1 / noOut.price;
+          const tot = yp + np;
+          const best = yp > np ? { name: 'Yes', prob: yp / tot } : { name: 'No', prob: np / tot };
+          const conf = Math.round(best.prob * 100);
+          candidates.push({ pick: best.name, label: `BTTS ${best.name}`, market: 'BTTS', confidence: conf });
+        }
+      }
+
+      // Over/Under 2.5 goals
+      if ((key === 'totals' || key.includes('totals_2_5') || key.includes('over_under')) &&
+          mkt.name.toLowerCase().includes('2.5')) {
+        const overOut = outcomes.find(o => o.name.toLowerCase().includes('over'));
+        const underOut = outcomes.find(o => o.name.toLowerCase().includes('under'));
+        if (overOut && underOut && overOut.price > 1 && underOut.price > 1) {
+          const op = 1 / overOut.price;
+          const up = 1 / underOut.price;
+          const tot = op + up;
+          const best = op > up
+            ? { name: 'Over 2.5', prob: op / tot }
+            : { name: 'Under 2.5', prob: up / tot };
+          const conf = Math.round(best.prob * 100);
+          candidates.push({ pick: best.name, label: best.name, market: 'O/U 2.5', confidence: conf });
+        }
+      }
+
+      // Double Chance
+      if (key === 'dc' || key === 'double_chance' || mkt.name.toLowerCase().includes('double chance')) {
+        const sorted = [...outcomes].sort((a, b) => (1 / a.price) - (1 / b.price)).reverse();
+        if (sorted[0] && sorted[0].price > 1) {
+          const probs = outcomes.map(o => 1 / o.price);
+          const tot = probs.reduce((s, p) => s + p, 0);
+          const best = sorted[0];
+          const conf = Math.round((1 / best.price) / tot * 100);
+          candidates.push({ pick: best.name, label: best.name, market: 'DC', confidence: conf });
+        }
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Return the highest-confidence pick; break ties by preferring non-1X2 variety
+  candidates.sort((a, b) => {
+    if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+    return a.market === '1X2' ? 1 : -1; // prefer alternative markets when tied
+  });
+  return candidates[0];
 }
 
 function SmartBetBadge({
@@ -555,13 +653,15 @@ function SmartBetBadge({
   homeTeam,
   awayTeam,
   matchSlug,
+  markets,
 }: {
   odds: { home: number; draw?: number; away: number };
   homeTeam: string;
   awayTeam: string;
   matchSlug: string;
+  markets?: MatchMarket[];
 }) {
-  const sp = computeSmartPick(odds, homeTeam, awayTeam);
+  const sp = computeSmartPick(odds, homeTeam, awayTeam, markets);
   if (!sp) return null;
   return (
     <Link
@@ -571,6 +671,9 @@ function SmartBetBadge({
     >
       <Sparkles className="h-3 w-3 shrink-0 text-primary" />
       <span className="font-semibold text-primary">AI Pick</span>
+      {sp.market !== '1X2' && (
+        <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary">{sp.market}</span>
+      )}
       <span className="text-muted-foreground">·</span>
       <span className="font-bold text-foreground">{sp.pick}</span>
       <span className="truncate text-muted-foreground">{sp.label}</span>

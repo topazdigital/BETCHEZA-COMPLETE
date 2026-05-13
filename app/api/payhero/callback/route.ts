@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPending, updatePendingStatus, deletePending } from '@/lib/payhero';
 import { credit, debit } from '@/lib/wallet-store';
+import { onReferralDeposit } from '@/lib/referral-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,7 +43,8 @@ export async function POST(req: NextRequest) {
 
   if (status === 'SUCCESS') {
     if (pending.type === 'deposit') {
-      credit(pending.userId, amount || pending.amount, {
+      const depositAmount = amount || pending.amount;
+      credit(pending.userId, depositAmount, {
         type: 'deposit',
         currency: pending.currency,
         method: 'mpesa',
@@ -50,7 +52,9 @@ export async function POST(req: NextRequest) {
         description: `M-Pesa deposit · ${pending.phone}`,
         status: 'completed',
       });
-      console.log(`[payhero/callback] Credited KES ${amount} to user ${pending.userId}`);
+      // Trigger referral deposit check (friend's KES 50 + referrer unlock progress)
+      onReferralDeposit(pending.userId, depositAmount).catch(() => {});
+      console.log(`[payhero/callback] Credited KES ${depositAmount} to user ${pending.userId}`);
     } else {
       // Withdrawal was already debited from wallet; just mark complete
       console.log(`[payhero/callback] Withdrawal confirmed for user ${pending.userId}`);

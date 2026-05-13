@@ -139,11 +139,12 @@ export default function TipsterProfilePage({ params }: PageProps) {
     )
   }
   
-  const { tipster, recentTips, monthlyStats, sportBreakdown, roiSparkline } = data as {
+  const { tipster, recentTips, monthlyStats, sportBreakdown, marketBreakdown, roiSparkline } = data as {
     tipster: typeof data.tipster
     recentTips?: typeof data.recentTips
     monthlyStats?: typeof data.monthlyStats
     sportBreakdown?: typeof data.sportBreakdown
+    marketBreakdown?: { market: string; won: number; lost: number; total: number; winRate: number }[]
     roiSparkline?: { day: number; roi: number }[]
   }
   
@@ -500,6 +501,59 @@ export default function TipsterProfilePage({ params }: PageProps) {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Prediction Accuracy by Market Type */}
+            {marketBreakdown && marketBreakdown.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Target className="h-5 w-5 text-primary" />
+                    Prediction Accuracy by Market
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Historical win rate per betting market — settled tips only
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {marketBreakdown.map((m: { market: string; won: number; lost: number; total: number; winRate: number }) => (
+                      <div key={m.market}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{m.market}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {m.won}W / {m.lost}L · {m.total} tips
+                            </span>
+                          </div>
+                          <span className={cn(
+                            "text-sm font-bold",
+                            m.winRate >= 65 ? "text-success" :
+                            m.winRate >= 50 ? "text-primary" :
+                            "text-destructive"
+                          )}>
+                            {m.winRate}%
+                          </span>
+                        </div>
+                        <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={cn(
+                              "absolute inset-y-0 left-0 rounded-full transition-all",
+                              m.winRate >= 65 ? "bg-success" :
+                              m.winRate >= 50 ? "bg-primary" :
+                              "bg-destructive"
+                            )}
+                            style={{ width: `${m.winRate}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-[10px] text-muted-foreground border-t border-border pt-3">
+                    Green ≥ 65% · Blue 50–64% · Red &lt; 50% — based on all historically settled picks
+                  </p>
+                </CardContent>
+              </Card>
+            )}
             
             {/* Key Stats */}
             <Card>

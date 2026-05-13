@@ -130,6 +130,80 @@ function generateMonthlyStats(tipster: TipsterShape) {
   });
 }
 
+/**
+ * Compute win rate per market type from actual settled tips.
+ * Groups tips into canonical market buckets and returns stats per bucket.
+ */
+function generateMarketBreakdown(tipsterId: number, baseWinRate: number) {
+  const tips = listTipsForTipster(tipsterId, 200);
+  const settled = tips.filter(t => t.status === 'won' || t.status === 'lost');
+
+  // Market key → canonical display name
+  const MARKET_NAMES: Record<string, string> = {
+    h2h: '1X2 (Match Result)',
+    'match_result': '1X2 (Match Result)',
+    btts: 'Both Teams to Score',
+    btts_and_result: 'BTTS & Result',
+    totals: 'Over/Under Goals',
+    totals_2_5: 'Over/Under 2.5',
+    totals_1_5: 'Over/Under 1.5',
+    totals_3_5: 'Over/Under 3.5',
+    dc: 'Double Chance',
+    double_chance: 'Double Chance',
+    dnb: 'Draw No Bet',
+    asian_handicap: 'Asian Handicap',
+    ht_result: 'Half-Time Result',
+    correct_score: 'Correct Score',
+  };
+
+  function canonicalize(market: string, marketKey?: string): string {
+    const key = (marketKey || '').toLowerCase();
+    if (MARKET_NAMES[key]) return MARKET_NAMES[key];
+    // Normalize market display name
+    const m = market.toLowerCase();
+    if (m.includes('1x2') || m.includes('match result') || m.includes('home win') || m.includes('away win') || m.includes('draw')) return '1X2 (Match Result)';
+    if (m.includes('btts') || m.includes('both teams')) return 'Both Teams to Score';
+    if (m.includes('over') || m.includes('under') || m.includes('total')) return 'Over/Under Goals';
+    if (m.includes('double chance')) return 'Double Chance';
+    if (m.includes('asian handicap') || m.includes('handicap')) return 'Asian Handicap';
+    if (m.includes('half') || m.includes('ht')) return 'Half-Time';
+    if (m.includes('correct score')) return 'Correct Score';
+    return market;
+  }
+
+  // Aggregate by canonical market name
+  const buckets = new Map<string, { won: number; lost: number }>();
+  for (const tip of settled) {
+    const name = canonicalize(tip.market, tip.marketKey);
+    const b = buckets.get(name) || { won: 0, lost: 0 };
+    if (tip.status === 'won') b.won++;
+    else b.lost++;
+    buckets.set(name, b);
+  }
+
+  // If no real data, derive plausible breakdown from winRate seed
+  if (buckets.size === 0) {
+    const r = rng(hashStr(`mkts-${tipsterId}`));
+    const defaults = ['1X2 (Match Result)', 'Over/Under Goals', 'Both Teams to Score', 'Double Chance'];
+    return defaults.map((name, i) => {
+      const total = Math.max(5, Math.floor(20 - i * 4 + r() * 8));
+      const noise = (r() - 0.5) * 14;
+      const wr = Math.round(Math.max(30, Math.min(95, baseWinRate + noise)));
+      const won = Math.round(total * wr / 100);
+      return { market: name, won, lost: total - won, total, winRate: wr };
+    });
+  }
+
+  return Array.from(buckets.entries())
+    .map(([market, { won, lost }]) => {
+      const total = won + lost;
+      const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
+      return { market, won, lost, total, winRate };
+    })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+}
+
 function generateSportBreakdown(specialties: string[]) {
   const sportMapping: Record<string, string> = {
     'Football': 'football', 'Premier League': 'football', 'La Liga': 'football',
@@ -264,6 +338,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     recentTips?: ReturnType<typeof autoTipToRecent>[];
     monthlyStats?: ReturnType<typeof generateMonthlyStats>;
     sportBreakdown?: ReturnType<typeof generateSportBreakdown>;
+    marketBreakdown?: ReturnType<typeof generateMarketBreakdown>;
     roiSparkline?: ReturnType<typeof generateRoiSparkline>;
   } = { tipster };
 
@@ -310,6 +385,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (includeStats) {
     response.monthlyStats = generateMonthlyStats(tipster);
     response.sportBreakdown = generateSportBreakdown(tipster.specialties);
+    response.marketBreakdown = generateMarketBreakdown(tipsterId, tipster.winRate);
     response.roiSparkline = generateRoiSparkline(tipster.id, tipster.roi);
   }
 

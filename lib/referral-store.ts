@@ -1,11 +1,23 @@
 /**
  * Referral system — tracks who referred whom, issues referral codes,
- * and applies bonuses when a referred user verifies their email.
+ * and applies bonuses with smart anti-abuse rules:
+ *
+ *   Referrer (KES 100): paid ONLY when referred user makes a qualifying
+ *     deposit (≥ MIN_QUALIFYING_DEPOSIT) AND places at least 1 tip/bet.
+ *
+ *   Referee  (KES 50):  credited ONLY on their first qualifying deposit
+ *     (≥ MIN_QUALIFYING_DEPOSIT) as a welcome bonus — not just for signing up.
+ *
+ * Both balances are in-platform credits, NOT withdrawable.
  * MySQL-first, file-based fallback for no-DB environments.
  */
 import fs from 'fs';
 import path from 'path';
 import { query, execute, getPool } from './db';
+
+export const MIN_QUALIFYING_DEPOSIT = 200; // KES — minimum deposit to trigger bonuses
+export const REFERRER_BONUS = 100;          // KES — referrer earns per qualifying referral
+export const REFEREE_BONUS = 50;            // KES — referee earns on first qualifying deposit
 
 export interface ReferralRecord {
   id: string;
@@ -15,14 +27,19 @@ export interface ReferralRecord {
   referredUsername: string;
   createdAt: string;
   verifiedAt?: string;
+  firstDepositAt?: string;
+  firstDepositAmount?: number;
+  firstBetAt?: string;
   referrerBonusPaid: boolean;
   refereeBonusPaid: boolean;
 }
 
 export interface ReferralStats {
   code: string;
+  referralUrl: string;
   totalReferrals: number;
-  verifiedReferrals: number;
+  verifiedReferrals: number;   // email-verified
+  qualifiedReferrals: number;  // deposited + placed bet → referrer bonus triggered
   pendingReferrals: number;
   totalEarned: number; // KES
   referrals: ReferralRecord[];
@@ -32,7 +49,7 @@ const STATE_DIR = path.join(process.cwd(), '.local', 'state');
 const STATE_FILE = path.join(STATE_DIR, 'referrals.json');
 
 interface ReferralState {
-  codes: Record<number, string>; // userId → code
+  codes: Record<number, string>;   // userId → code
   usersByCode: Record<string, number>; // code → userId
   records: ReferralRecord[];
 }
@@ -89,12 +106,65 @@ async function ensureTables(): Promise<void> {
         referred_username VARCHAR(100) NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         verified_at TIMESTAMP NULL,
+        first_deposit_at TIMESTAMP NULL,
+        first_deposit_amount DECIMAL(10,2) NULL,
+        first_bet_at TIMESTAMP NULL,
         referrer_bonus_paid BOOLEAN NOT NULL DEFAULT FALSE,
         referee_bonus_paid BOOLEAN NOT NULL DEFAULT FALSE
       )
     `);
+    // Add new columns to existing installs gracefully
+    const cols = ['first_deposit_at TIMESTAMP NULL', 'first_deposit_amount DECIMAL(10,2) NULL', 'first_bet_at TIMESTAMP NULL'];
+    for (const col of cols) {
+      try {
+        await execute(`ALTER TABLE referrals ADD COLUMN ${col}`);
+      } catch { /* column already exists */ }
+    }
     tableReady = true;
   } catch { /* ignore — no DB */ }
+}
+
+/** Check whether all bonus conditions are met and issue if so */
+async function maybeIssueReferrerBonus(referredUserId: number): Promise<void> {
+  // Referrer bonus: referred user must have a qualifying deposit AND have placed a bet
+  if (getPool()) {
+    try {
+      const r = await query<{
+        id: string; referrer_id: number; first_deposit_amount: number | null;
+        first_deposit_at: string | null; first_bet_at: string | null;
+        referrer_bonus_paid: number; referee_bonus_paid: number;
+      }>(
+        `SELECT id, referrer_id, first_deposit_amount, first_deposit_at, first_bet_at,
+                referrer_bonus_paid, referee_bonus_paid
+         FROM referrals WHERE referred_user_id = ? LIMIT 1`,
+        [referredUserId]
+      );
+      const row = r.rows[0];
+      if (!row) return;
+
+      const qualifyingDeposit = row.first_deposit_amount != null && row.first_deposit_amount >= MIN_QUALIFYING_DEPOSIT;
+      const hasBet = !!row.first_bet_at;
+
+      if (qualifyingDeposit && hasBet && !row.referrer_bonus_paid) {
+        await execute(
+          `UPDATE referrals SET referrer_bonus_paid = 1 WHERE id = ?`,
+          [row.id]
+        );
+      }
+    } catch { /* fall through */ }
+    return;
+  }
+
+  // File fallback
+  const state = load();
+  const rec = state.records.find(r => r.referredUserId === referredUserId);
+  if (!rec) return;
+  const qualifyingDeposit = rec.firstDepositAmount != null && rec.firstDepositAmount >= MIN_QUALIFYING_DEPOSIT;
+  const hasBet = !!rec.firstBetAt;
+  if (qualifyingDeposit && hasBet && !rec.referrerBonusPaid) {
+    rec.referrerBonusPaid = true;
+    persist();
+  }
 }
 
 /** Get or create the referral code for a user */
@@ -154,7 +224,6 @@ export async function recordReferral(opts: {
   await ensureTables();
   const { referrerId, referredUserId, referredEmail, referredUsername } = opts;
   const id = `ref_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const createdAt = new Date().toISOString();
 
   if (getPool()) {
     try {
@@ -177,7 +246,7 @@ export async function recordReferral(opts: {
       referredUserId,
       referredEmail,
       referredUsername,
-      createdAt,
+      createdAt: new Date().toISOString(),
       referrerBonusPaid: false,
       refereeBonusPaid: false,
     });
@@ -185,15 +254,18 @@ export async function recordReferral(opts: {
   }
 }
 
-/** Called when a referred user verifies their email — apply bonuses */
+/**
+ * Called when a referred user verifies their email.
+ * Does NOT issue bonuses — just marks the verification timestamp.
+ * Bonuses are only issued after qualifying deposit + first bet.
+ */
 export async function onReferralVerified(referredUserId: number): Promise<void> {
   await ensureTables();
-  const verifiedAt = new Date().toISOString();
 
   if (getPool()) {
     try {
       await execute(
-        `UPDATE referrals SET verified_at = NOW(), referrer_bonus_paid = 1, referee_bonus_paid = 1
+        `UPDATE referrals SET verified_at = NOW()
          WHERE referred_user_id = ? AND verified_at IS NULL`,
         [referredUserId]
       );
@@ -204,16 +276,89 @@ export async function onReferralVerified(referredUserId: number): Promise<void> 
   const state = load();
   const rec = state.records.find(r => r.referredUserId === referredUserId);
   if (rec && !rec.verifiedAt) {
-    rec.verifiedAt = verifiedAt;
-    rec.referrerBonusPaid = true;
-    rec.refereeBonusPaid = true;
+    rec.verifiedAt = new Date().toISOString();
     persist();
   }
 }
 
 /**
- * Returns the earned referral credit for a user (KES 100 per verified referral +
- * KES 50 sign-up bonus if this user was themselves referred).
+ * Called when a referred user makes a deposit (via PayHero callback or manual credit).
+ * - If first qualifying deposit: award referee KES 50 welcome bonus.
+ * - Then check if referrer bonus conditions are now fully met.
+ */
+export async function onReferralDeposit(referredUserId: number, amount: number): Promise<void> {
+  await ensureTables();
+
+  if (getPool()) {
+    try {
+      // Record first deposit if not already set
+      await execute(
+        `UPDATE referrals
+         SET first_deposit_at = COALESCE(first_deposit_at, NOW()),
+             first_deposit_amount = COALESCE(first_deposit_amount, ?)
+         WHERE referred_user_id = ? AND first_deposit_at IS NULL`,
+        [amount, referredUserId]
+      );
+      // Award referee bonus on first qualifying deposit
+      if (amount >= MIN_QUALIFYING_DEPOSIT) {
+        await execute(
+          `UPDATE referrals SET referee_bonus_paid = 1
+           WHERE referred_user_id = ? AND referee_bonus_paid = 0
+             AND first_deposit_amount >= ?`,
+          [referredUserId, MIN_QUALIFYING_DEPOSIT]
+        );
+      }
+    } catch { /* fall through */ }
+  } else {
+    const state = load();
+    const rec = state.records.find(r => r.referredUserId === referredUserId);
+    if (rec && !rec.firstDepositAt) {
+      rec.firstDepositAt = new Date().toISOString();
+      rec.firstDepositAmount = amount;
+      if (amount >= MIN_QUALIFYING_DEPOSIT && !rec.refereeBonusPaid) {
+        rec.refereeBonusPaid = true;
+      }
+      persist();
+    }
+  }
+
+  // Check if referrer bonus is now fully unlocked
+  await maybeIssueReferrerBonus(referredUserId);
+}
+
+/**
+ * Called when a referred user places their first tip/bet on the platform.
+ * After this + a qualifying deposit, the referrer earns KES 100.
+ */
+export async function onReferralFirstBet(referredUserId: number): Promise<void> {
+  await ensureTables();
+
+  if (getPool()) {
+    try {
+      await execute(
+        `UPDATE referrals
+         SET first_bet_at = COALESCE(first_bet_at, NOW())
+         WHERE referred_user_id = ? AND first_bet_at IS NULL`,
+        [referredUserId]
+      );
+    } catch { /* fall through */ }
+  } else {
+    const state = load();
+    const rec = state.records.find(r => r.referredUserId === referredUserId);
+    if (rec && !rec.firstBetAt) {
+      rec.firstBetAt = new Date().toISOString();
+      persist();
+    }
+  }
+
+  // Check if referrer bonus is now fully unlocked
+  await maybeIssueReferrerBonus(referredUserId);
+}
+
+/**
+ * Returns the earned referral credit for a user:
+ *   - KES 100 per qualifying referral (referred user deposited ≥ KES 200 AND placed ≥ 1 bet)
+ *   - KES 50 welcome bonus if this user was referred and made a qualifying deposit
  * This balance is for in-platform use only and is NOT withdrawable.
  */
 export async function getReferralBalance(userId: number): Promise<number> {
@@ -222,29 +367,31 @@ export async function getReferralBalance(userId: number): Promise<number> {
 
   if (getPool()) {
     try {
-      // KES 100 per referral this user made that got verified
+      // KES 100 per referral this user made that fully qualified
       const referred = await query<{ cnt: number }>(
-        `SELECT COUNT(*) AS cnt FROM referrals WHERE referrer_id = ? AND verified_at IS NOT NULL`,
+        `SELECT COUNT(*) AS cnt FROM referrals
+         WHERE referrer_id = ? AND referrer_bonus_paid = 1`,
         [userId]
       );
-      earned += (referred.rows[0]?.cnt ?? 0) * 100;
+      earned += (referred.rows[0]?.cnt ?? 0) * REFERRER_BONUS;
 
-      // KES 50 welcome bonus if this user was referred and is verified
+      // KES 50 welcome bonus if this user was referred and made a qualifying deposit
       const wasReferred = await query<{ cnt: number }>(
-        `SELECT COUNT(*) AS cnt FROM referrals WHERE referred_user_id = ? AND verified_at IS NOT NULL`,
+        `SELECT COUNT(*) AS cnt FROM referrals
+         WHERE referred_user_id = ? AND referee_bonus_paid = 1`,
         [userId]
       );
-      if ((wasReferred.rows[0]?.cnt ?? 0) > 0) earned += 50;
+      if ((wasReferred.rows[0]?.cnt ?? 0) > 0) earned += REFEREE_BONUS;
     } catch { /* fall through */ }
     return earned;
   }
 
   // File fallback
   const state = load();
-  const madeReferrals = state.records.filter(r => r.referrerId === userId && r.verifiedAt);
-  earned += madeReferrals.length * 100;
-  const wasReferred = state.records.find(r => r.referredUserId === userId && r.verifiedAt);
-  if (wasReferred) earned += 50;
+  const madeReferrals = state.records.filter(r => r.referrerId === userId && r.referrerBonusPaid);
+  earned += madeReferrals.length * REFERRER_BONUS;
+  const wasReferred = state.records.find(r => r.referredUserId === userId && r.refereeBonusPaid);
+  if (wasReferred) earned += REFEREE_BONUS;
   return earned;
 }
 
@@ -252,6 +399,7 @@ export async function getReferralBalance(userId: number): Promise<number> {
 export async function getReferralStats(userId: number, username: string): Promise<ReferralStats> {
   await ensureTables();
   const code = await getReferralCode(userId, username);
+  const referralUrl = `/register?ref=${code}`;
 
   let records: ReferralRecord[] = [];
 
@@ -261,6 +409,8 @@ export async function getReferralStats(userId: number, username: string): Promis
         id: string; referrer_id: number; referred_user_id: number;
         referred_email: string; referred_username: string;
         created_at: string; verified_at: string | null;
+        first_deposit_at: string | null; first_deposit_amount: number | null;
+        first_bet_at: string | null;
         referrer_bonus_paid: number; referee_bonus_paid: number;
       }>(
         `SELECT * FROM referrals WHERE referrer_id = ? ORDER BY created_at DESC LIMIT 200`,
@@ -274,6 +424,9 @@ export async function getReferralStats(userId: number, username: string): Promis
         referredUsername: row.referred_username,
         createdAt: typeof row.created_at === 'string' ? row.created_at : new Date(row.created_at).toISOString(),
         verifiedAt: row.verified_at ? (typeof row.verified_at === 'string' ? row.verified_at : new Date(row.verified_at).toISOString()) : undefined,
+        firstDepositAt: row.first_deposit_at ? (typeof row.first_deposit_at === 'string' ? row.first_deposit_at : new Date(row.first_deposit_at).toISOString()) : undefined,
+        firstDepositAmount: row.first_deposit_amount ?? undefined,
+        firstBetAt: row.first_bet_at ? (typeof row.first_bet_at === 'string' ? row.first_bet_at : new Date(row.first_bet_at).toISOString()) : undefined,
         referrerBonusPaid: !!row.referrer_bonus_paid,
         refereeBonusPaid: !!row.referee_bonus_paid,
       }));
@@ -284,12 +437,16 @@ export async function getReferralStats(userId: number, username: string): Promis
   }
 
   const verified = records.filter(r => r.verifiedAt);
+  const qualified = records.filter(r => r.referrerBonusPaid);
+
   return {
     code,
+    referralUrl,
     totalReferrals: records.length,
     verifiedReferrals: verified.length,
-    pendingReferrals: records.length - verified.length,
-    totalEarned: verified.length * 100, // KES 100 per verified referral
+    qualifiedReferrals: qualified.length,
+    pendingReferrals: records.length - qualified.length,
+    totalEarned: qualified.length * REFERRER_BONUS,
     referrals: records,
   };
 }

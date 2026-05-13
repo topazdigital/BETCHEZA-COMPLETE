@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { ALL_LEAGUES, ALL_SPORTS } from '@/lib/sports-data';
+import { getFakeTipsters } from '@/lib/fake-tipsters';
+import { getPool } from '@/lib/db';
 
 export const revalidate = 3600;
 
@@ -22,6 +24,10 @@ const JACKPOT_BOOKMAKERS = [
   'shabiki',
   'elitebet',
 ];
+
+function slugify(str: string): string {
+  return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
@@ -97,5 +103,36 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
   ];
 
-  return [...staticEntries, ...jackpotEntries, ...sportEntries, ...leagueEntries];
+  // Tipster profile pages — DB users + fake tipsters
+  const tipsterSlugs = new Set<string>();
+  // DB users
+  try {
+    const pool = await getPool();
+    if (pool) {
+      const [rows] = await pool.query<any[]>(
+        'SELECT username FROM users WHERE role != "admin" ORDER BY id LIMIT 500'
+      );
+      for (const r of rows) if (r.username) tipsterSlugs.add(r.username.toLowerCase());
+    }
+  } catch { /* no DB — skip */ }
+  // Fake tipsters (community seed data)
+  const fakeTipsters = getFakeTipsters();
+  for (const t of fakeTipsters) {
+    const slug = slugify(t.displayName) || t.username.toLowerCase();
+    tipsterSlugs.add(slug);
+  }
+  const tipsterEntries: MetadataRoute.Sitemap = [...tipsterSlugs].map(slug => ({
+    url: `${base}/tipsters/${slug}`,
+    lastModified: now,
+    changeFrequency: 'daily' as const,
+    priority: 0.65,
+  }));
+
+  return [
+    ...staticEntries,
+    ...jackpotEntries,
+    ...sportEntries,
+    ...leagueEntries,
+    ...tipsterEntries,
+  ];
 }
