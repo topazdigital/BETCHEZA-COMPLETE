@@ -184,138 +184,167 @@ export function MatchCardNew({
   const marketName = isTwoWay ? 'Match Winner' : '1X2';
 
   if (variant === 'compact') {
+    const aiPick = (match.odds && !isFinished && !isLive)
+      ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name)
+      : null;
+
     return (
       <div className={cn(
-        'flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-2 transition-all hover:border-primary/50 hover:bg-card/80',
+        'rounded-lg border border-border bg-card px-2.5 py-2 transition-all hover:border-primary/50 hover:bg-card/80',
         isLive && 'border-live/30 bg-live/5'
       )}>
-        {/* Time / Status — fixed narrow column, never grows */}
-        <div className="w-[42px] shrink-0 text-center">
-          {isLive ? (
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-75"></span>
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-live"></span>
-              </span>
-              <span className="text-[10px] font-bold leading-none text-live">
-                {liveStatusLabel(match.sport.slug, statusForLabel, liveMinute)}
-              </span>
-            </div>
-          ) : isFinished ? (
-            <div className="leading-tight text-muted-foreground">
-              <div className="text-[10px] font-bold uppercase text-foreground/70">FT</div>
-              <div className="text-[9px]">{timeStr}</div>
-            </div>
-          ) : (
-            <div className="leading-tight text-muted-foreground">
-              <div className="text-[11px] font-semibold tabular-nums text-foreground">{timeStr}</div>
-              <div className="text-[9px]">{dateStr === 'Today' ? '' : dateStr}</div>
-            </div>
-          )}
-        </div>
-
-        {/* Teams — takes all remaining space, truncates names */}
-        <Link href={`/matches/${slug}`} className="min-w-0 flex-1">
-          {/* Home */}
-          <div className="flex min-w-0 items-center justify-between gap-1">
-            <div className="flex min-w-0 flex-1 items-center gap-1">
-              <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport.slug} size="xs" />
-              <span className={cn(
-                'min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight',
-                isFinished && match.homeScore !== null && match.awayScore !== null &&
-                match.homeScore > match.awayScore && 'text-success'
-              )}>
-                {match.homeTeam.name}
-                {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
-              </span>
-            </div>
-            {(isLive || isFinished) && match.homeScore !== null && (
-              <span className={cn('shrink-0 font-mono text-sm font-bold tabular-nums', isLive && 'text-live')}>
-                {match.homeScore}
-              </span>
+        {/* Main row */}
+        <div className="flex items-center gap-2">
+          {/* Time / Status — fixed narrow column, never grows */}
+          <div className="w-[42px] shrink-0 text-center">
+            {isLive ? (
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-75"></span>
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-live"></span>
+                </span>
+                <span className="text-[10px] font-bold leading-none text-live">
+                  {liveStatusLabel(match.sport.slug, statusForLabel, liveMinute)}
+                </span>
+              </div>
+            ) : isFinished ? (
+              <div className="leading-tight text-muted-foreground">
+                <div className="text-[10px] font-bold uppercase text-foreground/70">FT</div>
+                <div className="text-[9px]">{timeStr}</div>
+              </div>
+            ) : (
+              <div className="leading-tight text-muted-foreground">
+                <div className="text-[11px] font-semibold tabular-nums text-foreground">{timeStr}</div>
+                <div className="text-[9px]">{dateStr === 'Today' ? '' : dateStr}</div>
+              </div>
             )}
           </div>
-          {/* Away */}
-          <div className="flex min-w-0 items-center justify-between gap-1">
-            <div className="flex min-w-0 flex-1 items-center gap-1">
-              <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport.slug} size="xs" />
-              <span className={cn(
-                'min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight',
-                isFinished && match.homeScore !== null && match.awayScore !== null &&
-                match.awayScore > match.homeScore && 'text-success'
-              )}>
-                {match.awayTeam.name}
-                {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
-              </span>
-            </div>
-            {(isLive || isFinished) && match.awayScore !== null && (
-              <span className={cn('shrink-0 font-mono text-sm font-bold tabular-nums', isLive && 'text-live')}>
-                {match.awayScore}
-              </span>
-            )}
-          </div>
-        </Link>
 
-        {/* League flag — desktop only */}
-        {showLeague && (
-          <Link
-            href={`/leagues/${match.league.slug || match.league.name.toLowerCase().replace(/\s+/g, '-')}`}
-            className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-primary sm:flex"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <LeagueFlag countryCode={match.league.countryCode} size="xs" />
+          {/* Teams — takes all remaining space, truncates names */}
+          <Link href={`/matches/${slug}`} className="min-w-0 flex-1">
+            {/* Home */}
+            <div className="flex min-w-0 items-center justify-between gap-1">
+              <div className="flex min-w-0 flex-1 items-center gap-1">
+                <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport.slug} size="xs" />
+                <span className={cn(
+                  'min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight',
+                  isFinished && match.homeScore !== null && match.awayScore !== null &&
+                  match.homeScore > match.awayScore && 'text-success'
+                )}>
+                  {match.homeTeam.name}
+                  {homeBadgeLabel && <CategoryBadge label={homeBadgeLabel} />}
+                </span>
+              </div>
+              {(isLive || isFinished) && match.homeScore !== null && (
+                <span className={cn('shrink-0 font-mono text-sm font-bold tabular-nums', isLive && 'text-live')}>
+                  {match.homeScore}
+                </span>
+              )}
+            </div>
+            {/* Away */}
+            <div className="flex min-w-0 items-center justify-between gap-1">
+              <div className="flex min-w-0 flex-1 items-center gap-1">
+                <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport.slug} size="xs" />
+                <span className={cn(
+                  'min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight',
+                  isFinished && match.homeScore !== null && match.awayScore !== null &&
+                  match.awayScore > match.homeScore && 'text-success'
+                )}>
+                  {match.awayTeam.name}
+                  {awayBadgeLabel && <CategoryBadge label={awayBadgeLabel} />}
+                </span>
+              </div>
+              {(isLive || isFinished) && match.awayScore !== null && (
+                <span className={cn('shrink-0 font-mono text-sm font-bold tabular-nums', isLive && 'text-live')}>
+                  {match.awayScore}
+                </span>
+              )}
+            </div>
           </Link>
-        )}
 
-        {/* Odds — fixed-width boxes so they never push team names off-screen */}
-        {match.odds && !isFinished && (
-          <div className="flex shrink-0 gap-0.5">
-            <OddsButton
-              value={match.odds.home}
-              label={isTwoWay ? 'H' : '1'}
-              format={settings.oddsFormat}
-              matchId={match.id}
-              matchSlug={slug}
-              matchName={matchName}
-              outcomeName={match.homeTeam.name}
-              marketKey="h2h"
-              marketName={marketName}
-            />
-            {!isTwoWay && match.odds.draw !== undefined && (
+          {/* AI Pick inline chip — desktop: between teams & odds; hidden on mobile */}
+          {aiPick && (
+            <Link
+              href={`/matches/${slug}#prediction`}
+              onClick={(e) => e.stopPropagation()}
+              className="hidden sm:flex shrink-0 flex-col items-center gap-0.5 rounded-md bg-primary/8 px-1.5 py-1 hover:bg-primary/15 transition-colors"
+            >
+              <span className="flex items-center gap-0.5">
+                <Sparkles className="h-2.5 w-2.5 text-primary" />
+                <span className="text-[9px] font-bold text-primary uppercase tracking-wide">AI</span>
+              </span>
+              <span className="text-[13px] font-black text-foreground leading-none">{aiPick.pick}</span>
+              <span className="text-[9px] font-semibold text-primary leading-none">{aiPick.confidence}%</span>
+            </Link>
+          )}
+
+          {/* League flag — desktop only */}
+          {showLeague && (
+            <Link
+              href={`/leagues/${match.league.slug || match.league.name.toLowerCase().replace(/\s+/g, '-')}`}
+              className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-primary lg:flex"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <LeagueFlag countryCode={match.league.countryCode} size="xs" />
+            </Link>
+          )}
+
+          {/* Odds — fixed-width boxes so they never push team names off-screen */}
+          {match.odds && !isFinished && (
+            <div className="flex shrink-0 gap-0.5">
               <OddsButton
-                value={match.odds.draw}
-                label="X"
+                value={match.odds.home}
+                label={isTwoWay ? 'H' : '1'}
                 format={settings.oddsFormat}
                 matchId={match.id}
                 matchSlug={slug}
                 matchName={matchName}
-                outcomeName="Draw"
+                outcomeName={match.homeTeam.name}
                 marketKey="h2h"
                 marketName={marketName}
               />
-            )}
-            <OddsButton
-              value={match.odds.away}
-              label={isTwoWay ? 'A' : '2'}
-              format={settings.oddsFormat}
-              matchId={match.id}
-              matchSlug={slug}
-              matchName={matchName}
-              outcomeName={match.awayTeam.name}
-              marketKey="h2h"
-              marketName={marketName}
-            />
-          </div>
-        )}
+              {!isTwoWay && match.odds.draw !== undefined && (
+                <OddsButton
+                  value={match.odds.draw}
+                  label="X"
+                  format={settings.oddsFormat}
+                  matchId={match.id}
+                  matchSlug={slug}
+                  matchName={matchName}
+                  outcomeName="Draw"
+                  marketKey="h2h"
+                  marketName={marketName}
+                />
+              )}
+              <OddsButton
+                value={match.odds.away}
+                label={isTwoWay ? 'A' : '2'}
+                format={settings.oddsFormat}
+                matchId={match.id}
+                matchSlug={slug}
+                matchName={matchName}
+                outcomeName={match.awayTeam.name}
+                marketKey="h2h"
+                marketName={marketName}
+              />
+            </div>
+          )}
+        </div>
 
-        {/* SmartBet AI pick chip — compact variant, only for scheduled matches with odds */}
-        {match.odds && !isFinished && !isLive && (
-          <SmartBetBadge
-            odds={match.odds}
-            homeTeam={match.homeTeam.name}
-            awayTeam={match.awayTeam.name}
-            matchSlug={slug}
-          />
+        {/* AI Pick row — mobile only, below main row */}
+        {aiPick && (
+          <Link
+            href={`/matches/${slug}#prediction`}
+            onClick={(e) => e.stopPropagation()}
+            className="sm:hidden mt-1.5 ml-[50px] flex items-center gap-1.5 rounded-md bg-primary/8 px-2 py-1 text-[10px] hover:bg-primary/15 transition-colors"
+          >
+            <Sparkles className="h-3 w-3 shrink-0 text-primary" />
+            <span className="font-semibold text-primary">AI Pick</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="font-black text-foreground">{aiPick.pick}</span>
+            <span className="truncate text-muted-foreground">{aiPick.label}</span>
+            <span className="ml-auto font-semibold text-primary">{aiPick.confidence}%</span>
+          </Link>
         )}
       </div>
     );

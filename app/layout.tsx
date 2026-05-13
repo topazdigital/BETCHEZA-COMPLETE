@@ -48,17 +48,35 @@ export async function generateMetadata(): Promise<Metadata> {
   const keywords = seoEntry?.keywords
     ? seoEntry.keywords.split(',').map((k) => k.trim()).filter(Boolean)
     : [
-        'SportPesa tips', 'SportPesa mega jackpot predictions', 'SportPesa jackpot this week',
-        'Betika grand jackpot tips', 'Betika tips today', 'Odibets predictions',
-        'Betway Kenya tips', 'Mozzartbet Kenya', '1xBet Kenya predictions',
-        'free betting tips Kenya', 'sports betting Kenya', 'betting tips Kenya today',
-        'football tips today Kenya', 'Kenya Premier League tips', 'KPL predictions',
-        'Premier League tips', 'Champions League predictions', 'correct score today',
-        'BTTS tips', 'over 2.5 goals tips', 'accumulator tips today',
-        'jackpot predictions Kenya', 'mega jackpot tips', 'grand jackpot banker',
-        'AI football predictions', 'free sports tips', 'tipster community Kenya',
-        'best tipsters Kenya', 'win rate tipsters', 'expert betting advice',
-        'M-Pesa betting', 'bet of the day', 'double chance tips', 'Asian handicap',
+        // Core brand + Kenya bookmaker keywords
+        'SportPesa', 'SportPesa tips', 'SportPesa mega jackpot', 'SportPesa mega jackpot predictions',
+        'SportPesa jackpot this week', 'SportPesa midweek jackpot tips',
+        'Betika', 'Betika tips', 'Betika grand jackpot', 'Betika grand jackpot tips', 'Betika tips today',
+        'Odibets', 'Odibets predictions', 'Odibets tips today',
+        'Betway Kenya', 'Betway Kenya tips',
+        'Mozzartbet Kenya', 'Mozzartbet tips',
+        '1xBet Kenya', '1xBet Kenya predictions',
+        'Premiertabet Kenya', 'Shabiki tips', 'Elitebet Kenya',
+        // Free tips keywords
+        'free betting tips Kenya', 'free football tips today Kenya', 'free soccer tips Kenya',
+        'sports betting Kenya', 'betting tips Kenya today', 'football tips today Kenya',
+        'football predictions today Kenya', 'football betting tips free',
+        // League/jackpot keywords
+        'Kenya Premier League tips', 'KPL predictions', 'KPL tips today',
+        'Premier League tips Kenya', 'Champions League predictions Kenya',
+        'jackpot predictions Kenya', 'jackpot tips Kenya', 'mega jackpot predictions',
+        'grand jackpot tips', 'jackpot banker today', 'jackpot tips today Kenya',
+        // AI/community keywords
+        'AI football predictions', 'AI betting tips Kenya', 'free sports tips',
+        'tipster community Kenya', 'best tipsters Kenya', 'top football tipsters Kenya',
+        'expert betting advice Kenya', 'tipster leaderboard Kenya',
+        // Betting market keywords
+        'correct score today Kenya', 'BTTS tips Kenya', 'over 2.5 goals tips',
+        'accumulator tips today', 'double chance tips', 'Asian handicap tips',
+        'M-Pesa betting Kenya', 'bet of the day Kenya', 'banker of the day Kenya',
+        // Competition/discovery keywords
+        'betcheza', 'betcheza.co.ke', 'Kenya betting site', 'best betting site Kenya',
+        'sports betting tips Africa', 'football tips Africa',
       ];
 
   // Build the icons list. If the admin uploaded a custom favicon, prefer it.

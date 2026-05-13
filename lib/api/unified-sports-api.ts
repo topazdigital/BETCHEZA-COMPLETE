@@ -3393,6 +3393,31 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
       'cf montreal': 'montreal', 'montreal impact': 'montreal',
       'columbus crew': 'columbuscrew', 'columbus crew sc': 'columbuscrew',
       'sporting kansas city': 'sportingkc', 'sporting kc': 'sportingkc',
+      // French — common cross-source duplicates
+      'racing club de lens': 'lens', 'racing club lens': 'lens', 'rc lens': 'lens', 'lens fc': 'lens',
+      'paris saint-germain fc': 'psg', 'paris saint germain fc': 'psg', 'paris fc': 'psg',
+      'stade rennais fc': 'rennes', 'rennes fc': 'rennes',
+      'lille osc': 'lille', 'losc lille metropole': 'lille',
+      'as saint-etienne': 'saintetienne', 'saint-etienne': 'saintetienne', 'saint etienne': 'saintetienne',
+      'girondins bordeaux': 'bordeaux',
+      // German cross-source
+      'fc union berlin': 'unionberlin', 'union berlin': 'unionberlin',
+      '1. fc union berlin': 'unionberlin',
+      'rasenball leipzig': 'leipzig',
+      'fc koln': 'koln', '1. fc koln': 'koln', 'fc cologne': 'koln', 'cologne': 'koln',
+      'hertha bsc': 'hertha', 'hertha berlin': 'hertha', 'hertha bsc berlin': 'hertha',
+      'hamburger sv': 'hamburg', 'hamburg sv': 'hamburg',
+      // Spanish cross-source
+      'real madrid cf': 'realmadrid', 'cf real madrid': 'realmadrid',
+      'club atletico madrid': 'atletico', 'atletico madrid cf': 'atletico',
+      // English cross-source
+      'arsenal fc': 'arsenal', 'chelsea fc': 'chelsea', 'everton fc': 'everton',
+      'liverpool fc': 'liverpool', 'arsenal london': 'arsenal',
+      // Italian cross-source
+      'inter milan fc': 'inter', 'fc inter': 'inter',
+      'ac milan fc': 'milan', 'acf fiorentina': 'fiorentina', 'fiorentina fc': 'fiorentina',
+      // Portuguese cross-source
+      'sporting lisbon': 'sporting', 'sporting clube portugal': 'sporting',
     };
 
     // Strip common club prefixes/suffixes, city names, articles, and diacritics
@@ -3935,10 +3960,7 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
       setCache(cacheKey, staticData);
       return staticData;
     }
-    // Last resort: derive from live standings (better than nothing for leagues
-    // not covered by static data).
-    const fallback = await buildOutrightFromStandings(leagueId).catch(() => null);
-    if (fallback) outrights.push(fallback);
+    // Do not fall back to computed/standings-derived odds — only show real bookmaker data.
   }
 
   setCache(cacheKey, outrights);

@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+Sitemap: https://www.betcheza.co.ke/sitemap.xml
+Sitemap: https://betcheza.co.ke/sitemap.xml
+
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /_next/
