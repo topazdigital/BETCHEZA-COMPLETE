@@ -456,8 +456,101 @@ async function loadPastWeeks(): Promise<WeeklyStrategy[]> {
   return weeks;
 }
 
+function checkPickResultLocal(
+  pick: StrategyPick,
+  homeScore: number,
+  awayScore: number,
+): 'win' | 'loss' | null {
+  const market = (pick.market || '').toLowerCase();
+  const pickValue = (pick.pick || '').toLowerCase();
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const homeNorm = norm(pick.homeTeam);
+  const awayNorm = norm(pick.awayTeam);
+  const pickNorm = norm(pickValue);
+
+  if (market === '1x2') {
+    if (homeScore > awayScore) return pickNorm === homeNorm || pickValue.includes('home') || pickNorm === 'homewin' ? 'win' : 'loss';
+    if (awayScore > homeScore) return pickNorm === awayNorm || pickValue.includes('away') || pickNorm === 'awaywin' ? 'win' : 'loss';
+    return pickValue.includes('draw') || pickNorm === 'draw' || pickNorm === 'x' ? 'win' : 'loss';
+  }
+  if (market === 'double chance') {
+    if (homeScore > awayScore) return pickValue.includes('home') || pickValue.includes('or') ? 'win' : 'loss';
+    if (awayScore > homeScore) return pickValue.includes('away') || pickValue.includes('or') ? 'win' : 'loss';
+    return pickValue.includes('draw') || pickValue.includes('or') ? 'win' : 'loss';
+  }
+  if (market === 'over/under' || market === 'total goals') {
+    const total = homeScore + awayScore;
+    const over = pickValue.match(/over\s*([\d.]+)/i);
+    const under = pickValue.match(/under\s*([\d.]+)/i);
+    if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
+    if (under) return total < parseFloat(under[1]) ? 'win' : 'loss';
+  }
+  if (market === 'btts' || market === 'both teams to score') {
+    const btts = homeScore > 0 && awayScore > 0;
+    return pickValue === 'yes' ? (btts ? 'win' : 'loss') : (!btts ? 'win' : 'loss');
+  }
+  return null;
+}
+
+async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPrediction[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const hasPending = days.some(d => d.date < today && d.picks.some(p => p.result === 'pending'));
+  if (!hasPending) return days;
+
+  let allMatches: Array<{ homeTeam: { name: string }; awayTeam: { name: string }; status: string; homeScore: number | null; awayScore: number | null }> = [];
+  try {
+    const { getAllMatches } = await import('@/lib/api/unified-sports-api');
+    allMatches = await getAllMatches() as typeof allMatches;
+  } catch { return days; }
+
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const updated = days.map(day => {
+    if (day.date >= today) return day;
+    if (!day.picks.some(p => p.result === 'pending')) return day;
+
+    let changed = false;
+    const updatedPicks = day.picks.map(pick => {
+      if (pick.result !== 'pending') return pick;
+      const ph = norm(pick.homeTeam);
+      const pa = norm(pick.awayTeam);
+      const match = allMatches.find(m => {
+        if (m.status !== 'finished' || m.homeScore === null || m.awayScore === null) return false;
+        const mh = norm(m.homeTeam.name);
+        const ma = norm(m.awayTeam.name);
+        return (mh === ph || mh.includes(ph) || ph.includes(mh)) &&
+               (ma === pa || ma.includes(pa) || pa.includes(ma));
+      });
+      if (!match || match.homeScore === null || match.awayScore === null) return pick;
+      const result = checkPickResultLocal(pick, match.homeScore, match.awayScore);
+      if (!result) return pick;
+      changed = true;
+      return { ...pick, result, actualScore: `${match.homeScore}-${match.awayScore}` };
+    });
+
+    if (!changed) return day;
+
+    const allSettled = updatedPicks.every(p => p.result !== 'pending');
+    const allWon = allSettled && updatedPicks.every(p => p.result === 'win');
+    const updatedDay: DayPrediction = {
+      ...day,
+      picks: updatedPicks,
+      ...(allSettled ? { result: allWon ? 'win' : 'loss', status: 'completed' as const } : {}),
+    };
+
+    execute(
+      `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = NOW() WHERE date = ?`,
+      [JSON.stringify(updatedPicks), updatedDay.result ?? null, updatedDay.status, day.date]
+    ).catch(() => undefined);
+
+    return updatedDay;
+  });
+
+  return updated;
+}
+
 export async function GET() {
   const current = await loadCurrentWeek();
+  current.days = await autoSettleCompletedPicks(current.days);
   const past = await loadPastWeeks();
   return NextResponse.json({ current, past });
 }

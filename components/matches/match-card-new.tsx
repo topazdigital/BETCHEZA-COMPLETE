@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, ExternalLink, Lightbulb } from 'lucide-react';
+import { Plus, ExternalLink, Lightbulb, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUserSettings } from '@/contexts/user-settings-context';
 import { useBetSlip } from '@/contexts/bet-slip-context';
@@ -307,6 +307,16 @@ export function MatchCardNew({
             />
           </div>
         )}
+
+        {/* SmartBet AI pick chip — compact variant, only for scheduled matches with odds */}
+        {match.odds && !isFinished && !isLive && (
+          <SmartBetBadge
+            odds={match.odds}
+            homeTeam={match.homeTeam.name}
+            awayTeam={match.awayTeam.name}
+            matchSlug={slug}
+          />
+        )}
       </div>
     );
   }
@@ -464,6 +474,18 @@ export function MatchCardNew({
         </div>
       )}
 
+      {/* SmartBet AI pick — default/featured variant, only for scheduled matches with odds */}
+      {match.odds && !isFinished && !isLive && (
+        <div className="mt-2">
+          <SmartBetBadge
+            odds={match.odds}
+            homeTeam={match.homeTeam.name}
+            awayTeam={match.awayTeam.name}
+            matchSlug={slug}
+          />
+        </div>
+      )}
+
       {/* Footer */}
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
         <span>{match.tipsCount} tips</span>
@@ -472,6 +494,59 @@ export function MatchCardNew({
         </Link>
       </div>
     </div>
+  );
+}
+
+function computeSmartPick(
+  odds: { home: number; draw?: number; away: number },
+  homeTeam: string,
+  awayTeam: string,
+): { pick: string; label: string; confidence: number } | null {
+  const homeProb = 1 / Math.max(odds.home, 1.01);
+  const drawProb = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
+  const awayProb = 1 / Math.max(odds.away, 1.01);
+  const total = homeProb + drawProb + awayProb;
+  if (!total) return null;
+  const h = homeProb / total;
+  const d = drawProb / total;
+  const a = awayProb / total;
+  const max = Math.max(h, d, a);
+  const confidence = Math.round(max * 100);
+  if (h === max) {
+    const shortName = homeTeam.split(' ')[0];
+    return { pick: '1', label: shortName, confidence };
+  }
+  if (d === max && odds.draw) return { pick: 'X', label: 'Draw', confidence };
+  const shortName = awayTeam.split(' ')[0];
+  return { pick: '2', label: shortName, confidence };
+}
+
+function SmartBetBadge({
+  odds,
+  homeTeam,
+  awayTeam,
+  matchSlug,
+}: {
+  odds: { home: number; draw?: number; away: number };
+  homeTeam: string;
+  awayTeam: string;
+  matchSlug: string;
+}) {
+  const sp = computeSmartPick(odds, homeTeam, awayTeam);
+  if (!sp) return null;
+  return (
+    <Link
+      href={`/matches/${matchSlug}#prediction`}
+      onClick={(e) => e.stopPropagation()}
+      className="flex items-center gap-1.5 rounded-md bg-primary/8 px-2 py-1 text-[10px] hover:bg-primary/15 transition-colors"
+    >
+      <Sparkles className="h-3 w-3 shrink-0 text-primary" />
+      <span className="font-semibold text-primary">AI Pick</span>
+      <span className="text-muted-foreground">·</span>
+      <span className="font-bold text-foreground">{sp.pick}</span>
+      <span className="truncate text-muted-foreground">{sp.label}</span>
+      <span className="ml-auto font-semibold text-primary">{sp.confidence}%</span>
+    </Link>
   );
 }
 
