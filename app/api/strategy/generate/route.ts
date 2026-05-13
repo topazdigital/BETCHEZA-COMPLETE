@@ -101,26 +101,28 @@ export async function POST(req: NextRequest) {
 
     const openai = getOpenAI();
     if (openai && matchList) {
-      const prompt = `You are a football betting analyst for the Betcheza "3 Daily Odds" Strategy.
+      const prompt = `You are a professional football betting analyst for Betcheza, a Kenyan sports tipster platform.
 
 Strategy context: Day ${targetDay} — stake KES ${dayData.stake.toLocaleString()}, target win KES ${dayData.targetWin.toLocaleString()}.
 
 GOAL: Select 1–5 football picks so that the COMBINED/ACCUMULATED ODDS (all individual odds multiplied together) falls STRICTLY between 3.00 and 4.00.
 
-Rules:
-- "3 Daily Odds" means the accumulator totals 3x–4x — NOT that you pick exactly 3 games
-- Example: 1 game at 3.50 = 3.50 combined. 2 games at 1.80 each = 3.24 combined. 3 games at 1.44 each = 2.99 ≈ 3.0
-- Pick the number of games that gives you the most confident accumulator in the 3.0–4.0 range
-- Markets: 1X2, Double Chance, Both Teams to Score, Over/Under Goals, Asian Handicap
-- Give specific reasoning using team form, H2H, home advantage, or value
+ODDS RULES — Critical:
+- Use REALISTIC bookmaker-style decimal odds (e.g. 1.73, 1.87, 2.10, 1.62 — NOT round numbers like 1.5, 2.0, 3.0)
+- Where odds are listed in the match data (H=/D=/A=), use those exact bookmaker odds for your pick
+- Where no odds are listed, estimate market-realistic odds: strong home favourites 1.35–1.75, slight favourites 1.80–2.20, even matches 2.50–3.10, underdogs 3.25+
+- Aim for picks in the 1.60–2.20 range each — 2 or 3 such picks combine naturally to 3.00–4.00
+
+ANALYSIS RULES:
+- Be specific: mention form runs ("6 wins in last 8 home games"), H2H stats, or league position context
+- Double Chance or BTTS markets boost confidence on tight games
+- Avoid picks from finished or live matches
 
 Available matches for Day ${targetDay} (${dayData.date}):
 ${matchList || 'No specific matches found — use your football knowledge for this date'}
 
-Return ONLY a valid JSON array of 1–5 picks:
-[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"...","odds":1.85,"confidence":"High","reasoning":"2-3 sentences"}]
-
-IMPORTANT: The product of ALL odds in your array must be between 3.00 and 4.00.`;
+Return ONLY a valid JSON array of 1–5 picks. All odds multiplied MUST equal 3.00–4.00:
+[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"...","odds":1.87,"confidence":"High","reasoning":"Specific tactical reasoning here"}]`;
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',

@@ -289,16 +289,19 @@ export interface SgoOutright {
 }
 
 const SGO_LEAGUE_MAP: Record<number, string[]> = {
-  // Football-data competition id → SGO leagueID(s)
-  2021: ['EPL'],          // Premier League
-  2014: ['LALIGA'],       // La Liga
-  2002: ['BUNDESLIGA'],   // Bundesliga
-  2019: ['SERIEA'],       // Serie A
-  2015: ['LIGUE1'],       // Ligue 1
-  2001: ['UCL'],          // UEFA Champions League
-  2018: ['EURO'],         // Euros
-  2000: ['WORLD_CUP'],    // World Cup
-  4328: ['MLS'],          // Major League Soccer
+  // Our internal ESPN leagueId → SGO leagueID(s)
+  1:  ['EPL'],          // Premier League
+  2:  ['LALIGA'],       // La Liga
+  3:  ['BUNDESLIGA'],   // Bundesliga
+  4:  ['SERIEA'],       // Serie A
+  5:  ['LIGUE1'],       // Ligue 1
+  9:  ['UCL'],          // UEFA Champions League
+  10: ['UEFAROPA'],     // Europa League
+  11: ['MLS'],          // Major League Soccer
+  6:  ['EREDIVISIE'],   // Eredivisie
+  7:  ['PRIMEIRALIGA'], // Primeira Liga
+  12: ['BRASILEIRAO'],  // Brazilian Serie A
+  13: ['LIGAPROFESIONAL'], // Argentine Primera
 };
 
 export async function getSgoOutrights(leagueId: number): Promise<SgoOutright[]> {

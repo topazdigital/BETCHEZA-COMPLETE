@@ -12,7 +12,6 @@ interface SavedGateway {
 
 /** Read PayHero credentials: admin-panel file store takes priority, then env vars. */
 function getCredentials(): { token: string | null; channelId: number } {
-  // Check admin-panel saved gateways first (file store / DB-backed)
   try {
     const gateways = fileStoreGet<SavedGateway[] | null>('payment-gateways', null);
     const gw = gateways?.find((g) => g.id === 'payhero');
@@ -33,7 +32,12 @@ function getToken(): string | null { return getCredentials().token; }
 function getChannelId(): number { return getCredentials().channelId; }
 
 function getCallbackUrl(): string {
-  // Prefer explicitly-set APP_URL, then SITE_URL (Replit dev domain), then prod fallback
+  // REPLIT_DEV_DOMAIN is auto-injected by Replit runtime (e.g. "abc123.picard.replit.dev")
+  // Always use it when available so the callback URL matches the live dev server.
+  const replitDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (replitDomain) return `https://${replitDomain}/api/payhero/callback`;
+
+  // For production: prefer explicitly-set APP_URL, then SITE_URL, then prod fallback
   const base =
     process.env.APP_URL ||
     process.env.SITE_URL ||
@@ -42,19 +46,17 @@ function getCallbackUrl(): string {
   return `${base}/api/payhero/callback`;
 }
 
-/** Extract a human-readable error from a PayHero API response.
- *  PayHero uses Django REST Framework which puts errors in `detail`, not `message`. */
+/** Extract a human-readable error from a PayHero API response. */
 function extractPayHeroError(data: Record<string, unknown>, status: number): string {
   const msg =
-    (data.error_message as string) ||   // PayHero's own error key
-    (data.detail as string) ||           // Django REST style
+    (data.error_message as string) ||
+    (data.detail as string) ||
     (data.message as string) ||
     (data.error as string) ||
     (data.description as string) ||
     (data.errors as string) ||
     null;
   if (msg) return msg;
-  // Surface any non-empty string value in the response
   for (const v of Object.values(data)) {
     if (typeof v === 'string' && v.length > 0) return v;
     if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'string') return v[0];
@@ -84,12 +86,13 @@ export async function initiateStkPush(amount: number, phone: string, reference: 
   const channelId = getChannelId();
   if (!token || !channelId) return { ok: false, reference, error: 'PayHero not configured' };
   const normalizedPhone = normalizeKenyanPhone(phone);
-  console.log(`[payhero] STK push KES ${amount} -> ${normalizedPhone} ref=${reference} channel=${channelId}`);
+  const callbackUrl = getCallbackUrl();
+  console.log(`[payhero] STK push KES ${amount} -> ${normalizedPhone} ref=${reference} channel=${channelId} callback=${callbackUrl}`);
   try {
     const res = await fetch(`${BASE_URL}/payments`, {
       method: 'POST',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, phone_number: normalizedPhone, channel_id: channelId, provider: 'm-pesa', external_reference: reference, callback_url: getCallbackUrl() }),
+      body: JSON.stringify({ amount, phone_number: normalizedPhone, channel_id: channelId, provider: 'm-pesa', external_reference: reference, callback_url: callbackUrl }),
     });
     let data: Record<string, unknown> = {};
     try { data = await res.json(); } catch {}
@@ -104,6 +107,40 @@ export async function initiateStkPush(amount: number, phone: string, reference: 
   }
 }
 
+/**
+ * Directly query the PayHero API for a transaction status.
+ * This is used as a backup polling mechanism when the webhook callback
+ * is not received (e.g. network issues, domain mismatch).
+ */
+export async function checkTransactionStatus(reference: string): Promise<'pending' | 'completed' | 'failed'> {
+  const token = getToken();
+  if (!token) return 'pending';
+  try {
+    const res = await fetch(`${BASE_URL}/payments?external_reference=${encodeURIComponent(reference)}`, {
+      headers: { 'Authorization': token, 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return 'pending';
+    const data = await res.json() as { results?: Array<{ status?: string; transaction_status?: string }>; status?: string; transaction_status?: string };
+
+    // Handle paginated response { results: [...] }
+    let statusStr: string | undefined;
+    if (Array.isArray(data.results) && data.results.length > 0) {
+      statusStr = data.results[0].status || data.results[0].transaction_status;
+    } else {
+      statusStr = data.status || data.transaction_status;
+    }
+
+    if (!statusStr) return 'pending';
+    const s = statusStr.toUpperCase();
+    if (s === 'SUCCESS' || s === 'COMPLETED' || s === 'COMPLETE') return 'completed';
+    if (s === 'FAILED' || s === 'CANCELLED' || s === 'CANCELED' || s === 'REJECTED') return 'failed';
+    return 'pending';
+  } catch {
+    return 'pending';
+  }
+}
+
 export interface WithdrawResult { ok: boolean; reference: string; error?: string; }
 
 export async function initiateWithdrawal(amount: number, phone: string, reference: string): Promise<WithdrawResult> {
@@ -111,11 +148,12 @@ export async function initiateWithdrawal(amount: number, phone: string, referenc
   const channelId = getChannelId();
   if (!token || !channelId) return { ok: false, reference, error: 'PayHero not configured' };
   const normalizedPhone = normalizeKenyanPhone(phone);
+  const callbackUrl = getCallbackUrl();
   try {
     const res = await fetch(`${BASE_URL}/withdraw`, {
       method: 'POST',
       headers: { 'Authorization': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, phone_number: normalizedPhone, channel_id: channelId, provider: 'm-pesa', external_reference: reference, callback_url: getCallbackUrl() }),
+      body: JSON.stringify({ amount, phone_number: normalizedPhone, channel_id: channelId, provider: 'm-pesa', external_reference: reference, callback_url: callbackUrl }),
     });
     let data: Record<string, unknown> = {};
     try { data = await res.json(); } catch {}

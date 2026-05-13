@@ -259,9 +259,13 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
   })();
 
   // Poll PayHero status while an STK push is pending
+  // Times out after 3 minutes (45 × 4 s) — user can retry if needed
   useEffect(() => {
     if (!pendingRef) return;
+    let pollCount = 0;
+    const MAX_POLLS = 45; // 45 × 4 s = 3 minutes
     const interval = setInterval(async () => {
+      pollCount++;
       try {
         const res = await fetch(`/api/payhero/status?reference=${encodeURIComponent(pendingRef)}`);
         const data = await res.json().catch(() => ({}));
@@ -271,13 +275,22 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           setPendingRef(null);
           setStatus({ kind: 'ok', msg: 'Payment confirmed! Your balance has been updated.' });
           await onDone();
+          return;
         } else if (data.status === 'failed') {
           clearInterval(interval);
           pollRef.current = null;
           setPendingRef(null);
           setStatus({ kind: 'err', msg: 'M-Pesa payment failed or was cancelled. Please try again.' });
+          return;
         }
       } catch {}
+      // Timeout after MAX_POLLS
+      if (pollCount >= MAX_POLLS) {
+        clearInterval(interval);
+        pollRef.current = null;
+        setPendingRef(null);
+        setStatus({ kind: 'err', msg: 'Confirmation timed out. If you entered your PIN the payment may still complete — check your balance in a moment or try again.' });
+      }
     }, 4000);
     pollRef.current = interval;
     return () => clearInterval(interval);

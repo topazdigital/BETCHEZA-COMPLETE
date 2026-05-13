@@ -169,26 +169,28 @@ async function generatePicksForDate(targetDate: Date, dayPlan: { stake: number; 
     const openai = getOpenAI();
     if (openai && matchList) {
       const dateDisplay = targetDate.toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      const prompt = `You are a football betting analyst for the Betcheza "3 Daily Odds" Strategy.
+      const prompt = `You are a professional football betting analyst for Betcheza, a Kenyan sports tipster platform.
 
-Today is ${dateDisplay}. Day ${dayNumber} of the weekly compounding plan — stake KES ${dayPlan.stake.toLocaleString()}, target win KES ${dayPlan.targetWin.toLocaleString()}.
+Today is ${dateDisplay}. This is Day ${dayNumber} of the weekly "3 Daily Odds" compounding plan — stake KES ${dayPlan.stake.toLocaleString()}, target win KES ${dayPlan.targetWin.toLocaleString()}.
 
-STRATEGY GOAL: Select any number of football picks (1 to 5 games) so that the COMBINED/ACCUMULATED ODDS of all picks multiplied together falls STRICTLY between 3.00 and 4.00.
+STRATEGY GOAL: Select 1–5 football picks so that ALL odds multiplied together (combined accumulator) falls STRICTLY between 3.00 and 4.00.
 
-Rules:
-- The name "3 Daily Odds" means the accumulator lands between 3x and 4x — NOT that you must pick 3 games
-- You can pick 1 game at 3.50 odds, or 2 games at 1.80 each (combined 3.24), or 3 games at 1.44 each, etc.
-- Choose the number of games that gives the most CONFIDENT accumulator landing in the 3.0–4.0 combined range
-- Markets allowed: 1X2, Double Chance, Both Teams to Score, Over/Under Goals, Asian Handicap
-- Provide specific reasoning per pick based on form, H2H, home advantage, or value
+ODDS RULES — This is critical:
+- Use REALISTIC bookmaker-style decimal odds (e.g. 1.73, 1.87, 2.10, 1.62, not round numbers like 1.5, 2.0)
+- Where odds are provided in the match list (H=/D=/A=), use those exact bookmaker odds as your pick odds
+- Where no odds are shown, estimate market-realistic odds: strong home favourites 1.35–1.75, slight favourites 1.80–2.20, even matches 2.50–3.10, clear underdogs 3.25+
+- Aim for picks in the 1.60–2.20 range each — 2 or 3 such picks combine to a 3.00–4.00 accumulator
 
-Available matches:
+ANALYSIS RULES:
+- Analyse each match based on home advantage, recent form, head-to-head records
+- Prefer Double Chance or BTTS markets for tight games to boost confidence
+- Write specific reasoning: mention actual factors like "7 wins in last 8 home games", "both teams scored in 4 of last 5 meetings", "trailing 2 points with 3 games left", etc.
+
+Available matches (with bookmaker odds where available):
 ${matchList}
 
-Return ONLY a valid JSON array (1 to 5 picks):
-[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"1X2","odds":1.85,"confidence":"High","reasoning":"..."}]
-
-IMPORTANT: The product of all odds in your array MUST be between 3.00 and 4.00.`;
+Return ONLY valid JSON (1 to 5 picks). All odds multiplied MUST equal 3.00–4.00:
+[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"1X2","odds":1.87,"confidence":"High","reasoning":"Specific analysis here..."}]`;
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
