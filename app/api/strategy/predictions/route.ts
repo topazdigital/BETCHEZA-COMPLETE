@@ -200,37 +200,9 @@ function buildEmptyWeek(weekId: string): WeeklyStrategy {
   };
 }
 
-function buildAutoFallbackPicks(dateStr: string): StrategyPick[] {
-  // Auto-generated fallback with combined odds ≈ 3.36 (1.68 × 2.00)
-  const day = new Date(dateStr);
-  return [
-    {
-      id: `${dateStr}-auto-0`,
-      homeTeam: 'Home Team',
-      awayTeam: 'Away Team',
-      league: 'Top League',
-      matchTime: new Date(day.setHours(17, 0, 0, 0)).toISOString(),
-      pick: 'Home Win or Draw',
-      market: 'Double Chance',
-      odds: 1.68,
-      confidence: 'Medium',
-      reasoning: 'Home advantage and solid recent form make this a value double chance pick.',
-      result: 'pending',
-    },
-    {
-      id: `${dateStr}-auto-1`,
-      homeTeam: 'Club A',
-      awayTeam: 'Club B',
-      league: 'Premier League',
-      matchTime: new Date(new Date(dateStr).setHours(19, 45, 0, 0)).toISOString(),
-      pick: 'Over 2.5 Goals',
-      market: 'Over/Under',
-      odds: 2.00,
-      confidence: 'Medium',
-      reasoning: 'Both sides average over 1.8 goals per game this season with open attacking play.',
-      result: 'pending',
-    },
-  ];
+function buildAutoFallbackPicks(_dateStr: string): StrategyPick[] {
+  // No real matches available — return empty rather than fake placeholder data
+  return [];
 }
 
 async function autoGenerateTodayPicks(weekId: string, todayStr: string, dayNumber: number): Promise<StrategyPick[]> {
@@ -305,21 +277,43 @@ REQUIRED: product of all odds must be between 3.00 and 4.00.`;
       }
     }
 
-    // Fallback: pick 2 matches from pool with reasonable odds
-    const twoMatches = pool.slice(0, 2);
-    return twoMatches.map((m: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date }, i: number) => ({
-      id: `${todayStr}-pool-${i}`,
-      homeTeam: m.homeTeam.name,
-      awayTeam: m.awayTeam.name,
-      league: m.league.name,
-      matchTime: new Date(m.kickoffTime).toISOString(),
-      pick: `${m.homeTeam.name} Win or Draw`,
-      market: 'Double Chance',
-      odds: parseFloat((1.7 + Math.random() * 0.5).toFixed(2)),
-      confidence: 'Medium' as const,
-      reasoning: `${m.homeTeam.name} home advantage with solid recent form makes this a value pick.`,
-      result: 'pending' as const,
-    }));
+    // Fallback: pick up to 3 matches from pool using their real bookmaker odds
+    const pickMatches = pool.slice(0, 3);
+    const picks: StrategyPick[] = [];
+    for (let i = 0; i < pickMatches.length; i++) {
+      const m = pickMatches[i] as {
+        homeTeam: { name: string };
+        awayTeam: { name: string };
+        league: { name: string };
+        kickoffTime: Date;
+        odds?: { home: number; draw?: number; away: number };
+      };
+      // Use real DC odds (home + draw) if available, otherwise home win odds, else skip if no real odds
+      const dcOdds = m.odds
+        ? parseFloat(((m.odds.home + (m.odds.draw ?? 0)) / 2 * 1.05).toFixed(2))
+        : null;
+      const homeWinOdds = m.odds ? m.odds.home : null;
+      const useOdds = dcOdds && dcOdds >= 1.2 ? dcOdds : homeWinOdds && homeWinOdds >= 1.2 ? homeWinOdds : null;
+      if (!useOdds) continue;
+      picks.push({
+        id: `${todayStr}-pool-${i}`,
+        homeTeam: m.homeTeam.name,
+        awayTeam: m.awayTeam.name,
+        league: m.league.name,
+        matchTime: new Date(m.kickoffTime).toISOString(),
+        pick: m.odds?.draw ? `${m.homeTeam.name} Win or Draw` : `${m.homeTeam.name} Win`,
+        market: m.odds?.draw ? 'Double Chance' : '1X2',
+        odds: useOdds,
+        confidence: 'Medium' as const,
+        reasoning: `${m.homeTeam.name} home advantage with solid recent form makes this a value pick.`,
+        result: 'pending' as const,
+      });
+      // Stop once combined odds are in the 3.0-4.0 range
+      const combined = picks.reduce((acc, p) => acc * p.odds, 1);
+      if (combined >= 3.0 && combined <= 4.5) break;
+    }
+    if (picks.length === 0) return buildAutoFallbackPicks(todayStr);
+    return picks;
   } catch {
     return buildAutoFallbackPicks(todayStr);
   }
@@ -337,7 +331,18 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
     const empty = buildEmptyWeek(weekId);
     const merged = empty.days.map((d) => {
       const fromDb = dbDays.find((r) => r.date === d.date);
-      return fromDb ?? d;
+      const base = fromDb ?? d;
+      // Always recompute status from today's actual date — DB status may be stale
+      // (a day that was 'active' yesterday stays 'active' in the DB unless settled)
+      let status: DayPrediction['status'];
+      if (base.date === todayStr) {
+        status = 'active';
+      } else if (base.date < todayStr) {
+        status = 'completed';
+      } else {
+        status = 'upcoming';
+      }
+      return { ...base, status };
     });
 
     // Auto-generate today's picks if today is active but has no picks

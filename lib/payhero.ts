@@ -33,8 +33,13 @@ function getToken(): string | null { return getCredentials().token; }
 function getChannelId(): number { return getCredentials().channelId; }
 
 function getCallbackUrl(): string {
-  if (process.env.APP_URL) return `${process.env.APP_URL}/api/payhero/callback`;
-  return 'https://betcheza.co.ke/api/payhero/callback';
+  // Prefer explicitly-set APP_URL, then SITE_URL (Replit dev domain), then prod fallback
+  const base =
+    process.env.APP_URL ||
+    process.env.SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    'https://betcheza.co.ke';
+  return `${base}/api/payhero/callback`;
 }
 
 /** Extract a human-readable error from a PayHero API response.

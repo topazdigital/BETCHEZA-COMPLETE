@@ -3216,60 +3216,120 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     // Known cross-source team name aliases (canonical → variants).
     // Ensures "RC Celta" == "Celta Vigo", "Man Utd" == "Manchester United", etc.
     const TEAM_ALIASES: Record<string, string> = {
+      // Spanish
       'rc celta': 'celta', 'celta vigo': 'celta', 'rc celta de vigo': 'celta', 'celta de vigo': 'celta',
+      'rcd espanyol': 'espanyol', 'espanyol barcelona': 'espanyol', 'rcd espanyol de barcelona': 'espanyol',
+      'cd leganes': 'leganes', 'deportivo alaves': 'alaves', 'deportivo alaves sad': 'alaves',
+      'villarreal cf': 'villarreal', 'real valladolid': 'valladolid', 'real valladolid cf': 'valladolid',
+      'rcd mallorca': 'mallorca', 'girona fc': 'girona', 'ud las palmas': 'laspalmas',
+      'sevilla fc': 'sevilla', 'real sociedad': 'realsociedad',
+      // English
       'manchester united': 'manchesterunited', 'man utd': 'manchesterunited', 'man united': 'manchesterunited',
       'manchester city': 'manchestercity', 'man city': 'manchestercity',
       'tottenham hotspur': 'tottenham', 'spurs': 'tottenham',
       'wolverhampton wanderers': 'wolves', 'wolverhampton': 'wolves',
       'west ham united': 'westham', 'west ham': 'westham',
-      'newcastle united': 'newcastle',
+      'newcastle united': 'newcastle', 'newcastle utd': 'newcastle',
       'brighton & hove albion': 'brighton', 'brighton and hove albion': 'brighton',
       'nottingham forest': 'nottmforest', "nott'm forest": 'nottmforest', 'notts forest': 'nottmforest',
       'sheffield united': 'sheffieldutd', 'sheffield utd': 'sheffieldutd',
       'queens park rangers': 'qpr',
+      'aston villa': 'astonvilla',
+      'crystal palace': 'crystalpalace',
+      'brentford fc': 'brentford',
+      'fulham fc': 'fulham',
+      'ipswich town': 'ipswich',
+      'leicester city': 'leicester',
+      'luton town': 'luton',
+      // Spanish top tier
       'atletico madrid': 'atletico', 'atletico de madrid': 'atletico', 'club atletico de madrid': 'atletico',
       'real madrid': 'realmadrid', 'real madrid cf': 'realmadrid',
+      'fc barcelona': 'barcelona', 'barcelona': 'barcelona',
       'real betis': 'betis', 'real betis balompie': 'betis',
-      'athletic bilbao': 'bilbao', 'athletic club': 'bilbao',
-      'rayo vallecano': 'rayo',
-      'levante ud': 'levante',
+      'athletic bilbao': 'bilbao', 'athletic club': 'bilbao', 'athletic club bilbao': 'bilbao',
+      'rayo vallecano': 'rayo', 'rayo vallecano de madrid': 'rayo',
+      'levante ud': 'levante', 'levante': 'levante',
       'rc deportivo': 'deportivo', 'deportivo la coruna': 'deportivo',
-      'internazionale': 'inter', 'inter milan': 'inter', 'fc internazionale': 'inter',
+      'osasuna': 'osasuna', 'ca osasuna': 'osasuna',
+      'getafe cf': 'getafe',
+      'ud almeria': 'almeria',
+      // Italian
+      'internazionale': 'inter', 'inter milan': 'inter', 'fc internazionale': 'inter', 'fc internazionale milano': 'inter',
       'ac milan': 'milan', 'milan': 'milan',
-      'hellas verona': 'verona',
-      'us sassuolo': 'sassuolo',
-      'ssc napoli': 'napoli',
-      'as roma': 'roma',
-      'ss lazio': 'lazio',
-      'juventus fc': 'juventus',
-      'atalanta bc': 'atalanta',
-      'us lecce': 'lecce',
-      'fc porto': 'porto',
-      'sl benfica': 'benfica',
-      'sporting cp': 'sporting', 'sporting clube': 'sporting',
-      'paris saint-germain': 'psg', 'paris saint germain': 'psg', 'psg': 'psg',
-      'olympique marseille': 'marseille', 'om': 'marseille',
-      'olympique lyonnais': 'lyon',
-      'as monaco': 'monaco',
-      'borussia dortmund': 'dortmund', 'bvb': 'dortmund',
-      'borussia monchengladbach': 'gladbach', 'monchengladbach': 'gladbach',
-      'bayer leverkusen': 'leverkusen',
-      'rb leipzig': 'leipzig', 'rasenballsport leipzig': 'leipzig',
-      'fc schalke 04': 'schalke', 'schalke 04': 'schalke',
-      'eintracht frankfurt': 'frankfurt',
-      'vfb stuttgart': 'stuttgart',
-      'ajax amsterdam': 'ajax', 'afc ajax': 'ajax',
-      'psv eindhoven': 'psv',
-      'feyenoord rotterdam': 'feyenoord',
-      'celtic fc': 'celtic',
-      'rangers fc': 'rangers',
-      'club brugge': 'brugge', 'fc bruges': 'brugge',
-      'galatasaray sk': 'galatasaray',
-      'fenerbahce sk': 'fenerbahce',
-      'besiktas jk': 'besiktas',
-      'shakhtar donetsk': 'shakhtar',
-      'dinamo zagreb': 'dinamo',
-      'red bull salzburg': 'salzburg', 'fc salzburg': 'salzburg',
+      'hellas verona': 'verona', 'hellas verona fc': 'verona',
+      'us sassuolo': 'sassuolo', 'us sassuolo calcio': 'sassuolo',
+      'ssc napoli': 'napoli', 'napoli': 'napoli',
+      'as roma': 'roma', 'as roma fc': 'roma',
+      'ss lazio': 'lazio', 'lazio': 'lazio',
+      'juventus fc': 'juventus', 'juventus': 'juventus',
+      'atalanta bc': 'atalanta', 'atalanta bc bergamasca calcio': 'atalanta',
+      'us lecce': 'lecce', 'us cremonese': 'cremonese',
+      'torino fc': 'torino', 'torino': 'torino',
+      'udinese calcio': 'udinese', 'udinese': 'udinese',
+      'bologna fc': 'bologna', 'bologna': 'bologna',
+      'empoli fc': 'empoli', 'frosinone calcio': 'frosinone',
+      'cagliari calcio': 'cagliari',
+      // Portuguese
+      'fc porto': 'porto', 'fc porto sad': 'porto',
+      'sl benfica': 'benfica', 'sport lisboa e benfica': 'benfica',
+      'sporting cp': 'sporting', 'sporting clube': 'sporting', 'sporting clube de portugal': 'sporting',
+      // French
+      'paris saint-germain': 'psg', 'paris saint germain': 'psg', 'paris sg': 'psg',
+      'olympique de marseille': 'marseille', 'olympique marseille': 'marseille', 'om': 'marseille',
+      'olympique lyonnais': 'lyon', 'olympique de lyon': 'lyon',
+      'as monaco': 'monaco', 'as monaco fc': 'monaco',
+      'losc lille': 'lille', 'losc': 'lille',
+      'ogc nice': 'nice', 'rc lens': 'lens',
+      'stade rennais': 'rennes', 'stade rennais fc': 'rennes',
+      'stade brestois': 'brest', 'stade brestois 29': 'brest',
+      // German
+      'borussia dortmund': 'dortmund', 'bvb': 'dortmund', 'bv borussia dortmund': 'dortmund',
+      'borussia monchengladbach': 'gladbach', 'monchengladbach': 'gladbach', 'borussia mgladbach': 'gladbach',
+      'bayer leverkusen': 'leverkusen', 'bayer 04 leverkusen': 'leverkusen',
+      'rb leipzig': 'leipzig', 'rasenballsport leipzig': 'leipzig', 'red bull leipzig': 'leipzig',
+      'fc schalke 04': 'schalke', 'schalke 04': 'schalke', 'schalke': 'schalke',
+      'eintracht frankfurt': 'frankfurt', 'sg eintracht frankfurt': 'frankfurt',
+      'vfb stuttgart': 'stuttgart', 'vfb stuttgart 1893': 'stuttgart',
+      'fc augsburg': 'augsburg', 'sv darmstadt 98': 'darmstadt',
+      'sport-club freiburg': 'freiburg', 'sc freiburg': 'freiburg',
+      'tsg hoffenheim': 'hoffenheim', 'tsg 1899 hoffenheim': 'hoffenheim',
+      'sv werder bremen': 'werder', 'werder bremen': 'werder',
+      // Dutch
+      'ajax amsterdam': 'ajax', 'afc ajax': 'ajax', 'ajax': 'ajax',
+      'psv eindhoven': 'psv', 'psv': 'psv',
+      'feyenoord rotterdam': 'feyenoord', 'feyenoord': 'feyenoord',
+      'az alkmaar': 'az', 'az': 'az',
+      // Scottish
+      'celtic fc': 'celtic', 'celtic': 'celtic',
+      'rangers fc': 'rangers', 'rangers': 'rangers',
+      // Belgian
+      'club brugge': 'brugge', 'fc bruges': 'brugge', 'club brugge kv': 'brugge',
+      'rsc anderlecht': 'anderlecht', 'anderlecht': 'anderlecht',
+      // Turkish
+      'galatasaray sk': 'galatasaray', 'galatasaray': 'galatasaray',
+      'fenerbahce sk': 'fenerbahce', 'fenerbahce': 'fenerbahce',
+      'besiktas jk': 'besiktas', 'besiktas': 'besiktas',
+      'trabzonspor ak': 'trabzonspor', 'trabzonspor': 'trabzonspor',
+      // Eastern European
+      'shakhtar donetsk': 'shakhtar', 'fk shakhtar donetsk': 'shakhtar',
+      'dinamo zagreb': 'dinamo', 'gnk dinamo zagreb': 'dinamo',
+      'red bull salzburg': 'salzburg', 'fc salzburg': 'salzburg', 'fc red bull salzburg': 'salzburg',
+      'sk rapid wien': 'rapid', 'rapid wien': 'rapid',
+      'fk crvena zvezda': 'crvenazvezda', 'red star belgrade': 'crvenazvezda', 'crvena zvezda': 'crvenazvezda',
+      // African
+      'al ahly sc': 'alahly', 'al-ahly': 'alahly', 'al ahly': 'alahly',
+      'es tunis': 'esperance', 'esperance sportive de tunis': 'esperance',
+      'gor mahia fc': 'gormahia', 'gor mahia': 'gormahia',
+      'afc leopards': 'afcleopards', 'afc leopards sc': 'afcleopards',
+      // South American
+      'ca boca juniors': 'bocajuniors', 'boca juniors': 'bocajuniors',
+      'ca river plate': 'riverplate', 'river plate': 'riverplate',
+      'se palmeiras': 'palmeiras', 'sociedade esportiva palmeiras': 'palmeiras',
+      'cr flamengo': 'flamengo', 'clube de regatas do flamengo': 'flamengo',
+      // American
+      'la galaxy': 'lagalaxy', 'los angeles galaxy': 'lagalaxy',
+      'lafc': 'losangelesfc', 'los angeles fc': 'losangelesfc',
+      'new york city fc': 'nycfc', 'new york red bulls': 'nyrb',
     };
 
     // Strip common club prefixes/suffixes, city names, articles, and diacritics
@@ -3296,8 +3356,14 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
 
   const addMatch = (match: UnifiedMatch) => {
     const key = getMatchKey(match);
-    if (!seenMatchKeys.has(key)) {
+    // Also build the reverse key to catch swapped home/away between providers
+    const homeNormR = key.split('_')[0];
+    const awayNormR = key.split('_')[1];
+    const dateKeyR  = key.split('_')[2];
+    const reverseKey = `${awayNormR}_${homeNormR}_${dateKeyR}`;
+    if (!seenMatchKeys.has(key) && !seenMatchKeys.has(reverseKey)) {
       seenMatchKeys.add(key);
+      seenMatchKeys.add(reverseKey);
       allMatches.push(match);
     }
   };
