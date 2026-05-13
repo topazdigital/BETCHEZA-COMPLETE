@@ -163,7 +163,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/users/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName: displayName.trim(), phone: phone.trim(), bio: bio.trim() }),
+        body: JSON.stringify({ displayName: displayName.trim(), bio: bio.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -397,10 +397,12 @@ export default function SettingsPage() {
                 id="phone"
                 type="tel"
                 value={phone}
-                onChange={e => setPhone(e.target.value)}
+                readOnly
+                disabled
+                className="opacity-60 cursor-not-allowed"
                 placeholder="+254 700 000 000"
-                maxLength={30}
               />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Phone number cannot be changed here. Contact an admin to update it.</p>
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="email" className="text-xs">Email</Label>

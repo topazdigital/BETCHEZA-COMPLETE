@@ -111,13 +111,15 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: settings.site_name,
       title,
       description,
-      images: seoEntry?.ogImage ? [{ url: seoEntry.ogImage }] : undefined,
+      images: seoEntry?.ogImage
+        ? [{ url: seoEntry.ogImage, width: 1200, height: 630, alt: title }]
+        : [{ url: '/og-image.png', width: 1200, height: 630, alt: `${settings.site_name} — Sports Betting Tips` }],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: seoEntry?.ogImage ? [seoEntry.ogImage] : undefined,
+      images: seoEntry?.ogImage ? [seoEntry.ogImage] : ['/og-image.png'],
     },
     manifest: '/manifest.json',
     icons,

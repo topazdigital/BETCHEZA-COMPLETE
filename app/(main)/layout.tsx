@@ -26,6 +26,8 @@ import { BottomNav } from "@/components/layout/bottom-nav"
 import { Footer } from "@/components/layout/footer"
 import { CookieBanner } from "@/components/layout/cookie-banner"
 import { LiveScoreboardWidget } from "@/components/live/live-scoreboard-widget"
+import { SocialOnboardingModal } from "@/components/auth/social-onboarding-modal"
+import { WelcomeModal } from "@/components/auth/welcome-modal"
 import { useMatchStats } from "@/lib/hooks/use-matches"
 import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
 import { FlagIcon } from "@/components/ui/flag-icon"
@@ -554,6 +556,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <BottomNav />
         <CookieBanner />
         <LiveScoreboardWidget />
+        <WelcomeModal />
+        <SocialOnboardingModal />
       </div>
     </div>
   )

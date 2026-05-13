@@ -103,8 +103,8 @@ export function SportsFilter({
   }
 
   return (
-    <div className="w-full">
-      <div className="flex items-center gap-1.5">
+    <div className="w-full overflow-hidden">
+      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
         {/* All Sports pill */}
         <button
           onClick={() => onSelectSport(null)}

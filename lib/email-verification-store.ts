@@ -55,6 +55,8 @@ function persist(state: VerifyFile) {
   ensureDir();
   try {
     fs.writeFileSync(STORE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+    // Sync the in-memory cache with the persisted state
+    g.__emailVerifyCache = state;
   } catch (e) {
     console.error('[email-verify] failed to write store:', e);
   }
@@ -64,6 +66,11 @@ const g = globalThis as { __emailVerifyCache?: VerifyFile };
 function cache(): VerifyFile {
   if (!g.__emailVerifyCache) g.__emailVerifyCache = load();
   return g.__emailVerifyCache!;
+}
+
+/** Force a fresh read from disk — call after external writes or cross-process scenarios. */
+function invalidateCache(): void {
+  delete g.__emailVerifyCache;
 }
 
 function makeCode(): string {

@@ -144,7 +144,7 @@ export function NotificationBell() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl" style={{ maxHeight: 'calc(100dvh - 4rem)' }}>
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
