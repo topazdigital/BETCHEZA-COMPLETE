@@ -117,17 +117,22 @@ export async function GET(request: NextRequest) {
     if (filter === 'pro') fake = fake.filter(t => t.isPro);
     else if (filter === 'free') fake = fake.filter(t => !t.isPro);
     else if (filter === 'verified') fake = fake.filter(t => t.verified);
+    // Sort by the requested field, then assign rank based on sorted position
     fake.sort((a, b) => {
       switch (sortBy) {
-        case 'winRate': return b.winRate - a.winRate;
         case 'roi': return b.roi - a.roi;
         case 'followers': return b.followers - a.followers;
         case 'streak': return b.streak - a.streak;
         case 'totalTips': return b.totalTips - a.totalTips;
+        case 'winRate':
+        case 'rank':
         default: return b.winRate - a.winRate;
       }
     });
-    fake = fake.map((t, i) => ({ ...t, rank: i + 1 }));
+    // Always assign rank based on winRate ordering so rank reflects real performance
+    const byWinRate = [...fake].sort((a, b) => b.winRate - a.winRate);
+    const rankMap = new Map(byWinRate.map((t, i) => [t.id, i + 1]));
+    fake = fake.map(t => ({ ...t, rank: rankMap.get(t.id) ?? 0 }));
     total = fake.length;
     tipsters = fake.slice(offset, offset + limit);
   }

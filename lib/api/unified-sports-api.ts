@@ -3453,18 +3453,28 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     // Fast-path: if two feeds return the exact same ESPN event ID, skip immediately.
     // This catches "Manchester City" vs "Manchester City FC" from different feeds
     // where the name-based key might differ due to FC suffix.
-    const espnIdMatch = match.id?.match(/^espn_[a-z0-9]+_(\d+)$/i);
+    const espnIdMatch = match.id?.match(/^espn_[a-z0-9.]+_(\d+)$/i);
     if (espnIdMatch) {
       const eid = espnIdMatch[1];
       if (seenEspnIds.has(eid)) return;
       seenEspnIds.add(eid);
     }
 
+    // Also deduplicate by raw externalId (ESPN event ID stored separately)
+    if (match.externalId) {
+      const extId = String(match.externalId);
+      if (seenEspnIds.has(`ext:${extId}`)) return;
+      seenEspnIds.add(`ext:${extId}`);
+    }
+
     const key = getMatchKey(match);
-    // Also build the reverse key to catch swapped home/away between providers
-    const homeNormR = key.split('_')[0];
-    const awayNormR = key.split('_')[1];
-    const dateKeyR  = key.split('_')[2];
+    // Split carefully: date is always last segment (YYYY-MM-DD = 10 chars fixed)
+    // Use lastIndexOf to avoid splitting team names that contain underscores
+    const lastUnderscore = key.lastIndexOf('_');
+    const secondLastUnderscore = key.lastIndexOf('_', lastUnderscore - 1);
+    const homeNormR = key.slice(0, secondLastUnderscore);
+    const awayNormR = key.slice(secondLastUnderscore + 1, lastUnderscore);
+    const dateKeyR  = key.slice(lastUnderscore + 1);
     const reverseKey = `${awayNormR}_${homeNormR}_${dateKeyR}`;
     if (!seenMatchKeys.has(key) && !seenMatchKeys.has(reverseKey)) {
       seenMatchKeys.add(key);

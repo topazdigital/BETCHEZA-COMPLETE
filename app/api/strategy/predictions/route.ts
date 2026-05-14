@@ -245,7 +245,9 @@ Day ${dayNumber} — stake KES ${plan.stake.toLocaleString()}, target KES ${plan
 
 Select 1–5 football picks so that the COMBINED MULTIPLIED ODDS fall between 3.00 and 4.00.
 Example: 2 picks at 1.80 each = 3.24 combined. Or 1 pick at 3.50 = 3.50.
-Markets: 1X2, Double Chance, BTTS, Over/Under Goals.
+You may use ANY market available in the odds (1X2 Home/Draw/Away, Double Chance, BTTS Yes/No, Over/Under 2.5, Asian Handicap, etc).
+Choose markets that offer the best value based on the odds provided — do not limit to one market type.
+Only use odds that are actually listed for the match — never invent odds.
 
 Matches:
 ${matchList}
@@ -277,39 +279,87 @@ REQUIRED: product of all odds must be between 3.00 and 4.00.`;
       }
     }
 
-    // Fallback: pick up to 3 matches from pool using their real bookmaker odds
-    const pickMatches = pool.slice(0, 3);
+    // Fallback: pick matches from pool using the best available real bookmaker odds.
+    // For each match pick the single best-value selection across ALL available markets.
+    interface PoolMatch {
+      homeTeam: { name: string };
+      awayTeam: { name: string };
+      league: { name: string };
+      kickoffTime: Date;
+      odds?: { home: number; draw?: number; away: number };
+      markets?: Array<{ key?: string; name: string; outcomes?: Array<{ name: string; price: number }> }>;
+    }
+
+    interface Candidate {
+      pick: string;
+      market: string;
+      odds: number;
+      score: number; // how close to target 1.5–2.2 per leg
+    }
+
+    function bestSelectionForMatch(m: PoolMatch): { pick: string; market: string; odds: number } | null {
+      const candidates: Candidate[] = [];
+      const score = (o: number) => -Math.abs(o - 1.75); // target ~1.75 per leg
+
+      // Scan full markets array (BTTS, Over/Under, Asian Handicap, etc.)
+      if (m.markets && m.markets.length > 0) {
+        for (const mkt of m.markets) {
+          for (const out of mkt.outcomes || []) {
+            if (out.price >= 1.2 && out.price <= 3.5) {
+              candidates.push({ pick: out.name, market: mkt.name, odds: out.price, score: score(out.price) });
+            }
+          }
+        }
+      }
+
+      // Also consider h2h (1X2) from the simplified odds object
+      if (m.odds) {
+        if (m.odds.home >= 1.2 && m.odds.home <= 3.5) {
+          candidates.push({ pick: `${m.homeTeam.name} Win`, market: '1X2', odds: m.odds.home, score: score(m.odds.home) });
+        }
+        if (m.odds.draw && m.odds.draw >= 1.2 && m.odds.draw <= 3.5) {
+          candidates.push({ pick: 'Draw', market: '1X2', odds: m.odds.draw, score: score(m.odds.draw) });
+        }
+        if (m.odds.away >= 1.2 && m.odds.away <= 3.5) {
+          candidates.push({ pick: `${m.awayTeam.name} Win`, market: '1X2', odds: m.odds.away, score: score(m.odds.away) });
+        }
+        // Double Chance: proper bookmaker DC odds use whichever side is shorter
+        if (m.odds.draw) {
+          const dcHome = parseFloat(Math.min(m.odds.home, m.odds.draw).toFixed(2));
+          const dcAway = parseFloat(Math.min(m.odds.away, m.odds.draw).toFixed(2));
+          if (dcHome >= 1.05) candidates.push({ pick: `${m.homeTeam.name} Win or Draw`, market: 'Double Chance', odds: dcHome, score: score(dcHome) });
+          if (dcAway >= 1.05) candidates.push({ pick: `${m.awayTeam.name} Win or Draw`, market: 'Double Chance', odds: dcAway, score: score(dcAway) });
+        }
+      }
+
+      if (candidates.length === 0) return null;
+      candidates.sort((a, b) => b.score - a.score);
+      return { pick: candidates[0].pick, market: candidates[0].market, odds: candidates[0].odds };
+    }
+
+    // Greedy: keep adding picks until combined odds are 3.0–4.0
     const picks: StrategyPick[] = [];
-    for (let i = 0; i < pickMatches.length; i++) {
-      const m = pickMatches[i] as {
-        homeTeam: { name: string };
-        awayTeam: { name: string };
-        league: { name: string };
-        kickoffTime: Date;
-        odds?: { home: number; draw?: number; away: number };
-      };
-      // Use real DC odds (home + draw) if available, otherwise home win odds, else skip if no real odds
-      const dcOdds = m.odds
-        ? parseFloat(((m.odds.home + (m.odds.draw ?? 0)) / 2 * 1.05).toFixed(2))
-        : null;
-      const homeWinOdds = m.odds ? m.odds.home : null;
-      const useOdds = dcOdds && dcOdds >= 1.2 ? dcOdds : homeWinOdds && homeWinOdds >= 1.2 ? homeWinOdds : null;
-      if (!useOdds) continue;
+    let combined = 1;
+    for (let i = 0; i < Math.min(pool.length, 10) && picks.length < 5; i++) {
+      const m = pool[i] as PoolMatch;
+      const sel = bestSelectionForMatch(m);
+      if (!sel) continue;
+      // Skip if adding this pick would blow past 4.5 combined
+      if (combined * sel.odds > 4.5 && picks.length >= 1) continue;
       picks.push({
         id: `${todayStr}-pool-${i}`,
         homeTeam: m.homeTeam.name,
         awayTeam: m.awayTeam.name,
         league: m.league.name,
         matchTime: new Date(m.kickoffTime).toISOString(),
-        pick: m.odds?.draw ? `${m.homeTeam.name} Win or Draw` : `${m.homeTeam.name} Win`,
-        market: m.odds?.draw ? 'Double Chance' : '1X2',
-        odds: useOdds,
+        pick: sel.pick,
+        market: sel.market,
+        odds: sel.odds,
         confidence: 'Medium' as const,
-        reasoning: `${m.homeTeam.name} home advantage with solid recent form makes this a value pick.`,
+        reasoning: `Value pick based on available bookmaker odds for this fixture.`,
         result: 'pending' as const,
       });
-      // Stop once combined odds are in the 3.0-4.0 range
-      const combined = picks.reduce((acc, p) => acc * p.odds, 1);
+      combined = picks.reduce((acc, p) => acc * p.odds, 1);
       if (combined >= 3.0 && combined <= 4.5) break;
     }
     if (picks.length === 0) return buildAutoFallbackPicks(todayStr);

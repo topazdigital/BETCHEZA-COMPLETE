@@ -640,18 +640,10 @@ function computeSmartPick(
 
   if (candidates.length === 0) return null;
 
-  // Return the highest-confidence pick.
-  // Alternative markets must beat 1X2 by at least 3 points to win — this stops
-  // near-50/50 BTTS or O/U picks from displacing a strong 1X2 favourite.
+  // Return the highest-confidence pick across all markets.
+  // Pick whichever market has the strongest signal — no artificial bias.
   candidates.sort((a, b) => b.confidence - a.confidence);
-  const best = candidates[0];
-  if (best.market !== '1X2') {
-    const base1x2 = candidates.find(c => c.market === '1X2');
-    if (base1x2 && best.confidence - base1x2.confidence < 3) {
-      return base1x2;
-    }
-  }
-  return best;
+  return candidates[0];
 }
 
 function SmartBetBadge({
