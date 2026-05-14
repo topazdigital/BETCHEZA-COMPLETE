@@ -214,7 +214,14 @@ function isStaleLive(m: MatchData): boolean {
   const slug = m.sport.slug;
   const maxHours = STALE_LIVE_HOURS[slug] ?? 4;
   const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
-  return ageHours > maxHours;
+  if (ageHours > maxHours) return true;
+  // Extra check: if both teams have a score AND the match minute reported is
+  // beyond the maximum for that sport (e.g. >97 min for football), mark stale.
+  if (slug === 'soccer' || slug === 'football') {
+    const minute = (m as { minute?: number }).minute;
+    if (typeof minute === 'number' && minute >= 97 && m.status === 'live') return true;
+  }
+  return false;
 }
 
 // ── Route-level in-process cache ──────────────────────────────────────────────

@@ -24,21 +24,26 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
   }, []);
   const close = useCallback(() => setIsOpen(false), []);
 
-  // Open the modal automatically when the URL has ?auth=login|register|forgot.
-  // Used by the legacy /login and /register routes which now redirect with
-  // that query so the page background stays visible behind the dialog.
+  // Open the modal automatically when the URL has ?auth=login|register|forgot|reset
+  // or a bare ?reset_token=... (password-reset email link).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const v = params.get('auth');
+    const hasResetToken = !!params.get('reset_token');
+
     if (v === 'login' || v === 'register' || v === 'forgot' || v === 'reset') {
       setView(v);
       setIsOpen(true);
-      // Clean the URL so refreshes don't re-open the dialog.
+      // Keep reset_token in URL so the reset form can read it; strip auth param.
       params.delete('auth');
       const next = params.toString();
       const url = window.location.pathname + (next ? `?${next}` : '');
       window.history.replaceState(null, '', url);
+    } else if (hasResetToken) {
+      // Bare reset_token without auth param — still open the reset view.
+      setView('reset');
+      setIsOpen(true);
     }
   }, []);
 

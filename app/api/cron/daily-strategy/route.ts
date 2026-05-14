@@ -181,9 +181,21 @@ ODDS RULES — This is critical:
 - Where no odds are shown, estimate market-realistic odds: strong home favourites 1.35–1.75, slight favourites 1.80–2.20, even matches 2.50–3.10, clear underdogs 3.25+
 - Aim for picks in the 1.60–2.20 range each — 2 or 3 such picks combine to a 3.00–4.00 accumulator
 
+MARKET DIVERSITY RULES — vary the markets across picks:
+- Use a MIX of markets across the 1–5 picks. Do NOT use the same market for every pick.
+- Allowed markets (choose the best fit for each match):
+  • "1X2" — pick the outright match result (Home Win, Draw, or Away Win)
+  • "BTTS" — pick "Both Teams to Score - Yes" or "No"
+  • "Over/Under" — pick "Over 2.5 Goals" or "Under 2.5 Goals"
+  • "Double Chance" — pick "Home Win or Draw (1X)" or "Away Win or Draw (X2)"
+  • "Asian Handicap" — pick "Home -0.5" or "Away +0.5" for lopsided games
+- Choose BTTS Yes when both teams have scored in 4+ of last 5 games
+- Choose Over 2.5 when the match is likely high-scoring (both attack, weak defences)
+- Choose Double Chance when one side is a slight favourite but the draw is possible
+- Choose 1X2 for clear favourites (odds 1.40–2.20)
+
 ANALYSIS RULES:
 - Analyse each match based on home advantage, recent form, head-to-head records
-- Prefer Double Chance or BTTS markets for tight games to boost confidence
 - Write specific reasoning: mention actual factors like "7 wins in last 8 home games", "both teams scored in 4 of last 5 meetings", "trailing 2 points with 3 games left", etc.
 
 Available matches (with bookmaker odds where available):

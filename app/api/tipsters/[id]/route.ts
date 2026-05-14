@@ -223,7 +223,7 @@ function generateSportBreakdown(specialties: string[]) {
     const last = i === arr.length - 1;
     const pct = last ? remaining : Math.max(8, Math.floor(remaining / (arr.length - i)));
     remaining -= pct;
-    out.push({ sport: sport.charAt(0).toUpperCase() + sport.slice(1), percentage: pct, tips: Math.floor(pct * 3.5) });
+    out.push({ sport: sport.charAt(0).toUpperCase() + sport.slice(1), percentage: pct, tips: pct });
   });
   return out.sort((a, b) => b.percentage - a.percentage);
 }

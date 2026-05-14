@@ -271,6 +271,65 @@ export async function listAllComments(limit = 100): Promise<FeedComment[]> {
   return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
 }
 
+const DEMO_POSTS: Array<Omit<FeedPost, 'liked'>> = [
+  {
+    id: 'demo_post_1', userId: 1001, authorName: 'GoalMachine254', authorAvatar: null,
+    content: 'Manchester City vs Arsenal tonight — backing Man City to win. Pep has a full squad and City are unbeaten at the Etihad in 11 games. Odds at 1.75, confidence HIGH. 🔵 #EPL #BettingTips',
+    matchTitle: 'Manchester City vs Arsenal', pick: 'Home Win', odds: 1.75, likes: 47, commentCount: 12,
+    createdAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  },
+  {
+    id: 'demo_post_2', userId: 1002, authorName: 'BTTSPro256', authorAvatar: null,
+    content: 'Over 2.5 goals for Dortmund vs Bayern. Both sides score freely — Dortmund average 2.4 goals per home game, Bayern 1.9 away. Last 5 H2H: 4 went over 2.5. Backed at 1.68. 🇩🇪',
+    matchTitle: 'Dortmund vs Bayern Munich', pick: 'Over 2.5 Goals', odds: 1.68, likes: 33, commentCount: 8,
+    createdAt: new Date(Date.now() - 5 * 3600_000).toISOString(),
+  },
+  {
+    id: 'demo_post_3', userId: 1003, authorName: 'KPLProphet_KE', authorAvatar: null,
+    content: 'Gor Mahia BTTS Yes vs AFC Leopards today. Derby matches in the KPL almost always produce goals from both sides — 7 of last 8 derbies had BTTS Yes. Getting this at 1.90. Good luck! 🇰🇪 #KPL',
+    matchTitle: 'Gor Mahia vs AFC Leopards', pick: 'BTTS Yes', odds: 1.90, likes: 61, commentCount: 19,
+    createdAt: new Date(Date.now() - 8 * 3600_000).toISOString(),
+  },
+  {
+    id: 'demo_post_4', userId: 1004, authorName: 'ValueHunter_NG', authorAvatar: null,
+    content: 'Real Madrid Double Chance (Win or Draw) for the Champions League tie. They\'ve only lost 1 of their last 22 European home games. At 1.22 odds it looks short but the safety is worth it in a combo. 🏆',
+    matchTitle: 'Real Madrid vs Napoli', pick: 'Home Win or Draw', odds: 1.22, likes: 28, commentCount: 5,
+    createdAt: new Date(Date.now() - 12 * 3600_000).toISOString(),
+  },
+  {
+    id: 'demo_post_5', userId: 1005, authorName: 'SafeBets_Pro', authorAvatar: null,
+    content: 'My 3-leg acca for today: Arsenal Win (1.73) + Over 2.5 Dortmund (1.68) + BTTS Yes Liverpool (1.65). Combined = 4.80. Staking 2% bankroll only. Always manage your risk! 💰 #AccaTips',
+    matchTitle: null, pick: 'Accumulator', odds: 4.80, likes: 94, commentCount: 31,
+    createdAt: new Date(Date.now() - 18 * 3600_000).toISOString(),
+  },
+];
+
 export function seedDemoPostsIfEmpty(): void {
-  // No-op: demo seeding handled by createPost calls on first load
+  if (s.posts.size > 0) return;
+  for (const post of DEMO_POSTS) {
+    s.posts.set(post.id, { ...post, liked: false });
+    s.comments.set(post.id, []);
+    s.likes.set(post.id, new Set());
+  }
+  // Async: also try to write demo posts to DB if it's available and empty
+  if (hasDb()) {
+    (async () => {
+      try {
+        const r = await query<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM feed_posts');
+        if ((r.rows[0]?.cnt ?? 0) > 0) return; // DB already has posts
+        for (const post of DEMO_POSTS) {
+          await query(
+            `INSERT IGNORE INTO feed_posts
+              (id, user_id, author_name, author_avatar, content, match_id, match_title,
+               pick, odds, image_url, likes, comment_count, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [post.id, post.userId, post.authorName, post.authorAvatar || null,
+             sanitise(post.content), null, sanitise(post.matchTitle),
+             sanitise(post.pick), post.odds || null, null, post.likes, post.commentCount,
+             post.createdAt],
+          );
+        }
+      } catch (e) { console.warn('[feed] demo seed to DB failed', e); }
+    })();
+  }
 }

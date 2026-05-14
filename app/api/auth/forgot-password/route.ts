@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const { token, expiresAt } = createPasswordResetToken(user.id, user.email);
   const origin = getOrigin(req);
-  const link = `${origin}/?reset_token=${encodeURIComponent(token)}#reset`;
+  const link = `${origin}/?auth=reset&reset_token=${encodeURIComponent(token)}`;
 
   const html = `
     <div style="font-family:Inter,system-ui,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#f7fafc;">
