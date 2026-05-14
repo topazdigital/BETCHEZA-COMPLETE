@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mockUsers } from '@/lib/mock-data';
-import { queryOne, getPool } from '@/lib/db';
+import { queryOne } from '@/lib/db';
 import { createPasswordResetToken } from '@/lib/password-reset-store';
 import { sendMail } from '@/lib/mailer';
 
@@ -20,23 +19,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'A valid email is required' }, { status: 400 });
   }
 
-  // DB-first lookup, fall back to in-memory mock when no DB is configured
-  let user: { id: number; email: string; display_name: string } | undefined;
-  if (getPool()) {
-    try {
-      const row = await queryOne<{ id: number; email: string; display_name: string }>(
-        'SELECT id, email, display_name FROM users WHERE LOWER(email) = ? LIMIT 1',
-        [email],
-      );
-      if (row) user = row;
-    } catch { /* fall through to mock */ }
-  }
-  if (!user) {
-    const m = mockUsers.find((u) => u.email.toLowerCase() === email);
-    if (m) user = { id: m.id, email: m.email, display_name: m.display_name };
-  }
-
   // Always pretend success so the endpoint can't be used to enumerate accounts.
+  let user: { id: number; email: string; display_name: string } | null = null;
+  try {
+    user = await queryOne<{ id: number; email: string; display_name: string }>(
+      'SELECT id, email, display_name FROM users WHERE LOWER(email) = ? LIMIT 1',
+      [email],
+    );
+  } catch { /* fall through */ }
   if (!user) {
     return NextResponse.json({ ok: true });
   }

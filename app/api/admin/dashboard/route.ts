@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { requireAdmin } from '@/lib/admin-auth';
 import { hasPermission } from '@/lib/permissions';
-import { mockUsers } from '@/lib/mock-data';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
+import { query } from '@/lib/db';
 import {
   listAllAutoTips,
   getAutoTipsStats,
@@ -34,7 +33,30 @@ export async function GET(_req: NextRequest) {
   settleStaleAutoTips();
 
   const fakes = getFakeTipsters();
-  const reals = mockUsers; // in mock mode these are our "real" users
+
+  // Real user count from DB
+  let realUserCount = 0;
+  let recentRealUsers: Array<{ id: number; name: string; email: string; avatar: string; joined: string; joinedAt: string; status: string; role: string; isFake: boolean }> = [];
+  try {
+    const countRow = await query<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM users');
+    realUserCount = countRow.rows[0]?.cnt ?? 0;
+    const recentRows = await query<{ id: number; display_name: string; username: string; email: string; avatar_url: string | null; role: string; is_verified: number; created_at: string }>(
+      'SELECT id, display_name, username, email, avatar_url, role, is_verified, created_at FROM users ORDER BY created_at DESC LIMIT 8'
+    );
+    recentRealUsers = recentRows.rows.map(u => ({
+      id: u.id,
+      name: u.display_name || u.username || u.email,
+      email: u.email,
+      avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
+      joined: timeAgo(u.created_at),
+      joinedAt: new Date(u.created_at).toISOString(),
+      status: u.is_verified ? 'active' : 'pending',
+      role: u.role,
+      isFake: false,
+    }));
+  } catch (e) {
+    console.error('[admin/dashboard] DB user query failed:', e);
+  }
 
   // ── Today's matches ────────────────────────────────────────────────
   const now = Date.now();
@@ -55,13 +77,13 @@ export async function GET(_req: NextRequest) {
   } catch { /* ignore */ }
 
   const tipsStats = getAutoTipsStats();
-  const totalUsers = reals.length + fakes.length;
+  const totalUsers = realUserCount + fakes.length;
 
   const stats = [
     {
       title: 'Total Users',
       value: totalUsers.toLocaleString(),
-      change: `+${reals.length} real`,
+      change: `+${realUserCount} real`,
       trend: 'up' as const,
       icon: 'users',
     },
@@ -105,17 +127,6 @@ export async function GET(_req: NextRequest) {
   ];
 
   // ── Recent users (mix of real + fake, newest first) ────────────────
-  const realRows = reals.map(u => ({
-    id: u.id,
-    name: u.display_name || u.username || u.email,
-    email: u.email,
-    avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
-    joined: timeAgo(u.created_at as Date),
-    joinedAt: (u.created_at instanceof Date ? u.created_at : new Date(u.created_at as unknown as string)).toISOString(),
-    status: u.is_verified ? 'active' : 'pending',
-    role: u.role,
-    isFake: false as const,
-  }));
   const fakeRows = fakes.slice(0, 25).map(t => ({
     id: t.id,
     name: t.displayName,
@@ -127,7 +138,7 @@ export async function GET(_req: NextRequest) {
     role: 'tipster',
     isFake: true as const,
   }));
-  const recentUsers = [...realRows, ...fakeRows]
+  const recentUsers = [...recentRealUsers, ...fakeRows]
     .sort((a, b) => (a.joinedAt < b.joinedAt ? 1 : -1))
     .slice(0, 8);
 
@@ -176,12 +187,12 @@ export async function GET(_req: NextRequest) {
       ts: new Date(t.createdAt).getTime(),
     });
   }
-  for (const u of reals.slice(-3).reverse()) {
+  for (const u of recentRealUsers.slice(0, 3)) {
     activity.push({
       action: 'New user joined',
-      user: u.display_name || u.email,
-      time: timeAgo(u.created_at as Date),
-      ts: (u.created_at instanceof Date ? u.created_at : new Date(u.created_at as unknown as string)).getTime(),
+      user: u.name,
+      time: u.joined,
+      ts: new Date(u.joinedAt).getTime(),
     });
   }
   activity.sort((a, b) => b.ts - a.ts);
@@ -195,7 +206,7 @@ export async function GET(_req: NextRequest) {
     liveActivity,
     counts: {
       totalUsers,
-      realUsers: reals.length,
+      realUsers: realUserCount,
       fakeTipsters: fakes.length,
       todayMatches: todayCount,
       upcomingMatches: upcomingCount,

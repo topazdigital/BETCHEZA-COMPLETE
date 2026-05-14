@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { setAuthCookie, verifyPassword } from '@/lib/auth';
-import { mockUsers } from '@/lib/mock-data';
-import { queryOne, getPool } from '@/lib/db';
+import { queryOne } from '@/lib/db';
 import { issueTwoFactorChallenge, requiresTwoFactor } from '@/lib/two-factor-store';
 import {
   CAPTCHA_THRESHOLD,
@@ -29,30 +28,10 @@ interface DbUser {
 }
 
 async function findUserByEmail(email: string): Promise<DbUser | null> {
-  if (getPool()) {
-    try {
-      const u = await queryOne<DbUser>(
-        'SELECT id, email, username, display_name, avatar_url, role, balance, is_verified, password_hash FROM users WHERE email = ? LIMIT 1',
-        [email]
-      );
-      if (u) return u;
-    } catch (err) {
-      console.warn('[login] DB lookup failed, falling back to mock:', err);
-    }
-  }
-  const mock = mockUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
-  if (!mock) return null;
-  return {
-    id: mock.id,
-    email: mock.email,
-    username: mock.username,
-    display_name: mock.display_name,
-    avatar_url: mock.avatar_url,
-    role: mock.role,
-    balance: mock.balance,
-    is_verified: !!mock.is_verified,
-    password_hash: mock.password_hash,
-  };
+  return queryOne<DbUser>(
+    'SELECT id, email, username, display_name, avatar_url, role, balance, is_verified, password_hash FROM users WHERE LOWER(email) = ? LIMIT 1',
+    [email.toLowerCase()]
+  );
 }
 
 export async function POST(request: Request) {
@@ -142,8 +121,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const isDemoPassword = password === 'admin123';
-    const isValidPassword = isDemoPassword || await verifyPassword(password, user.password_hash);
+    const isValidPassword = await verifyPassword(password, user.password_hash);
 
     if (!isValidPassword) {
       recordFailure(failureKey);

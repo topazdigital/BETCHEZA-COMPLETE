@@ -1,6 +1,6 @@
-// Community feed store — MySQL-backed with in-memory fallback.
+// Community feed store — MySQL-backed (no in-memory fallback).
 
-import { query, getPool } from './db';
+import { query } from './db';
 import { dispatchNotification, dispatchToMany } from './notification-dispatcher';
 import { listFollowersOfTipster } from './follows-store';
 
@@ -31,94 +31,66 @@ export interface FeedComment {
   createdAt: string;
 }
 
-interface Stores {
-  posts: Map<string, FeedPost>;
-  comments: Map<string, FeedComment[]>;
-  likes: Map<string, Set<number>>;
-}
-
-const g = globalThis as { __feedStore?: Stores };
-g.__feedStore = g.__feedStore || { posts: new Map(), comments: new Map(), likes: new Map() };
-const s = g.__feedStore;
-
-const hasDb = () => !!getPool();
-
 function makeId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/**
- * Strip 4-byte UTF-8 characters (emoji, supplementary symbols, etc.) that
- * MySQL's legacy `utf8` charset cannot store. The `utf8mb4` charset handles
- * them — but many live installs still use `utf8`, so we sanitise on the way
- * in to avoid ER_TRUNCATED_WRONG_VALUE_FOR_FIELD errors.
- */
 function sanitise(str: string | null | undefined): string | null {
   if (!str) return str ?? null;
-  // Strip UTF-16 surrogates (D800–DFFF) which represent 4-byte emoji / supplementary
-  // characters that MySQL's legacy utf8 charset rejects.
   return str.replace(/[\uD800-\uDFFF]/g, '');
 }
 
 // ─── POSTS ───────────────────────────────────────
 export async function listPosts(limit = 50, viewerId?: number | null): Promise<FeedPost[]> {
-  if (hasDb()) {
-    try {
-      const r = await query<{
-        id: string; user_id: number; author_name: string; author_avatar: string | null;
-        content: string; match_id: string | null; match_title: string | null;
-        pick: string | null; odds: number | null; image_url: string | null;
-        likes: number; comment_count: number; created_at: string;
-      }>(`SELECT id, user_id, author_name, author_avatar, content,
-                 match_id, match_title, pick, odds, image_url,
-                 likes, comment_count, created_at
-          FROM feed_posts
-          ORDER BY created_at DESC LIMIT ?`,
-        [limit]);
-      if (r.rows.length > 0) {
-        const ids = r.rows.map(p => p.id);
-        let likedSet = new Set<string>();
-        if (viewerId && ids.length > 0) {
-          const placeholders = ids.map(() => '?').join(',');
-          const lr = await query<{ post_id: string }>(
-            `SELECT post_id FROM feed_post_likes WHERE user_id = ? AND post_id IN (${placeholders})`,
-            [viewerId, ...ids],
-          );
-          likedSet = new Set(lr.rows.map(x => x.post_id));
-        }
-        return r.rows.map(x => ({
-          id: x.id, userId: x.user_id, authorName: x.author_name, authorAvatar: x.author_avatar,
-          content: x.content, matchId: x.match_id, matchTitle: x.match_title, pick: x.pick,
-          odds: x.odds, imageUrl: x.image_url, likes: x.likes || 0, commentCount: x.comment_count || 0,
-          liked: likedSet.has(x.id),
-          createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
-        }));
-      }
-    } catch (e) { console.warn('[feed] db read failed, falling back to memory', e); }
+  try {
+    const r = await query<{
+      id: string; user_id: number; author_name: string; author_avatar: string | null;
+      content: string; match_id: string | null; match_title: string | null;
+      pick: string | null; odds: number | null; image_url: string | null;
+      likes: number; comment_count: number; created_at: string;
+    }>(`SELECT id, user_id, author_name, author_avatar, content,
+               match_id, match_title, pick, odds, image_url,
+               likes, comment_count, created_at
+        FROM feed_posts
+        ORDER BY created_at DESC LIMIT ?`,
+      [limit]);
+
+    let likedSet = new Set<string>();
+    if (viewerId && r.rows.length > 0) {
+      const ids = r.rows.map(p => p.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const lr = await query<{ post_id: string }>(
+        `SELECT post_id FROM feed_post_likes WHERE user_id = ? AND post_id IN (${placeholders})`,
+        [viewerId, ...ids],
+      );
+      likedSet = new Set(lr.rows.map(x => x.post_id));
+    }
+
+    return r.rows.map(x => ({
+      id: x.id, userId: x.user_id, authorName: x.author_name, authorAvatar: x.author_avatar,
+      content: x.content, matchId: x.match_id, matchTitle: x.match_title, pick: x.pick,
+      odds: x.odds, imageUrl: x.image_url, likes: x.likes || 0, commentCount: x.comment_count || 0,
+      liked: likedSet.has(x.id),
+      createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
+    }));
+  } catch (e) {
+    console.error('[feed] listPosts DB error:', e);
+    return [];
   }
-  const arr = Array.from(s.posts.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
-  return arr.map(p => ({ ...p, liked: viewerId ? !!s.likes.get(p.id)?.has(viewerId) : false }));
 }
 
 export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'commentCount' | 'createdAt'>): Promise<FeedPost> {
   const post: FeedPost = { id: makeId('post'), likes: 0, commentCount: 0, createdAt: new Date().toISOString(), ...input };
-  if (hasDb()) {
-    try {
-      await query(
-        `INSERT INTO feed_posts
-          (id, user_id, author_name, author_avatar, content, match_id, match_title,
-           pick, odds, image_url, likes, comment_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NOW())`,
-        [post.id, post.userId, sanitise(post.authorName), post.authorAvatar || null,
-         sanitise(post.content),
-         post.matchId || null, sanitise(post.matchTitle), sanitise(post.pick),
-         post.odds || null, post.imageUrl || null],
-      );
-    } catch (e) { console.warn('[feed] db insert failed', e); }
-  }
-  s.posts.set(post.id, post);
-  s.comments.set(post.id, []);
-  s.likes.set(post.id, new Set());
+  await query(
+    `INSERT INTO feed_posts
+      (id, user_id, author_name, author_avatar, content, match_id, match_title,
+       pick, odds, image_url, likes, comment_count, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NOW())`,
+    [post.id, post.userId, sanitise(post.authorName), post.authorAvatar || null,
+     sanitise(post.content),
+     post.matchId || null, sanitise(post.matchTitle), sanitise(post.pick),
+     post.odds || null, post.imageUrl || null],
+  );
   try {
     const followers = await listFollowersOfTipster(post.userId);
     if (followers.length > 0) {
@@ -129,207 +101,105 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
 }
 
 export async function deletePost(postId: string): Promise<void> {
-  if (hasDb()) {
-    try {
-      await query(`DELETE FROM feed_post_likes WHERE post_id = ?`, [postId]);
-      await query(`DELETE FROM feed_comments WHERE post_id = ?`, [postId]);
-      await query(`DELETE FROM feed_posts WHERE id = ?`, [postId]);
-    } catch (e) { console.warn('[feed] db deletePost failed', e); }
-  }
-  s.posts.delete(postId);
-  s.comments.delete(postId);
-  s.likes.delete(postId);
+  await query(`DELETE FROM feed_post_likes WHERE post_id = ?`, [postId]);
+  await query(`DELETE FROM feed_comments WHERE post_id = ?`, [postId]);
+  await query(`DELETE FROM feed_posts WHERE id = ?`, [postId]);
 }
 
 // ─── LIKES ───────────────────────────────────────
 export async function toggleLike(postId: string, userId: number, likerName?: string): Promise<{ liked: boolean; likes: number }> {
-  let liked = false;
-  let likes = 0;
-  if (hasDb()) {
-    try {
-      const existing = await query<{ id: number }>(
-        `SELECT id FROM feed_post_likes WHERE post_id = ? AND user_id = ? LIMIT 1`, [postId, userId]);
-      if (existing.rows.length > 0) {
-        await query(`DELETE FROM feed_post_likes WHERE post_id = ? AND user_id = ?`, [postId, userId]);
-        await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
-        liked = false;
-      } else {
-        await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
-        await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
-        liked = true;
-      }
-      const r = await query<{ likes: number }>(`SELECT likes FROM feed_posts WHERE id = ? LIMIT 1`, [postId]);
-      likes = r.rows[0]?.likes ?? 0;
-    } catch (e) { console.warn('[feed] db toggleLike failed', e); }
+  const existing = await query<{ id: number }>(
+    `SELECT id FROM feed_post_likes WHERE post_id = ? AND user_id = ? LIMIT 1`, [postId, userId]);
+  let liked: boolean;
+  if (existing.rows.length > 0) {
+    await query(`DELETE FROM feed_post_likes WHERE post_id = ? AND user_id = ?`, [postId, userId]);
+    await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
+    liked = false;
+  } else {
+    await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
+    await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
+    liked = true;
   }
-  let set = s.likes.get(postId);
-  if (!set) { set = new Set(); s.likes.set(postId, set); }
-  if (set.has(userId)) { set.delete(userId); liked = false; }
-  else { set.add(userId); liked = true; }
-  const post = s.posts.get(postId);
-  if (post) { post.likes = set.size; likes = post.likes; }
-  if (liked && post && post.userId !== userId) {
-    void dispatchNotification({ userId: post.userId, type: 'post_like', title: `${likerName || 'Someone'} liked your post`, content: post.content.length > 100 ? `${post.content.slice(0, 100)}…` : post.content, link: `/feed#${post.id}` }).catch(e => console.warn('[feed] like notify failed', e));
+  const r = await query<{ likes: number; user_id: number; content: string }>(
+    `SELECT likes, user_id, content FROM feed_posts WHERE id = ? LIMIT 1`, [postId]);
+  const likes = r.rows[0]?.likes ?? 0;
+  if (liked && r.rows[0] && r.rows[0].user_id !== userId) {
+    const content = r.rows[0].content;
+    void dispatchNotification({ userId: r.rows[0].user_id, type: 'post_like', title: `${likerName || 'Someone'} liked your post`, content: content.length > 100 ? `${content.slice(0, 100)}…` : content, link: `/feed#${postId}` }).catch(e => console.warn('[feed] like notify failed', e));
   }
   return { liked, likes };
 }
 
 // ─── COMMENTS ────────────────────────────────────
 export async function listComments(postId: string): Promise<FeedComment[]> {
-  if (hasDb()) {
-    try {
-      const r = await query<{
-        id: string; post_id: string; user_id: number; author_name: string;
-        author_avatar: string | null; content: string; created_at: string;
-      }>(
-        `SELECT id, post_id, user_id, author_name, author_avatar, content, created_at
-         FROM feed_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT 100`,
-        [postId]
-      );
-      if (r.rows.length > 0) {
-        return r.rows.map(x => ({
-          id: x.id, postId: x.post_id, userId: x.user_id,
-          authorName: x.author_name, authorAvatar: x.author_avatar,
-          content: x.content,
-          createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
-        }));
-      }
-    } catch (e) { console.warn('[feed] db listComments failed', e); }
+  try {
+    const r = await query<{
+      id: string; post_id: string; user_id: number; author_name: string;
+      author_avatar: string | null; content: string; created_at: string;
+    }>(
+      `SELECT id, post_id, user_id, author_name, author_avatar, content, created_at
+       FROM feed_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT 100`,
+      [postId]
+    );
+    return r.rows.map(x => ({
+      id: x.id, postId: x.post_id, userId: x.user_id,
+      authorName: x.author_name, authorAvatar: x.author_avatar,
+      content: x.content,
+      createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
+    }));
+  } catch (e) {
+    console.error('[feed] listComments DB error:', e);
+    return [];
   }
-  return s.comments.get(postId) ?? [];
 }
 
 export async function addComment(input: Omit<FeedComment, 'id' | 'createdAt'>): Promise<FeedComment> {
   const comment: FeedComment = { id: makeId('cmt'), createdAt: new Date().toISOString(), ...input };
-  if (hasDb()) {
-    try {
-      await query(
-        `INSERT INTO feed_comments (id, post_id, user_id, author_name, author_avatar, content, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [comment.id, comment.postId, comment.userId, sanitise(comment.authorName), comment.authorAvatar || null, sanitise(comment.content)]
-      );
-      await query(`UPDATE feed_posts SET comment_count = comment_count + 1 WHERE id = ?`, [comment.postId]);
-    } catch (e) { console.warn('[feed] db addComment failed', e); }
-  }
-  const list = s.comments.get(comment.postId) ?? [];
-  list.push(comment);
-  s.comments.set(comment.postId, list);
-  const post = s.posts.get(comment.postId);
-  if (post) post.commentCount = list.length;
-  if (post && post.userId !== comment.userId) {
-    void dispatchNotification({ userId: post.userId, type: 'comment', title: `${comment.authorName} commented on your post`, content: comment.content, link: `/feed#${comment.postId}` }).catch(() => {});
-  }
+  await query(
+    `INSERT INTO feed_comments (id, post_id, user_id, author_name, author_avatar, content, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+    [comment.id, comment.postId, comment.userId, sanitise(comment.authorName), comment.authorAvatar || null, sanitise(comment.content)]
+  );
+  await query(`UPDATE feed_posts SET comment_count = comment_count + 1 WHERE id = ?`, [comment.postId]);
+  try {
+    const r = await query<{ user_id: number; content: string }>(
+      `SELECT user_id, content FROM feed_posts WHERE id = ? LIMIT 1`, [comment.postId]);
+    if (r.rows[0] && r.rows[0].user_id !== comment.userId) {
+      void dispatchNotification({ userId: r.rows[0].user_id, type: 'comment', title: `${comment.authorName} commented on your post`, content: comment.content, link: `/feed#${comment.postId}` }).catch(() => {});
+    }
+  } catch { /* notification is non-critical */ }
   return comment;
 }
 
-// ─── ALIASES & EXTRAS ────────────────────────────
 export const createComment = addComment;
 
 export async function deleteComment(commentId: string): Promise<boolean> {
-  if (hasDb()) {
-    try {
-      const r = await query(
-        `DELETE FROM feed_comments WHERE id = ?`, [commentId]
-      );
-      if ((r.affectedRows ?? 0) > 0) {
-        await query(`UPDATE feed_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = (SELECT post_id FROM feed_comments WHERE id = ? LIMIT 1)`, [commentId]).catch(() => {});
-        return true;
-      }
-    } catch (e) { console.warn('[feed] db deleteComment failed', e); }
-  }
-  for (const [postId, list] of s.comments) {
-    const idx = list.findIndex(c => c.id === commentId);
-    if (idx !== -1) {
-      list.splice(idx, 1);
-      s.comments.set(postId, list);
-      const post = s.posts.get(postId);
-      if (post) post.commentCount = list.length;
-      return true;
-    }
+  const r = await query<{ post_id: string }>(
+    `SELECT post_id FROM feed_comments WHERE id = ? LIMIT 1`, [commentId]);
+  const postId = r.rows[0]?.post_id;
+  const del = await query(`DELETE FROM feed_comments WHERE id = ?`, [commentId]);
+  if ((del.affectedRows ?? 0) > 0 && postId) {
+    await query(`UPDATE feed_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = ?`, [postId]).catch(() => {});
+    return true;
   }
   return false;
 }
 
 export async function listAllComments(limit = 100): Promise<FeedComment[]> {
-  if (hasDb()) {
-    try {
-      const r = await query<{
-        id: string; post_id: string; user_id: number;
-        author_name: string; author_avatar: string | null;
-        content: string; created_at: string;
-      }>(`SELECT id, post_id, user_id, author_name, author_avatar, content, created_at
-          FROM feed_comments ORDER BY created_at DESC LIMIT ?`, [limit]);
-      return r.rows.map(row => ({
-        id: row.id, postId: row.post_id, userId: row.user_id,
-        authorName: row.author_name, authorAvatar: row.author_avatar,
-        content: row.content, createdAt: row.created_at,
-      }));
-    } catch (e) { console.warn('[feed] db listAllComments failed', e); }
-  }
-  const all: FeedComment[] = [];
-  for (const list of s.comments.values()) all.push(...list);
-  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
-}
-
-const DEMO_POSTS: Array<Omit<FeedPost, 'liked'>> = [
-  {
-    id: 'demo_post_1', userId: 1001, authorName: 'GoalMachine254', authorAvatar: null,
-    content: 'Manchester City vs Arsenal tonight — backing Man City to win. Pep has a full squad and City are unbeaten at the Etihad in 11 games. Odds at 1.75, confidence HIGH. 🔵 #EPL #BettingTips',
-    matchTitle: 'Manchester City vs Arsenal', pick: 'Home Win', odds: 1.75, likes: 47, commentCount: 12,
-    createdAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
-  },
-  {
-    id: 'demo_post_2', userId: 1002, authorName: 'BTTSPro256', authorAvatar: null,
-    content: 'Over 2.5 goals for Dortmund vs Bayern. Both sides score freely — Dortmund average 2.4 goals per home game, Bayern 1.9 away. Last 5 H2H: 4 went over 2.5. Backed at 1.68. 🇩🇪',
-    matchTitle: 'Dortmund vs Bayern Munich', pick: 'Over 2.5 Goals', odds: 1.68, likes: 33, commentCount: 8,
-    createdAt: new Date(Date.now() - 5 * 3600_000).toISOString(),
-  },
-  {
-    id: 'demo_post_3', userId: 1003, authorName: 'KPLProphet_KE', authorAvatar: null,
-    content: 'Gor Mahia BTTS Yes vs AFC Leopards today. Derby matches in the KPL almost always produce goals from both sides — 7 of last 8 derbies had BTTS Yes. Getting this at 1.90. Good luck! 🇰🇪 #KPL',
-    matchTitle: 'Gor Mahia vs AFC Leopards', pick: 'BTTS Yes', odds: 1.90, likes: 61, commentCount: 19,
-    createdAt: new Date(Date.now() - 8 * 3600_000).toISOString(),
-  },
-  {
-    id: 'demo_post_4', userId: 1004, authorName: 'ValueHunter_NG', authorAvatar: null,
-    content: 'Real Madrid Double Chance (Win or Draw) for the Champions League tie. They\'ve only lost 1 of their last 22 European home games. At 1.22 odds it looks short but the safety is worth it in a combo. 🏆',
-    matchTitle: 'Real Madrid vs Napoli', pick: 'Home Win or Draw', odds: 1.22, likes: 28, commentCount: 5,
-    createdAt: new Date(Date.now() - 12 * 3600_000).toISOString(),
-  },
-  {
-    id: 'demo_post_5', userId: 1005, authorName: 'SafeBets_Pro', authorAvatar: null,
-    content: 'My 3-leg acca for today: Arsenal Win (1.73) + Over 2.5 Dortmund (1.68) + BTTS Yes Liverpool (1.65). Combined = 4.80. Staking 2% bankroll only. Always manage your risk! 💰 #AccaTips',
-    matchTitle: null, pick: 'Accumulator', odds: 4.80, likes: 94, commentCount: 31,
-    createdAt: new Date(Date.now() - 18 * 3600_000).toISOString(),
-  },
-];
-
-export function seedDemoPostsIfEmpty(): void {
-  if (s.posts.size > 0) return;
-  for (const post of DEMO_POSTS) {
-    s.posts.set(post.id, { ...post, liked: false });
-    s.comments.set(post.id, []);
-    s.likes.set(post.id, new Set());
-  }
-  // Async: also try to write demo posts to DB if it's available and empty
-  if (hasDb()) {
-    (async () => {
-      try {
-        const r = await query<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM feed_posts');
-        if ((r.rows[0]?.cnt ?? 0) > 0) return; // DB already has posts
-        for (const post of DEMO_POSTS) {
-          await query(
-            `INSERT IGNORE INTO feed_posts
-              (id, user_id, author_name, author_avatar, content, match_id, match_title,
-               pick, odds, image_url, likes, comment_count, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [post.id, post.userId, post.authorName, post.authorAvatar || null,
-             sanitise(post.content), null, sanitise(post.matchTitle),
-             sanitise(post.pick), post.odds || null, null, post.likes, post.commentCount,
-             post.createdAt],
-          );
-        }
-      } catch (e) { console.warn('[feed] demo seed to DB failed', e); }
-    })();
+  try {
+    const r = await query<{
+      id: string; post_id: string; user_id: number;
+      author_name: string; author_avatar: string | null;
+      content: string; created_at: string;
+    }>(`SELECT id, post_id, user_id, author_name, author_avatar, content, created_at
+        FROM feed_comments ORDER BY created_at DESC LIMIT ?`, [limit]);
+    return r.rows.map(row => ({
+      id: row.id, postId: row.post_id, userId: row.user_id,
+      authorName: row.author_name, authorAvatar: row.author_avatar,
+      content: row.content, createdAt: row.created_at,
+    }));
+  } catch (e) {
+    console.error('[feed] listAllComments DB error:', e);
+    return [];
   }
 }

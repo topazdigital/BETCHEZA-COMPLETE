@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { listPosts, createPost, seedDemoPostsIfEmpty } from '@/lib/feed-store';
+import { listPosts, createPost } from '@/lib/feed-store';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  seedDemoPostsIfEmpty();
   const user = await getCurrentUser();
   const limit = Number(req.nextUrl.searchParams.get('limit') || 50);
   const posts = await listPosts(limit, user?.userId ?? null);

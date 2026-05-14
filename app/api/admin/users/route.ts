@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/admin-auth';
+import { getCurrentUser } from '@/lib/auth';
 import { hasPermission, type Role, ROLE_LABELS } from '@/lib/permissions';
-import { mockUsers } from '@/lib/mock-data';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getUserRoleOverride, setUserRoleOverride } from '@/lib/user-role-overrides';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,22 +24,37 @@ interface AdminUserRow {
   lastActive: string;
 }
 
-function buildAllUsers(): AdminUserRow[] {
-  const real: AdminUserRow[] = mockUsers.map(u => ({
-    id: u.id,
-    username: u.username,
-    displayName: u.display_name || u.username,
-    email: u.email || '',
-    avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
-    role: (getUserRoleOverride(u.id) || u.role || 'user') as Role,
-    status: 'active' as const,
-    isFake: false,
-    joined: new Date(u.created_at).toLocaleDateString(),
-    predictions: u.tipster_profile?.total_tips ?? 0,
-    winRate: u.tipster_profile?.win_rate ?? 0,
-    followers: u.tipster_profile?.followers_count ?? 0,
-    lastActive: 'Online',
-  }));
+async function buildAllUsers(): Promise<AdminUserRow[]> {
+  let realRows: AdminUserRow[] = [];
+  try {
+    const r = await query<{
+      id: number; username: string; display_name: string; email: string;
+      avatar_url: string | null; role: string; is_verified: number;
+      created_at: string; total_tips: number | null; win_rate: number | null; followers_count: number | null;
+    }>(`SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role,
+              u.is_verified, u.created_at,
+              tp.total_tips, tp.win_rate, tp.followers_count
+       FROM users u
+       LEFT JOIN tipster_profiles tp ON tp.user_id = u.id
+       ORDER BY u.created_at DESC LIMIT 500`);
+    realRows = r.rows.map(u => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.display_name || u.username,
+      email: u.email || '',
+      avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
+      role: (getUserRoleOverride(u.id) || u.role || 'user') as Role,
+      status: u.is_verified ? 'active' : 'pending',
+      isFake: false,
+      joined: new Date(u.created_at).toLocaleDateString(),
+      predictions: u.total_tips ?? 0,
+      winRate: u.win_rate ?? 0,
+      followers: u.followers_count ?? 0,
+      lastActive: 'Online',
+    }));
+  } catch (e) {
+    console.error('[admin/users] DB query failed:', e);
+  }
 
   const fakes: AdminUserRow[] = getFakeTipsters().map(t => ({
     id: t.id,
@@ -57,7 +72,7 @@ function buildAllUsers(): AdminUserRow[] {
     lastActive: 'Auto',
   }));
 
-  return [...real, ...fakes];
+  return [...realRows, ...fakes];
 }
 
 export async function GET(request: NextRequest) {
@@ -69,9 +84,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const search = (searchParams.get('search') || '').toLowerCase();
   const roleFilter = searchParams.get('role');
-  const sourceFilter = searchParams.get('source'); // 'real' | 'fake'
+  const sourceFilter = searchParams.get('source');
 
-  let users = buildAllUsers();
+  let users = await buildAllUsers();
   if (search) {
     users = users.filter(u =>
       u.username.toLowerCase().includes(search) ||
@@ -100,9 +115,6 @@ export async function GET(request: NextRequest) {
   });
 }
 
-/**
- * PATCH { id, role }  — change a user's role (admins only).
- */
 export async function PATCH(request: NextRequest) {
   const me = await getCurrentUser();
   if (!me || !hasPermission(me.role, 'admin.users.role')) {

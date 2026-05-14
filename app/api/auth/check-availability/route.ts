@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { mockUsers } from '@/lib/mock-data';
 import { queryOne } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -12,30 +11,28 @@ const RESERVED_USERNAMES = new Set([
 
 async function isEmailTaken(email: string): Promise<boolean> {
   const lower = email.toLowerCase();
-  if (mockUsers.some((u) => u.email.toLowerCase() === lower)) return true;
   try {
     const row = await queryOne<{ id: number }>(
       'SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1',
       [lower],
     );
-    if (row) return true;
+    return !!row;
   } catch {
-    // DB unavailable
+    return false;
   }
-  return false;
 }
 
 async function isUsernameTaken(username: string): Promise<boolean> {
   const lower = username.toLowerCase();
-  if (mockUsers.some((u) => u.username.toLowerCase() === lower)) return true;
   try {
     const row = await queryOne<{ id: number }>(
       'SELECT id FROM users WHERE LOWER(username) = ? LIMIT 1',
       [lower],
     );
-    if (row) return true;
-  } catch {}
-  return false;
+    return !!row;
+  } catch {
+    return false;
+  }
 }
 
 export async function GET(request: Request) {

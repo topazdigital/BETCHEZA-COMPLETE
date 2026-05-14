@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOAuthConfig, getOAuthSiteUrl, type OAuthProvider } from '@/lib/oauth-config-store';
 import { PROVIDERS, exchangeCodeForToken, fetchOAuthProfile } from '@/lib/oauth-providers';
 import { setAuthCookie } from '@/lib/auth';
-import { queryOne, execute, getPool } from '@/lib/db';
-import { mockUsers } from '@/lib/mock-data';
-import type { User } from '@/lib/types';
+import { queryOne, execute } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,7 +46,6 @@ async function dbFindOrCreate(opts: {
   provider: OAuthProvider; providerId: string;
   email?: string; name?: string; avatarUrl?: string;
 }): Promise<DbUser | null> {
-  if (!getPool()) return null;
   const sel = 'SELECT id, email, username, display_name, avatar_url, role, balance, is_verified, google_id FROM users';
 
   if (opts.provider === 'google') {
@@ -111,33 +108,6 @@ async function dbFindOrCreate(opts: {
   }
 }
 
-function mockFindOrCreate(opts: { provider: OAuthProvider; providerId: string; email?: string; name?: string; avatarUrl?: string; }): User {
-  const all = mockUsers as (User & { oauth_provider?: string; oauth_provider_id?: string })[];
-  let user = all.find(u => u.oauth_provider === opts.provider && u.oauth_provider_id === opts.providerId);
-  if (user) return user;
-  if (opts.email) {
-    user = all.find(u => u.email.toLowerCase() === opts.email!.toLowerCase());
-    if (user) {
-      (user as typeof user & { oauth_provider?: string; oauth_provider_id?: string }).oauth_provider = opts.provider;
-      (user as typeof user & { oauth_provider?: string; oauth_provider_id?: string }).oauth_provider_id = opts.providerId;
-      if (!user.avatar_url && opts.avatarUrl) user.avatar_url = opts.avatarUrl;
-      return user;
-    }
-  }
-  const username = makeUsername(opts.email);
-  const newUser: User & { oauth_provider?: string; oauth_provider_id?: string } = {
-    id: all.length + 1, email: opts.email || `${opts.provider}_${opts.providerId}@oauth.local`,
-    phone: null, country_code: null, password_hash: '',
-    google_id: opts.provider === 'google' ? opts.providerId : null,
-    username, display_name: opts.name || username, avatar_url: opts.avatarUrl ?? null,
-    bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
-    odds_format: 'decimal', is_verified: !!opts.email, created_at: new Date(),
-    oauth_provider: opts.provider, oauth_provider_id: opts.providerId,
-  };
-  all.push(newUser);
-  return newUser;
-}
-
 export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: string }> }) {
   const { provider } = await ctx.params;
   const p = provider as OAuthProvider;
@@ -166,8 +136,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   if (!profile?.providerId) return await errorRedirect(req, `${p}_profile_failed`);
 
   const oauthOpts = { provider: p, providerId: profile.providerId, email: profile.email, name: profile.name, avatarUrl: profile.avatarUrl };
-  const dbUser = await dbFindOrCreate(oauthOpts);
-  const user = dbUser ?? mockFindOrCreate(oauthOpts);
+  const user = await dbFindOrCreate(oauthOpts);
+  if (!user) return await errorRedirect(req, `${p}_db_unavailable`);
 
   await setAuthCookie({ userId: user.id, email: user.email, role: user.role });
 

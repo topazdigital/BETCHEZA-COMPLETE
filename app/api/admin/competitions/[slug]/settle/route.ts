@@ -7,8 +7,8 @@ import {
   computePayouts,
 } from '@/lib/competitions-store';
 import { credit } from '@/lib/wallet-store';
-import { mockUsers } from '@/lib/mock-data';
 import { getTemplate } from '@/lib/email-templates-store';
+import { queryOne } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -85,20 +85,24 @@ export async function POST(
     });
 
     // Render the email template (we don't actually deliver, just record)
-    const user = mockUsers.find(u => u.id === p.userId);
     let emailSubject: string | undefined;
-    if (user) {
-      const vars = {
-        username: user.username,
-        displayName: user.display_name || user.username,
-        amount: p.amount,
-        currency: comp.currency || 'KES',
-        competitionName: comp.name,
-        place: p.place,
-        rank: p.rank,
-      };
-      emailSubject = renderTpl(tpl.subject, vars);
-    }
+    try {
+      const user = await queryOne<{ username: string; display_name: string }>(
+        'SELECT username, display_name FROM users WHERE id = ? LIMIT 1', [p.userId]
+      );
+      if (user) {
+        const vars = {
+          username: user.username,
+          displayName: user.display_name || user.username,
+          amount: p.amount,
+          currency: comp.currency || 'KES',
+          competitionName: comp.name,
+          place: p.place,
+          rank: p.rank,
+        };
+        emailSubject = renderTpl(tpl.subject, vars);
+      }
+    } catch { /* email subject is non-critical */ }
 
     credited.push({
       userId: p.userId,

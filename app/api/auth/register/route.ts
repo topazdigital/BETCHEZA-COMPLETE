@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { hashPassword, setAuthCookie } from '@/lib/auth';
-import { mockUsers } from '@/lib/mock-data';
 import { queryOne, execute, getPool } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
 import { ipKeyFromHeaders, rateLimit } from '@/lib/rate-limit';
@@ -199,22 +198,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'Registration failed. Please try again.' }, { status: 500 });
       }
     } else {
-      // Fallback: in-memory mock (no DB configured)
-      const existingEmail = mockUsers.find((u) => u.email === email);
-      if (existingEmail) {
-        return NextResponse.json({ success: false, error: 'Email already registered' }, { status: 400 });
-      }
-      const existingUsername = mockUsers.find((u) => u.username === username);
-      if (existingUsername) {
-        return NextResponse.json({ success: false, error: 'Username already taken' }, { status: 400 });
-      }
-      newUser = {
-        id: mockUsers.length + 1, email, phone: phone || null, country_code: countryCode || null,
-        password_hash: passwordHash, google_id: null, username, display_name: displayName,
-        avatar_url: randomAvatar(), bio: null, role: 'user', balance: 0, timezone: 'Africa/Nairobi',
-        odds_format: 'decimal', is_verified: false, created_at: new Date(),
-      };
-      mockUsers.push(newUser);
+      return NextResponse.json({ success: false, error: 'Database unavailable. Please try again later.' }, { status: 503 });
     }
 
     // ── Affiliate attribution: if this user clicked through a bookmaker
