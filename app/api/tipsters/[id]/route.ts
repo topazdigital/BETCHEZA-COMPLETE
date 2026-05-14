@@ -204,7 +204,7 @@ function generateMarketBreakdown(tipsterId: number, baseWinRate: number) {
     .slice(0, 6);
 }
 
-function generateSportBreakdown(specialties: string[]) {
+function generateSportBreakdown(specialties: string[], totalTips: number) {
   const sportMapping: Record<string, string> = {
     'Football': 'football', 'Premier League': 'football', 'La Liga': 'football',
     'Bundesliga': 'football', 'Serie A': 'football', 'African Football': 'football',
@@ -218,12 +218,16 @@ function generateSportBreakdown(specialties: string[]) {
   specialties.forEach(s => sports.add(sportMapping[s] || s.toLowerCase()));
   const arr = Array.from(sports);
   let remaining = 100;
+  let tipsRemaining = totalTips;
   const out: { sport: string; percentage: number; tips: number }[] = [];
   arr.forEach((sport, i) => {
     const last = i === arr.length - 1;
     const pct = last ? remaining : Math.max(8, Math.floor(remaining / (arr.length - i)));
+    // Allocate a proportional share of the real totalTips to this sport
+    const sportTips = last ? tipsRemaining : Math.round((pct / 100) * totalTips);
     remaining -= pct;
-    out.push({ sport: sport.charAt(0).toUpperCase() + sport.slice(1), percentage: pct, tips: pct });
+    tipsRemaining -= sportTips;
+    out.push({ sport: sport.charAt(0).toUpperCase() + sport.slice(1), percentage: pct, tips: Math.max(1, sportTips) });
   });
   return out.sort((a, b) => b.percentage - a.percentage);
 }
@@ -384,7 +388,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   if (includeStats) {
     response.monthlyStats = generateMonthlyStats(tipster);
-    response.sportBreakdown = generateSportBreakdown(tipster.specialties);
+    response.sportBreakdown = generateSportBreakdown(tipster.specialties, tipster.totalTips);
     response.marketBreakdown = generateMarketBreakdown(tipsterId, tipster.winRate);
     response.roiSparkline = generateRoiSparkline(tipster.id, tipster.roi);
   }

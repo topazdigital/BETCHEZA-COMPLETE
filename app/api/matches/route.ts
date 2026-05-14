@@ -201,27 +201,57 @@ function sortMatches(matches: MatchData[], userCountryCode: string, tzOffsetMin:
 
 // ── Stale-live detection constants (used in route cache + per-request) ────────
 const STALE_LIVE_HOURS: Record<string, number> = {
-  soccer: 3.5, football: 3.5, basketball: 3.5,
-  americanfootball: 4.5, baseball: 5, hockey: 4, icehockey: 4,
-  tennis: 6, cricket: 10, rugby: 3, mma: 4, boxing: 4,
-  golf: 12, racing: 6,
+  soccer: 3, football: 3, basketball: 3,
+  americanfootball: 4, baseball: 4, hockey: 3.5, icehockey: 3.5,
+  tennis: 5, cricket: 10, rugby: 3, mma: 3.5, boxing: 3.5,
+  golf: 12, racing: 5,
 };
+
+// Period strings that indicate a game has actually finished regardless of API status
+const FINAL_PERIOD_PATTERNS = /\b(f|ft|final|full.?time|end|game.?over|finished|over|result)\b/i;
 
 function isStaleLive(m: MatchData): boolean {
   const live = m.status === 'live' || m.status === 'halftime' ||
     m.status === 'extra_time' || m.status === 'penalties';
   if (!live) return false;
+
   const slug = m.sport.slug;
-  const maxHours = STALE_LIVE_HOURS[slug] ?? 4;
-  const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
-  if (ageHours > maxHours) return true;
-  // Extra check: if both teams have a score AND the match minute reported is
-  // beyond the maximum for that sport (e.g. >97 min for football), mark stale.
+  const period = m.period ?? '';
+
+  // ── Period-string final detection (works across all sports) ──────────────
+  // ESPN sometimes keeps status='live' for a moment after the game ends.
+  // If the period field says "Final", "FT", "F", "End", etc. → definitely over.
+  if (FINAL_PERIOD_PATTERNS.test(period)) return true;
+
+  // ── Sport-specific period/inning checks ──────────────────────────────────
+  // Baseball: "Inn N" where N > 9 and the game has been running a while
+  if (slug === 'baseball') {
+    const innMatch = period.match(/inn(?:ing)?\s*(\d+)/i);
+    if (innMatch) {
+      const inning = parseInt(innMatch[1], 10);
+      // Past the 9th inning with age >3h is almost certainly finished
+      const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
+      if (inning >= 9 && ageHours > 3) return true;
+      if (inning > 12) return true; // extra innings well past normal duration
+    }
+  }
+
+  // Soccer: minute ≥ 97 in "live" status = clearly finished
   if (slug === 'soccer' || slug === 'football') {
-    const minute = (m as { minute?: number }).minute;
+    const minute = m.minute;
     if (typeof minute === 'number' && minute >= 97 && m.status === 'live') return true;
   }
-  return false;
+
+  // Basketball: if we're in OT and the game has been running >4h it's over
+  if (slug === 'basketball') {
+    const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
+    if (ageHours > 4) return true;
+  }
+
+  // ── Time-based fallback ───────────────────────────────────────────────────
+  const maxHours = STALE_LIVE_HOURS[slug] ?? 4;
+  const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
+  return ageHours > maxHours;
 }
 
 // ── Route-level in-process cache ──────────────────────────────────────────────

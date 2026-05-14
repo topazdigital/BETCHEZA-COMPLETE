@@ -153,10 +153,15 @@ export function generateFakeTipsters(count = 100, seed = 42, startId = 1000): Fa
     usedHandles.add(handle);
 
     const totalTips = pickInt(rand, 25, 480);
-    const winPct = 0.42 + rand() * 0.32; // 42% – 74%
-    const wonTips = Math.round(totalTips * winPct);
-    const lostTips = Math.round(totalTips * (1 - winPct) * 0.85);
-    const pendingTips = Math.max(0, totalTips - wonTips - lostTips);
+    const winPct = 0.42 + rand() * 0.32; // 42% – 74% settled win rate
+    // 3–15% of tips are still pending (not yet settled)
+    const pendingPct = 0.03 + rand() * 0.12;
+    const settledTips = Math.round(totalTips * (1 - pendingPct));
+    const pendingTips = totalTips - settledTips;         // exact remainder
+    const wonTips = Math.round(settledTips * winPct);
+    const lostTips = settledTips - wonTips;              // exact complement, no rounding gap
+    // winRate is computed from the actual settled numbers so it always matches
+    const winRate = settledTips > 0 ? Math.round((wonTips / settledTips) * 1000) / 10 : 0;
     const avgOdds = 1.55 + rand() * 1.4;
     const roi = -8 + rand() * 28; // -8 … +20
     const streak = pickInt(rand, -4, 12);
@@ -170,7 +175,7 @@ export function generateFakeTipsters(count = 100, seed = 42, startId = 1000): Fa
       bio: pick(rand, BIOS),
       countryCode: pick(rand, COUNTRIES),
       specialties: pick(rand, SPECIALTIES_POOL),
-      winRate: Math.round(winPct * 1000) / 10,
+      winRate,
       totalTips,
       wonTips,
       lostTips,
