@@ -25,6 +25,12 @@ const JACKPOT_BOOKMAKERS = [
   'elitebet',
 ];
 
+const TIPS_BOOKMAKERS = [
+  'sportpesa', 'betika', 'odibets', 'betway', 'mozzartbet', '1xbet',
+  'premiertabet', 'shabiki', 'elitebet', 'helabet', 'bangbet', '22bet',
+  'msport', 'betin',
+];
+
 function slugify(str: string): string {
   return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
@@ -128,9 +134,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.65,
   }));
 
+  // Bookmaker-specific SEO tip pages (/tips/sportpesa, /tips/betika, etc.)
+  const bookmakerTipEntries: MetadataRoute.Sitemap = TIPS_BOOKMAKERS.map(slug => ({
+    url: `${base}/tips/${slug}`,
+    lastModified: now,
+    changeFrequency: 'daily' as const,
+    priority: ['sportpesa', 'betika', 'odibets'].includes(slug) ? 0.92 : 0.82,
+  }));
+
   return [
     ...staticEntries,
     ...jackpotEntries,
+    ...bookmakerTipEntries,
     ...sportEntries,
     ...leagueEntries,
     ...tipsterEntries,

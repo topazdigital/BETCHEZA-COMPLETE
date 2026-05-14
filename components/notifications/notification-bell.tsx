@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { Bell, Check, ExternalLink, Loader2, MessageSquare, Heart, UserPlus, Trophy, Newspaper, AlertCircle, Megaphone, Zap } from 'lucide-react';
+import { Bell, Check, ExternalLink, Loader2, MessageSquare, Heart, UserPlus, Trophy, Newspaper, AlertCircle, Megaphone, Zap, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
@@ -68,7 +69,18 @@ export function NotificationBell() {
   const [items, setItems] = useState<NotifRow[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const load = useCallback(async () => {
     if (!isAuthenticated) { setItems([]); setUnread(0); return; }
@@ -83,7 +95,6 @@ export function NotificationBell() {
     } catch {} finally { setLoading(false); }
   }, [isAuthenticated]);
 
-  // Poll for unread count every 45s while authenticated.
   useEffect(() => {
     if (!isAuthenticated) return;
     void load();
@@ -91,15 +102,34 @@ export function NotificationBell() {
     return () => clearInterval(t);
   }, [isAuthenticated, load]);
 
-  // Close on outside click.
+  // Close on outside click / touch
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (
+        btnRef.current && btnRef.current.contains(target)
+      ) return;
+      if (panelRef.current && panelRef.current.contains(target)) return;
+      setOpen(false);
     };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+    };
   }, [open]);
+
+  // Lock body scroll when mobile panel is open
+  useEffect(() => {
+    if (isMobile && open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isMobile, open]);
 
   async function markAllRead() {
     if (unread === 0) return;
@@ -132,113 +162,150 @@ export function NotificationBell() {
     if (!open) void load();
   }
 
+  const panelContent = (
+    <div
+      ref={panelRef}
+      className={cn(
+        'z-[9999] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl',
+        isMobile
+          ? 'fixed inset-x-0 bottom-0 rounded-b-none rounded-t-2xl'
+          : 'absolute right-0 top-full mt-2 w-[360px] max-w-[calc(100vw-1rem)]',
+      )}
+      style={isMobile ? { maxHeight: '85dvh' } : { maxHeight: 'calc(100dvh - 4rem)' }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div>
+          <h3 className="font-semibold">Notifications</h3>
+          <p className="text-xs text-muted-foreground">
+            {unread > 0 ? `${unread} unread` : 'All caught up'}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {unread > 0 && (
+            <Button variant="ghost" size="sm" onClick={markAllRead} className="h-7 px-2 text-xs">
+              <Check className="mr-1 h-3 w-3" /> Mark all read
+            </Button>
+          )}
+          {isMobile && (
+            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} className="h-7 w-7">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className={cn('overflow-y-auto', isMobile ? 'max-h-[65dvh]' : 'max-h-[420px]')}>
+        {!isAuthenticated ? (
+          <div className="p-8 text-center">
+            <Bell className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+            <p className="mb-1 font-medium">Stay in the loop</p>
+            <p className="mb-4 text-sm text-muted-foreground">Sign in to see your notifications</p>
+            <Button onClick={() => { setOpen(false); openAuthModal('login'); }}>
+              Sign in
+            </Button>
+          </div>
+        ) : loading && items.length === 0 ? (
+          <div className="flex items-center justify-center p-10">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center">
+            <Bell className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+            <p className="mb-1 font-medium">No notifications yet</p>
+            <p className="text-sm text-muted-foreground">
+              Follow tipsters &amp; teams to get updates here
+            </p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {items.map(n => {
+              const Icon = ICONS[n.type] || Bell;
+              const color = COLORS[n.type] || COLORS.system;
+              const body = (
+                <div className={cn(
+                  'flex gap-3 px-4 py-3 transition-colors',
+                  !n.isRead && 'bg-primary/5',
+                  n.link && 'hover:bg-muted cursor-pointer',
+                )}>
+                  <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', color)}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium leading-snug">{n.title}</p>
+                      {!n.isRead && (
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                      {n.content}
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {timeAgo(n.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              );
+              return (
+                <li key={n.id} onClick={() => !n.isRead && markOne(n.id)}>
+                  {n.link ? (
+                    <Link href={n.link} onClick={() => setOpen(false)}>
+                      {body}
+                    </Link>
+                  ) : body}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* Footer */}
+      {isAuthenticated && (
+        <div className="border-t border-border p-2">
+          <Button asChild variant="ghost" size="sm" className="w-full justify-center text-xs">
+            <Link href="/notifications" onClick={() => setOpen(false)}>
+              Notification settings <ExternalLink className="ml-1 h-3 w-3" />
+            </Link>
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className="relative" ref={ref}>
-      <Button variant="ghost" size="icon" onClick={toggle} className="relative" aria-label="Notifications">
+    <div className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        className="relative flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent transition-colors"
+        aria-label="Notifications"
+      >
         <Bell className="h-5 w-5" />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
-      </Button>
+      </button>
 
-      {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl" style={{ maxHeight: 'calc(100dvh - 4rem)' }}>
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div>
-              <h3 className="font-semibold">Notifications</h3>
-              <p className="text-xs text-muted-foreground">
-                {unread > 0 ? `${unread} unread` : 'All caught up'}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              {unread > 0 && (
-                <Button variant="ghost" size="sm" onClick={markAllRead} className="h-7 px-2 text-xs">
-                  <Check className="mr-1 h-3 w-3" /> Mark all
-                </Button>
-              )}
-            </div>
-          </div>
+      {/* Mobile backdrop */}
+      {open && isMobile && mounted && createPortal(
+        <div
+          className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        />,
+        document.body,
+      )}
 
-          {/* Body */}
-          <div className="max-h-[420px] overflow-y-auto">
-            {!isAuthenticated ? (
-              <div className="p-6 text-center">
-                <Bell className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mb-3">Sign in to see your notifications</p>
-                <Button size="sm" onClick={() => { setOpen(false); openAuthModal('login'); }}>
-                  Sign in
-                </Button>
-              </div>
-            ) : loading && items.length === 0 ? (
-              <div className="flex items-center justify-center p-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : items.length === 0 ? (
-              <div className="p-8 text-center">
-                <Bell className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No notifications yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Follow tipsters & teams to get updates here
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-border">
-                {items.map(n => {
-                  const Icon = ICONS[n.type] || Bell;
-                  const color = COLORS[n.type] || COLORS.system;
-                  const body = (
-                    <div className={cn(
-                      'flex gap-3 px-4 py-3 transition-colors',
-                      !n.isRead && 'bg-primary/5',
-                      n.link && 'hover:bg-muted cursor-pointer',
-                    )}>
-                      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', color)}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium leading-snug">{n.title}</p>
-                          {!n.isRead && (
-                            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                          )}
-                        </div>
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                          {n.content}
-                        </p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
-                          {timeAgo(n.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                  return (
-                    <li key={n.id} onClick={() => !n.isRead && markOne(n.id)}>
-                      {n.link ? (
-                        <Link href={n.link} onClick={() => { setOpen(false); }}>
-                          {body}
-                        </Link>
-                      ) : body}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-
-          {/* Footer */}
-          {isAuthenticated && (
-            <div className="border-t border-border p-2">
-              <Button asChild variant="ghost" size="sm" className="w-full justify-center text-xs">
-                <Link href="/notifications" onClick={() => setOpen(false)}>
-                  Notification settings <ExternalLink className="ml-1 h-3 w-3" />
-                </Link>
-              </Button>
-            </div>
-          )}
-        </div>
+      {/* Panel — portalled on mobile so it's never clipped */}
+      {open && mounted && (
+        isMobile
+          ? createPortal(panelContent, document.body)
+          : panelContent
       )}
     </div>
   );

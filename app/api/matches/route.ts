@@ -236,16 +236,19 @@ function isStaleLive(m: MatchData): boolean {
     }
   }
 
-  // Soccer: minute ≥ 97 in "live" status = clearly finished
+  // Soccer/football: ONLY filter on minute if past extra time entirely.
+  // Regular play runs to ~90+6 min, extra time adds 30 min + stoppage = ~130 min.
+  // Penalties can add another 30+ min. We only short-circuit on genuinely
+  // impossible values (≥145) to avoid killing a real extra-time match.
   if (slug === 'soccer' || slug === 'football') {
     const minute = m.minute;
-    if (typeof minute === 'number' && minute >= 97 && m.status === 'live') return true;
+    if (typeof minute === 'number' && minute >= 145) return true;
   }
 
-  // Basketball: if we're in OT and the game has been running >4h it's over
+  // Basketball: NBA game = ~2.5h, college = ~2h; OT rare. Filter at 3.5h.
   if (slug === 'basketball') {
     const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
-    if (ageHours > 4) return true;
+    if (ageHours > 3.5) return true;
   }
 
   // ── Time-based fallback ───────────────────────────────────────────────────
