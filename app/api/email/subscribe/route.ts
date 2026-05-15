@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { subscribeEmail } from '@/lib/notification-store';
+import { subscribeEmail, getExistingSubscriber } from '@/lib/notification-store';
 import { sendMail, renderTemplate } from '@/lib/mailer';
 import { getTemplate } from '@/lib/email-templates-store';
 
@@ -78,6 +78,15 @@ export async function POST(req: NextRequest) {
     ? body.topics.map((t: unknown) => String(t)).slice(0, 12)
     : ['daily_tips'];
   const countryCode = body.countryCode ? String(body.countryCode).toUpperCase().slice(0, 8) : null;
+  // Check if already subscribed before saving
+  const existing = await getExistingSubscriber(email);
+  if (existing && existing.active) {
+    return NextResponse.json({
+      success: false,
+      alreadySubscribed: true,
+      message: 'This email is already subscribed to our newsletter.',
+    }, { status: 409 });
+  }
   const row = await subscribeEmail({ email, topics, countryCode });
   const unsubscribeUrl = `/api/email/unsubscribe?token=${row.unsubscribeToken}`;
 

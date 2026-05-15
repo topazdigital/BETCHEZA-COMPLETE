@@ -312,6 +312,29 @@ export async function deletePushSubscription(endpoint: string): Promise<void> {
 }
 
 // ─── EMAIL SUBSCRIBERS ───────────────────────────
+export async function getExistingSubscriber(email: string): Promise<EmailSubscriberRow | null> {
+  if (hasDb()) {
+    try {
+      const r = await query<{ id: string; email: string; topics: string; country_code: string | null; unsubscribe_token: string; active: number }>(
+        `SELECT id, email, topics, country_code, unsubscribe_token, active FROM email_subscribers WHERE email = ? LIMIT 1`,
+        [email.toLowerCase()]
+      );
+      if (r.rows[0]) {
+        const x = r.rows[0];
+        return {
+          id: x.id, email: x.email,
+          topics: typeof x.topics === 'string' ? JSON.parse(x.topics || '[]') : (x.topics || []),
+          countryCode: x.country_code, unsubscribeToken: x.unsubscribe_token, active: !!x.active,
+        };
+      }
+    } catch {}
+  }
+  for (const sub of stores.emailSubs.values()) {
+    if (sub.email === email.toLowerCase()) return sub;
+  }
+  return null;
+}
+
 export async function saveEmailSubscriber(input: Omit<EmailSubscriberRow, 'id'>): Promise<EmailSubscriberRow> {
   const id = `es_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const row: EmailSubscriberRow = { id, active: true, ...input };

@@ -152,7 +152,8 @@ export function MatchCardNew({
 }: MatchCardNewProps) {
   const { settings } = useUserSettings();
   const isLive = match.status === 'live' || match.status === 'halftime' || match.status === 'extra_time' || match.status === 'penalties';
-  const isFinished = match.status === 'finished';
+  const FINISHED_STATUSES = new Set(['finished', 'ft', 'full-time', 'fulltime', 'ended', 'complete', 'completed', 'final', 'post', 'after_et', 'after_pens']);
+  const isFinished = FINISHED_STATUSES.has(match.status);
   const statusForLabel = match.status === 'halftime' ? 'halftime' : match.status;
   const isTwoWay = NO_DRAW_SPORTS.has(match.sport.slug);
 
@@ -582,6 +583,54 @@ function computeSmartPick(
         candidates.push({ pick: 'X', label: 'Draw', market: '1X2', confidence: conf });
       } else {
         candidates.push({ pick: '2', label: awayTeam.split(' ')[0], market: '1X2', confidence: conf });
+      }
+    }
+  }
+
+  // ── Synthetic BTTS & O/U 2.5 estimates from 1X2 odds (Poisson model) ────
+  // Works even when no live market feed is available so every match card shows
+  // the best pick across at least three markets.
+  {
+    const hp = 1 / Math.max(odds.home, 1.01);
+    const dp = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
+    const ap = 1 / Math.max(odds.away, 1.01);
+    const total = hp + dp + ap;
+    if (total > 0) {
+      const h = hp / total;
+      const a = ap / total;
+      // Expected goals per team (empirical mapping from implied win probability)
+      const homeXG = 0.85 + 1.4 * h;
+      const awayXG = 0.85 + 1.4 * a;
+      const totalXG = homeXG + awayXG;
+      // BTTS: (1 - P(home scores 0)) * (1 - P(away scores 0))
+      const pHomeSc = 1 - Math.exp(-homeXG);
+      const pAwaySc = 1 - Math.exp(-awayXG);
+      const bttsYes = pHomeSc * pAwaySc;
+      const bttsConf = Math.round(Math.max(bttsYes, 1 - bttsYes) * 100);
+      if (bttsConf >= 52) {
+        const bttsName = bttsYes >= 0.5 ? 'Yes' : 'No';
+        candidates.push({ pick: bttsName, label: `BTTS ${bttsName}`, market: 'BTTS', confidence: bttsConf });
+      }
+      // O/U 2.5: Poisson sum for 0, 1, 2 total goals
+      const p0 = Math.exp(-totalXG);
+      const p1 = totalXG * Math.exp(-totalXG);
+      const p2 = (totalXG * totalXG / 2) * Math.exp(-totalXG);
+      const pUnder = p0 + p1 + p2;
+      const pOver = 1 - pUnder;
+      const ouConf = Math.round(Math.max(pOver, pUnder) * 100);
+      if (ouConf >= 52) {
+        const ouName = pOver >= pUnder ? 'Over 2.5' : 'Under 2.5';
+        candidates.push({ pick: ouName, label: ouName, market: 'O/U 2.5', confidence: ouConf });
+      }
+      // Double Chance from 1X2
+      if (odds.draw) {
+        const hd = h + dp / total; const ad = a + dp / total;
+        const dcBest = hd >= ad
+          ? { pick: `1X`, label: `${homeTeam.split(' ')[0]} or Draw`, conf: Math.round(hd * 100) }
+          : { pick: `X2`, label: `Draw or ${awayTeam.split(' ')[0]}`, conf: Math.round(ad * 100) };
+        if (dcBest.conf >= 55) {
+          candidates.push({ pick: dcBest.pick, label: dcBest.label, market: 'DC', confidence: dcBest.conf });
+        }
       }
     }
   }

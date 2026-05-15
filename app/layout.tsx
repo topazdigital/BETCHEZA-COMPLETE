@@ -233,6 +233,9 @@ export async function generateMetadata(): Promise<Metadata> {
     creator: settings.site_name,
     metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://betcheza.co.ke'),
     robots: seoEntry?.noIndex ? { index: false, follow: false } : undefined,
+    verification: process.env.GOOGLE_SITE_VERIFICATION
+      ? { google: process.env.GOOGLE_SITE_VERIFICATION }
+      : undefined,
     openGraph: {
       type: 'website',
       locale: 'en_US',
