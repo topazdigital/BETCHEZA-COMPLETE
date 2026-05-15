@@ -39,7 +39,14 @@ export async function GET() {
   const totalComments = posts.reduce((s, p) => s + p.commentCount, 0);
   const activeUsers = new Set(posts.map(p => p.userId)).size;
   const fakeTipsters = getFakeTipsters();
-  const onlineTipsters = fakeTipsters.filter(t => t.isOnline).length;
+  const onlineTipsterList = fakeTipsters.filter(t => t.isOnline);
+  const onlineTipsters = onlineTipsterList.length;
+  const onlineAvatars = onlineTipsterList.slice(0, 5).map(t => ({
+    id: t.id,
+    name: t.displayName,
+    avatar: t.avatar,
+    username: t.username,
+  }));
 
   const payload = {
     trending,
@@ -50,6 +57,7 @@ export async function GET() {
       totalComments,
       activeUsers,
       onlineTipsters,
+      onlineAvatars,
     },
   };
 

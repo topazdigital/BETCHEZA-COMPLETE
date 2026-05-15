@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,18 +37,20 @@ interface Post {
 interface Comment {
   id: string;
   authorName: string;
+  authorAvatar?: string | null;
   content: string;
   createdAt: string;
 }
 
 interface Me {
-  user?: { id: number; username?: string; email?: string; displayName?: string } | null;
+  user?: { id: number; username?: string; email?: string; displayName?: string; avatarUrl?: string | null } | null;
 }
 
 interface RecommendedTipster {
   id: number;
   username: string;
   displayName: string;
+  avatar?: string | null;
   winRate: number;
   roi: number;
   streak: number;
@@ -58,6 +61,7 @@ interface RecommendedTipster {
   isTipsterOfWeek?: boolean;
   tipsThisWeek?: number;
   wonThisWeek?: number;
+  isOnline?: boolean;
 }
 
 interface TrendingPick {
@@ -71,6 +75,13 @@ interface TrendingPick {
   createdAt: string;
 }
 
+interface OnlineAvatar {
+  id: number;
+  name: string;
+  avatar: string;
+  username: string;
+}
+
 interface TrendingResponse {
   trending: TrendingPick[];
   stats: {
@@ -80,6 +91,7 @@ interface TrendingResponse {
     totalComments: number;
     activeUsers: number;
     onlineTipsters: number;
+    onlineAvatars?: OnlineAvatar[];
   };
 }
 
@@ -110,6 +122,29 @@ function gradientFor(seed: string) {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
   return palettes[Math.abs(h) % palettes.length];
+}
+
+function Avatar({ src, name, size = 8, className }: { src?: string | null; name: string; size?: number; className?: string }) {
+  const [imgErr, setImgErr] = useState(false);
+  const sizeClass = size === 6 ? 'h-6 w-6 text-[9px]' : size === 5 ? 'h-5 w-5 text-[7px]' : 'h-8 w-8 text-[11px]';
+  if (src && !imgErr) {
+    return (
+      <Image
+        src={src}
+        alt={name}
+        width={size * 4}
+        height={size * 4}
+        onError={() => setImgErr(true)}
+        className={cn(`shrink-0 rounded-full object-cover`, sizeClass, className)}
+        unoptimized
+      />
+    );
+  }
+  return (
+    <div className={cn(`shrink-0 rounded-full bg-gradient-to-br font-bold text-white flex items-center justify-center`, gradientFor(name), sizeClass, className)}>
+      {avatarInitials(name)}
+    </div>
+  );
 }
 
 function CommentList({ postId, open }: { postId: string; open: boolean }) {
@@ -145,9 +180,7 @@ function CommentList({ postId, open }: { postId: string; open: boolean }) {
           <p className="text-center text-[10px] text-muted-foreground py-1">Be the first to reply.</p>
         ) : comments.map(c => (
           <div key={c.id} className="flex gap-2">
-            <div className={cn('h-6 w-6 shrink-0 rounded-full bg-gradient-to-br text-[9px] font-bold text-white flex items-center justify-center', gradientFor(c.authorName))}>
-              {avatarInitials(c.authorName)}
-            </div>
+            <Avatar src={c.authorAvatar} name={c.authorName} size={6} className="mt-0.5" />
             <div className="flex-1 rounded-xl bg-muted/40 px-2.5 py-1">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-[11px] font-semibold">{c.authorName}</span>
@@ -202,9 +235,7 @@ function PostCard({ post }: { post: Post }) {
     <Card className="overflow-hidden border-border/60 bg-card/60 backdrop-blur transition-all hover:border-primary/40 hover:shadow-md">
       <CardContent className="p-3 sm:p-4">
         <div className="flex items-start gap-2.5">
-          <div className={cn('h-8 w-8 shrink-0 rounded-full bg-gradient-to-br text-[11px] font-bold text-white flex items-center justify-center', gradientFor(post.authorName))}>
-            {avatarInitials(post.authorName)}
-          </div>
+          <Avatar src={post.authorAvatar} name={post.authorName} size={8} className="mt-0.5" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-semibold">{post.authorName}</span>
@@ -310,9 +341,7 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
     <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-card to-card">
       <CardContent className="p-3 sm:p-4">
         <div className="flex gap-2.5">
-          <div className={cn('h-8 w-8 shrink-0 rounded-full bg-gradient-to-br text-[11px] font-bold text-white flex items-center justify-center', gradientFor(name))}>
-            {avatarInitials(name)}
-          </div>
+          <Avatar src={me.avatarUrl} name={name} size={8} className="mt-0.5" />
           <div className="flex-1">
             <Textarea
               ref={ref}
@@ -368,12 +397,14 @@ function RecommendedTipstersRail() {
           ) : tipsters.map(t => (
             <div key={t.id} className={cn('group flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-muted/50', t.isTipsterOfWeek && 'ring-1 ring-amber-400/50 bg-amber-500/5')}>
               <Link href={tipsterHref(t.username || t.displayName, t.username || t.id)} className="shrink-0">
-                <div className={cn('relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br text-[11px] font-bold text-white', gradientFor(t.displayName))}>
-                  {avatarInitials(t.displayName)}
+                <div className="relative">
+                  <Avatar src={t.avatar} name={t.displayName} size={8} />
                   {t.isTipsterOfWeek ? (
-                    <span title="Tipster of the Week" className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-[7px] font-bold text-amber-950">★</span>
+                    <span title="Tipster of the Week" className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-[7px] font-bold text-amber-950 ring-1 ring-background">★</span>
                   ) : t.isPro ? (
-                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[7px] font-bold text-amber-950">P</span>
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[7px] font-bold text-amber-950 ring-1 ring-background">P</span>
+                  ) : t.isOnline ? (
+                    <span className="absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-1 ring-background" />
                   ) : null}
                 </div>
               </Link>
@@ -459,6 +490,7 @@ function TrendingRail() {
   const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60_000 });
   const trending = data?.trending ?? [];
   const stats = data?.stats;
+  const onlineAvatars = stats?.onlineAvatars ?? [];
 
   return (
     <div className="space-y-3">
@@ -532,12 +564,17 @@ function TrendingRail() {
           </div>
           {(stats?.onlineTipsters ?? 0) > 0 && (
             <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2 py-1.5 flex items-center gap-2">
-              <div className="flex -space-x-1">
-                {[...Array(Math.min(3, stats!.onlineTipsters))].map((_, i) => (
-                  <div key={i} className="h-5 w-5 rounded-full border border-background bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-[7px] font-bold text-white">
-                    {String.fromCharCode(65 + i)}
+              <div className="flex -space-x-1.5">
+                {onlineAvatars.slice(0, 5).map((t, i) => (
+                  <div key={t.id} className="relative" style={{ zIndex: 5 - i }}>
+                    <Avatar src={t.avatar} name={t.name} size={5} className="ring-1 ring-background" />
                   </div>
                 ))}
+                {(stats?.onlineTipsters ?? 0) > 5 && (
+                  <div className="h-5 w-5 rounded-full bg-muted border border-background flex items-center justify-center text-[7px] font-bold text-muted-foreground" style={{ zIndex: 0 }}>
+                    +{(stats?.onlineTipsters ?? 0) - 5}
+                  </div>
+                )}
               </div>
               <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
                 {stats!.onlineTipsters} tipster{stats!.onlineTipsters !== 1 ? 's' : ''} online now

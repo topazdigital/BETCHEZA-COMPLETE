@@ -48,6 +48,7 @@ export async function GET() {
         id: t.id,
         username: t.username,
         displayName: t.displayName,
+        avatar: t.avatar,
         winRate: t.winRate,
         roi: t.roi,
         streak: t.streak,
@@ -58,6 +59,7 @@ export async function GET() {
         isTipsterOfWeek: t.id === tipsterOfWeekId,
         tipsThisWeek: weekly?.tipsThisWeek ?? 0,
         wonThisWeek: weekly?.wonThisWeek ?? 0,
+        isOnline: t.isOnline ?? false,
       };
     });
 

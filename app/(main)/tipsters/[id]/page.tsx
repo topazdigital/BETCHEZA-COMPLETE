@@ -7,7 +7,7 @@ import { format } from "date-fns"
 import { 
   ArrowLeft, Check, Star, Users, TrendingUp, Target, Flame, 
   Calendar, MapPin, Trophy, ChevronRight, ExternalLink,
-  BarChart3, Activity, Clock, BadgeCheck, MinusCircle
+  BarChart3, Activity, Clock, BadgeCheck, MinusCircle, Zap, Award
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -314,6 +314,121 @@ export default function TipsterProfilePage({ params }: PageProps) {
             )}
           </div>
         </Card>
+
+        {/* My Picks Performance Tracker */}
+        {recentTips && recentTips.length > 0 && (() => {
+          const settled = (recentTips as Array<{ status: string; odds?: number; market?: string; selection?: string; match?: { homeTeam?: string; awayTeam?: string } }>).filter(t => t.status === 'won' || t.status === 'lost');
+          const lastTen = settled.slice(0, 10);
+          const wonCount = lastTen.filter(t => t.status === 'won').length;
+          const lostCount = lastTen.filter(t => t.status === 'lost').length;
+          const formPct = lastTen.length > 0 ? Math.round((wonCount / lastTen.length) * 100) : 0;
+          // Current streak
+          let streakCount = 0;
+          let streakType = '';
+          for (const t of settled) {
+            if (streakCount === 0) { streakType = t.status; streakCount = 1; }
+            else if (t.status === streakType) streakCount++;
+            else break;
+          }
+          // ROI from last 10 settled tips (assuming 1 unit stake each)
+          const roiLast10 = lastTen.length > 0
+            ? Math.round(lastTen.reduce((acc, t) => acc + (t.status === 'won' ? ((t.odds ?? 2) - 1) : -1), 0) / lastTen.length * 100)
+            : 0;
+          // Best market (most wins)
+          const marketWins: Record<string, number> = {};
+          for (const t of settled.filter(t => t.status === 'won')) {
+            const m = (t.market || t.selection || 'Other') as string;
+            marketWins[m] = (marketWins[m] || 0) + 1;
+          }
+          const bestMarket = Object.entries(marketWins).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+          return (
+            <Card className="mb-4 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card">
+              <CardContent className="p-3 sm:p-4">
+                <div className="mb-3 flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-primary" />
+                  <h2 className="text-xs font-bold uppercase tracking-wide">My Picks · Performance Tracker</h2>
+                  <span className="ml-auto rounded-full bg-primary/10 px-1.5 py-0 text-[9px] font-semibold text-primary">Last {lastTen.length}</span>
+                </div>
+
+                {/* Recent form strip */}
+                <div className="mb-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground font-medium">Recent Form</span>
+                    {streakCount > 1 && (
+                      <span className={cn(
+                        "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0 text-[9px] font-bold",
+                        streakType === 'won' ? "bg-emerald-500/15 text-emerald-600" : "bg-rose-500/15 text-rose-500",
+                      )}>
+                        {streakType === 'won' ? <Flame className="h-2.5 w-2.5" /> : <MinusCircle className="h-2.5 w-2.5" />}
+                        {streakCount} {streakType === 'won' ? 'W' : 'L'} streak
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {lastTen.map((t, i) => (
+                      <span
+                        key={i}
+                        title={`${(t.match as { homeTeam?: string; awayTeam?: string } | undefined)?.homeTeam ?? ''} ${(t.market || t.selection || '')}`}
+                        className={cn(
+                          "flex h-5 w-5 items-center justify-center rounded text-[8px] font-black",
+                          t.status === 'won' ? "bg-emerald-500 text-white" : "bg-rose-500 text-white",
+                        )}
+                      >
+                        {t.status === 'won' ? 'W' : 'L'}
+                      </span>
+                    ))}
+                    {lastTen.length === 0 && (
+                      <span className="text-[11px] text-muted-foreground">No settled picks yet.</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Metrics row */}
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/60 bg-card p-2 text-center">
+                    <div className={cn("text-base font-bold leading-tight", formPct >= 55 ? "text-emerald-500" : formPct >= 45 ? "text-amber-500" : "text-rose-500")}>
+                      {formPct}%
+                    </div>
+                    <div className="text-[9px] uppercase text-muted-foreground">Form ({lastTen.length})</div>
+                    <div className="mt-1 text-[9px] text-muted-foreground">
+                      <span className="text-emerald-500 font-semibold">{wonCount}W</span>
+                      {' '}<span className="text-rose-500 font-semibold">{lostCount}L</span>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-card p-2 text-center">
+                    <div className={cn("text-base font-bold leading-tight", roiLast10 >= 0 ? "text-emerald-500" : "text-rose-500")}>
+                      {roiLast10 >= 0 ? '+' : ''}{roiLast10}%
+                    </div>
+                    <div className="text-[9px] uppercase text-muted-foreground">Avg ROI</div>
+                    <div className="mt-1 text-[9px] text-muted-foreground">per unit bet</div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-card p-2 text-center">
+                    <Award className="mx-auto h-3.5 w-3.5 text-amber-500" />
+                    <div className="mt-0.5 text-[9px] uppercase text-muted-foreground">Best Market</div>
+                    <div className="text-[10px] font-semibold truncate" title={bestMarket ?? '–'}>{bestMarket ?? '–'}</div>
+                  </div>
+                </div>
+
+                {/* Win rate bar */}
+                {lastTen.length > 0 && (
+                  <div className="mt-2.5">
+                    <div className="mb-1 flex items-center justify-between text-[10px]">
+                      <span className="text-muted-foreground">Win rate (last {lastTen.length})</span>
+                      <span className={cn("font-bold", formPct >= 55 ? "text-emerald-500" : "text-amber-500")}>{formPct}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn("h-full rounded-full transition-all", formPct >= 55 ? "bg-emerald-500" : formPct >= 45 ? "bg-amber-500" : "bg-rose-500")}
+                        style={{ width: `${formPct}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
         
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
