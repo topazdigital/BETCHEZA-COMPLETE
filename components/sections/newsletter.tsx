@@ -22,6 +22,11 @@ export function NewsletterSection() {
         body: JSON.stringify({ email, topics: ['daily_tips', 'big_matches'] }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 || data.alreadySubscribed) {
+        setDone(true); // treat as success — already subscribed is fine
+        setEmail('');
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Subscription failed');
       setDone(true);
       setEmail('');

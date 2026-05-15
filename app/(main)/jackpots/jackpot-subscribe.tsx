@@ -30,9 +30,14 @@ export default function JackpotSubscribeWidget() {
     setStatus('loading');
     try {
       const res = await fetch('/api/email/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, topics: selected }) });
-      const data = await res.json() as { ok?: boolean; error?: string; message?: string };
-      if (res.ok && data.ok !== false) { setStatus('success'); setMessage("You're subscribed! We'll email you when predictions are ready."); }
-      else { setStatus('error'); setMessage(data.error || data.message || 'Something went wrong.'); }
+      const data = await res.json() as { ok?: boolean; error?: string; message?: string; alreadySubscribed?: boolean };
+      if (res.status === 409 || data.alreadySubscribed) {
+        setStatus('success'); setMessage("You're already subscribed! We'll keep you updated.");
+      } else if (res.ok && data.ok !== false) {
+        setStatus('success'); setMessage("You're subscribed! We'll email you when predictions are ready.");
+      } else {
+        setStatus('error'); setMessage(data.error || data.message || 'Something went wrong.');
+      }
     } catch { setStatus('error'); setMessage('Network error. Please try again.'); }
   }
 
