@@ -105,9 +105,16 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 }
 
-async function sendBrowserPush(endpoint: string, _title: string, _body: string, _link: string): Promise<void> {
-  // Web-push is opt-in via VAPID; without keys we just log the intent.
-  if (process.env.DEBUG_NOTIFY) {
-    console.log('[notify] would push to', endpoint.slice(0, 64) + '…');
+async function sendBrowserPush(endpoint: string, title: string, body: string, link: string): Promise<void> {
+  try {
+    const { listPushSubscriptions } = await import('./notification-store');
+    const { sendPushToSubscription } = await import('./push-sender');
+    const allSubs = await listPushSubscriptions();
+    const sub = allSubs.find(s => s.endpoint === endpoint);
+    if (sub) {
+      await sendPushToSubscription(sub, { title, body, url: link });
+    }
+  } catch (e) {
+    console.warn('[notify] browser push failed:', e instanceof Error ? e.message : e);
   }
 }

@@ -11,6 +11,7 @@ export interface NotificationPreferences {
   pushTeamUpdates: boolean;
   pushTipsterUpdates: boolean;
   pushOddsAlerts: boolean;
+  pushLiveScores: boolean;
 }
 
 export interface NotificationRow {
@@ -54,6 +55,7 @@ const DEFAULT_PREFS: NotificationPreferences = {
   pushTeamUpdates: false,
   pushTipsterUpdates: false,
   pushOddsAlerts: false,
+  pushLiveScores: false,
 };
 
 interface NotifStores {
@@ -91,10 +93,12 @@ export async function getPreferences(userId: number): Promise<NotificationPrefer
         inapp_team_updates: number; inapp_tipster_updates: number;
         email_team_updates: number; email_tipster_updates: number; email_daily_digest: number;
         push_team_updates: number; push_tipster_updates: number; push_odds_alerts: number;
+        push_live_scores?: number;
       }>(
         `SELECT inapp_team_updates, inapp_tipster_updates,
                 email_team_updates, email_tipster_updates, email_daily_digest,
-                push_team_updates, push_tipster_updates, push_odds_alerts
+                push_team_updates, push_tipster_updates, push_odds_alerts,
+                IFNULL(push_live_scores, 0) AS push_live_scores
          FROM notification_preferences WHERE user_id = ? LIMIT 1`,
         [userId]
       );
@@ -109,6 +113,7 @@ export async function getPreferences(userId: number): Promise<NotificationPrefer
           pushTeamUpdates: !!x.push_team_updates,
           pushTipsterUpdates: !!x.push_tipster_updates,
           pushOddsAlerts: !!x.push_odds_alerts,
+          pushLiveScores: !!x.push_live_scores,
         };
       }
     } catch {}
@@ -125,8 +130,8 @@ export async function setPreferences(userId: number, prefs: Partial<Notification
         `INSERT INTO notification_preferences
           (user_id, inapp_team_updates, inapp_tipster_updates,
            email_team_updates, email_tipster_updates, email_daily_digest,
-           push_team_updates, push_tipster_updates, push_odds_alerts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           push_team_updates, push_tipster_updates, push_odds_alerts, push_live_scores)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            inapp_team_updates = VALUES(inapp_team_updates),
            inapp_tipster_updates = VALUES(inapp_tipster_updates),
@@ -135,7 +140,8 @@ export async function setPreferences(userId: number, prefs: Partial<Notification
            email_daily_digest = VALUES(email_daily_digest),
            push_team_updates = VALUES(push_team_updates),
            push_tipster_updates = VALUES(push_tipster_updates),
-           push_odds_alerts = VALUES(push_odds_alerts)`,
+           push_odds_alerts = VALUES(push_odds_alerts),
+           push_live_scores = VALUES(push_live_scores)`,
         [
           userId,
           merged.inappTeamUpdates ? 1 : 0,
@@ -146,6 +152,7 @@ export async function setPreferences(userId: number, prefs: Partial<Notification
           merged.pushTeamUpdates ? 1 : 0,
           merged.pushTipsterUpdates ? 1 : 0,
           merged.pushOddsAlerts ? 1 : 0,
+          merged.pushLiveScores ? 1 : 0,
         ]
       );
     } catch {}

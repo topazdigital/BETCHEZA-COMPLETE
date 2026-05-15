@@ -57,6 +57,18 @@ async function runJackpotSync(): Promise<void> {
   }
 }
 
+async function runLiveScores(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/live-scores`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron'}` },
+    });
+    if (!r.ok) console.warn('[cron] live-scores failed:', r.status);
+  } catch (e) {
+    console.warn('[cron] live-scores error', e instanceof Error ? e.message : e);
+  }
+}
+
 async function runDailyStrategy(): Promise<void> {
   const todayStr = new Date().toISOString().slice(0, 10);
   if (state.lastStrategyDate === todayStr) return; // already ran today
@@ -85,9 +97,12 @@ function isStrategyTime(): boolean {
   return utcHour === 6 && utcMin < 5;
 }
 
+const LIVE_SCORES_EVERY_N_TICKS = 1; // every 5-min tick (fast enough for goal alerts)
+
 async function tick(): Promise<void> {
   state.tickCount++;
   void runMatchReminders();
+  void runLiveScores();
 
   if (state.tickCount % JACKPOT_SYNC_EVERY_N_TICKS === 0) {
     void runJackpotSync();
@@ -119,5 +134,5 @@ export function startCron(): void {
   }, 240_000); // 4 min
 
   state.timer = setInterval(() => { void tick(); }, TICK_MS);
-  console.log('[cron] started — match-reminders (5 min), jackpot-sync (60 min, first run in 10s), daily-strategy (9am EAT)');
+  console.log('[cron] started — match-reminders (5 min), live-scores (5 min), jackpot-sync (60 min), daily-strategy (9am EAT)');
 }

@@ -129,5 +129,14 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'invalid payload' }, { status: 400 });
   }
   setUserRoleOverride(id, role);
+  // Persist to DB so the change survives restarts
+  try {
+    await query(
+      `UPDATE users SET role = ? WHERE id = ?`,
+      [role, id]
+    );
+  } catch (e) {
+    console.warn('[admin/users] DB role update failed (in-memory override still applied):', e instanceof Error ? e.message : e);
+  }
   return NextResponse.json({ success: true, id, role });
 }

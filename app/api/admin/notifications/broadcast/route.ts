@@ -60,6 +60,28 @@ export async function POST(req: Request) {
     }
   }
 
+  // Web push to all subscribed users
+  let pushCount = 0;
+  if (audience === 'all' || audience === 'push') {
+    try {
+      const { sendPushToSubscription } = await import('@/lib/push-sender');
+      const allPushSubs = await listPushSubscriptions();
+      await Promise.allSettled(
+        allPushSubs.map(sub =>
+          sendPushToSubscription(sub, {
+            title,
+            body,
+            url: data.link ?? '/',
+            tag: 'admin-broadcast',
+            requireInteraction: false,
+          }).then(() => { pushCount++; })
+        )
+      );
+    } catch (e) {
+      console.warn('[broadcast] web push failed:', e instanceof Error ? e.message : e);
+    }
+  }
+
   let emailResult: { sent: number; failed: number; skipped?: boolean; total?: number } | null = null;
   if (audience === 'all' || audience === 'email') {
     const emailSubs = (await listEmailSubscribers()).filter((s) => s.active);
@@ -102,7 +124,7 @@ export async function POST(req: Request) {
     count += emailResult.sent;
   }
 
-  return NextResponse.json({ ok: true, count, audience, email: emailResult });
+  return NextResponse.json({ ok: true, count, audience, push: pushCount, email: emailResult });
 }
 
 function escapeHtml(s: string): string {

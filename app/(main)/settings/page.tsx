@@ -112,6 +112,7 @@ export default function SettingsPage() {
   const [timezone, setTimezone] = useState(globalSettings.timezone || 'Africa/Nairobi');
   const [notifMatches, setNotifMatches] = useState(true);
   const [notifTipsters, setNotifTipsters] = useState(true);
+  const [notifLiveScores, setNotifLiveScores] = useState(false);
   const [notifPromos, setNotifPromos] = useState(false);
   const [prefSaved, setPrefSaved] = useState(false);
 
@@ -151,6 +152,7 @@ export default function SettingsPage() {
         const p = JSON.parse(raw);
         if (typeof p.notifMatches === 'boolean') setNotifMatches(p.notifMatches);
         if (typeof p.notifTipsters === 'boolean') setNotifTipsters(p.notifTipsters);
+        if (typeof p.notifLiveScores === 'boolean') setNotifLiveScores(p.notifLiveScores);
         if (typeof p.notifPromos === 'boolean') setNotifPromos(p.notifPromos);
       }
     } catch {}
@@ -211,7 +213,7 @@ export default function SettingsPage() {
       const prev = raw ? JSON.parse(raw) : {};
       localStorage.setItem('bz_prefs', JSON.stringify({
         ...prev,
-        oddsFormat, timezone, notifMatches, notifTipsters, notifPromos,
+        oddsFormat, timezone, notifMatches, notifTipsters, notifLiveScores, notifPromos,
       }));
       setPrefSaved(true);
       setTimeout(() => setPrefSaved(false), 2000);
@@ -595,6 +597,14 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">When a followed tipster posts a new pick.</p>
             </div>
             <Switch checked={notifTipsters} onCheckedChange={setNotifTipsters} />
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Live score alerts</p>
+              <p className="text-xs text-muted-foreground">Browser push when a goal is scored in live matches.</p>
+            </div>
+            <Switch checked={notifLiveScores} onCheckedChange={setNotifLiveScores} />
           </div>
           <Separator />
           <div className="flex items-center justify-between">
