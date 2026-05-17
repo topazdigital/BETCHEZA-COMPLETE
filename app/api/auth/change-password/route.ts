@@ -5,9 +5,9 @@ import { query, execute } from '@/lib/db';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get('auth-token')?.value;
+  const token = req.cookies.get('betcheza_auth')?.value;
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const payload = verifyToken(token);
+  const payload = await verifyToken(token);
   if (!payload) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
 
   const { currentPassword, newPassword } = await req.json();

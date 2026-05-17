@@ -6,10 +6,15 @@ import { listPosts, createPost } from '@/lib/feed-store';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const user = await getCurrentUser();
-  const limit = Number(req.nextUrl.searchParams.get('limit') || 50);
-  const posts = await listPosts(limit, user?.userId ?? null);
-  return NextResponse.json({ success: true, posts });
+  try {
+    const user = await getCurrentUser();
+    const limit = Number(req.nextUrl.searchParams.get('limit') || 50);
+    const posts = await listPosts(limit, user?.userId ?? null);
+    return NextResponse.json({ success: true, posts });
+  } catch (e) {
+    console.error('[feed/posts] GET error:', e);
+    return NextResponse.json({ success: true, posts: [] });
+  }
 }
 
 export async function POST(req: NextRequest) {

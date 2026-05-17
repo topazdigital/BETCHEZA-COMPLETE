@@ -689,9 +689,17 @@ function computeSmartPick(
 
   if (candidates.length === 0) return null;
 
-  // Return the highest-confidence pick across all markets.
-  // Pick whichever market has the strongest signal — no artificial bias.
+  // Sort by confidence descending
   candidates.sort((a, b) => b.confidence - a.confidence);
+
+  // Double Chance is mathematically high-probability but low-value as a bet.
+  // Only select DC if it has a clear margin (≥8 pts) over the best non-DC pick,
+  // otherwise prefer the best non-DC market for a more meaningful prediction.
+  const bestNonDC = candidates.find(c => c.market !== 'DC');
+  const bestDC = candidates.find(c => c.market === 'DC');
+  if (bestDC && bestNonDC && (bestDC.confidence - bestNonDC.confidence) < 8) {
+    return bestNonDC;
+  }
   return candidates[0];
 }
 

@@ -185,7 +185,7 @@ const STATIC: Record<number, StaticOutright[]> = {
     },
   ],
 
-  // ── UEFA Champions League 2025/26 — Final stage ─────────────────────────
+  // ── UEFA Champions League 2025/26 — Final (PSG vs Arsenal, May 31 2026) ─
   9: [
     {
       id: 'ucl-winner-2526',
@@ -193,11 +193,6 @@ const STATIC: Record<number, StaticOutright[]> = {
       outcomes: [
         { name: 'Paris Saint-Germain', price: 2.25 },
         { name: 'Arsenal', price: 3.00 },
-        { name: 'Inter Milan', price: 3.75 },
-        { name: 'Barcelona', price: 4.50 },
-        { name: 'Bayern Munich', price: 5.50 },
-        { name: 'Real Madrid', price: 6.00 },
-        { name: 'Atletico Madrid', price: 11.00 },
       ],
     },
   ],

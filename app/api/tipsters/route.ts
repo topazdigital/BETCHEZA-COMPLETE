@@ -107,12 +107,14 @@ export async function GET(request: NextRequest) {
   }
 
   let tipsters = rows.map(shape);
-  // If rank is 0 (not yet computed in DB), assign rank based on sorted position by winRate
-  const hasRanks = tipsters.some(t => t.rank > 0);
-  if (!hasRanks && tipsters.length > 0) {
-    const sorted = [...tipsters].sort((a, b) => b.winRate - a.winRate || b.roi - a.roi);
-    const rankMap = new Map(sorted.map((t, i) => [t.id, i + 1]));
-    tipsters = tipsters.map(t => ({ ...t, rank: rankMap.get(t.id) ?? 0 }));
+  // Always assign ranks based on win rate + ROI for any tipster showing rank 0
+  if (tipsters.length > 0) {
+    const tipstersWithRank0 = tipsters.filter(t => t.rank === 0);
+    if (tipstersWithRank0.length > 0) {
+      const allForRanking = [...tipsters].sort((a, b) => b.winRate - a.winRate || b.roi - a.roi || b.totalTips - a.totalTips);
+      const rankMap = new Map(allForRanking.map((t, i) => [t.id, i + 1]));
+      tipsters = tipsters.map(t => ({ ...t, rank: t.rank > 0 ? t.rank : (rankMap.get(t.id) ?? tipsters.length) }));
+    }
   }
 
   if (tipsters.length === 0) {

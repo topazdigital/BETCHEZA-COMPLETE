@@ -151,6 +151,10 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
         `INSERT IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`,
         [userId, tipsterId]
       );
+      await query(
+        `UPDATE tipster_profiles SET followers_count = (SELECT COUNT(*) FROM follows WHERE following_id = ?) WHERE user_id = ?`,
+        [tipsterId, tipsterId]
+      );
     } catch (e) {
       console.warn('[follows tipster] db write failed:', e);
     }
@@ -164,6 +168,10 @@ export async function unfollowTipster(userId: number, tipsterId: number): Promis
   if (hasDb()) {
     try {
       await query(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`, [userId, tipsterId]);
+      await query(
+        `UPDATE tipster_profiles SET followers_count = (SELECT COUNT(*) FROM follows WHERE following_id = ?) WHERE user_id = ?`,
+        [tipsterId, tipsterId]
+      );
     } catch (e) {
       console.warn('[follows tipster] db write failed:', e);
     }
