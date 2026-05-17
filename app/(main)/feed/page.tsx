@@ -245,7 +245,7 @@ function PostCard({ post }: { post: Post }) {
               <p className="text-[10px] text-muted-foreground mt-0">on {post.matchTitle}</p>
             )}
           </div>
-          <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" />
+          <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={false} />
         </div>
 
         <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight">{post.content}</p>
@@ -430,7 +430,7 @@ function RecommendedTipstersRail() {
                   )}
                 </div>
               </Link>
-              <FollowTipsterButton tipsterId={t.id} tipsterName={t.displayName} variant="pill" className="h-6 px-2 text-[10px]" />
+              <FollowTipsterButton tipsterId={t.id} tipsterName={t.displayName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={t.following ?? false} />
             </div>
           ))}
         </div>

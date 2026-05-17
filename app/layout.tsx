@@ -13,6 +13,7 @@ import { InstallPrompt } from '@/components/install-prompt'
 import { BetSlipProvider } from '@/contexts/bet-slip-context'
 import { BetSlipPanel } from '@/components/bet-slip/bet-slip-panel'
 import { getSiteSettings, parseSeoPages, findSeoForPath } from '@/lib/site-settings'
+import { Toaster } from 'sonner'
 import './globals.css'
 
 const geist = Geist({ 
@@ -393,6 +394,7 @@ export default function RootLayout({
                 <AIChatButton />
                 <InstallPrompt />
                 <BetSlipPanel />
+                <Toaster position="top-right" richColors closeButton />
               </UserSettingsProvider>
             </BetSlipProvider>
             </AuthModalProvider>

@@ -32,7 +32,7 @@ async function runMatchReminders(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/match-reminders`, {
       cache: 'no-store',
-      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron'}` },
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) console.warn('[cron] match-reminders failed:', r.status);
   } catch (e) {
@@ -44,7 +44,7 @@ async function runJackpotSync(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/jackpot-sync`, {
       cache: 'no-store',
-      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron'}` },
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
       console.warn('[cron] jackpot-sync failed:', r.status);
@@ -61,7 +61,7 @@ async function runLiveScores(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/live-scores`, {
       cache: 'no-store',
-      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron'}` },
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) console.warn('[cron] live-scores failed:', r.status);
   } catch (e) {
@@ -75,7 +75,7 @@ async function runDailyStrategy(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/daily-strategy`, {
       cache: 'no-store',
-      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron'}` },
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
       console.warn('[cron] daily-strategy failed:', r.status);
@@ -104,7 +104,7 @@ async function runFakeActivity(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/fake-activity`, {
       cache: 'no-store',
-      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron'}` },
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) console.warn('[cron] fake-activity failed:', r.status);
   } catch (e) {

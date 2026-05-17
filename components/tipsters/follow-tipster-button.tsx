@@ -14,6 +14,7 @@ interface Props {
   variant?: 'default' | 'compact' | 'pill';
   className?: string;
   onFollowChange?: (following: boolean) => void;
+  initialFollowing?: boolean;
 }
 
 export function FollowTipsterButton({
@@ -23,14 +24,17 @@ export function FollowTipsterButton({
   variant = 'default',
   className,
   onFollowChange,
+  initialFollowing,
 }: Props) {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
-  const [following, setFollowing] = useState<boolean | null>(null);
+  const [following, setFollowing] = useState<boolean | null>(initialFollowing !== undefined ? initialFollowing : null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
   useEffect(() => {
+    // Skip fetch if caller provided an initial value (avoids N concurrent requests on feed page)
+    if (initialFollowing !== undefined) return;
     if (!isAuthenticated) {
       setFollowing(false);
       return;
@@ -41,7 +45,7 @@ export function FollowTipsterButton({
       .then(d => { if (alive) setFollowing(!!d.following); })
       .catch(() => { if (alive) setFollowing(false); });
     return () => { alive = false; };
-  }, [tipsterId, isAuthenticated]);
+  }, [tipsterId, isAuthenticated, initialFollowing]);
 
   async function toggle(e?: React.MouseEvent) {
     e?.preventDefault();
