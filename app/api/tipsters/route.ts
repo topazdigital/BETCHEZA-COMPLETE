@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getFakeTipsters, type FakeTipster } from '@/lib/fake-tipsters';
+import { getCurrentUser } from '@/lib/auth';
+import { getFollowedTipsters } from '@/lib/follows-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -79,6 +81,17 @@ export async function GET(request: NextRequest) {
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
+  // Get current user's followed tipsters for followed-first ordering
+  let followedIds: number[] = [];
+  try {
+    const user = await getCurrentUser();
+    if (user) followedIds = await getFollowedTipsters(user.userId);
+  } catch {}
+
+  const followedFirstExpr = followedIds.length > 0
+    ? `CASE WHEN u.id IN (${followedIds.join(',')}) THEN 0 ELSE 1 END ASC,`
+    : '';
+
   let rows: DbTipster[] = [];
   let total = 0;
   try {
@@ -90,7 +103,7 @@ export async function GET(request: NextRequest) {
          FROM users u
          LEFT JOIN tipster_profiles t ON t.user_id = u.id
          ${whereClause}
-         ORDER BY ${orderBy}
+         ORDER BY ${followedFirstExpr} ${orderBy}
          LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     );

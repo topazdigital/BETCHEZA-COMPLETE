@@ -92,6 +92,89 @@ export function clearPredictions() {
   persist();
 }
 
+// ─── Result resolution ─────────────────────────────────────────────────────
+
+function resolveResult(
+  market: string, pick: string,
+  homeScore: number, awayScore: number,
+  homeTeam: string, awayTeam: string,
+): 'won' | 'lost' | null {
+  const m = market.toLowerCase();
+  const p = pick.toLowerCase();
+  const totalGoals = homeScore + awayScore;
+  const homeWon = homeScore > awayScore;
+  const awayWon = awayScore > homeScore;
+  const isDraw = homeScore === awayScore;
+  const homeName = homeTeam.split(' ')[0].toLowerCase();
+  const awayName = awayTeam.split(' ')[0].toLowerCase();
+
+  if (m.includes('1x2') || m.includes('match result') || m.includes('winner')) {
+    if (p === '1' || p === 'home win' || (p.includes(homeName) && !p.includes('draw') && !p.includes('or')))
+      return homeWon ? 'won' : 'lost';
+    if (p === 'x' || p === 'draw')
+      return isDraw ? 'won' : 'lost';
+    if (p === '2' || p === 'away win' || (p.includes(awayName) && !p.includes('draw') && !p.includes('or')))
+      return awayWon ? 'won' : 'lost';
+  }
+
+  if (m.includes('btts') || m.includes('both teams')) {
+    const btts = homeScore > 0 && awayScore > 0;
+    if (p.includes('yes')) return btts ? 'won' : 'lost';
+    if (p.includes('no')) return !btts ? 'won' : 'lost';
+  }
+
+  if (m.includes('over') || m.includes('under') || m.includes('o/u') || m.includes('2.5') || m.includes('goals')) {
+    if (p.includes('over 2.5') || p === 'over') return totalGoals > 2.5 ? 'won' : 'lost';
+    if (p.includes('under 2.5') || p === 'under') return totalGoals < 2.5 ? 'won' : 'lost';
+    if (p.includes('over 1.5')) return totalGoals > 1.5 ? 'won' : 'lost';
+    if (p.includes('under 1.5')) return totalGoals < 1.5 ? 'won' : 'lost';
+  }
+
+  if (m.includes('double chance') || m.includes('dc')) {
+    if (p.includes('1x') || (p.includes(homeName) && p.includes('draw')))
+      return (homeWon || isDraw) ? 'won' : 'lost';
+    if (p.includes('x2') || (p.includes(awayName) && p.includes('draw')))
+      return (awayWon || isDraw) ? 'won' : 'lost';
+    if (p.includes('12'))
+      return !isDraw ? 'won' : 'lost';
+  }
+
+  return null;
+}
+
+/**
+ * Try to settle pending predictions by looking up actual match scores.
+ * Called from the /api/predictor/recent endpoint and the live-scores cron.
+ */
+export async function settlePredictions(): Promise<void> {
+  load();
+  const pending = state.records.filter(r => r.result === 'pending' && r.matchId);
+  if (pending.length === 0) return;
+
+  let changed = false;
+  try {
+    const { getMatchById } = await import('./api/unified-sports-api');
+    for (const rec of pending) {
+      if (!rec.matchId) continue;
+      try {
+        const match = await getMatchById(rec.matchId);
+        if (!match || match.status !== 'finished') continue;
+        const homeScore = match.homeScore ?? 0;
+        const awayScore = match.awayScore ?? 0;
+        const res = resolveResult(rec.market, rec.pick, homeScore, awayScore, rec.homeTeam, rec.awayTeam);
+        if (res) {
+          rec.result = res;
+          changed = true;
+        }
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('[predictor-store] settlePredictions failed', e);
+  }
+
+  if (changed) persist();
+}
+
 // ─── Seeding ──────────────────────────────────────────────────────────
 // Seed the recent-predictions list from real upcoming matches the first
 // time the store is read in an empty state, so the strip never looks

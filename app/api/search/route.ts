@@ -196,7 +196,12 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    const allMatches = await getCachedMatches();
+    const allMatches = await Promise.race([
+      getCachedMatches(),
+      new Promise<UnifiedMatch[]>((_, reject) =>
+        setTimeout(() => reject(new Error('search-match-timeout')), 3000)
+      ),
+    ]);
     for (const m of allMatches) {
       const homeS = scoreMatch(q, m.homeTeam.name);
       const awayS = scoreMatch(q, m.awayTeam.name);

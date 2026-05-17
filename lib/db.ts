@@ -77,7 +77,9 @@ export function getPool(): mysql.Pool | null {
       connectionLimit: 5,
       queueLimit: 0,
       charset: 'utf8mb4',
-      connectTimeout: 3000,
+      connectTimeout: 8000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
     });
   }
 
@@ -97,6 +99,17 @@ export interface QueryResult<T> {
   affectedRows?: number;
 }
 
+function isRecoverableDbError(err: unknown): boolean {
+  const e = err as { code?: string; errno?: string; message?: string };
+  if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND' || e?.errno === 'ETIMEDOUT') return true;
+  if (typeof e?.message === 'string' && (
+    e.message.toLowerCase().includes('pool is closed') ||
+    e.message.toLowerCase().includes('connection lost') ||
+    e.message.toLowerCase().includes('closed state')
+  )) return true;
+  return false;
+}
+
 export async function query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
   const p = getPool();
   if (!p) return { rows: [] };
@@ -104,10 +117,7 @@ export async function query<T>(sql: string, params?: unknown[]): Promise<QueryRe
     const [rows] = await p.execute(sql, params);
     return { rows: rows as T[], affectedRows: undefined };
   } catch (err: unknown) {
-    const e = err as { code?: string; errno?: string };
-    if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND' || e?.errno === 'ETIMEDOUT') {
-      openCircuit();
-    }
+    if (isRecoverableDbError(err)) openCircuit();
     throw err;
   }
 }
@@ -130,10 +140,7 @@ export async function execute(sql: string, params?: unknown[]): Promise<ExecuteR
     const r = result as mysql.ResultSetHeader;
     return { insertId: r.insertId, affectedRows: r.affectedRows };
   } catch (err: unknown) {
-    const e = err as { code?: string; errno?: string };
-    if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND' || e?.errno === 'ETIMEDOUT') {
-      openCircuit();
-    }
+    if (isRecoverableDbError(err)) openCircuit();
     throw err;
   }
 }

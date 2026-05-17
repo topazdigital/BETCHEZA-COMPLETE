@@ -1,4 +1,4 @@
-import { query, getPool } from './db';
+import { query, execute, getPool } from './db';
 import { fileStoreGet, fileStoreSet } from './file-store';
 
 export interface FollowedTeam {
@@ -147,16 +147,16 @@ export async function isFollowingTeam(userId: number, teamId: string): Promise<b
 export async function followTipster(userId: number, tipsterId: number): Promise<void> {
   if (hasDb()) {
     try {
-      await query(
-        `INSERT IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`,
+      await execute(
+        `INSERT IGNORE INTO follows (follower_id, following_id, created_at) VALUES (?, ?, NOW())`,
         [userId, tipsterId]
       );
-      await query(
-        `UPDATE tipster_profiles SET followers_count = (SELECT COUNT(*) FROM follows WHERE following_id = ?) WHERE user_id = ?`,
+      execute(
+        `UPDATE tipster_profiles SET followers_count = (SELECT COUNT(*) FROM follows f WHERE f.following_id = ?) WHERE user_id = ?`,
         [tipsterId, tipsterId]
-      );
+      ).catch(() => {});
     } catch (e) {
-      console.warn('[follows tipster] db write failed:', e);
+      console.error('[follows tipster] db insert failed:', e);
     }
   }
   if (!stores.tipsters.has(userId)) stores.tipsters.set(userId, new Map());
@@ -167,13 +167,16 @@ export async function followTipster(userId: number, tipsterId: number): Promise<
 export async function unfollowTipster(userId: number, tipsterId: number): Promise<void> {
   if (hasDb()) {
     try {
-      await query(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`, [userId, tipsterId]);
-      await query(
-        `UPDATE tipster_profiles SET followers_count = (SELECT COUNT(*) FROM follows WHERE following_id = ?) WHERE user_id = ?`,
-        [tipsterId, tipsterId]
+      await execute(
+        `DELETE FROM follows WHERE follower_id = ? AND following_id = ?`,
+        [userId, tipsterId]
       );
+      execute(
+        `UPDATE tipster_profiles SET followers_count = (SELECT COUNT(*) FROM follows f WHERE f.following_id = ?) WHERE user_id = ?`,
+        [tipsterId, tipsterId]
+      ).catch(() => {});
     } catch (e) {
-      console.warn('[follows tipster] db write failed:', e);
+      console.error('[follows tipster] db delete failed:', e);
     }
   }
   stores.tipsters.get(userId)?.delete(tipsterId);

@@ -26,11 +26,19 @@ function TeamSearchBox({
 }: { label: string; onSelect: (t: SearchResult) => void; selected: SearchResult | null }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
-  const { data, isLoading } = useSWR<{ teams: SearchResult[] }>(
+  const { data, isLoading } = useSWR<{ teams?: SearchResult[]; hits?: Array<{ type: string; id: string; title?: string; name?: string; logoUrl?: string; logo?: string; subtitle?: string; league?: string }> }>(
     q.length >= 2 ? `/api/search?q=${encodeURIComponent(q)}&type=team&limit=6` : null,
     fetcher,
   );
-  const results = data?.teams || [];
+  // Support both `teams` (direct) and `hits` (generic search) response shapes
+  const results: SearchResult[] = data?.teams ?? (data?.hits ?? [])
+    .filter(h => h.type === 'team')
+    .map(h => ({
+      id: h.id,
+      name: h.title || h.name || '',
+      logo: h.logoUrl || h.logo,
+      league: h.subtitle?.split(' • ')[0] || h.league,
+    }));
 
   return (
     <div className="flex-1 min-w-0">
