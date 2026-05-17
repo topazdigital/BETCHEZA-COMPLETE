@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useState, useCallback } from "react"
 import Link from "next/link"
 import useSWR from "swr"
 import { format } from "date-fns"
@@ -19,6 +19,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { FollowTipsterButton } from "@/components/tipsters/follow-tipster-button"
+import { useRouter } from "next/navigation"
+import { CreditCard, Loader2 } from "lucide-react"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -99,6 +101,63 @@ function RoiSparkline({
   )
 }
 
+function SubscribeButton({ tipsterId, tipsterName, price, currency }: {
+  tipsterId: number
+  tipsterName: string
+  price: number
+  currency: string
+}) {
+  const { isAuthenticated } = useAuth()
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubscribe() {
+    if (!isAuthenticated) {
+      router.push('/login?next=' + encodeURIComponent(window.location.pathname))
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/tipsters/${tipsterId}/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipsterId, tipsterName, price, currency }),
+      })
+      if (res.ok) {
+        setDone(true)
+      } else {
+        const d = await res.json().catch(() => ({}))
+        setError(d.error || 'Subscription failed')
+      }
+    } catch {
+      setError('Network error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (done) {
+    return (
+      <Button variant="outline" size="sm" className="h-7 text-xs text-success border-success/40" disabled>
+        <Check className="mr-1 h-3 w-3" /> Subscribed!
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleSubscribe} disabled={busy}>
+        {busy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CreditCard className="mr-1 h-3 w-3" />}
+        Subscribe {currency} {price}/mo
+      </Button>
+      {error && <span className="text-[10px] text-destructive">{error}</span>}
+    </div>
+  )
+}
+
 const fetcher = async (url: string) => {
   const res = await fetch(url)
   if (!res.ok) throw new Error('Failed to fetch')
@@ -110,8 +169,9 @@ export default function TipsterProfilePage({ params }: PageProps) {
   const { isAuthenticated } = useAuth()
   const [isFollowing, setIsFollowing] = useState(false)
   const [activeTab, setActiveTab] = useState("tips")
+  const [followerDelta, setFollowerDelta] = useState(0)
   
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading, mutate } = useSWR(
     `/api/tipsters/${id}`,
     fetcher
   )
@@ -220,7 +280,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
                   </div>
                   <div className="flex items-center gap-1">
                     <Users className="h-3.5 w-3.5" />
-                    {tipster.followers.toLocaleString()} followers
+                    {(tipster.followers + followerDelta).toLocaleString()} followers
                   </div>
                 </div>
                 
@@ -238,15 +298,22 @@ export default function TipsterProfilePage({ params }: PageProps) {
                   <FollowTipsterButton
                     tipsterId={tipster.id}
                     tipsterName={tipster.displayName}
-                    onFollowChange={setIsFollowing}
+                    onFollowChange={(following) => {
+                      setIsFollowing(following)
+                      setFollowerDelta(d => d + (following ? 1 : -1))
+                      setTimeout(() => mutate(), 1500)
+                    }}
                     size="sm"
                     className="h-7 text-xs"
                   />
 
                   {tipster.isPro && tipster.subscriptionPrice && (
-                    <Button variant="outline" size="sm" className="h-7 text-xs">
-                      Subscribe {tipster.currency} {tipster.subscriptionPrice}/mo
-                    </Button>
+                    <SubscribeButton
+                      tipsterId={tipster.id}
+                      tipsterName={tipster.displayName}
+                      price={tipster.subscriptionPrice}
+                      currency={tipster.currency}
+                    />
                   )}
                   
                   {tipster.socials?.twitter && (

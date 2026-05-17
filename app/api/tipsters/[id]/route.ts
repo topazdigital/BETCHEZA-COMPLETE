@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listFollowersOfTipster, listFollowedTipsters } from '@/lib/follows-store';
-import { getFakeTipsterById, getFakeTipsterByUsername, getFakeTipsterBySlug, type FakeTipster } from '@/lib/fake-tipsters';
+import { getFakeTipsterById, getFakeTipsterByUsername, getFakeTipsterBySlug, getFakeTipsters, type FakeTipster } from '@/lib/fake-tipsters';
 import {
   listTipsForTipster,
   seedTipsForMatch,
@@ -318,6 +318,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   const baseTipster = fakeToShape(fake);
+
+  // Compute rank based on sorted position among all fake tipsters by win rate
+  if (baseTipster.rank === 0) {
+    const allFake = getFakeTipsters()
+      .slice()
+      .sort((a, b) => b.winRate - a.winRate || b.roi - a.roi || b.totalTips - a.totalTips);
+    const pos = allFake.findIndex(t => t.id === baseTipster.id);
+    baseTipster.rank = pos >= 0 ? pos + 1 : allFake.length;
+  }
 
   const tipsterId = baseTipster.id;
   const [realFollowers, realFollowing] = await Promise.all([
