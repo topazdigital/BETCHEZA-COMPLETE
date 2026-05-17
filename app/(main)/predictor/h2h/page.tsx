@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Search, Zap, Target, TrendingUp, Swords, Loader2, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Search, Zap, Target, TrendingUp, Swords, Loader2, AlertCircle, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,7 @@ import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-interface SearchResult { id: string; name: string; logo?: string; league?: string; country?: string }
+interface SearchResult { id: string; name: string; logo?: string; league?: string; country?: string; sportSlug?: string }
 interface H2HStats {
   homeTeam: string; awayTeam: string; homeLogo?: string; awayLogo?: string;
   played: number; homeWins: number; draws: number; awayWins: number;
@@ -19,6 +19,9 @@ interface H2HStats {
   lastMeetings: Array<{ date: string; homeScore: number; awayScore: number; competition?: string }>;
   prediction: { winner: 'home' | 'away' | 'draw'; confidence: number; tip: string; reasoning: string };
   odds: { home: number; draw?: number; away: number };
+  dataSource?: string;
+  noData?: boolean;
+  message?: string;
 }
 
 function TeamSearchBox({
@@ -99,55 +102,38 @@ function TeamSearchBox({
   );
 }
 
-function buildMockH2H(home: SearchResult, away: SearchResult): H2HStats {
-  const seed = Array.from(home.name + away.name).reduce((a, c) => a + c.charCodeAt(0), 0);
-  const rng = (n: number) => ((seed * 1664525 + 1013904223) & 0x7fffffff) % n;
-  const played = 6 + (rng(10));
-  const homeWins = Math.floor(played * 0.35) + rng(3);
-  const awayWins = Math.floor(played * 0.3) + rng(3);
-  const draws = played - homeWins - awayWins;
-  const homeGoals = homeWins * 2 + draws + rng(5);
-  const awayGoals = awayWins * 2 + draws + rng(4);
-  const homeAdv = homeWins / played;
-  let winner: 'home' | 'away' | 'draw';
-  if (homeAdv > 0.42) winner = 'home';
-  else if (awayWins / played > 0.42) winner = 'away';
-  else winner = 'draw';
-  const confidence = 48 + rng(30);
-  const meetings: H2HStats['lastMeetings'] = Array.from({ length: Math.min(played, 5) }, (_, i) => {
-    const hg = rng(4); const ag = rng(4);
-    const d = new Date(); d.setMonth(d.getMonth() - (i + 1) * 3);
-    return { date: d.toISOString().split('T')[0], homeScore: hg, awayScore: ag };
-  });
-  const tipMap: Record<string, string> = {
-    home: `Back ${home.name} to win — they've dominated this fixture historically.`,
-    away: `${away.name} have the edge in recent meetings — value in the away win.`,
-    draw: `These sides are evenly matched — consider a draw or double chance.`,
-  };
-  const p = 1.06;
-  return {
-    homeTeam: home.name, awayTeam: away.name, homeLogo: home.logo, awayLogo: away.logo,
-    played, homeWins, draws: Math.max(0, draws), awayWins,
-    homeGoals, awayGoals, lastMeetings: meetings,
-    prediction: { winner, confidence, tip: tipMap[winner], reasoning: `Based on ${played} historical meetings, form and home advantage analysis.` },
-    odds: {
-      home: +(Math.max(1.3, p / Math.max(0.15, homeAdv + 0.05))).toFixed(2),
-      draw: draws / played > 0.1 ? +(Math.max(2.8, p / Math.max(0.1, draws / played))).toFixed(2) : undefined,
-      away: +(Math.max(1.3, p / Math.max(0.15, awayWins / played + 0.05))).toFixed(2),
-    },
-  };
-}
 
 export default function H2HPredictorPage() {
   const [home, setHome] = useState<SearchResult | null>(null);
   const [away, setAway] = useState<SearchResult | null>(null);
   const [result, setResult] = useState<H2HStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAnalyse = useCallback(() => {
+  const handleAnalyse = useCallback(async () => {
     if (!home || !away) return;
     setLoading(true);
-    setTimeout(() => { setResult(buildMockH2H(home, away)); setLoading(false); }, 900);
+    setError(null);
+    setResult(null);
+    try {
+      const params = new URLSearchParams({
+        homeId: home.id,
+        awayId: away.id,
+        homeName: home.name,
+        awayName: away.name,
+        ...(home.logo ? { homeLogo: home.logo } : {}),
+        ...(away.logo ? { awayLogo: away.logo } : {}),
+        sport: home.sportSlug ?? away.sportSlug ?? 'football',
+      });
+      const res = await fetch(`/api/predictor/h2h?${params}`);
+      const data: H2HStats = await res.json();
+      if (!res.ok) { setError((data as { error?: string }).error ?? 'Failed to load H2H data'); return; }
+      setResult(data);
+    } catch {
+      setError('Failed to load H2H data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }, [home, away]);
 
   const winnerColor = result?.prediction.winner === 'home'
@@ -176,11 +162,11 @@ export default function H2HPredictorPage() {
       {/* Team pickers */}
       <div className="rounded-2xl border border-border bg-card p-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-          <TeamSearchBox label="Home Team" selected={home} onSelect={t => { setHome(t); setResult(null); }} />
+          <TeamSearchBox label="Home Team" selected={home} onSelect={t => { setHome(t); setResult(null); setError(null); }} />
           <div className="flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-full bg-muted text-muted-foreground font-bold text-sm">
             vs
           </div>
-          <TeamSearchBox label="Away Team" selected={away} onSelect={t => { setAway(t); setResult(null); }} />
+          <TeamSearchBox label="Away Team" selected={away} onSelect={t => { setAway(t); setResult(null); setError(null); }} />
         </div>
         <Button
           className="mt-4 w-full gap-2"
@@ -197,8 +183,27 @@ export default function H2HPredictorPage() {
         )}
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* No historical data */}
+      {result?.noData && (
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-border bg-muted/30 px-4 py-4">
+          <Database className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold">No Historical Data Found</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{result.message ?? 'These teams have not met in covered competitions.'}</p>
+          </div>
+        </div>
+      )}
+
       {/* Results */}
-      {result && (
+      {result && !result.noData && (
         <div className="mt-5 space-y-4">
           {/* Score header */}
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -298,19 +303,27 @@ export default function H2HPredictorPage() {
           {/* Last meetings */}
           {result.lastMeetings.length > 0 && (
             <div className="rounded-xl border border-border bg-card overflow-hidden">
-              <div className="border-b border-border px-4 py-2.5">
+              <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
                 <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Recent Meetings</h3>
+                {result.dataSource && (
+                  <span className="flex items-center gap-1 text-[9px] text-muted-foreground/60 font-medium">
+                    <Database className="h-2.5 w-2.5" /> {result.dataSource}
+                  </span>
+                )}
               </div>
               <div className="divide-y divide-border/50">
                 {result.lastMeetings.map((m, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="text-muted-foreground text-[11px]">{new Date(m.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}</span>
-                    <div className="flex items-center gap-3 font-mono font-bold">
-                      <span>{result.homeTeam.split(' ')[0]}</span>
-                      <span className="text-base">{m.homeScore} – {m.awayScore}</span>
-                      <span>{result.awayTeam.split(' ')[0]}</span>
+                  <div key={i} className="flex items-center justify-between px-4 py-2 text-sm gap-2">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-muted-foreground text-[11px] whitespace-nowrap">{new Date(m.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}</span>
+                      {m.competition && <span className="truncate text-[9px] text-muted-foreground/50 max-w-[100px]">{m.competition}</span>}
                     </div>
-                    <span className={cn('text-[10px] font-semibold',
+                    <div className="flex items-center gap-3 font-mono font-bold">
+                      <span className="text-xs truncate max-w-[60px] text-right">{result.homeTeam.split(' ')[0]}</span>
+                      <span className="text-base tabular-nums">{m.homeScore} – {m.awayScore}</span>
+                      <span className="text-xs truncate max-w-[60px]">{result.awayTeam.split(' ')[0]}</span>
+                    </div>
+                    <span className={cn('text-[10px] font-semibold shrink-0',
                       m.homeScore > m.awayScore ? 'text-emerald-600' : m.awayScore > m.homeScore ? 'text-blue-600' : 'text-muted-foreground'
                     )}>
                       {m.homeScore > m.awayScore ? 'H' : m.awayScore > m.homeScore ? 'A' : 'D'}
