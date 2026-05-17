@@ -39,13 +39,13 @@ externalPort = 80
 
 [userenv.shared]
 DISABLE_MOCK_MATCHES = "true"
-NEXT_PUBLIC_APP_URL = "https://0b7369ef-e301-445a-8da8-3329efc516c2-00-ygvt6pm5vg6l.kirk.replit.dev"
-NEXT_PUBLIC_BASE_URL = "https://0b7369ef-e301-445a-8da8-3329efc516c2-00-ygvt6pm5vg6l.kirk.replit.dev"
+NEXT_PUBLIC_APP_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
+NEXT_PUBLIC_BASE_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
 NEXT_PUBLIC_SITE_URL = "https://betcheza.co.ke"
 SITE_URL = "https://betcheza.co.ke"
-OAUTH_SITE_URL = "https://0b7369ef-e301-445a-8da8-3329efc516c2-00-ygvt6pm5vg6l.kirk.replit.dev"
+OAUTH_SITE_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
 INTERNAL_BASE_URL = "http://localhost:5000"
-APP_URL = "https://1c2dbba5-3e63-417b-9f21-b3a4d442b647-00-2sb7pf5s1b1ef.spock.replit.dev"
+APP_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
 PAYHERO_ACCOUNT_ID = "5107"
 PAYHERO_CHANNEL_ID = "7470"
 VAPID_PUBLIC_KEY = "BPHNQra29NkQwD3TyfcB43iX6N_a2ZrAVK6QlT2jc5VUrse9yMINqGgWEnMGPB9rwcRuZ0ux5X-w4loPfDYIGRM"
