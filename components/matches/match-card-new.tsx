@@ -197,7 +197,7 @@ export function MatchCardNew({
 
   if (variant === 'compact') {
     const aiPick = (match.odds && !isFinished && !isLive)
-      ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name, match.markets)
+      ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name, match.markets, match.homeTeam.form, match.awayTeam.form)
       : null;
 
     return (
@@ -530,6 +530,8 @@ export function MatchCardNew({
             awayTeam={match.awayTeam.name}
             matchSlug={slug}
             markets={match.markets}
+            homeForm={match.homeTeam.form}
+            awayForm={match.awayTeam.form}
           />
         </div>
       )}
@@ -553,135 +555,165 @@ interface SmartPick {
 }
 
 /**
- * Evaluate ALL available markets and return the single highest-confidence pick.
- * Considers: 1X2, BTTS, Over/Under 2.5, Double Chance.
- * Confidence = margin-removed implied probability × 100.
+ * Parse a form string like "WWDLW" into a 0–1 score.
+ * Most recent result weighted highest. W=3pts, D=1pt, L=0pts.
+ */
+function parseFormScore(form: string | undefined): number {
+  if (!form) return 0.5;
+  const chars = form.replace(/[^WwDdLl]/g, '').slice(-5).toUpperCase().split('');
+  if (chars.length === 0) return 0.5;
+  let pts = 0;
+  let maxPts = 0;
+  chars.forEach((c, i) => {
+    const w = 1 + i * 0.3;
+    maxPts += 3 * w;
+    if (c === 'W') pts += 3 * w;
+    else if (c === 'D') pts += 1 * w;
+  });
+  return maxPts > 0 ? Math.min(pts / maxPts, 1) : 0.5;
+}
+
+/**
+ * Evaluate ALL available markets and return the single highest-value pick.
+ * Factors in: recent team form, home advantage, Poisson xG model, and API markets.
+ * Avoids reflexively picking Double Chance — prefers directional picks when form justifies it.
+ * Even a high-odds away team can be the pick when form strongly favours them.
  */
 function computeSmartPick(
   odds: { home: number; draw?: number; away: number },
   homeTeam: string,
   awayTeam: string,
   markets?: MatchMarket[],
+  homeForm?: string,
+  awayForm?: string,
 ): SmartPick | null {
   const candidates: SmartPick[] = [];
 
-  // ── 1X2 ──────────────────────────────────────────────────────────────────
+  const homeFormScore = parseFormScore(homeForm);
+  const awayFormScore = parseFormScore(awayForm);
+  const hasFormData = !!(homeForm || awayForm);
+
+  // ── Base implied probabilities (bookmaker margin removed) ────────────────
+  const rawH = 1 / Math.max(odds.home, 1.01);
+  const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
+  const rawA = 1 / Math.max(odds.away, 1.01);
+  const rawTotal = rawH + rawD + rawA;
+  const baseH = rawH / rawTotal;
+  const baseD = rawD / rawTotal;
+  const baseA = rawA / rawTotal;
+
+  // ── Apply form & home advantage ──────────────────────────────────────────
+  // Home advantage adds ~6% to home win probability in real-world data.
+  // Form modifier: 0 wins (score=0) → 0.75×, neutral (0.5) → 1.0×, 5 wins (1.0) → 1.25×
+  const HOME_ADV = 0.06;
+  const fScale = (s: number) => 0.75 + 0.5 * s;
+
+  const adjH = baseH * fScale(homeFormScore) + HOME_ADV;
+  const adjA = baseA * fScale(awayFormScore);
+  const adjD = baseD * 0.90;
+  const adjTotal = adjH + adjA + adjD;
+  const h = adjH / adjTotal;
+  const a = adjA / adjTotal;
+  const d = adjD / adjTotal;
+
+  // ── 1X2 (form + home-advantage adjusted) ────────────────────────────────
   {
-    const hp = 1 / Math.max(odds.home, 1.01);
-    const dp = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
-    const ap = 1 / Math.max(odds.away, 1.01);
-    const total = hp + dp + ap;
-    if (total > 0) {
-      const h = hp / total;
-      const d = dp / total;
-      const a = ap / total;
-      const max = Math.max(h, d, a);
-      const conf = Math.round(max * 100);
-      if (h === max) {
-        candidates.push({ pick: '1', label: homeTeam.split(' ')[0], market: '1X2', confidence: conf });
-      } else if (d === max && odds.draw) {
-        candidates.push({ pick: 'X', label: 'Draw', market: '1X2', confidence: conf });
-      } else {
-        candidates.push({ pick: '2', label: awayTeam.split(' ')[0], market: '1X2', confidence: conf });
+    const max = Math.max(h, d, a);
+    const conf = Math.round(max * 100);
+    if (h === max) {
+      candidates.push({ pick: '1', label: homeTeam.split(' ')[0], market: '1X2', confidence: conf });
+    } else if (d === max && odds.draw) {
+      candidates.push({ pick: 'X', label: 'Draw', market: '1X2', confidence: conf });
+    } else {
+      candidates.push({ pick: '2', label: awayTeam.split(' ')[0], market: '1X2', confidence: conf });
+    }
+
+    // Value detection: strong form divergence even when odds are tight.
+    // A team on 5/5 wins vs an opponent on 5/5 losses is a value pick regardless of odds.
+    if (hasFormData) {
+      const formDiff = homeFormScore - awayFormScore;
+      if (formDiff > 0.38 && conf < 62) {
+        const vConf = Math.min(Math.round(h * 100) + 8, 73);
+        if (vConf > conf) candidates.push({ pick: '1', label: homeTeam.split(' ')[0], market: '1X2', confidence: vConf });
+      } else if (formDiff < -0.38 && conf < 60) {
+        const vConf = Math.min(Math.round(a * 100) + 8, 70);
+        if (vConf > conf) candidates.push({ pick: '2', label: awayTeam.split(' ')[0], market: '1X2', confidence: vConf });
       }
     }
   }
 
-  // ── Synthetic BTTS & O/U 2.5 estimates from 1X2 odds (Poisson model) ────
-  // Works even when no live market feed is available so every match card shows
-  // the best pick across at least three markets.
+  // ── BTTS & O/U 2.5 via Poisson xG model (form-adjusted probabilities) ───
   {
-    const hp = 1 / Math.max(odds.home, 1.01);
-    const dp = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
-    const ap = 1 / Math.max(odds.away, 1.01);
-    const total = hp + dp + ap;
-    if (total > 0) {
-      const h = hp / total;
-      const a = ap / total;
-      // Expected goals per team (empirical mapping from implied win probability)
-      const homeXG = 0.85 + 1.4 * h;
-      const awayXG = 0.85 + 1.4 * a;
-      const totalXG = homeXG + awayXG;
-      // BTTS: (1 - P(home scores 0)) * (1 - P(away scores 0))
-      const pHomeSc = 1 - Math.exp(-homeXG);
-      const pAwaySc = 1 - Math.exp(-awayXG);
-      const bttsYes = pHomeSc * pAwaySc;
-      const bttsConf = Math.round(Math.max(bttsYes, 1 - bttsYes) * 100);
-      if (bttsConf >= 52) {
-        const bttsName = bttsYes >= 0.5 ? 'Yes' : 'No';
-        candidates.push({ pick: bttsName, label: `BTTS ${bttsName}`, market: 'BTTS', confidence: bttsConf });
-      }
-      // O/U 2.5: Poisson sum for 0, 1, 2 total goals
-      const p0 = Math.exp(-totalXG);
-      const p1 = totalXG * Math.exp(-totalXG);
-      const p2 = (totalXG * totalXG / 2) * Math.exp(-totalXG);
-      const pUnder = p0 + p1 + p2;
-      const pOver = 1 - pUnder;
-      const ouConf = Math.round(Math.max(pOver, pUnder) * 100);
-      if (ouConf >= 52) {
-        const ouName = pOver >= pUnder ? 'Over 2.5' : 'Under 2.5';
-        candidates.push({ pick: ouName, label: ouName, market: 'O/U 2.5', confidence: ouConf });
-      }
-      // Double Chance from 1X2
-      if (odds.draw) {
-        const hd = h + dp / total; const ad = a + dp / total;
-        const dcBest = hd >= ad
-          ? { pick: `1X`, label: `${homeTeam.split(' ')[0]} or Draw`, conf: Math.round(hd * 100) }
-          : { pick: `X2`, label: `Draw or ${awayTeam.split(' ')[0]}`, conf: Math.round(ad * 100) };
-        if (dcBest.conf >= 55) {
-          candidates.push({ pick: dcBest.pick, label: dcBest.label, market: 'DC', confidence: dcBest.conf });
-        }
+    const homeXG = 0.85 + 1.4 * h;
+    const awayXG = 0.85 + 1.4 * a;
+    const totalXG = homeXG + awayXG;
+
+    const pHomeSc = 1 - Math.exp(-homeXG);
+    const pAwaySc = 1 - Math.exp(-awayXG);
+    const bttsYes = pHomeSc * pAwaySc;
+    const bttsConf = Math.round(Math.max(bttsYes, 1 - bttsYes) * 100);
+    if (bttsConf >= 52) {
+      const bttsName = bttsYes >= 0.5 ? 'Yes' : 'No';
+      candidates.push({ pick: bttsName, label: `BTTS ${bttsName}`, market: 'BTTS', confidence: bttsConf });
+    }
+
+    const p0 = Math.exp(-totalXG);
+    const p1 = totalXG * Math.exp(-totalXG);
+    const p2 = (totalXG * totalXG / 2) * Math.exp(-totalXG);
+    const pUnder = p0 + p1 + p2;
+    const pOver = 1 - pUnder;
+    const ouConf = Math.round(Math.max(pOver, pUnder) * 100);
+    if (ouConf >= 52) {
+      const ouName = pOver >= pUnder ? 'Over 2.5' : 'Under 2.5';
+      candidates.push({ pick: ouName, label: ouName, market: 'O/U 2.5', confidence: ouConf });
+    }
+
+    // Double Chance from form-adjusted probs
+    if (odds.draw) {
+      const hd = h + d;
+      const ad = a + d;
+      const dcBest = hd >= ad
+        ? { pick: '1X', label: `${homeTeam.split(' ')[0]} or Draw`, conf: Math.round(hd * 100) }
+        : { pick: 'X2', label: `Draw or ${awayTeam.split(' ')[0]}`, conf: Math.round(ad * 100) };
+      if (dcBest.conf >= 55) {
+        candidates.push({ pick: dcBest.pick, label: dcBest.label, market: 'DC', confidence: dcBest.conf });
       }
     }
   }
 
-  // ── Additional markets from the API ──────────────────────────────────────
+  // ── Additional markets from the API feed ─────────────────────────────────
   if (markets && markets.length > 0) {
     for (const mkt of markets) {
       const key = (mkt.key || '').toLowerCase();
       const outcomes = mkt.outcomes || [];
       if (outcomes.length < 2) continue;
 
-      // BTTS
       if (key === 'btts' || key.includes('both_teams') || mkt.name.toLowerCase().includes('both teams')) {
         const yesOut = outcomes.find(o => o.name.toLowerCase().includes('yes'));
         const noOut = outcomes.find(o => o.name.toLowerCase().includes('no'));
         if (yesOut && noOut && yesOut.price > 1 && noOut.price > 1) {
-          const yp = 1 / yesOut.price;
-          const np = 1 / noOut.price;
-          const tot = yp + np;
+          const yp = 1 / yesOut.price; const np = 1 / noOut.price; const tot = yp + np;
           const best = yp > np ? { name: 'Yes', prob: yp / tot } : { name: 'No', prob: np / tot };
-          const conf = Math.round(best.prob * 100);
-          candidates.push({ pick: best.name, label: `BTTS ${best.name}`, market: 'BTTS', confidence: conf });
+          candidates.push({ pick: best.name, label: `BTTS ${best.name}`, market: 'BTTS', confidence: Math.round(best.prob * 100) });
         }
       }
 
-      // Over/Under 2.5 goals
-      if ((key === 'totals' || key.includes('totals_2_5') || key.includes('over_under')) &&
-          mkt.name.toLowerCase().includes('2.5')) {
+      if ((key === 'totals' || key.includes('totals_2_5') || key.includes('over_under')) && mkt.name.toLowerCase().includes('2.5')) {
         const overOut = outcomes.find(o => o.name.toLowerCase().includes('over'));
         const underOut = outcomes.find(o => o.name.toLowerCase().includes('under'));
         if (overOut && underOut && overOut.price > 1 && underOut.price > 1) {
-          const op = 1 / overOut.price;
-          const up = 1 / underOut.price;
-          const tot = op + up;
-          const best = op > up
-            ? { name: 'Over 2.5', prob: op / tot }
-            : { name: 'Under 2.5', prob: up / tot };
-          const conf = Math.round(best.prob * 100);
-          candidates.push({ pick: best.name, label: best.name, market: 'O/U 2.5', confidence: conf });
+          const op = 1 / overOut.price; const up = 1 / underOut.price; const tot = op + up;
+          const best = op > up ? { name: 'Over 2.5', prob: op / tot } : { name: 'Under 2.5', prob: up / tot };
+          candidates.push({ pick: best.name, label: best.name, market: 'O/U 2.5', confidence: Math.round(best.prob * 100) });
         }
       }
 
-      // Double Chance
       if (key === 'dc' || key === 'double_chance' || mkt.name.toLowerCase().includes('double chance')) {
         const sorted = [...outcomes].sort((a, b) => (1 / a.price) - (1 / b.price)).reverse();
         if (sorted[0] && sorted[0].price > 1) {
-          const probs = outcomes.map(o => 1 / o.price);
-          const tot = probs.reduce((s, p) => s + p, 0);
-          const best = sorted[0];
-          const conf = Math.round((1 / best.price) / tot * 100);
-          candidates.push({ pick: best.name, label: best.name, market: 'DC', confidence: conf });
+          const tot = outcomes.reduce((s, o) => s + 1 / o.price, 0);
+          const conf = Math.round((1 / sorted[0].price) / tot * 100);
+          candidates.push({ pick: sorted[0].name, label: sorted[0].name, market: 'DC', confidence: conf });
         }
       }
     }
@@ -689,15 +721,19 @@ function computeSmartPick(
 
   if (candidates.length === 0) return null;
 
-  // Sort by confidence descending
   candidates.sort((a, b) => b.confidence - a.confidence);
 
-  // Double Chance is mathematically high-probability but low-value as a bet.
-  // Only select DC if it has a clear margin (≥8 pts) over the best non-DC pick,
-  // otherwise prefer the best non-DC market for a more meaningful prediction.
   const bestNonDC = candidates.find(c => c.market !== 'DC');
   const bestDC = candidates.find(c => c.market === 'DC');
-  if (bestDC && bestNonDC && (bestDC.confidence - bestNonDC.confidence) < 8) {
+
+  // If form clearly favours one team directionally, prefer that 1X2 pick over DC
+  if (hasFormData && bestNonDC?.market === '1X2' && bestNonDC.confidence >= 54) {
+    return bestNonDC;
+  }
+
+  // DC is statistically high-probability but analytically low-value.
+  // Only show DC when it leads by 10+ points over the best non-DC candidate.
+  if (bestDC && bestNonDC && (bestDC.confidence - bestNonDC.confidence) < 10) {
     return bestNonDC;
   }
   return candidates[0];
@@ -709,14 +745,18 @@ function SmartBetBadge({
   awayTeam,
   matchSlug,
   markets,
+  homeForm,
+  awayForm,
 }: {
   odds: { home: number; draw?: number; away: number };
   homeTeam: string;
   awayTeam: string;
   matchSlug: string;
   markets?: MatchMarket[];
+  homeForm?: string;
+  awayForm?: string;
 }) {
-  const sp = computeSmartPick(odds, homeTeam, awayTeam, markets);
+  const sp = computeSmartPick(odds, homeTeam, awayTeam, markets, homeForm, awayForm);
   if (!sp) return null;
   return (
     <Link

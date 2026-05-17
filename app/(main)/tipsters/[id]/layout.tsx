@@ -10,10 +10,11 @@ interface TipsterResponse {
 }
 
 async function fetchTipster(id: string): Promise<TipsterResponse | null> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+  const baseUrl = process.env.INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
   try {
     const r = await fetch(`${baseUrl}/api/tipsters/${encodeURIComponent(id)}`, {
       next: { revalidate: 600 },
+      cache: 'no-store',
     });
     if (!r.ok) return null;
     return (await r.json()) as TipsterResponse;
