@@ -302,7 +302,11 @@ function MatchesContent() {
   );
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   const [leagueFilter, setLeagueFilter] = useState(searchParams.get('league') || 'all');
-  const [dateTab, setDateTab] = useState<DateTab>('today');
+  const [dateTab, setDateTab] = useState<DateTab>(() => {
+    const t = searchParams.get('tab');
+    if (t === 'upcoming' || t === 'calendar') return t as DateTab;
+    return 'today';
+  });
   const [calendarDate, setCalendarDate] = useState<string>(toLocalISODate(new Date()));
 
   const { matches, isLoading } = useMatches({

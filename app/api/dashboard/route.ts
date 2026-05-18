@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listFollowedTeams, getFollowedTipsters as listFollowedTipsters } from '@/lib/follows-store';
+import { getFakeTipsterById } from '@/lib/fake-tipsters';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -92,15 +93,10 @@ export async function GET(req: Request) {
     listFollowedTipsters(user.userId),
   ]);
 
-  // Use the internal loopback URL so server-side self-fetch works regardless
-  // of any reverse proxy / mTLS in front of the app (otherwise on Replit dev
-  // the public hostname is unreachable from inside the container and the
-  // followed-tipster panel + upcoming/results stay empty).
-  const url = new URL(req.url);
-  const port = process.env.PORT || '5000';
-  const baseUrl = process.env.INTERNAL_BASE_URL
-    ? process.env.INTERNAL_BASE_URL
-    : (process.env.NODE_ENV === 'production' ? `${url.protocol}//${url.host}` : `http://127.0.0.1:${port}`);
+  // Always use the direct internal loopback so self-fetches bypass any reverse
+  // proxy / mTLS / Apache. On VPS production the app listens on port 5001.
+  const internalPort = process.env.PORT || (process.env.NODE_ENV === 'production' ? '5001' : '5000');
+  const baseUrl = process.env.INTERNAL_BASE_URL || `http://127.0.0.1:${internalPort}`;
 
   // Run team + tipster data fetches in parallel.
   const [teamData, tipsterData] = await Promise.all([
@@ -110,9 +106,32 @@ export async function GET(req: Request) {
       ),
     ),
     Promise.all(
-      followedTipsterIds.slice(0, 8).map((id) =>
-        fetchTipsterData(id, baseUrl).then((d) => ({ id, data: d })),
-      ),
+      followedTipsterIds.slice(0, 8).map(async (id) => {
+        // For fake tipsters resolve locally without an HTTP hop.
+        const fake = getFakeTipsterById(id);
+        if (fake) {
+          return {
+            id,
+            data: {
+              tipster: {
+                id: fake.id,
+                username: fake.username,
+                displayName: fake.displayName,
+                avatar: fake.avatar ?? null,
+                countryCode: null as string | null,
+                winRate: fake.winRate,
+                roi: fake.roi,
+                totalTips: fake.totalTips,
+                streak: fake.streak,
+                isPro: fake.isPro,
+                verified: fake.verified,
+              },
+              recentTips: [] as RecentTip[],
+            } as TipsterApiResponse,
+          };
+        }
+        return fetchTipsterData(id, baseUrl).then((d) => ({ id, data: d }));
+      }),
     ),
   ]);
 

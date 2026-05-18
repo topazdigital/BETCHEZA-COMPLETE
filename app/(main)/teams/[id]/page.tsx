@@ -370,43 +370,43 @@ export default function TeamPage({ params }: PageProps) {
 
       {/* Tabs */}
       <Tabs defaultValue="upcoming">
-        <TabsList className="w-full grid grid-cols-6">
-          <TabsTrigger value="upcoming" className="text-xs">
-            <Flame className="mr-1 h-3.5 w-3.5" />
+        <TabsList className="h-auto w-full flex overflow-x-auto [&::-webkit-scrollbar]:hidden gap-0 rounded-lg p-0.5">
+          <TabsTrigger value="upcoming" className="flex-none shrink-0 flex items-center gap-1 text-xs px-3 py-1.5">
+            <Flame className="h-3 w-3" />
             <span className="hidden sm:inline">Upcoming</span>
             <span className="sm:hidden">Next</span>
             {upcoming?.length > 0 && (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">{upcoming.length}</Badge>
+              <Badge variant="secondary" className="ml-0.5 px-1 py-0 text-[9px] h-3.5">{upcoming.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="results" className="text-xs">
-            <TrendingUp className="mr-1 h-3.5 w-3.5" />
+          <TabsTrigger value="results" className="flex-none shrink-0 flex items-center gap-1 text-xs px-3 py-1.5">
+            <TrendingUp className="h-3 w-3" />
             Results
             {past?.length > 0 && (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">{past.length}</Badge>
+              <Badge variant="secondary" className="ml-0.5 px-1 py-0 text-[9px] h-3.5">{past.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="squad" className="text-xs">
-            <Users className="mr-1 h-3.5 w-3.5" />
+          <TabsTrigger value="squad" className="flex-none shrink-0 flex items-center gap-1 text-xs px-3 py-1.5">
+            <Users className="h-3 w-3" />
             Squad
             {roster?.length > 0 && (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">{roster.length}</Badge>
+              <Badge variant="secondary" className="ml-0.5 px-1 py-0 text-[9px] h-3.5">{roster.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="injuries" className="text-xs">
-            <Activity className="mr-1 h-3.5 w-3.5" />
+          <TabsTrigger value="injuries" className="flex-none shrink-0 flex items-center gap-1 text-xs px-3 py-1.5">
+            <Activity className="h-3 w-3" />
             <span className="hidden sm:inline">Injuries</span>
             <span className="sm:hidden">Inj</span>
             {injuries?.length > 0 && (
-              <Badge variant="destructive" className="ml-1 px-1.5 py-0 text-[10px]">{injuries.length}</Badge>
+              <Badge variant="destructive" className="ml-0.5 px-1 py-0 text-[9px] h-3.5">{injuries.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="stats" className="text-xs">
-            <BarChart3 className="mr-1 h-3.5 w-3.5" />
+          <TabsTrigger value="stats" className="flex-none shrink-0 flex items-center gap-1 text-xs px-3 py-1.5">
+            <BarChart3 className="h-3 w-3" />
             Stats
           </TabsTrigger>
-          <TabsTrigger value="info" className="text-xs">
-            <Shield className="mr-1 h-3.5 w-3.5" />
+          <TabsTrigger value="info" className="flex-none shrink-0 flex items-center gap-1 text-xs px-3 py-1.5">
+            <Shield className="h-3 w-3" />
             About
           </TabsTrigger>
         </TabsList>

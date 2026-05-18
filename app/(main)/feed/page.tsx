@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -207,7 +207,7 @@ function CommentList({ postId, open }: { postId: string; open: boolean }) {
   );
 }
 
-function PostCard({ post }: { post: Post }) {
+function PostCard({ post, initialFollowing = false }: { post: Post; initialFollowing?: boolean }) {
   const [openComments, setOpenComments] = useState(false);
   const [liked, setLiked] = useState(!!post.liked);
   const [likes, setLikes] = useState(post.likes);
@@ -245,7 +245,7 @@ function PostCard({ post }: { post: Post }) {
               <p className="text-[10px] text-muted-foreground mt-0">on {post.matchTitle}</p>
             )}
           </div>
-          <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={false} />
+          <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={initialFollowing} />
         </div>
 
         <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight">{post.content}</p>
@@ -634,6 +634,20 @@ export default function FeedPage() {
   const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[] }>(POSTS_KEY, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
   const posts = postsRes?.posts ?? [];
 
+  const isLoggedIn = !!meRes?.user;
+  const tipsterIds = useMemo(() => [...new Set(posts.map(p => p.userId))], [posts]);
+  const batchKey = isLoggedIn && tipsterIds.length > 0 ? ['batch-follow', tipsterIds.join(',')] : null;
+  const { data: batchRes } = useSWR<{ statuses: Record<number, boolean> }>(
+    batchKey,
+    () => fetch('/api/tipsters/batch-follow-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: tipsterIds }),
+    }).then(r => r.json()),
+    { revalidateOnFocus: false, dedupingInterval: 30000 },
+  );
+  const followStatuses = batchRes?.statuses ?? {};
+
   const refresh = () => mutate(POSTS_KEY);
 
   return (
@@ -701,7 +715,7 @@ export default function FeedPage() {
                 </CardContent></Card>
               ) : (
                 <div className="space-y-2.5">
-                  {posts.map(p => <PostCard key={p.id} post={p} />)}
+                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} />)}
                 </div>
               )}
             </main>

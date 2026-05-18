@@ -325,7 +325,7 @@ export default function LeaguePage({ params }: PageProps) {
                       </div>
                       {upcomingMatches.length > 12 && (
                         <Button variant="ghost" size="sm" className="mt-2 h-7 w-full text-xs" asChild>
-                          <Link href={`/matches?league=${league.slug}`}>
+                          <Link href={`/matches?league=${league.slug}&tab=upcoming`}>
                             View all {upcomingMatches.length} matches
                             <ChevronRight className="ml-1 h-3.5 w-3.5" />
                           </Link>
