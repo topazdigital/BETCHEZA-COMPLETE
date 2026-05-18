@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { getPool, query } from '@/lib/db';
 import { getEmailConfig } from '@/lib/email-config-store';
-import { getOAuthAllConfig } from '@/lib/oauth-config-store';
+import { getOAuthConfig as getOAuthAllConfig } from '@/lib/oauth-config-store';
 import { isTheOddsApiQuotaExhausted, getApiStatus } from '@/lib/api/unified-sports-api';
 import { getApiKey } from '@/lib/api-keys';
 
