@@ -294,7 +294,7 @@ Return ONLY valid JSON (1 to 5 picks). All odds multiplied MUST equal 3.00–4.0
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET || 'betcheza-cron';
+  const cronSecret = process.env.CRON_SECRET || 'betcheza-cron-2024';
   if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

@@ -726,13 +726,8 @@ function computeSmartPick(
   const bestNonDC = candidates.find(c => c.market !== 'DC');
   const bestDC = candidates.find(c => c.market === 'DC');
 
-  // If form clearly favours one team directionally, prefer that 1X2 pick over DC
-  if (hasFormData && bestNonDC?.market === '1X2' && bestNonDC.confidence >= 54) {
-    return bestNonDC;
-  }
-
-  // DC is statistically high-probability but analytically low-value.
-  // Only show DC when it leads by 10+ points over the best non-DC candidate.
+  // DC is analytically low-value — only show it when it leads the best directional
+  // pick by 10+ confidence points. Otherwise let the highest-confidence market win.
   if (bestDC && bestNonDC && (bestDC.confidence - bestNonDC.confidence) < 10) {
     return bestNonDC;
   }

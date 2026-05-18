@@ -45,6 +45,30 @@ function hasDb(): boolean {
   return !!getPool();
 }
 
+// Auto-drop the FK constraint on following_id so fake/external tipster IDs can be followed.
+// Runs once on module load; safe to call on a table that already has the FK removed.
+void (async () => {
+  if (!getPool()) return;
+  try {
+    const r = await query<{ CONSTRAINT_NAME: string }>(
+      `SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'follows'
+         AND COLUMN_NAME = 'following_id'
+         AND REFERENCED_TABLE_NAME = 'users'
+       LIMIT 1`,
+      []
+    );
+    const fk = r.rows[0]?.CONSTRAINT_NAME;
+    if (fk) {
+      await execute(`ALTER TABLE follows DROP FOREIGN KEY \`${fk}\``, []);
+      console.log('[follows] auto-dropped FK constraint on following_id:', fk);
+    }
+  } catch (e) {
+    console.warn('[follows] FK auto-migration skipped:', e instanceof Error ? e.message : e);
+  }
+})();
+
 function persistToDisk() {
   try {
     const out = {

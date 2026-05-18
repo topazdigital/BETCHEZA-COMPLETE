@@ -10,7 +10,7 @@ import { sendPushToSubscription } from '@/lib/push-sender';
 
 export const dynamic = 'force-dynamic';
 
-const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron';
+const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 
 // In-memory score snapshot keyed by matchId → "homeScore:awayScore"
 const g = globalThis as { __liveScoreSnap?: Map<string, string>; __liveScoreCronBusy?: boolean };

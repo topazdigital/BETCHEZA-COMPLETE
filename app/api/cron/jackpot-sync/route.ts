@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron';
+const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 
 interface RawGame { home: string; away: string; league?: string; kickoffTime?: string }
 

@@ -410,7 +410,6 @@ CREATE TABLE IF NOT EXISTS follows (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (follower_id, following_id),
   FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_follow_following (following_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
