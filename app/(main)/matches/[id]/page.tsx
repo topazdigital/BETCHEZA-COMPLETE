@@ -2608,6 +2608,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                 standings={standings ?? []}
                 h2h={h2h ?? []}
                 onJumpToTab={setActiveTab}
+                isFinished={isFinished}
+                openTipWithPrefill={openTipWithPrefill}
               />
             </div>
           </aside>
@@ -2902,6 +2904,8 @@ function MatchInfoRail({
   standings,
   h2h,
   onJumpToTab,
+  isFinished,
+  openTipWithPrefill,
 }: {
   match: MatchDetails['match']
   bookmakerOdds: BookmakerOdd[]
@@ -2909,6 +2913,8 @@ function MatchInfoRail({
   standings: StandingsGroup[]
   h2h: H2HGame[]
   onJumpToTab: (tab: string) => void
+  isFinished?: boolean
+  openTipWithPrefill?: (marketKey: string, outcome: { name: string; price: number }) => void
 }) {
   const timezone = getBrowserTimezone()
   const NO_DRAW = new Set(['basketball', 'baseball', 'tennis', 'mma'])

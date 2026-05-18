@@ -867,17 +867,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw);
     const realOdds = summaryOdds || match.odds;
 
-    // Always ensure odds are present — fall back to computed estimates
-    const finalOdds = realOdds || generateComputedOdds(
-      match.homeTeam.name,
-      match.awayTeam.name,
-      cfg?.sportType || 'soccer'
-    );
+    // Only use real odds — never fall back to computed/estimated odds
+    const finalOdds = realOdds || null;
 
-    // Build a comprehensive derived market suite from whatever odds we have.
-    // deriveSoccerMarkets uses a Poisson model grounded in real implied probs.
+    // Only build derived markets when we have real odds to ground them in.
     const isSoccer = (cfg?.sportType || 'soccer') === 'soccer';
-    const derivedMarkets = isSoccer && finalOdds?.draw !== undefined
+    const derivedMarkets = isSoccer && finalOdds?.home && finalOdds?.draw !== undefined && finalOdds?.away
       ? deriveSoccerMarkets(
           finalOdds.home,
           finalOdds.draw,
@@ -889,13 +884,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     // Merge strategy:
     // 1. ESPN pickcenter markets (h2h, totals, spreads) — have real provider odds → keep as-is.
-    // 2. For every other market (BTTS, HT/FT, Correct Score, etc.) use derived markets.
-    // This means users always see 15+ markets; the core 1X2 / totals cells show real bookmaker prices.
+    // 2. Supplement with derived soccer markets only when real odds back them.
     const espnMarketKeys = new Set((summaryMarkets || []).map((m: { key: string }) => m.key));
     const supplementary = derivedMarkets.filter(m => !espnMarketKeys.has(m.key));
     const finalMarkets = summaryMarkets && summaryMarkets.length > 0
       ? [...summaryMarkets, ...supplementary]
-      : derivedMarkets;
+      : (finalOdds ? derivedMarkets : []);
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 

@@ -297,11 +297,7 @@ async function runActivity() {
   }
 }
 
-// Auto-run on startup (5 s delay) then every 45 minutes — gives each tipster natural spacing
-if (typeof globalThis !== 'undefined') {
-  setTimeout(() => { g.__fakeActivityLastRun = Date.now(); runActivity().catch(() => {}); }, 5000);
-  setInterval(() => { g.__fakeActivityLastRun = Date.now(); runActivity().catch(() => {}); }, 45 * 60 * 1000);
-}
+// Fake activity generation is disabled — only real user activity is shown
 
 export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get('secret');

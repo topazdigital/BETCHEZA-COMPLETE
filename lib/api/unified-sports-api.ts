@@ -3893,10 +3893,9 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
       setCache(cacheKey, staticData);
       return staticData;
     }
-    const standingsFallback = await buildOutrightFromStandings(leagueId).catch(() => null);
-    const result = standingsFallback ? [standingsFallback] : [];
-    setCache(cacheKey, result);
-    return result;
+    // No synthetic/computed outrights — only show real bookmaker data
+    setCache(cacheKey, []);
+    return [];
   }
 
   // Probe all callable outright keys in parallel.

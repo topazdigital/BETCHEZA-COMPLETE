@@ -146,26 +146,4 @@ export async function GET(req: Request) {
   }
 }
 
-// Auto-seed on import — fires once per process, re-seeds every 30 min
-if (typeof globalThis !== 'undefined') {
-  const lastSeed = g.__fakeVotesSeedTs || 0;
-  if (Date.now() - lastSeed > 30 * 60 * 1000) {
-    g.__fakeVotesSeedTs = Date.now();
-    getAllMatches().then(matches => {
-      const now = Date.now();
-      const data = matches
-        .filter(m => {
-          const t = new Date(m.kickoffTime).getTime();
-          return t >= now - 3 * 60 * 60 * 1000 && t <= now + 2 * 24 * 60 * 60 * 1000;
-        })
-        .slice(0, 80)
-        .map(m => ({
-          id: m.id,
-          leagueId: m.leagueId,
-          tipsCount: m.tipsCount || 0,
-          sport: m.sport?.slug,
-        }));
-      seedFakeVotesForMatches(data).catch(() => undefined);
-    }).catch(() => undefined);
-  }
-}
+// Fake votes auto-seeding is disabled — only real user votes are shown
