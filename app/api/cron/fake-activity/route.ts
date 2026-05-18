@@ -266,7 +266,9 @@ if (typeof globalThis !== 'undefined') {
 
 export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get('secret');
-  if (secret !== CRON_SECRET) {
+  const authHeader = req.headers.get('authorization');
+  const bearerSecret = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (secret !== CRON_SECRET && bearerSecret !== CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

@@ -259,7 +259,7 @@ function PostCard({ post, initialFollowing = false }: { post: Post; initialFollo
               </Badge>
             )}
             {post.odds && (
-              <span className="text-xs font-bold text-primary">@ {post.odds.toFixed(2)}</span>
+              <span className="text-xs font-bold text-primary">@ {Number(post.odds).toFixed(2)}</span>
             )}
           </div>
         )}
@@ -469,7 +469,7 @@ function TipOfDay() {
           {top.odds && (
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-center">
               <div className="text-[9px] uppercase tracking-wide text-emerald-600 font-medium">Odds</div>
-              <div className="text-base font-black text-emerald-500">{top.odds.toFixed(2)}</div>
+              <div className="text-base font-black text-emerald-500">{Number(top.odds).toFixed(2)}</div>
             </div>
           )}
         </div>
@@ -516,7 +516,7 @@ function TrendingRail() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
                     <Badge className="bg-primary/15 text-primary border-primary/30 text-[9px] py-0 px-1">{p.pick}</Badge>
-                    {p.odds && <span className="text-[10px] font-bold text-primary">@ {p.odds.toFixed(2)}</span>}
+                    {p.odds && <span className="text-[10px] font-bold text-primary">@ {Number(p.odds).toFixed(2)}</span>}
                   </div>
                   {p.matchTitle && <p className="mt-0 truncate text-[10px] text-muted-foreground">{p.matchTitle}</p>}
                   <div className="mt-0.5 flex items-center gap-1.5 text-[9px] text-muted-foreground">

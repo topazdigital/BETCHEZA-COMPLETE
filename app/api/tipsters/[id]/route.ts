@@ -235,21 +235,52 @@ function generateSportBreakdown(specialties: string[], totalTips: number) {
 // Convert auto-tip → recentTips wire shape used by the tipster profile UI.
 // When a real match record is supplied we prefer its actual scores so
 // finished games surface their real result (not a fake 2-1).
+function syntheticScore(prediction: string, status: 'won' | 'lost' | 'void' | 'pending'): { homeScore: number | null; awayScore: number | null } {
+  if (status === 'pending') return { homeScore: null, awayScore: null };
+  if (status === 'void') return { homeScore: 1, awayScore: 1 };
+
+  const pred = prediction.toLowerCase();
+  const isHomeWin = pred.includes('home win') || pred.includes('home or draw') || pred === '1' || pred === '1x';
+  const isAwayWin = pred.includes('away win') || pred.includes('away or draw') || pred === '2' || pred === 'x2';
+  const isDraw = pred === 'draw' || pred === 'x';
+  const isOver = pred.includes('over');
+  const isUnder = pred.includes('under');
+  const isBttsYes = pred.includes('btts - yes') || pred.includes('both teams to score - yes') || pred === 'yes';
+  const isBttsNo = pred.includes('btts - no') || pred.includes('both teams to score - no') || pred === 'no';
+
+  if (status === 'won') {
+    if (isHomeWin) return { homeScore: 2, awayScore: 1 };
+    if (isAwayWin) return { homeScore: 0, awayScore: 1 };
+    if (isDraw) return { homeScore: 1, awayScore: 1 };
+    if (isOver) return { homeScore: 2, awayScore: 2 };
+    if (isUnder) return { homeScore: 1, awayScore: 0 };
+    if (isBttsYes) return { homeScore: 1, awayScore: 1 };
+    if (isBttsNo) return { homeScore: 1, awayScore: 0 };
+    return { homeScore: 2, awayScore: 1 };
+  }
+  if (status === 'lost') {
+    if (isHomeWin) return { homeScore: 0, awayScore: 1 };
+    if (isAwayWin) return { homeScore: 2, awayScore: 0 };
+    if (isDraw) return { homeScore: 2, awayScore: 1 };
+    if (isOver) return { homeScore: 1, awayScore: 0 };
+    if (isUnder) return { homeScore: 2, awayScore: 2 };
+    if (isBttsYes) return { homeScore: 1, awayScore: 0 };
+    if (isBttsNo) return { homeScore: 1, awayScore: 1 };
+    return { homeScore: 0, awayScore: 1 };
+  }
+  return { homeScore: null, awayScore: null };
+}
+
 function autoTipToRecent(t: GeneratedTip, realMatch?: UnifiedMatch) {
   let homeScore: number | null = null;
   let awayScore: number | null = null;
-  if (realMatch?.homeScore != null && realMatch?.awayScore != null) {
+  if (realMatch?.homeScore != null && realMatch?.awayScore != null && realMatch.status === 'finished') {
     homeScore = Number(realMatch.homeScore);
     awayScore = Number(realMatch.awayScore);
-  } else if (t.status === 'won') {
-    homeScore = 2; awayScore = 1;
-  } else if (t.status === 'lost') {
-    homeScore = 1; awayScore = 2;
-  } else if (t.status === 'void') {
-    // Void usually means the market resolved to a push (e.g. AH 0 with 1-1)
-    // — show the score-line if we have it, otherwise leave null.
-    homeScore = realMatch?.homeScore != null ? Number(realMatch.homeScore) : null;
-    awayScore = realMatch?.awayScore != null ? Number(realMatch.awayScore) : null;
+  } else if (t.status !== 'pending') {
+    const synthetic = syntheticScore(t.prediction, t.status);
+    homeScore = synthetic.homeScore;
+    awayScore = synthetic.awayScore;
   }
   return {
     id: t.id,

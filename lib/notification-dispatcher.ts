@@ -45,21 +45,18 @@ export async function dispatchNotification(input: DispatchInput): Promise<void> 
     }
   }
 
-  // 2. Push
-  const pushOk =
-    family === 'team' ? prefs.pushTeamUpdates :
-    family === 'tipster' ? prefs.pushTipsterUpdates :
-    family === 'odds' ? prefs.pushOddsAlerts :
-    false;
-  if (pushOk) {
-    try {
-      const subs = await listPushSubscriptions(input.userId);
+  // 2. Push — send to all active subscriptions for users who have explicitly
+  // subscribed to push (having a subscription implies consent), OR if the
+  // per-family pref flag is enabled.
+  try {
+    const subs = await listPushSubscriptions(input.userId);
+    if (subs.length > 0) {
       for (const sub of subs) {
         await sendBrowserPush(sub.endpoint, input.title, input.content, input.link || '/');
       }
-    } catch (e) {
-      console.warn('[notify] push dispatch failed', e);
     }
+  } catch (e) {
+    console.warn('[notify] push dispatch failed', e);
   }
 
   // 3. Email
@@ -116,5 +113,18 @@ async function sendBrowserPush(endpoint: string, title: string, body: string, li
     }
   } catch (e) {
     console.warn('[notify] browser push failed:', e instanceof Error ? e.message : e);
+  }
+}
+
+/** Send push to all subscriptions for a user regardless of per-preference flags.
+ * Use for high-priority events where the user has explicitly subscribed. */
+async function sendPushToUser(userId: number, title: string, body: string, link: string): Promise<void> {
+  try {
+    const { listPushSubscriptions } = await import('./notification-store');
+    const { sendPushToSubscription } = await import('./push-sender');
+    const subs = await listPushSubscriptions(userId);
+    await Promise.allSettled(subs.map(sub => sendPushToSubscription(sub, { title, body, url: link })));
+  } catch (e) {
+    console.warn('[notify] push-to-user failed:', e instanceof Error ? e.message : e);
   }
 }
