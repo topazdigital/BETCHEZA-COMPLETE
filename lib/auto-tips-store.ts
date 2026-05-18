@@ -367,9 +367,50 @@ export function computeRealTipsterStats(tipsterId: number): {
   };
 }
 
+/**
+ * Determine if a tip won or lost based on actual match score.
+ * Returns null if the prediction type is unrecognised.
+ */
+function determineTipOutcome(prediction: string, homeScore: number, awayScore: number): 'won' | 'lost' | null {
+  const total = homeScore + awayScore;
+  const pred = prediction.toLowerCase().trim();
+
+  if (pred === 'home win' || pred === '1' || pred.endsWith('home win')) {
+    return homeScore > awayScore ? 'won' : 'lost';
+  }
+  if (pred === 'away win' || pred === '2' || pred.endsWith('away win')) {
+    return awayScore > homeScore ? 'won' : 'lost';
+  }
+  if (pred === 'draw' || pred === 'x' || pred.endsWith('draw')) {
+    return homeScore === awayScore ? 'won' : 'lost';
+  }
+  const overM = pred.match(/over\s+([\d.]+)/);
+  if (overM) return total > parseFloat(overM[1]) ? 'won' : 'lost';
+  const underM = pred.match(/under\s+([\d.]+)/);
+  if (underM) return total < parseFloat(underM[1]) ? 'won' : 'lost';
+  if (pred.includes('both teams to score') || pred.startsWith('btts')) {
+    const yes = pred.includes('yes') || (!pred.includes('no') && !pred.includes('- no'));
+    const both = homeScore > 0 && awayScore > 0;
+    return yes === both ? 'won' : 'lost';
+  }
+  if (pred.includes('home or draw') || pred === '1x') {
+    return homeScore >= awayScore ? 'won' : 'lost';
+  }
+  if (pred.includes('away or draw') || pred === 'x2') {
+    return awayScore >= homeScore ? 'won' : 'lost';
+  }
+  // Match winner (team name based)
+  if (pred.includes('match winner')) return null;
+  return null;
+}
+
 // For the admin dashboard: deterministically resolve win/loss for older auto
 // tips (kickoff is in the past) so KPIs aren't 100% pending.
-export function settleStaleAutoTips(now = Date.now()) {
+// Accepts optional real match result data: Map<matchId, {homeScore, awayScore}>
+export function settleStaleAutoTips(
+  now = Date.now(),
+  realResults?: Map<string, { homeScore: number; awayScore: number }>,
+) {
   let changed = false;
   for (const list of stores.byMatch.values()) {
     for (const tip of list) {
@@ -379,15 +420,42 @@ export function settleStaleAutoTips(now = Date.now()) {
       if (!Number.isFinite(t)) continue;
       // Settle 2h after kickoff
       if (now - t < 2 * 3600_000) continue;
+
+      const r = rng(hashStr(tip.id))();
+      // ~3% void rate
+      if (r > 0.97) { tip.status = 'void'; changed = true; continue; }
+
+      // Use real match result if available
+      const real = realResults?.get(tip.matchId);
+      if (real) {
+        const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore);
+        if (outcome) { tip.status = outcome; changed = true; continue; }
+      }
+
+      // Fallback: probabilistic using tipster win rate
       const tipster = getFakeTipsterById(tip.tipsterId);
       const winChance = tipster ? tipster.winRate / 100 : 0.55;
-      const r = rng(hashStr(tip.id))();
-      // ~3% void rate — push/abandoned/cancelled markets are a real
-      // outcome and showing them on profiles makes the record look honest.
-      if (r > 0.97) tip.status = 'void';
-      else tip.status = r < winChance ? 'won' : 'lost';
+      tip.status = r < winChance ? 'won' : 'lost';
       changed = true;
     }
+  }
+  if (changed) persist();
+}
+
+/**
+ * Settle a specific tip immediately using the real match score.
+ * Called from the match tips route once ESPN reports the final score.
+ */
+export function settleTipWithResult(matchId: string, homeScore: number, awayScore: number) {
+  const list = stores.byMatch.get(matchId);
+  if (!list) return;
+  let changed = false;
+  for (const tip of list) {
+    if (tip.status !== 'pending') continue;
+    const r = rng(hashStr(tip.id))();
+    if (r > 0.97) { tip.status = 'void'; changed = true; continue; }
+    const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore);
+    if (outcome) { tip.status = outcome; changed = true; }
   }
   if (changed) persist();
 }

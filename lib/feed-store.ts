@@ -8,6 +8,8 @@ export interface FeedPost {
   id: string;
   userId: number;
   authorName: string;
+  authorUsername?: string | null;
+  authorRole?: string | null;
   authorAvatar?: string | null;
   content: string;
   matchId?: string | null;
@@ -66,11 +68,14 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
         content: string; match_id: string | null; match_title: string | null;
         pick: string | null; odds: number | null; image_url: string | null;
         likes: number; comment_count: number; created_at: string;
-      }>(`SELECT id, user_id, author_name, author_avatar, content,
-                 match_id, match_title, pick, odds, image_url,
-                 likes, comment_count, created_at
-          FROM feed_posts
-          ORDER BY created_at DESC LIMIT ?`,
+        author_role: string | null; author_username: string | null;
+      }>(`SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
+                 fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
+                 fp.likes, fp.comment_count, fp.created_at,
+                 u.role AS author_role, u.username AS author_username
+          FROM feed_posts fp
+          LEFT JOIN users u ON u.id = fp.user_id
+          ORDER BY fp.created_at DESC LIMIT ?`,
         [limit]);
 
       if (r.rows.length > 0) {
@@ -86,6 +91,7 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
         }
         return r.rows.map(x => ({
           id: x.id, userId: x.user_id, authorName: x.author_name, authorAvatar: x.author_avatar,
+          authorRole: x.author_role, authorUsername: x.author_username,
           content: x.content, matchId: x.match_id, matchTitle: x.match_title, pick: x.pick,
           odds: x.odds, imageUrl: x.image_url, likes: x.likes || 0, commentCount: x.comment_count || 0,
           liked: likedSet.has(x.id),

@@ -360,10 +360,13 @@ function GithubIcon() {
   return <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>;
 }
 
+type LoginTab = 'email' | 'phone' | 'username';
+
 function LoginPanel() {
   const { login, completeTwoFactor, resendTwoFactor } = useAuth();
   const { close, setView } = useAuthModal();
-  const [email, setEmail] = useState('');
+  const [loginTab, setLoginTab] = useState<LoginTab>('email');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -376,18 +379,27 @@ function LoginPanel() {
   } | null>(null);
   const [otpCode, setOtpCode] = useState('');
   const [resendNote, setResendNote] = useState('');
-  // Remember me — when checked, the auth cookie + JWT are extended to 30
-  // days. Otherwise we use the 7-day default.
   const [rememberMe, setRememberMe] = useState(true);
-  // Captcha is hidden by default — we surface it once the server flags
-  // captchaRequired (typically after 3 failed attempts) so legitimate users
-  // never have to solve one on the first try.
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const captchaRef = useRef<CaptchaChallengeHandle>(null);
+
+  const tabLabels: Record<LoginTab, string> = { email: 'Email', phone: 'Phone', username: 'Username' };
+  const tabPlaceholders: Record<LoginTab, string> = { email: 'you@example.com', phone: '+254 7XX XXX XXX', username: 'your_username' };
+  const tabInputTypes: Record<LoginTab, string> = { email: 'email', phone: 'tel', username: 'text' };
+
+  const handleTabChange = (tab: LoginTab) => {
+    setLoginTab(tab);
+    setIdentifier('');
+    setError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!identifier.trim()) {
+      setError(`Please enter your ${tabLabels[loginTab].toLowerCase()}`);
+      return;
+    }
     let captcha: { token: string; id?: string } | undefined;
     if (captchaRequired) {
       const r = captchaRef.current?.getResult();
@@ -398,13 +410,12 @@ function LoginPanel() {
       captcha = r;
     }
     setIsLoading(true);
-    const result = await login(email, password, captcha, { rememberMe });
+    const result = await login(identifier.trim(), password, captcha, { rememberMe });
     setIsLoading(false);
     if (!result.success) {
       setError(result.error || 'Login failed');
       if (result.captchaRequired) {
         setCaptchaRequired(true);
-        // Refresh the challenge so the user gets a fresh one after a failure.
         await captchaRef.current?.refresh();
       }
       return;
@@ -433,10 +444,10 @@ function LoginPanel() {
   };
 
   const handleResend = async () => {
-    if (!email) return;
+    if (!identifier) return;
     setResendNote('');
     setError('');
-    const r = await resendTwoFactor(email);
+    const r = await resendTwoFactor(identifier);
     if (r.success && r.challengeId) {
       setTwoFactor((prev) => prev ? { ...prev, challengeId: r.challengeId!, deliveredTo: r.deliveredTo || prev.deliveredTo, channel: r.channel || prev.channel } : prev);
       setOtpCode('');
@@ -499,14 +510,33 @@ function LoginPanel() {
           </div>
         )}
 
+        {/* Login method tabs */}
+        <div className="flex rounded-lg border border-border overflow-hidden text-[11px]">
+          {(['email', 'phone', 'username'] as LoginTab[]).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => handleTabChange(tab)}
+              className={`flex-1 py-1.5 font-medium transition-colors capitalize ${
+                loginTab === tab
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              {tabLabels[tab]}
+            </button>
+          ))}
+        </div>
+
         <div className="space-y-1">
-          <Label htmlFor="modal-email" className="text-xs">Email</Label>
+          <Label htmlFor="modal-identifier" className="text-xs">{tabLabels[loginTab]}</Label>
           <Input
-            id="modal-email"
-            type="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            id="modal-identifier"
+            type={tabInputTypes[loginTab]}
+            placeholder={tabPlaceholders[loginTab]}
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            autoComplete={loginTab === 'email' ? 'email' : loginTab === 'phone' ? 'tel' : 'username'}
             required
             disabled={isLoading}
             className="h-8 text-xs"

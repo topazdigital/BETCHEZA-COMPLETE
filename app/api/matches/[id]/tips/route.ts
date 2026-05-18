@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { slugToMatchId } from '@/lib/utils/match-url';
-import { seedTipsForMatch, listTipsForMatch, type GeneratedTip } from '@/lib/auto-tips-store';
+import { seedTipsForMatch, listTipsForMatch, settleTipWithResult, type GeneratedTip } from '@/lib/auto-tips-store';
 import { getFakeTipsterById, getFakeTipsters } from '@/lib/fake-tipsters';
 import { getMatchById } from '@/lib/api/unified-sports-api';
 import { setBaselineLikes, getLikeCount, getCommentCount } from '@/lib/tip-engagement-store';
@@ -101,6 +101,9 @@ export async function GET(
   let markets: { key?: string; name: string; selections: { label: string; odds: number }[] }[] | undefined;
   let realHome = homeTeam;
   let realAway = awayTeam;
+  let matchStatus = '';
+  let finalHomeScore: number | undefined;
+  let finalAwayScore: number | undefined;
 
   try {
     const match = await getMatchById(matchId);
@@ -111,6 +114,9 @@ export async function GET(
       kickoff = match.kickoffTime instanceof Date ? match.kickoffTime.toISOString() : String(match.kickoffTime);
       realHome = match.homeTeam?.name || realHome;
       realAway = match.awayTeam?.name || realAway;
+      matchStatus = match.status || '';
+      finalHomeScore = typeof match.homeScore === 'number' ? match.homeScore : undefined;
+      finalAwayScore = typeof match.awayScore === 'number' ? match.awayScore : undefined;
       if (match.markets && match.markets.length > 0) {
         markets = match.markets.map(m => ({
           key: m.key,
@@ -136,6 +142,15 @@ export async function GET(
     popularity: leagueTier <= 2 ? 1.2 : 0.8,
     markets,
   });
+
+  // If match is finished and we have real scores, settle all pending tips now.
+  if (
+    matchStatus === 'finished' &&
+    typeof finalHomeScore === 'number' &&
+    typeof finalAwayScore === 'number'
+  ) {
+    settleTipWithResult(matchId, finalHomeScore, finalAwayScore);
+  }
 
   const autoTipsRaw = listTipsForMatch(matchId);
   // Lock in the auto-generated like counts as the baseline so any subsequent

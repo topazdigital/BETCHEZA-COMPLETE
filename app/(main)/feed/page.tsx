@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button';
 import {
   Heart, MessageCircle, Send, Sparkles, Loader2, Flame, TrendingUp, Users, Lock,
-  Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff,
+  Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff, Megaphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -23,6 +23,8 @@ interface Post {
   id: string;
   userId: number;
   authorName: string;
+  authorUsername?: string | null;
+  authorRole?: string | null;
   authorAvatar?: string | null;
   content: string;
   matchTitle?: string | null;
@@ -207,11 +209,15 @@ function CommentList({ postId, open }: { postId: string; open: boolean }) {
   );
 }
 
-function PostCard({ post, initialFollowing = false }: { post: Post; initialFollowing?: boolean }) {
+function PostCard({ post, initialFollowing = false, currentUserId }: { post: Post; initialFollowing?: boolean; currentUserId?: number | null }) {
   const [openComments, setOpenComments] = useState(false);
   const [liked, setLiked] = useState(!!post.liked);
   const [likes, setLikes] = useState(post.likes);
   const [busy, setBusy] = useState(false);
+
+  const isAdmin = post.authorRole === 'admin';
+  const isOwnPost = currentUserId != null && post.userId === currentUserId;
+  const profileHref = post.authorUsername ? tipsterHref(post.authorUsername, post.authorUsername) : null;
 
   const toggleLike = async () => {
     if (busy) return;
@@ -231,21 +237,64 @@ function PostCard({ post, initialFollowing = false }: { post: Post; initialFollo
     if (typeof j.likes === 'number') setLikes(j.likes);
   };
 
+  if (isAdmin) {
+    return (
+      <Card className="overflow-hidden border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent backdrop-blur transition-all hover:border-amber-500/60 hover:shadow-md">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/40">
+              <Megaphone className="h-4 w-4 text-amber-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Badge className="h-4 bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40 text-[10px] px-1.5 font-bold">
+                  📢 Community Announcement
+                </Badge>
+                <span className="text-[10px] text-muted-foreground">· {timeAgo(post.createdAt)}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">from Betcheza Admin</p>
+            </div>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight font-medium">{post.content}</p>
+          <div className="mt-3 flex items-center gap-1.5">
+            <button onClick={toggleLike} disabled={busy} className={cn('flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition-colors', liked ? 'bg-rose-500/15 text-rose-500' : 'text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500')}>
+              <Heart className={cn('h-3.5 w-3.5', liked && 'fill-rose-500')} />{likes}
+            </button>
+            <button onClick={() => setOpenComments(v => !v)} className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary">
+              <MessageCircle className="h-3.5 w-3.5" />{post.commentCount}
+            </button>
+          </div>
+          {openComments && <CommentsSection postId={post.id} />}
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="overflow-hidden border-border/60 bg-card/60 backdrop-blur transition-all hover:border-primary/40 hover:shadow-md">
       <CardContent className="p-3 sm:p-4">
         <div className="flex items-start gap-2.5">
-          <Avatar src={post.authorAvatar} name={post.authorName} size={8} className="mt-0.5" />
+          {profileHref ? (
+            <Link href={profileHref}><Avatar src={post.authorAvatar} name={post.authorName} size={8} className="mt-0.5 hover:ring-2 hover:ring-primary/40 transition-all rounded-full" /></Link>
+          ) : (
+            <Avatar src={post.authorAvatar} name={post.authorName} size={8} className="mt-0.5" />
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold">{post.authorName}</span>
+              {profileHref ? (
+                <Link href={profileHref} className="text-xs font-semibold hover:text-primary hover:underline transition-colors">{post.authorName}</Link>
+              ) : (
+                <span className="text-xs font-semibold">{post.authorName}</span>
+              )}
               <span className="text-[10px] text-muted-foreground">· {timeAgo(post.createdAt)}</span>
             </div>
             {post.matchTitle && (
               <p className="text-[10px] text-muted-foreground mt-0">on {post.matchTitle}</p>
             )}
           </div>
-          <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={initialFollowing} />
+          {!isOwnPost && (
+            <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={initialFollowing} />
+          )}
         </div>
 
         <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight">{post.content}</p>
@@ -715,7 +764,7 @@ export default function FeedPage() {
                 </CardContent></Card>
               ) : (
                 <div className="space-y-2.5">
-                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} />)}
+                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} currentUserId={meRes?.user?.id ?? null} />)}
                 </div>
               )}
             </main>

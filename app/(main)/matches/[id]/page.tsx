@@ -1285,7 +1285,12 @@ export default function MatchDetailPage({ params }: PageProps) {
                       </div>
                     )}
                     {isHalftime && <p className="mt-0.5 text-[10px] font-bold text-amber-400">HALF TIME</p>}
-                    {isFinished && <p className="mt-0.5 text-[10px] text-white/40 font-medium">FULL TIME</p>}
+                    {isFinished && (
+                      <>
+                        <p className="mt-0.5 text-[10px] text-white/40 font-medium">FULL TIME</p>
+                        <p className="mt-0 text-[9px] text-white/30">{formatDate(match.kickoffTime, timezone)}</p>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
