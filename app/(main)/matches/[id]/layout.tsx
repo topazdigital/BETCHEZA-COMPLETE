@@ -5,8 +5,10 @@ interface DetailsResponse {
   match?: {
     homeTeam?: { name?: string };
     awayTeam?: { name?: string };
-    league?: { name?: string };
+    league?: { name?: string; country?: string };
     kickoffTime?: string;
+    status?: string;
+    venue?: string;
   };
 }
 
@@ -34,7 +36,22 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const leaguePart = match.league?.name ? ` — ${match.league.name}` : '';
   const title = `${fixture}${leaguePart} · Tips & Predictions · ${settings.site_name}`;
   const description = `${fixture}${leaguePart}. Lineups, head-to-head stats, odds and expert betting tips on ${settings.site_name}.`;
-  return { title, description, openGraph: { title, description }, twitter: { title, description } };
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  return {
+    title,
+    description,
+    keywords: [
+      `${match.homeTeam.name} vs ${match.awayTeam.name} prediction`,
+      `${match.homeTeam.name} vs ${match.awayTeam.name} tips`,
+      `${match.homeTeam.name} vs ${match.awayTeam.name} odds`,
+      match.league?.name ? `${match.league.name} predictions` : '',
+      'football tips Kenya', 'sports betting tips', 'match prediction',
+    ].filter(Boolean),
+    openGraph: { title, description, type: 'article' },
+    twitter: { card: 'summary_large_image', title, description },
+    alternates: { canonical: `${baseUrl}/matches/${encodeURIComponent(id)}` },
+    robots: { index: true, follow: true },
+  };
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {

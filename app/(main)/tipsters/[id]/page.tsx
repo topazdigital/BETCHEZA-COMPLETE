@@ -837,6 +837,66 @@ export default function TipsterProfilePage({ params }: PageProps) {
                 <RoiSparkline data={roiSparkline} finalRoi={tipster.roi} totalTips={tipster.totalTips} />
               </CardContent>
             </Card>
+
+            {/* Win / Loss History Sparkline */}
+            {recentTips && recentTips.length >= 3 && (() => {
+              type TipEntry = { status: string; odds?: number }
+              const settled = (recentTips as TipEntry[]).filter(t => t.status === 'won' || t.status === 'lost')
+              if (settled.length < 3) return null
+              // Build cumulative profit points from oldest → newest (slice reverses to get chronological)
+              const chrono = [...settled].reverse()
+              let cumulative = 0
+              const points = chrono.map(t => {
+                cumulative += t.status === 'won' ? ((t.odds ?? 2) - 1) : -1
+                return Math.round(cumulative * 100) / 100
+              })
+              const w = 600, h = 80, pad = 8
+              const xs = points.map((_, i) => pad + (i * (w - pad * 2)) / Math.max(1, points.length - 1))
+              const minY = Math.min(...points)
+              const maxY = Math.max(...points)
+              const range = Math.max(0.5, maxY - minY)
+              const ny = (v: number) => h - pad - ((v - minY) / range) * (h - pad * 2)
+              const pathD = xs.map((x, i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${ny(points[i]).toFixed(1)}`).join(' ')
+              const fillD = `${pathD} L${xs[xs.length-1].toFixed(1)},${(h-pad).toFixed(1)} L${xs[0].toFixed(1)},${(h-pad).toFixed(1)} Z`
+              const isPositive = cumulative >= 0
+              const strokeCol = isPositive ? "#10b981" : "#ef4444"
+              const wonCount = settled.filter(t => t.status === 'won').length
+              const lostCount = settled.filter(t => t.status === 'lost').length
+              const zeroY = ny(0)
+              return (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <TrendingUp className="h-5 w-5 text-primary" />
+                      Profit Curve · Last {settled.length} Settled
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="wl-grad" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0%" stopColor={strokeCol} stopOpacity="0.3" />
+                          <stop offset="100%" stopColor={strokeCol} stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      {minY < 0 && maxY > 0 && (
+                        <line x1={pad} x2={w - pad} y1={zeroY} y2={zeroY}
+                          strokeDasharray="4 4" stroke="currentColor" className="text-muted-foreground/30" strokeWidth="1" />
+                      )}
+                      <path d={fillD} fill="url(#wl-grad)" />
+                      <path d={pathD} fill="none" stroke={strokeCol} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                    </svg>
+                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="text-emerald-500 font-semibold">{wonCount}W</span>
+                      <span className={cn("font-bold", isPositive ? "text-emerald-500" : "text-rose-500")}>
+                        {isPositive ? "+" : ""}{cumulative.toFixed(2)} units
+                      </span>
+                      <span className="text-rose-500 font-semibold">{lostCount}L</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })()}
           </TabsContent>
         </Tabs>
       </div>

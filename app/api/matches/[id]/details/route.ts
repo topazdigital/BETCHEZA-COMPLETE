@@ -963,6 +963,14 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const matchEvents = summary ? buildMatchEvents(summary, homeComp?.team?.id, awayComp?.team?.id) : [];
     const segmentBreakdown = summary ? buildSegmentBreakdown(summary, cfg?.sportType || 'soccer') : null;
 
+    // Extract leg/round info from ESPN competition notes (e.g. "2nd Leg", "Leg 2 of 2", "Agg: 2-1")
+    const compNotes = (competition as { notes?: Array<{ type?: string; headline?: string }> } | undefined)?.notes || [];
+    const legNote = compNotes.find(n => /leg|round|tie|agg/i.test(n.headline || '') || /leg|round/i.test(n.type || ''));
+    const legInfo: string | null = legNote?.headline || null;
+    const aggRaw = legInfo || compNotes.map(n => n.headline || '').join(' ');
+    const aggMatch = aggRaw.match(/agg(?:regate)?[:\s]+(\d+)[–\-](\d+)/i);
+    const aggregateScore = aggMatch ? { home: parseInt(aggMatch[1]), away: parseInt(aggMatch[2]) } : null;
+
     const venue =
       summary?.gameInfo?.venue?.fullName ||
       match.venue ||
@@ -1011,6 +1019,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         attendance,
         broadcasts,
         source: match.source,
+        legInfo,
+        aggregateScore,
       },
       bookmakerOdds,
       lineups,

@@ -163,6 +163,8 @@ interface MatchDetails {
     venueCountry?: string
     attendance?: number
     broadcasts?: string[]
+    legInfo?: string
+    aggregateScore?: { home: number; away: number }
   }
   bookmakerOdds: BookmakerOdd[]
   lineups: Lineups | null
@@ -981,7 +983,7 @@ function ScorersList({ events, side }: { events: MatchEvent[]; side: 'home' | 'a
           <span className="flex flex-col" style={{ alignItems: side === 'home' ? 'flex-end' : 'flex-start' }}>
             <span className="flex items-center gap-1">
               <PlayerLink name={g.playerName} id={g.playerId} />
-              <span className="text-white/50">{g.minute}</span>
+              <span className="text-white/50">{g.minute ? (String(g.minute).endsWith("'") ? g.minute : `${g.minute}'`) : ''}</span>
             </span>
             {g.assistName && (
               <span className="text-[10px] text-white/45 flex items-center gap-0.5">
@@ -1289,6 +1291,12 @@ export default function MatchDetailPage({ params }: PageProps) {
                       <>
                         <p className="mt-0.5 text-[10px] text-white/40 font-medium">FULL TIME</p>
                         <p className="mt-0 text-[9px] text-white/30">{formatDate(match.kickoffTime, timezone)}</p>
+                        {match.legInfo && (
+                          <p className="mt-1 text-[9px] font-semibold text-amber-400/80 bg-amber-400/10 rounded-full px-2 py-0.5">{match.legInfo}</p>
+                        )}
+                        {match.aggregateScore && (
+                          <p className="mt-0.5 text-[9px] text-white/40">Agg: {match.aggregateScore.home}–{match.aggregateScore.away}</p>
+                        )}
                       </>
                     )}
                   </>
@@ -1503,7 +1511,6 @@ export default function MatchDetailPage({ params }: PageProps) {
                   <div className="space-y-1.5">
                     {match.markets
                       .filter(m => m.key !== 'h2h' && m.outcomes && m.outcomes.length > 0)
-                      .slice(0, 3)
                       .map((mkt) => (
                         <div key={mkt.key}>
                           <p className="mb-1 text-[9px] uppercase tracking-wider text-white/40 font-semibold">{mkt.name}</p>
@@ -2247,20 +2254,38 @@ export default function MatchDetailPage({ params }: PageProps) {
                         <div className="grid gap-2" style={{
                           gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))`,
                         }}>
-                          {mkt.outcomes.map((o, i) => (
-                            <div
-                              key={i}
-                              className="rounded-lg border border-border/50 bg-muted/40 px-3 py-2.5 text-center hover:bg-muted/60 transition-colors"
-                            >
-                              <p className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">
-                                {o.name}
-                                {o.point !== undefined ? ` ${o.point}` : ''}
-                              </p>
-                              <p className="text-base font-black text-foreground mt-0.5 font-mono tabular-nums">
-                                {o.price.toFixed(2)}
-                              </p>
-                            </div>
-                          ))}
+                          {mkt.outcomes.map((o, i) => {
+                            const sel = isSelected(match.id, mkt.key, o.name)
+                            return (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => addSelection({
+                                  matchId: match.id,
+                                  matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                                  marketKey: mkt.key,
+                                  marketName: mkt.name,
+                                  outcomeName: o.name,
+                                  price: o.price,
+                                  matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                                })}
+                                className={cn(
+                                  "rounded-lg border px-3 py-2.5 text-center transition-all active:scale-95",
+                                  sel
+                                    ? "border-primary bg-primary/10 text-primary"
+                                    : "border-border/50 bg-muted/40 hover:bg-muted/60 hover:border-primary/40"
+                                )}
+                              >
+                                <p className={cn("text-[10px] uppercase tracking-wider truncate", sel ? "text-primary/70" : "text-muted-foreground")}>
+                                  {o.name}
+                                  {o.point !== undefined ? ` ${o.point}` : ''}
+                                </p>
+                                <p className={cn("text-base font-black mt-0.5 font-mono tabular-nums", sel ? "text-primary" : "text-foreground")}>
+                                  {o.price.toFixed(2)}
+                                </p>
+                              </button>
+                            )
+                          })}
                         </div>
                       </CardContent>
                     </Card>

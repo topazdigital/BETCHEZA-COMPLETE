@@ -1704,6 +1704,7 @@ export interface ESPNSummaryResponse {
         record?: Array<{ summary?: string; type?: string }>;
         form?: string; // "WWDLW"
       }>;
+      notes?: Array<{ type?: string; headline?: string }>;
     }>;
     season?: { year?: number; type?: number };
     league?: { id?: string; name?: string };
@@ -4015,10 +4016,25 @@ export async function buildOutrightFromStandings(leagueId: number): Promise<Outr
     return Math.round(price);
   }
 
+  // Filter out teams that are mathematically eliminated from winning the title.
+  // A team can no longer win if: leader_points - team_points > remaining_games * 3.
+  // We estimate total games per season from league size and games already played.
+  const leagueSize = standings.length;
+  // Double round-robin: each team plays (leagueSize - 1) * 2 games.
+  // Clamp to common values (38 for 20-team, 34 for 18-team, 30 for 16-team, etc.)
+  const totalGamesEstimate = Math.max((leagueSize - 1) * 2, standings[0].played + 4, 26);
+  const leader = standings[0];
+  const contenders = standings.filter(s => {
+    const remaining = Math.max(0, totalGamesEstimate - s.played);
+    return leader.points - s.points <= remaining * 3;
+  });
+  // Require at least 2 contenders; if data is sparse fall back to top-6 standings
+  const titleContenders = contenders.length >= 2 ? contenders : standings.slice(0, 6);
+
   // Score each team — points dominate, GD is tertiary, position adds decay.
   // Use a softer 0.62 decay (vs old 0.55) so 2nd/3rd place get realistic
   // non-trivial odds rather than astronomical prices.
-  const scored = standings
+  const scored = titleContenders
     .map(s => {
       const ptsScore = Math.max(0, s.points);
       const gdScore  = Math.max(0, s.goalDifference) * 0.12;
