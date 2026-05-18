@@ -18,17 +18,32 @@ const WEEK_PLAN: Array<{ stake: number; save: number; targetWin: number }> = [
   { stake: 20000, save: 25000,  targetWin: 60000 },
 ];
 
+// Kenya is UTC+3 (EAT). All date logic must use EAT so that "today" matches
+// what the user sees in Nairobi, not the Replit server's UTC clock.
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+function toEATDate(utcDate: Date): Date {
+  return new Date(utcDate.getTime() + EAT_OFFSET_MS);
+}
+
 function getWeekId(date: Date): string {
-  const monday = new Date(date);
-  const day = monday.getDay();
+  const eat = toEATDate(date);
+  const monday = new Date(Date.UTC(eat.getUTCFullYear(), eat.getUTCMonth(), eat.getUTCDate()));
+  const day = monday.getUTCDay();
   const diff = (day === 0 ? -6 : 1 - day);
-  monday.setDate(monday.getDate() + diff);
+  monday.setUTCDate(monday.getUTCDate() + diff);
   return monday.toISOString().slice(0, 10);
 }
 
 function getDayNumber(date: Date): number {
-  const day = date.getDay();
+  const eat = toEATDate(date);
+  const day = eat.getUTCDay();
   return day === 0 ? 7 : day;
+}
+
+function getTodayStrEAT(date: Date): string {
+  const eat = toEATDate(date);
+  return eat.toISOString().slice(0, 10);
 }
 
 function getOpenAI(): OpenAI | null {
@@ -300,7 +315,7 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = getTodayStrEAT(now);
   const weekId = getWeekId(now);
   const dayNumber = getDayNumber(now);
   const planIdx = dayNumber - 1;

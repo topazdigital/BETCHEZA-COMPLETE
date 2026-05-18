@@ -55,11 +55,25 @@ const WEEK_PLAN: Array<{ stake: number; save: number; targetWin: number }> = [
   { stake: 20000, save: 25000,  targetWin: 60000 },
 ];
 
+// Kenya is UTC+3 (EAT). All date logic uses EAT so "today" matches what
+// users see in Nairobi regardless of the Replit server's UTC clock.
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+function toEATDate(utcDate: Date): Date {
+  return new Date(utcDate.getTime() + EAT_OFFSET_MS);
+}
+
+function getTodayStrEAT(utcDate: Date): string {
+  const eat = toEATDate(utcDate);
+  return eat.toISOString().slice(0, 10);
+}
+
 function getWeekId(date: Date): string {
-  const monday = new Date(date);
-  const day = monday.getDay();
+  const eat = toEATDate(date);
+  const monday = new Date(Date.UTC(eat.getUTCFullYear(), eat.getUTCMonth(), eat.getUTCDate()));
+  const day = monday.getUTCDay();
   const diff = (day === 0 ? -6 : 1 - day);
-  monday.setDate(monday.getDate() + diff);
+  monday.setUTCDate(monday.getUTCDate() + diff);
   return monday.toISOString().slice(0, 10);
 }
 
@@ -372,8 +386,9 @@ REQUIRED: product of all odds must be between 3.00 and 4.00.`;
 async function loadCurrentWeek(): Promise<WeeklyStrategy> {
   const now = new Date();
   const weekId = getWeekId(now);
-  const todayStr = now.toISOString().slice(0, 10);
-  const dayNumber = (() => { const d = now.getDay(); return d === 0 ? 7 : d; })();
+  const todayStr = getTodayStrEAT(now);
+  const eat = toEATDate(now);
+  const dayNumber = (() => { const d = eat.getUTCDay(); return d === 0 ? 7 : d; })();
 
   // Try DB first
   const dbDays = await loadFromDb(weekId);
@@ -392,7 +407,10 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
       } else {
         status = 'upcoming';
       }
-      return { ...base, status };
+      // Always use the template's day number — DB day_number can be wrong due to
+      // timezone differences at the time of insertion (e.g. UTC vs EAT).
+      // The correct day number is always the positional index in the week (1=Mon … 7=Sun).
+      return { ...base, status, day: d.day, stake: d.stake, save: d.save, targetWin: d.targetWin };
     });
 
     // Auto-generate today's picks if today is active but has no picks
@@ -408,7 +426,9 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
         await execute(
           `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active', generated_at = NOW()`,
+           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active',
+             day_number = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
+             target_win = VALUES(target_win), generated_at = NOW()`,
           [todayStr, weekId, dayNumber, merged[todayIdx].stake, merged[todayIdx].save, merged[todayIdx].targetWin, merged[todayIdx].combinedOdds, JSON.stringify(autoPicks)]
         ).catch(() => undefined);
       } catch { /* non-fatal */ }
@@ -450,7 +470,9 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
       await execute(
         `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
-         ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active', generated_at = NOW()`,
+         ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active',
+           day_number = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
+           target_win = VALUES(target_win), generated_at = NOW()`,
         [todayStr, weekId, dayNumber, empty.days[todayIdx].stake, empty.days[todayIdx].save, empty.days[todayIdx].targetWin, empty.days[todayIdx].combinedOdds, JSON.stringify(autoPicks)]
       ).catch(() => undefined);
       fileStoreSet(`strategy-week-${weekId}`, empty);
