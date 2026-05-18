@@ -127,8 +127,10 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
       );
       // DB succeeded — don't duplicate in memory
     } catch (e) {
-      console.warn('[feed] createPost DB error, falling back to memory:', (e as Error).message);
-      mem.posts.unshift(post);
+      // DB write failed — log loudly and propagate rather than silently
+      // falling back to memory (which would lose data on next server restart).
+      console.error('[feed] createPost DB write failed:', (e as Error).message);
+      throw e;
     }
   } else {
     mem.posts.unshift(post);

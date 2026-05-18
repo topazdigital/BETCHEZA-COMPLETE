@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { X, Trash2, ChevronDown, ChevronUp, Ticket, ExternalLink, Lightbulb } from 'lucide-react'
+import { X, Trash2, ChevronDown, ChevronUp, Ticket, ExternalLink, Lightbulb, Send, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useBetSlip } from '@/contexts/bet-slip-context'
 import { useAuth } from '@/contexts/auth-context'
 import { useAuthModal } from '@/contexts/auth-modal-context'
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
 
 export function BetSlipPanel() {
   const {
@@ -17,10 +18,18 @@ export function BetSlipPanel() {
     removeSelection, clearAll,
     accumOdds, stake, setStake, potentialReturn,
   } = useBetSlip()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const { open: openAuthModal } = useAuthModal()
   const [defaultBookmakerUrl, setDefaultBookmakerUrl] = useState<string | null>(null)
   const [defaultBookmakerName, setDefaultBookmakerName] = useState<string>('Bookmaker')
+
+  // Acca tip posting state
+  const [showAccaForm, setShowAccaForm] = useState(false)
+  const [accaAnalysis, setAccaAnalysis] = useState('')
+  const [accaConfidence, setAccaConfidence] = useState(70)
+  const [accaPosting, setAccaPosting] = useState(false)
+  const [accaResult, setAccaResult] = useState<'success' | 'error' | null>(null)
+  const [accaError, setAccaError] = useState('')
 
   useEffect(() => {
     fetch('/api/bookmakers')
@@ -37,7 +46,7 @@ export function BetSlipPanel() {
 
   if (selections.length === 0) return null
 
-  const handlePostAsTip = (e: React.MouseEvent, href: string) => {
+  const handlePostAsTip = (e: React.MouseEvent) => {
     if (!isAuthenticated) {
       e.preventDefault()
       openAuthModal('login')
@@ -50,6 +59,54 @@ export function BetSlipPanel() {
       window.open(url, '_blank', 'noopener,noreferrer')
     } else if (selections[0]?.matchSlug) {
       window.open(`/matches/${selections[0].matchSlug}#bookmakers`, '_self')
+    }
+  }
+
+  // Build single-selection tip URL including marketKey for pre-fill
+  const singleTipUrl = selections.length === 1 && selections[0].matchSlug
+    ? `/matches/${selections[0].matchSlug}?action=tip&marketKey=${encodeURIComponent(selections[0].marketKey)}&outcome=${encodeURIComponent(selections[0].outcomeName)}&odds=${selections[0].price}`
+    : '#'
+
+  // Post an accumulator tip to the community feed
+  const handlePostAcca = async () => {
+    if (!isAuthenticated) { openAuthModal('login'); return }
+    if (accaAnalysis.trim().length < 20) {
+      setAccaError('Analysis must be at least 20 characters')
+      return
+    }
+    setAccaPosting(true)
+    setAccaError('')
+    try {
+      const legs = selections.map(s =>
+        `• ${s.matchName}: **${s.outcomeName}** @ ${s.price.toFixed(2)}`
+      ).join('\n')
+      const content = `🎯 ${selections.length}-leg accumulator @ ${accumOdds.toFixed(2)}x odds\n\n${legs}\n\n${accaAnalysis.trim()}`
+      const res = await fetch('/api/feed/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          pick: `${selections.length}-Leg Acca`,
+          odds: accumOdds,
+        }),
+      })
+      if (res.ok) {
+        setAccaResult('success')
+        setAccaAnalysis('')
+        setTimeout(() => {
+          setShowAccaForm(false)
+          setAccaResult(null)
+        }, 2500)
+      } else {
+        const data = await res.json()
+        setAccaError(data.error || 'Failed to post. Try again.')
+        setAccaResult('error')
+      }
+    } catch {
+      setAccaError('Network error. Please try again.')
+      setAccaResult('error')
+    } finally {
+      setAccaPosting(false)
     }
   }
 
@@ -107,8 +164,10 @@ export function BetSlipPanel() {
                     </Link>
                     <span className="text-border">·</span>
                     <Link
-                      href={isAuthenticated ? `/matches/${s.matchSlug}?action=tip` : '#'}
-                      onClick={(e) => handlePostAsTip(e, `/matches/${s.matchSlug}?action=tip`)}
+                      href={isAuthenticated
+                        ? `/matches/${s.matchSlug}?action=tip&marketKey=${encodeURIComponent(s.marketKey)}&outcome=${encodeURIComponent(s.outcomeName)}&odds=${s.price}`
+                        : '#'}
+                      onClick={isAuthenticated ? undefined : handlePostAsTip}
                       className="flex items-center gap-1 text-[10px] text-amber-500 hover:text-amber-600 transition-colors"
                     >
                       <Lightbulb className="h-3 w-3" />
@@ -167,7 +226,7 @@ export function BetSlipPanel() {
               ))}
             </div>
 
-            {/* Place Bet — redirects to bookmaker affiliate */}
+            {/* Place Bet */}
             <Button
               size="sm"
               className="w-full font-bold text-sm h-9 gap-1.5"
@@ -177,28 +236,99 @@ export function BetSlipPanel() {
               Place Bet on {selections[0]?.bookmakerName || defaultBookmakerName}
             </Button>
 
-            {/* Post as Tip */}
+            {/* Post as Tip — single selection: go to match page pre-filled */}
             {selections.length === 1 && selections[0].matchSlug && (
               <Link
-                href={isAuthenticated
-                  ? `/matches/${selections[0].matchSlug}?action=tip&outcome=${encodeURIComponent(selections[0].outcomeName)}&odds=${selections[0].price}`
-                  : '#'}
-                onClick={(e) => handlePostAsTip(e, `/matches/${selections[0].matchSlug}?action=tip&outcome=${encodeURIComponent(selections[0].outcomeName)}&odds=${selections[0].price}`)}
+                href={isAuthenticated ? singleTipUrl : '#'}
+                onClick={isAuthenticated ? undefined : handlePostAsTip}
                 className="w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors"
               >
                 <Lightbulb className="h-3.5 w-3.5" />
                 Post as Tip
               </Link>
             )}
+
+            {/* Post Accumulator Tip — multi-selection: inline form */}
             {selections.length > 1 && (
-              <Link
-                href={isAuthenticated ? '/tips/new' : '#'}
-                onClick={(e) => handlePostAsTip(e, '/tips/new')}
-                className="w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors"
-              >
-                <Lightbulb className="h-3.5 w-3.5" />
-                Post as Tip
-              </Link>
+              <div>
+                {!showAccaForm ? (
+                  <button
+                    onClick={() => { if (!isAuthenticated) { openAuthModal('login'); return } setShowAccaForm(true); setAccaResult(null) }}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 transition-colors"
+                  >
+                    <Lightbulb className="h-3.5 w-3.5" />
+                    Post Acca Tip to Community
+                  </button>
+                ) : (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide">
+                        Post {selections.length}-leg acca @ {accumOdds.toFixed(2)}x
+                      </p>
+                      <button onClick={() => { setShowAccaForm(false); setAccaResult(null); setAccaError('') }} className="text-muted-foreground hover:text-foreground">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+
+                    {/* Legs preview */}
+                    <div className="space-y-0.5">
+                      {selections.map(s => (
+                        <p key={s.id} className="text-[9px] text-muted-foreground truncate">
+                          <span className="font-semibold text-foreground">{s.outcomeName}</span>
+                          {' '}@ {s.price.toFixed(2)} · <span className="text-muted-foreground/60">{s.matchName}</span>
+                        </p>
+                      ))}
+                    </div>
+
+                    {/* Confidence */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">Confidence</span>
+                      <input
+                        type="range"
+                        min={50} max={100} step={5}
+                        value={accaConfidence}
+                        onChange={e => setAccaConfidence(Number(e.target.value))}
+                        className="flex-1 h-1 accent-amber-500"
+                      />
+                      <span className="text-[10px] font-bold text-amber-600 w-8 text-right">{accaConfidence}%</span>
+                    </div>
+
+                    {/* Analysis */}
+                    <Textarea
+                      placeholder="Why are you backing this acca? (min 20 chars)"
+                      value={accaAnalysis}
+                      onChange={e => { setAccaAnalysis(e.target.value); setAccaError('') }}
+                      className="text-xs min-h-[60px] resize-none"
+                      maxLength={500}
+                    />
+                    <p className="text-[9px] text-muted-foreground text-right">{accaAnalysis.length}/500</p>
+
+                    {accaError && (
+                      <p className="flex items-center gap-1 text-[10px] text-destructive">
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                        {accaError}
+                      </p>
+                    )}
+
+                    {accaResult === 'success' ? (
+                      <div className="flex items-center justify-center gap-1.5 rounded-md bg-green-500/10 border border-green-500/20 py-1.5 text-xs font-semibold text-green-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Posted to community feed!
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="w-full h-8 text-xs gap-1.5 bg-amber-500 text-amber-950 hover:bg-amber-400 font-bold"
+                        onClick={handlePostAcca}
+                        disabled={accaPosting}
+                      >
+                        <Send className="h-3 w-3" />
+                        {accaPosting ? 'Posting…' : 'Post to Community Feed'}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             <button

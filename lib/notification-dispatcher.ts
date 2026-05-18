@@ -51,12 +51,17 @@ export async function dispatchNotification(input: DispatchInput): Promise<void> 
   try {
     const subs = await listPushSubscriptions(input.userId);
     if (subs.length > 0) {
-      for (const sub of subs) {
-        await sendBrowserPush(sub.endpoint, input.title, input.content, input.link || '/');
-      }
+      const { sendPushToSubscription } = await import('./push-sender');
+      await Promise.allSettled(
+        subs.map(sub => sendPushToSubscription(sub, {
+          title: input.title,
+          body: input.content,
+          url: input.link || '/',
+        }))
+      );
     }
   } catch (e) {
-    console.warn('[notify] push dispatch failed', e);
+    console.error('[notify] push dispatch failed for uid', input.userId, ':', e instanceof Error ? e.message : e);
   }
 
   // 3. Email
@@ -83,7 +88,7 @@ export async function dispatchToMany(userIds: number[], input: Omit<DispatchInpu
   await Promise.all(
     Array.from(new Set(userIds)).map(uid =>
       dispatchNotification({ ...input, userId: uid }).catch(e =>
-        console.warn('[notify] fan-out failed for', uid, e),
+        console.error('[notify] fan-out failed for uid', uid, ':', e instanceof Error ? e.message : e),
       ),
     ),
   );
@@ -102,29 +107,15 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 }
 
-async function sendBrowserPush(endpoint: string, title: string, body: string, link: string): Promise<void> {
-  try {
-    const { listPushSubscriptions } = await import('./notification-store');
-    const { sendPushToSubscription } = await import('./push-sender');
-    const allSubs = await listPushSubscriptions();
-    const sub = allSubs.find(s => s.endpoint === endpoint);
-    if (sub) {
-      await sendPushToSubscription(sub, { title, body, url: link });
-    }
-  } catch (e) {
-    console.warn('[notify] browser push failed:', e instanceof Error ? e.message : e);
-  }
-}
-
 /** Send push to all subscriptions for a user regardless of per-preference flags.
  * Use for high-priority events where the user has explicitly subscribed. */
-async function sendPushToUser(userId: number, title: string, body: string, link: string): Promise<void> {
+export async function sendPushToUser(userId: number, title: string, body: string, link: string): Promise<void> {
   try {
     const { listPushSubscriptions } = await import('./notification-store');
     const { sendPushToSubscription } = await import('./push-sender');
     const subs = await listPushSubscriptions(userId);
     await Promise.allSettled(subs.map(sub => sendPushToSubscription(sub, { title, body, url: link })));
   } catch (e) {
-    console.warn('[notify] push-to-user failed:', e instanceof Error ? e.message : e);
+    console.error('[notify] push-to-user failed for uid', userId, ':', e instanceof Error ? e.message : e);
   }
 }

@@ -1020,9 +1020,15 @@ export default function MatchDetailPage({ params }: PageProps) {
   const searchParams = useSearchParams()
 
   // Auto-open the tip modal when ?action=tip is in the URL
-  // This is used by the bet slip "Post as Tip" button
+  // Also reads ?marketKey + ?outcome + ?odds for pre-fill (used by bet slip "Post as Tip")
   useEffect(() => {
     if (searchParams?.get('action') === 'tip') {
+      const marketKey = searchParams.get('marketKey')
+      const outcome = searchParams.get('outcome')
+      const odds = parseFloat(searchParams.get('odds') || '0')
+      if (marketKey && outcome && odds > 0) {
+        setTipPrefill({ marketKey, outcome: { name: outcome, price: odds } })
+      }
       setTipModalOpen(true)
     }
   }, [searchParams])

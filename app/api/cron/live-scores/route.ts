@@ -13,9 +13,18 @@ export const dynamic = 'force-dynamic';
 const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 
 // In-memory score snapshot keyed by matchId → "homeScore:awayScore"
-const g = globalThis as { __liveScoreSnap?: Map<string, string>; __liveScoreCronBusy?: boolean };
+// __sentGoalKeys: Set of "matchId:score" strings already notified — prevents
+// duplicate pushes if the cron fires twice in quick succession or the snap
+// state is stale after an API outage.
+const g = globalThis as {
+  __liveScoreSnap?: Map<string, string>;
+  __liveScoreCronBusy?: boolean;
+  __sentGoalKeys?: Set<string>;
+};
 if (!g.__liveScoreSnap) g.__liveScoreSnap = new Map();
+if (!g.__sentGoalKeys) g.__sentGoalKeys = new Set();
 const snap = g.__liveScoreSnap;
+const sentGoals = g.__sentGoalKeys;
 
 function scoreKey(home: number | null | undefined, away: number | null | undefined): string {
   return `${home ?? 0}:${away ?? 0}`;
@@ -52,6 +61,15 @@ export async function GET(req: NextRequest) {
 
       if (previous !== current) {
         snap.set(m.id, current);
+        // Dedup: skip if we already sent a push for this exact score change
+        const goalKey = `${m.id}:${current}`;
+        if (sentGoals.has(goalKey)) continue;
+        sentGoals.add(goalKey);
+        // Cap the dedup set size to avoid unbounded memory growth
+        if (sentGoals.size > 500) {
+          const first = sentGoals.values().next().value;
+          if (first) sentGoals.delete(first);
+        }
         goals.push({
           matchId: m.id,
           title: `${m.homeTeam} ${m.homeScore ?? 0}–${m.awayScore ?? 0} ${m.awayTeam}`,

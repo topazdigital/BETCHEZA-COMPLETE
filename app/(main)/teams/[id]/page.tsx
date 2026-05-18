@@ -212,9 +212,21 @@ export default function TeamPage({ params }: PageProps) {
 
   const accentColor = team.color || '#3b82f6';
 
-  const sportSlug: string | undefined = (team as any).sport?.slug || (team as any).sportSlug;
-  const countryCode: string | undefined = (team as any).countryCode || (team as any).country?.code;
-  const country: string | undefined = (team as any).country?.name || (team as any).country;
+  // The API response shape varies by provider; use a typed extension to avoid
+  // unsafe `any` casts while still handling both camelCase + nested forms.
+  interface TeamApiShape {
+    sport?: { slug?: string };
+    sportSlug?: string;
+    countryCode?: string;
+    country?: { name?: string; code?: string } | string;
+    leagueId?: number | null;
+    leagueSlug?: string | null;
+    league?: string | null;
+  }
+  const teamExt = team as unknown as TeamApiShape;
+  const sportSlug: string | undefined = teamExt.sport?.slug || teamExt.sportSlug;
+  const countryCode: string | undefined = teamExt.countryCode || (typeof teamExt.country === 'object' ? teamExt.country?.code : undefined);
+  const country: string | undefined = typeof teamExt.country === 'object' ? teamExt.country?.name : (teamExt.country as string | undefined);
   const nextMatch = upcoming?.find((e: MatchEvent) => e.status !== 'finished') || upcoming?.[0];
 
   return (
@@ -306,9 +318,9 @@ export default function TeamPage({ params }: PageProps) {
                     teamId={id}
                     teamName={team.name}
                     teamLogo={team.logo}
-                    leagueId={(team as any).leagueId ?? null}
-                    leagueSlug={(team as any).leagueSlug ?? null}
-                    leagueName={(team as any).league ?? null}
+                    leagueId={teamExt.leagueId ?? null}
+                    leagueSlug={teamExt.leagueSlug ?? null}
+                    leagueName={teamExt.league ?? null}
                     sportSlug={sportSlug ?? null}
                     countryCode={countryCode ?? null}
                     size="sm"

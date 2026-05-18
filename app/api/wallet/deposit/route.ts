@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
       currency: body.currency || 'KES',
     });
   } catch (e) {
-    console.warn('[wallet/deposit] affiliate attribution failed:', e);
+    console.error('[wallet/deposit] affiliate attribution failed — referral credit may be lost for user', user.userId, ':', e instanceof Error ? e.message : e);
   }
 
   return NextResponse.json({ success: true, transaction: txn });
