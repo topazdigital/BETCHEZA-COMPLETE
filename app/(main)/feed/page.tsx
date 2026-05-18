@@ -402,6 +402,11 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // ── Hashtag autocomplete state ──────────────────────────────────
+  const [allHashtags, setAllHashtags] = useState<string[]>([]);
+  const [hashtagSuggestions, setHashtagSuggestions] = useState<string[]>([]);
+  const [showHashtagSuggest, setShowHashtagSuggest] = useState(false);
+
   const fetchMatches = async () => {
     if (allMatches.length > 0) return;
     setLoadingMatches(true);
@@ -425,6 +430,51 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
     } catch { /* ignore */ } finally {
       setLoadingMatches(false);
     }
+  };
+
+  // ── Hashtag helpers ─────────────────────────────────────────────
+  const loadHashtags = async (): Promise<string[]> => {
+    if (allHashtags.length > 0) return allHashtags;
+    try {
+      const res = await fetch('/api/feed/hashtags/trending?limit=30');
+      const data = await res.json();
+      const tags: string[] = (data.hashtags ?? []).map((h: { tag: string }) => h.tag);
+      setAllHashtags(tags);
+      return tags;
+    } catch { return []; }
+  };
+
+  const handleContentChange = async (val: string, cursorPos: number) => {
+    setContent(val);
+    const textBefore = val.slice(0, cursorPos);
+    const match = textBefore.match(/#([a-zA-Z0-9_]{0,49})$/);
+    if (match) {
+      const q = match[1].toLowerCase();
+      const tags = await loadHashtags();
+      const filtered = tags.filter(t => q === '' ? true : t.startsWith(q)).slice(0, 8);
+      setHashtagSuggestions(filtered);
+      setShowHashtagSuggest(filtered.length > 0);
+    } else {
+      setShowHashtagSuggest(false);
+    }
+  };
+
+  const insertHashtag = (tag: string) => {
+    const cursorPos = ref.current?.selectionStart ?? content.length;
+    const textBefore = content.slice(0, cursorPos);
+    const match = textBefore.match(/#([a-zA-Z0-9_]{0,49})$/);
+    if (!match) { setShowHashtagSuggest(false); return; }
+    const start = cursorPos - match[0].length;
+    const newContent = content.slice(0, start) + `#${tag} ` + content.slice(cursorPos);
+    setContent(newContent);
+    setShowHashtagSuggest(false);
+    setTimeout(() => {
+      if (ref.current) {
+        const newPos = start + tag.length + 2;
+        ref.current.setSelectionRange(newPos, newPos);
+        ref.current.focus();
+      }
+    }, 0);
   };
 
   const handleMatchSearchChange = (val: string) => {
@@ -494,7 +544,7 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
     setSubmitting(false);
     if (r.ok) {
       setContent(''); setPick(''); setOdds(''); setMatchTitle(''); setMatchSearch('');
-      setSelectedMatch(null); setShowExtras(false);
+      setSelectedMatch(null); setShowExtras(false); setShowHashtagSuggest(false);
       onPosted();
     }
   };
@@ -507,14 +557,38 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
         <div className="flex gap-2.5">
           <Avatar src={me.avatarUrl} name={name} size={8} className="mt-0.5" />
           <div className="flex-1">
-            <Textarea
-              ref={ref}
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              placeholder="What's your pick today?"
-              rows={1}
-              className="min-h-0 resize-none border-0 bg-transparent text-sm focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
-            />
+            <div className="relative">
+              <Textarea
+                ref={ref}
+                value={content}
+                onChange={e => { void handleContentChange(e.target.value, e.target.selectionStart); }}
+                onKeyDown={e => { if (e.key === 'Escape' && showHashtagSuggest) { setShowHashtagSuggest(false); e.preventDefault(); } }}
+                onBlur={() => setTimeout(() => setShowHashtagSuggest(false), 150)}
+                placeholder="What's your pick today? Type # to tag a topic"
+                rows={1}
+                className="min-h-0 resize-none border-0 bg-transparent text-sm focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
+              />
+              {/* Hashtag autocomplete dropdown */}
+              {showHashtagSuggest && hashtagSuggestions.length > 0 && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[200px] rounded-lg border border-border bg-popover shadow-lg p-2">
+                  <p className="mb-1.5 px-1 text-[9px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1">
+                    <Hash className="h-2.5 w-2.5" /> Trending hashtags
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {hashtagSuggestions.map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); insertHashtag(tag); }}
+                        className="inline-flex items-center gap-0.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20 hover:border-primary/50 transition-colors"
+                      >
+                        #{tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {showExtras && (
               <div className="mt-2 space-y-1.5">
                 {/* Match search with autocomplete */}
