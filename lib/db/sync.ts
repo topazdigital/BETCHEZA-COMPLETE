@@ -81,6 +81,10 @@ interface TeamPayload {
 
 async function upsertTeam(t: TeamPayload): Promise<void> {
   const slug = slugify(t.name);
+  // Truncate to fit column limits: name/slug 255 chars, short_name 50 chars
+  const safeName = t.name.slice(0, 255);
+  const safeSlug = slug.slice(0, 255);
+  const safeShortName = t.shortName ? t.shortName.slice(0, 50) : null;
   try {
     const byApi = await queryOne<{ id: number }>(
       `SELECT id FROM teams WHERE api_id = ? AND api_id IS NOT NULL LIMIT 1`,
@@ -91,7 +95,7 @@ async function upsertTeam(t: TeamPayload): Promise<void> {
         `UPDATE teams SET name = ?, logo_url = COALESCE(?, logo_url),
          short_name = COALESCE(?, short_name), league_id = COALESCE(?, league_id),
          country_id = COALESCE(?, country_id) WHERE id = ?`,
-        [t.name, t.logo || null, t.shortName || null, t.leagueId, t.countryId, byApi.id]
+        [safeName, t.logo || null, safeShortName, t.leagueId, t.countryId, byApi.id]
       );
       return;
     }
@@ -102,7 +106,7 @@ async function upsertTeam(t: TeamPayload): Promise<void> {
          logo_url = COALESCE(VALUES(logo_url), logo_url),
          api_id   = COALESCE(VALUES(api_id), api_id),
          league_id = COALESCE(VALUES(league_id), league_id)`,
-      [t.sportId, t.countryId, t.leagueId, t.name, slug, t.shortName || null, t.logo || null, t.apiId]
+      [t.sportId, t.countryId, t.leagueId, safeName, safeSlug, safeShortName, t.logo || null, t.apiId]
     );
   } catch (e) { logOnce(e); }
 }

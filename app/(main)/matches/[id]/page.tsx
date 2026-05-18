@@ -11,7 +11,7 @@ import {
   TrendingUp, Award, ChevronUp, ChevronDown, Minus,
   Users, Zap, AlertTriangle, RotateCcw, Target,
   Star, ThumbsUp, ThumbsDown, MessageCircle, Lock, ChevronRight,
-  Calendar,
+  Calendar, Pencil,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -1012,6 +1012,11 @@ export default function MatchDetailPage({ params }: PageProps) {
   // INSIDE the modal so they never miss it (the old inline form pushed the
   // CTA below the fold).
   const [tipModalOpen, setTipModalOpen] = useState(false)
+  const [tipPrefill, setTipPrefill] = useState<{ marketKey: string; outcome: { name: string; price: number } } | null>(null)
+  const openTipWithPrefill = (marketKey: string, outcome: { name: string; price: number }) => {
+    setTipPrefill({ marketKey, outcome })
+    setTipModalOpen(true)
+  }
   const searchParams = useSearchParams()
 
   // Auto-open the tip modal when ?action=tip is in the URL
@@ -1410,6 +1415,15 @@ export default function MatchDetailPage({ params }: PageProps) {
                   <p className="text-[9px] text-white/30">
                     {`Odds • ${match.odds.bookmaker || 'Market'}`}
                   </p>
+                  {!isFinished && (
+                    <button
+                      onClick={() => openTipWithPrefill('h2h', { name: match.homeTeam.name, price: match.odds!.home })}
+                      className="flex items-center gap-1 text-[9px] text-amber-400/70 hover:text-amber-400 transition-colors font-medium"
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                      Share tip
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -2269,35 +2283,46 @@ export default function MatchDetailPage({ params }: PageProps) {
                           {mkt.outcomes.map((o, i) => {
                             const sel = !isFinished && isSelected(match.id, mkt.key, o.name)
                             return (
-                              <button
-                                key={i}
-                                type="button"
-                                disabled={isFinished}
-                                onClick={isFinished ? undefined : () => addSelection({
-                                  matchId: match.id,
-                                  matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-                                  marketKey: mkt.key,
-                                  marketName: mkt.name,
-                                  outcomeName: o.name,
-                                  price: o.price,
-                                  matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
-                                })}
-                                className={cn(
-                                  "rounded-lg border px-3 py-2.5 text-center transition-all",
-                                  isFinished ? "cursor-default opacity-60" : "active:scale-95",
-                                  sel
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border/50 bg-muted/40 hover:bg-muted/60 hover:border-primary/40"
+                              <div key={i} className="relative group">
+                                <button
+                                  type="button"
+                                  disabled={isFinished}
+                                  onClick={isFinished ? undefined : () => addSelection({
+                                    matchId: match.id,
+                                    matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                                    marketKey: mkt.key,
+                                    marketName: mkt.name,
+                                    outcomeName: o.name,
+                                    price: o.price,
+                                    matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                                  })}
+                                  className={cn(
+                                    "w-full rounded-lg border px-3 py-2.5 text-center transition-all",
+                                    isFinished ? "cursor-default opacity-60" : "active:scale-95",
+                                    sel
+                                      ? "border-primary bg-primary/10 text-primary"
+                                      : "border-border/50 bg-muted/40 hover:bg-muted/60 hover:border-primary/40"
+                                  )}
+                                >
+                                  <p className={cn("text-[10px] uppercase tracking-wider truncate", sel ? "text-primary/70" : "text-muted-foreground")}>
+                                    {o.name}
+                                    {o.point !== undefined ? ` ${o.point}` : ''}
+                                  </p>
+                                  <p className={cn("text-base font-black mt-0.5 font-mono tabular-nums", sel ? "text-primary" : "text-foreground")}>
+                                    {o.price.toFixed(2)}
+                                  </p>
+                                </button>
+                                {!isFinished && (
+                                  <button
+                                    type="button"
+                                    title="Share as tip"
+                                    onClick={() => openTipWithPrefill(mkt.key, { name: o.name, price: o.price })}
+                                    className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-amber-500 text-amber-950 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-amber-400"
+                                  >
+                                    <Pencil className="h-2.5 w-2.5" />
+                                  </button>
                                 )}
-                              >
-                                <p className={cn("text-[10px] uppercase tracking-wider truncate", sel ? "text-primary/70" : "text-muted-foreground")}>
-                                  {o.name}
-                                  {o.point !== undefined ? ` ${o.point}` : ''}
-                                </p>
-                                <p className={cn("text-base font-black mt-0.5 font-mono tabular-nums", sel ? "text-primary" : "text-foreground")}>
-                                  {o.price.toFixed(2)}
-                                </p>
-                              </button>
+                              </div>
                             )
                           })}
                         </div>
@@ -2584,15 +2609,16 @@ export default function MatchDetailPage({ params }: PageProps) {
 
         {/* ─── Add-Tip MODAL — opened from any "Add a Tip" button on this page.
             Sign-in prompt is at the TOP so logged-out users never miss it. ─── */}
-        <Dialog open={tipModalOpen} onOpenChange={setTipModalOpen}>
+        <Dialog open={tipModalOpen} onOpenChange={(open) => { setTipModalOpen(open); if (!open) setTipPrefill(null) }}>
           <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                Add your tip
+                {tipPrefill ? `Tip: ${tipPrefill.outcome.name} @ ${tipPrefill.outcome.price.toFixed(2)}` : 'Add your tip'}
               </DialogTitle>
               <DialogDescription className="text-xs">
-                {match.homeTeam.name} vs {match.awayTeam.name} — pick a market and post your prediction.
+                {match.homeTeam.name} vs {match.awayTeam.name}
+                {tipPrefill ? ' — market pre-filled from your selection below.' : ' — pick a market and post your prediction.'}
               </DialogDescription>
             </DialogHeader>
 
@@ -2616,12 +2642,15 @@ export default function MatchDetailPage({ params }: PageProps) {
               </div>
             ) : (
               <AddTipForm
+                key={tipPrefill ? `${tipPrefill.marketKey}:${tipPrefill.outcome.name}` : 'default'}
                 matchId={match.id}
                 homeTeam={match.homeTeam.name}
                 awayTeam={match.awayTeam.name}
                 odds={match.odds}
                 markets={match.markets}
                 isPremiumUser={user?.role === 'admin' || user?.role === 'tipster'}
+                initialMarketKey={tipPrefill?.marketKey}
+                initialOutcome={tipPrefill?.outcome}
                 onSubmit={async (formData) => {
                   try {
                     const res = await fetch(`/api/matches/${encodeURIComponent(match.id)}/tips`, {
@@ -2636,6 +2665,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                     if (res.ok) {
                       setTipSubmitted({ label: formData.predictionLabel, odds: formData.odds })
                       setTipModalOpen(false)
+                      setTipPrefill(null)
                       setActiveTab('tips')
                     }
                   } catch (err) {
@@ -2757,7 +2787,7 @@ const MARKET_GROUP_ORDER = [
   { key: 'corners_11_5',    label: 'Total Corners O/U 11.5' },
 ]
 
-function MarketsSection({ match, isFinished }: { match: MatchDetails['match']; isFinished?: boolean }) {
+function MarketsSection({ match, isFinished, onShareTip }: { match: MatchDetails['match']; isFinished?: boolean; onShareTip?: (marketKey: string, outcome: { name: string; price: number }) => void }) {
   const { addSelection, isSelected } = useBetSlip()
   const [expanded, setExpanded] = useState(false)
 
@@ -2799,29 +2829,40 @@ function MarketsSection({ match, isFinished }: { match: MatchDetails['match']; i
                 {displayOutcomes.map((o, oi) => {
                   const selected = !isFinished && isSelected(match.id, mkt.key, o.name)
                   return (
-                    <button
-                      key={oi}
-                      disabled={isFinished}
-                      onClick={isFinished ? undefined : () => addSelection({
-                        matchId: match.id,
-                        matchName,
-                        marketKey: mkt.key,
-                        marketName: mkt.name,
-                        outcomeName: o.name,
-                        price: o.price,
-                        matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
-                      })}
-                      className={cn(
-                        'flex flex-col items-center rounded-lg border px-1.5 py-1.5 text-center transition-all',
-                        isFinished ? 'cursor-default opacity-60' : 'active:scale-95',
-                        selected
-                          ? 'bg-primary/10 border-primary text-primary'
-                          : 'bg-muted/40 border-border/50 text-foreground hover:bg-muted/70 hover:border-primary/40',
+                    <div key={oi} className="relative group">
+                      <button
+                        disabled={isFinished}
+                        onClick={isFinished ? undefined : () => addSelection({
+                          matchId: match.id,
+                          matchName,
+                          marketKey: mkt.key,
+                          marketName: mkt.name,
+                          outcomeName: o.name,
+                          price: o.price,
+                          matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                        })}
+                        className={cn(
+                          'w-full flex flex-col items-center rounded-lg border px-1.5 py-1.5 text-center transition-all',
+                          isFinished ? 'cursor-default opacity-60' : 'active:scale-95',
+                          selected
+                            ? 'bg-primary/10 border-primary text-primary'
+                            : 'bg-muted/40 border-border/50 text-foreground hover:bg-muted/70 hover:border-primary/40',
+                        )}
+                      >
+                        <span className="text-[9px] text-muted-foreground truncate w-full text-center leading-tight">{o.name}</span>
+                        <span className={cn('text-sm font-black tabular-nums mt-0.5', selected ? 'text-primary' : '')}>{o.price.toFixed(2)}</span>
+                      </button>
+                      {!isFinished && onShareTip && (
+                        <button
+                          type="button"
+                          title="Share as tip"
+                          onClick={() => onShareTip(mkt.key, { name: o.name, price: o.price })}
+                          className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-amber-500 text-amber-950 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-amber-400"
+                        >
+                          <Pencil className="h-2 w-2" />
+                        </button>
                       )}
-                    >
-                      <span className="text-[9px] text-muted-foreground truncate w-full text-center leading-tight">{o.name}</span>
-                      <span className={cn('text-sm font-black tabular-nums mt-0.5', selected ? 'text-primary' : '')}>{o.price.toFixed(2)}</span>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -2988,7 +3029,7 @@ function MatchInfoRail({
 
       {/* Betting markets */}
       {match.markets && match.markets.length > 0 && (
-        <MarketsSection match={match} isFinished={isFinished} />
+        <MarketsSection match={match} isFinished={isFinished} onShareTip={openTipWithPrefill} />
       )}
 
       {/* Standings snapshot */}

@@ -38,6 +38,8 @@ interface AddTipFormProps {
   markets?: MarketOdds[]
   onSubmit?: (data: TipFormData) => void
   isPremiumUser?: boolean
+  initialMarketKey?: string
+  initialOutcome?: { name: string; price: number }
 }
 
 interface TipFormData {
@@ -91,16 +93,18 @@ export function AddTipForm({
   markets: providedMarkets,
   onSubmit,
   isPremiumUser = false,
+  initialMarketKey,
+  initialOutcome,
 }: AddTipFormProps) {
   // Two modes:
   //  • "real"   — user picks from real bookmaker markets shipped with the match
   //  • "manual" — user types their own market, prediction text and odds
   const [mode, setMode] = useState<'real' | 'manual'>(
-    providedMarkets && providedMarkets.length > 0 ? 'real' : 'manual'
+    initialMarketKey ? 'real' : (providedMarkets && providedMarkets.length > 0 ? 'real' : 'manual')
   )
 
-  const [selectedMarketKey, setSelectedMarketKey] = useState<string>("")
-  const [selectedOutcome, setSelectedOutcome] = useState<{ name: string; price: number } | null>(null)
+  const [selectedMarketKey, setSelectedMarketKey] = useState<string>(initialMarketKey ?? "")
+  const [selectedOutcome, setSelectedOutcome] = useState<{ name: string; price: number } | null>(initialOutcome ?? null)
 
   // Manual entry state
   const [manualMarket, setManualMarket] = useState<string>('')
