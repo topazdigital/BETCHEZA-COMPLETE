@@ -155,6 +155,7 @@ export function startCron(): void {
   // too early we get 404. These delays give the server time to warm up.
   setTimeout(() => { void runMatchReminders(); }, 120_000);   // 2 min
   setTimeout(() => { void runJackpotSync(); }, 180_000);       // 3 min
+  setTimeout(() => { void runFakeActivity(); }, 90_000);       // 90 s — seed initial feed posts
 
   // Auto-post daily strategy on startup if it hasn't been posted today yet
   // and it's past 9am EAT (6am UTC)

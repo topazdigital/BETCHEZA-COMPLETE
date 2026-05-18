@@ -59,17 +59,22 @@ export const CaptchaChallenge = forwardRef<CaptchaChallengeHandle, {
   const widgetHostRef = useRef<HTMLDivElement | null>(null)
   const widgetIdRef = useRef<string | number | null>(null)
 
-  const loadChallenge = async () => {
+  const loadChallenge = async (forceMath = false) => {
     setLoading(true)
     setMathAnswer('')
     setTokenFromWidget(null)
     try {
-      const res = await fetch('/api/captcha/challenge', { cache: 'no-store' })
+      const url = forceMath ? '/api/captcha/challenge?math=1' : '/api/captcha/challenge'
+      const res = await fetch(url, { cache: 'no-store' })
       if (res.ok) setConfig(await res.json())
     } finally {
       setLoading(false)
     }
   }
+
+  // Fall back to the math challenge when Turnstile/reCAPTCHA can't connect
+  // (domain mismatch, browser extension, network block, etc.)
+  const fallbackToMath = () => { void loadChallenge(true) }
 
   useEffect(() => {
     if (visible && !config) loadChallenge()
@@ -82,13 +87,19 @@ export const CaptchaChallenge = forwardRef<CaptchaChallengeHandle, {
         .then(() => {
           if (!widgetHostRef.current || !window.turnstile) return
           widgetHostRef.current.innerHTML = ''
-          widgetIdRef.current = window.turnstile.render(widgetHostRef.current, {
+          widgetIdRef.current = (window.turnstile.render as (
+            el: HTMLElement,
+            opts: Record<string, unknown>
+          ) => string)(widgetHostRef.current, {
             sitekey: config.siteKey!,
-            callback: (token) => setTokenFromWidget(token),
+            callback: (token: string) => setTokenFromWidget(token),
             theme: 'auto',
+            'error-callback': fallbackToMath,
+            'timeout-callback': fallbackToMath,
+            'expired-callback': () => setTokenFromWidget(null),
           })
         })
-        .catch(() => undefined)
+        .catch(fallbackToMath)
     }
     if (config.provider === 'recaptcha' && config.siteKey) {
       ensureScript('recaptcha-script', 'https://www.google.com/recaptcha/api.js?render=explicit')

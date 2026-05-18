@@ -372,6 +372,30 @@ export async function GET(req: NextRequest) {
       } catch (e) { results.errors.push(`comment ${post.id}: ${e}`); }
     }
 
+    // ── Generic (non-match-linked) posts ──────────────────────────────────
+    // Always post a few generic tips to keep the feed lively, even when
+    // there are no upcoming matches to link to.
+    const genericPosters = tipsters.filter(t =>
+      now - (g.__fakeActivityTipsterLastPost!.get(t.id) ?? 0) >= TIPSTER_POST_COOLDOWN_MS
+    );
+    const genericTarget = Math.min(randInt(2, 4), genericPosters.length);
+    const usedInGeneric = new Set<number>();
+    for (let i = 0; i < genericTarget; i++) {
+      const eligible = genericPosters.filter(t => !usedInGeneric.has(t.id));
+      if (eligible.length === 0) break;
+      const tipster = randPick(eligible);
+      usedInGeneric.add(tipster.id);
+      const content = randPick(GENERIC_POSTS);
+      try {
+        await createPost({
+          userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
+          content, matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null,
+        });
+        g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
+        results.postsCreated++;
+      } catch (e) { results.errors.push(`generic-post: ${e}`); }
+    }
+
     g.__fakeActivityLastRun = now;
     return NextResponse.json({ ok: true, ...results, settled });
   } catch (error) {

@@ -142,17 +142,50 @@ function sanitise(str: string | null | undefined): string | null {
   return str.replace(/[\uD800-\uDFFF]/g, '');
 }
 
+// ─── TABLE INIT ───────────────────────────────────────────────────────────────
+// Auto-creates feed_hashtags if absent so the app works even when the DB
+// schema was set up before this table was introduced.
+async function ensureFeedHashtagsTable(): Promise<void> {
+  await query(
+    `CREATE TABLE IF NOT EXISTS feed_hashtags (
+      id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      tag        VARCHAR(50)  NOT NULL,
+      post_id    VARCHAR(64)  NOT NULL,
+      created_at DATETIME     NOT NULL DEFAULT NOW(),
+      INDEX idx_fh_tag     (tag),
+      INDEX idx_fh_post_id (post_id)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    [],
+  );
+}
+
 // ─── POSTS ───────────────────────────────────────
+type PostRow = {
+  id: string; user_id: number; author_name: string; author_avatar: string | null;
+  content: string; match_id: string | null; match_title: string | null;
+  pick: string | null; odds: number | null; image_url: string | null;
+  likes: number; comment_count: number; created_at: string;
+  author_role: string | null; author_username: string | null; hashtags: string | null;
+};
+
+function mapPostRows(rows: PostRow[], likedSet: Set<string>): FeedPost[] {
+  return rows.map(x => ({
+    id: x.id, userId: x.user_id, authorName: x.author_name, authorAvatar: x.author_avatar,
+    authorRole: x.author_role, authorUsername: x.author_username,
+    content: x.content, matchId: x.match_id, matchTitle: x.match_title, pick: x.pick,
+    odds: x.odds, imageUrl: x.image_url, likes: x.likes || 0, commentCount: x.comment_count || 0,
+    liked: likedSet.has(x.id),
+    hashtags: x.hashtags ? x.hashtags.split(',') : [],
+    createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
+  }));
+}
+
 export async function listPosts(limit = 50, viewerId?: number | null): Promise<FeedPost[]> {
   if (hasDb()) {
     try {
-      const r = await query<{
-        id: string; user_id: number; author_name: string; author_avatar: string | null;
-        content: string; match_id: string | null; match_title: string | null;
-        pick: string | null; odds: number | null; image_url: string | null;
-        likes: number; comment_count: number; created_at: string;
-        author_role: string | null; author_username: string | null; hashtags: string | null;
-      }>(`SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
+      // First try the full query with hashtag join
+      let r = await query<PostRow>(
+        `SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
                  fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
                  fp.likes, fp.comment_count, fp.created_at,
                  u.role AS author_role, u.username AS author_username,
@@ -162,7 +195,26 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
           LEFT JOIN feed_hashtags fh ON fh.post_id = fp.id
           GROUP BY fp.id
           ORDER BY fp.created_at DESC LIMIT ?`,
-        [limit]);
+        [limit],
+      ).catch(async (e: { code?: string }) => {
+        if (e?.code === 'ER_NO_SUCH_TABLE') {
+          // Table missing — create it then fall back to simpler query (no hashtag JOIN)
+          console.log('[feed] feed_hashtags table missing — creating it now');
+          await ensureFeedHashtagsTable().catch(() => {});
+          return query<PostRow>(
+            `SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
+                     fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
+                     fp.likes, fp.comment_count, fp.created_at,
+                     u.role AS author_role, u.username AS author_username,
+                     NULL AS hashtags
+              FROM feed_posts fp
+              LEFT JOIN users u ON u.id = fp.user_id
+              ORDER BY fp.created_at DESC LIMIT ?`,
+            [limit],
+          );
+        }
+        throw e;
+      });
 
       if (r.rows.length > 0) {
         let likedSet = new Set<string>();
@@ -175,15 +227,7 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
           );
           likedSet = new Set(lr.rows.map(x => x.post_id));
         }
-        return r.rows.map(x => ({
-          id: x.id, userId: x.user_id, authorName: x.author_name, authorAvatar: x.author_avatar,
-          authorRole: x.author_role, authorUsername: x.author_username,
-          content: x.content, matchId: x.match_id, matchTitle: x.match_title, pick: x.pick,
-          odds: x.odds, imageUrl: x.image_url, likes: x.likes || 0, commentCount: x.comment_count || 0,
-          liked: likedSet.has(x.id),
-          hashtags: x.hashtags ? x.hashtags.split(',') : [],
-          createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
-        }));
+        return mapPostRows(r.rows, likedSet);
       }
     } catch (e) {
       console.error('[feed] listPosts DB error:', e);

@@ -7,6 +7,7 @@ import { getSiteSettings } from '@/lib/site-settings';
 import { extractNumericPlayerId } from '@/lib/utils/slug';
 import { teamHref } from '@/lib/utils/slug';
 import { FollowPlayerButton } from '@/components/players/follow-player-button';
+import { PlayerHeroImage } from '@/components/players/player-hero-image';
 
 interface PlayerProfile {
   id: string;
@@ -165,20 +166,12 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start">
           {/* Avatar + jersey */}
           <div className="relative shrink-0">
-            {player.headshot ? (
-              <Image
-                src={player.headshot}
-                alt={player.name}
-                width={120}
-                height={120}
-                className="h-28 w-28 rounded-2xl border border-border bg-muted object-cover shadow-md sm:h-32 sm:w-32"
-                unoptimized
-              />
-            ) : (
-              <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-4xl font-bold text-primary shadow-md sm:h-32 sm:w-32">
-                {player.name.charAt(0)}
-              </div>
-            )}
+            <PlayerHeroImage
+              headshot={player.headshot}
+              name={player.name}
+              id={numericId}
+              sport={player.sportPath?.split('/')[0]}
+            />
             {player.jersey && (
               <span className="absolute -bottom-2 -right-2 rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground shadow-lg">
                 #{player.jersey}
