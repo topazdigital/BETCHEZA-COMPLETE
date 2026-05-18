@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { CaptchaChallenge, type CaptchaChallengeHandle } from '@/components/auth/captcha-challenge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -383,21 +383,51 @@ function LoginPanel() {
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const captchaRef = useRef<CaptchaChallengeHandle>(null);
 
+  // Phone tab: country picker (same pattern as RegisterPanel)
+  const [loginPhoneCode, setLoginPhoneCode] = useState('KE');
+  const [loginPhoneLocal, setLoginPhoneLocal] = useState('');
+  const [loginCountrySearch, setLoginCountrySearch] = useState('');
+  const [loginCountryOpen, setLoginCountryOpen] = useState(false);
+  const loginCountryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setLoginPhoneCode(detectCountryCode()); }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (loginCountryRef.current && !loginCountryRef.current.contains(e.target as Node)) {
+        setLoginCountryOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selectedLoginCountry = countries.find(c => c.code === loginPhoneCode);
+  const filteredLoginCountries = loginCountrySearch.trim()
+    ? countries.filter(c =>
+        c.name.toLowerCase().includes(loginCountrySearch.toLowerCase()) ||
+        c.dialCode.includes(loginCountrySearch) ||
+        c.code.toLowerCase().includes(loginCountrySearch.toLowerCase())
+      )
+    : countries;
+
   const tabLabels: Record<LoginTab, string> = { email: 'Email', phone: 'Phone', username: 'Username' };
-  const tabPlaceholders: Record<LoginTab, string> = { email: 'you@example.com', phone: '+254 7XX XXX XXX', username: 'your_username' };
+  const tabPlaceholders: Record<LoginTab, string> = { email: 'you@example.com', phone: '7XX XXX XXX', username: 'your_username' };
   const tabInputTypes: Record<LoginTab, string> = { email: 'email', phone: 'tel', username: 'text' };
 
   const handleTabChange = (tab: LoginTab) => {
     setLoginTab(tab);
     setIdentifier('');
+    setLoginPhoneLocal('');
     setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!identifier.trim()) {
-      setError(`Please enter your ${tabLabels[loginTab].toLowerCase()}`);
+    const currentInput = loginTab === 'phone' ? loginPhoneLocal.trim() : identifier.trim();
+    if (!currentInput) {
+      setError(loginTab === 'phone' ? 'Please enter your phone number' : `Please enter your ${tabLabels[loginTab].toLowerCase()}`);
       return;
     }
     let captcha: { token: string; id?: string } | undefined;
@@ -409,8 +439,11 @@ function LoginPanel() {
       }
       captcha = r;
     }
+    const fullIdentifier = loginTab === 'phone'
+      ? (selectedLoginCountry?.dialCode || '+254') + loginPhoneLocal.replace(/[^\d]/g, '')
+      : identifier.trim();
     setIsLoading(true);
-    const result = await login(identifier.trim(), password, captcha, { rememberMe });
+    const result = await login(fullIdentifier, password, captcha, { rememberMe });
     setIsLoading(false);
     if (!result.success) {
       setError(result.error || 'Login failed');
@@ -444,10 +477,13 @@ function LoginPanel() {
   };
 
   const handleResend = async () => {
-    if (!identifier) return;
+    const resendIdentifier = loginTab === 'phone'
+      ? (selectedLoginCountry?.dialCode || '') + loginPhoneLocal.replace(/[^\d]/g, '')
+      : identifier;
+    if (!resendIdentifier) return;
     setResendNote('');
     setError('');
-    const r = await resendTwoFactor(identifier);
+    const r = await resendTwoFactor(resendIdentifier);
     if (r.success && r.challengeId) {
       setTwoFactor((prev) => prev ? { ...prev, challengeId: r.challengeId!, deliveredTo: r.deliveredTo || prev.deliveredTo, channel: r.channel || prev.channel } : prev);
       setOtpCode('');
@@ -530,17 +566,70 @@ function LoginPanel() {
 
         <div className="space-y-1">
           <Label htmlFor="modal-identifier" className="text-xs">{tabLabels[loginTab]}</Label>
-          <Input
-            id="modal-identifier"
-            type={tabInputTypes[loginTab]}
-            placeholder={tabPlaceholders[loginTab]}
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            autoComplete={loginTab === 'email' ? 'email' : loginTab === 'phone' ? 'tel' : 'username'}
-            required
-            disabled={isLoading}
-            className="h-8 text-xs"
-          />
+          {loginTab === 'phone' ? (
+            <div className="flex gap-1.5">
+              <div className="relative" ref={loginCountryRef}>
+                <button
+                  type="button"
+                  onClick={() => setLoginCountryOpen(o => !o)}
+                  disabled={isLoading}
+                  className="flex h-8 items-center gap-1 rounded-md border border-border bg-background px-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  <span>{selectedLoginCountry?.flag}</span>
+                  <span className="text-muted-foreground">{selectedLoginCountry?.dialCode}</span>
+                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                </button>
+                {loginCountryOpen && (
+                  <div className="absolute left-0 top-full z-50 mt-1 max-h-48 w-56 overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
+                    <div className="sticky top-0 border-b border-border bg-popover p-1">
+                      <input
+                        autoFocus
+                        value={loginCountrySearch}
+                        onChange={e => setLoginCountrySearch(e.target.value)}
+                        placeholder="Search country or code..."
+                        className="w-full rounded-sm border border-border px-2 py-1 text-[11px] outline-none focus:border-primary"
+                      />
+                    </div>
+                    {filteredLoginCountries.map(c => (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => { setLoginPhoneCode(c.code); setLoginCountryOpen(false); setLoginCountrySearch(''); }}
+                        className={`flex w-full items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-muted ${loginPhoneCode === c.code ? 'bg-primary/10 font-semibold' : ''}`}
+                      >
+                        <span>{c.flag}</span>
+                        <span className="flex-1 truncate text-left">{c.name}</span>
+                        <span className="text-muted-foreground">{c.dialCode}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Input
+                id="modal-identifier"
+                type="tel"
+                placeholder="7XX XXX XXX"
+                value={loginPhoneLocal}
+                onChange={e => setLoginPhoneLocal(e.target.value.replace(/[^\d\s]/g, ''))}
+                autoComplete="tel-national"
+                required
+                disabled={isLoading}
+                className="h-8 flex-1 text-xs"
+              />
+            </div>
+          ) : (
+            <Input
+              id="modal-identifier"
+              type={tabInputTypes[loginTab]}
+              placeholder={tabPlaceholders[loginTab]}
+              value={identifier}
+              onChange={e => setIdentifier(e.target.value)}
+              autoComplete={loginTab === 'email' ? 'email' : 'username'}
+              required
+              disabled={isLoading}
+              className="h-8 text-xs"
+            />
+          )}
         </div>
 
         <div className="space-y-1">

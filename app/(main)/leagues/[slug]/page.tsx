@@ -481,7 +481,7 @@ export default function LeaguePage({ params }: PageProps) {
                       hint="Bookmakers haven't priced this season yet."
                     />
                   ) : (
-                    outrightMarket.outcomes.slice(0, 12).map((o, idx) => (
+                    outrightMarket.outcomes.filter(o => o.price <= 51).slice(0, 10).map((o, idx) => (
                       <div
                         key={`${o.name}-${idx}`}
                         className={cn(

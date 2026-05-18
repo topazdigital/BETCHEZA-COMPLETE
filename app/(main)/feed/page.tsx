@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -239,7 +239,7 @@ function PostCard({ post, initialFollowing = false, currentUserId }: { post: Pos
 
   if (isAdmin) {
     return (
-      <Card className="overflow-hidden border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent backdrop-blur transition-all hover:border-amber-500/60 hover:shadow-md">
+      <Card id={`post-${post.id}`} className="overflow-hidden border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent backdrop-blur transition-all hover:border-amber-500/60 hover:shadow-md">
         <CardContent className="p-3 sm:p-4">
           <div className="flex items-start gap-2.5">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/40">
@@ -271,7 +271,7 @@ function PostCard({ post, initialFollowing = false, currentUserId }: { post: Pos
   }
 
   return (
-    <Card className="overflow-hidden border-border/60 bg-card/60 backdrop-blur transition-all hover:border-primary/40 hover:shadow-md">
+    <Card id={`post-${post.id}`} className="overflow-hidden border-border/60 bg-card/60 backdrop-blur transition-all hover:border-primary/40 hover:shadow-md">
       <CardContent className="p-3 sm:p-4">
         <div className="flex items-start gap-2.5">
           {profileHref ? (
@@ -829,6 +829,27 @@ export default function FeedPage() {
   const { data: meRes } = useSWR<Me>('/api/auth/me', fetcher);
   const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[] }>(POSTS_KEY, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
   const posts = postsRes?.posts ?? [];
+  const scrolledRef = useRef(false);
+
+  // Scroll to and highlight a specific post when opened from a notification link (/feed#<postId>).
+  // Only fires once when posts first arrive so it doesn't repeat on every SWR refresh.
+  useEffect(() => {
+    if (!posts.length || scrolledRef.current) return;
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    scrolledRef.current = true;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`post-${hash}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'box-shadow 0.4s ease';
+      el.style.boxShadow = '0 0 0 3px hsl(var(--primary) / 0.6), 0 0 0 6px hsl(var(--primary) / 0.15)';
+      const clear = setTimeout(() => { el.style.boxShadow = ''; }, 3500);
+      return () => clearTimeout(clear);
+    }, 400);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts.length]);
 
   const isLoggedIn = !!meRes?.user;
   const tipsterIds = useMemo(() => [...new Set(posts.map(p => p.userId))], [posts]);

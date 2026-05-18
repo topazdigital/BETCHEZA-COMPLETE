@@ -230,10 +230,19 @@ function randInt(min: number, max: number): number {
 const g = globalThis as {
   __fakeActivityPostedMatches?: Set<string>;
   __fakeActivityLastRun?: number;
+  __fakeActivityTipsterLastPost?: Map<number, number>;
+  __fakeActivityTipsterLastComment?: Map<number, number>;
 };
 
+// Minimum gaps so each fake tipster feels like a real person with a daily rhythm
+const TIPSTER_POST_COOLDOWN_MS    = 3 * 60 * 60 * 1000; // 3 h between posts per tipster
+const TIPSTER_COMMENT_COOLDOWN_MS = 90 * 60 * 1000;     // 90 min between comments per tipster
+
 async function runActivity() {
-  if (!g.__fakeActivityPostedMatches) g.__fakeActivityPostedMatches = new Set();
+  if (!g.__fakeActivityPostedMatches)        g.__fakeActivityPostedMatches        = new Set();
+  if (!g.__fakeActivityTipsterLastPost)      g.__fakeActivityTipsterLastPost      = new Map();
+  if (!g.__fakeActivityTipsterLastComment)   g.__fakeActivityTipsterLastComment   = new Map();
+
   const now = Date.now();
   const tipsters = getFakeTipsters();
   const allMatches = await getAllMatches();
@@ -242,7 +251,12 @@ async function runActivity() {
   const finishedIds = new Set(allMatches.filter(m => m.status === 'finished').map(m => m.id));
   settleActivityTips(finishedIds);
 
-  // Post tips on upcoming / live matches
+  // Only tipsters who haven't posted recently are allowed to post
+  const availablePosters = tipsters.filter(t =>
+    now - (g.__fakeActivityTipsterLastPost!.get(t.id) ?? 0) >= TIPSTER_POST_COOLDOWN_MS
+  );
+
+  // Post tips on upcoming / live matches (pick up to 4, skip already-posted)
   const relevant = allMatches.filter(m => {
     const t = new Date(m.kickoffTime).getTime();
     const isLive = ['live', 'halftime', 'extra_time', 'penalties'].includes(m.status);
@@ -251,8 +265,8 @@ async function runActivity() {
   }).slice(0, 4);
 
   for (const match of relevant) {
-    if (Math.random() > 0.4) continue;
-    const tipster = randPick(tipsters);
+    if (Math.random() > 0.4 || availablePosters.length === 0) continue;
+    const tipster = randPick(availablePosters);
     const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
     const odds = resolveOddsForPick(pick, match.odds);
     const template = randPick(MATCH_POSTS);
@@ -264,23 +278,29 @@ async function runActivity() {
     }).catch(() => {});
     recordActivityTip(tipster.id, match.id, pick, odds);
     g.__fakeActivityPostedMatches!.add(match.id);
+    g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
   }
 
-  // Comments on recent match-linked posts only — keeps replies relevant
+  // Comments on recent match-linked posts — only by tipsters not on comment cooldown
+  const availableCommenters = tipsters.filter(t =>
+    now - (g.__fakeActivityTipsterLastComment!.get(t.id) ?? 0) >= TIPSTER_COMMENT_COOLDOWN_MS
+  );
   const posts = await listPosts(15, null);
-  for (const post of posts.filter(p => !!p.matchTitle && Math.random() > 0.6).slice(0, 3)) {
-    const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
+  for (const post of posts.filter(p => !!p.matchTitle && Math.random() > 0.6).slice(0, 2)) {
+    const commenter = randPick(availableCommenters.filter(t => t.id !== post.userId));
+    if (!commenter) continue;
     await addComment({
       postId: post.id, userId: commenter.id, authorName: commenter.displayName,
       authorAvatar: commenter.avatar, content: smartComment(post),
     }).catch(() => {});
+    g.__fakeActivityTipsterLastComment!.set(commenter.id, now);
   }
 }
 
-// Auto-run on startup (5s delay) then every 20 minutes
+// Auto-run on startup (5 s delay) then every 45 minutes — gives each tipster natural spacing
 if (typeof globalThis !== 'undefined') {
   setTimeout(() => { g.__fakeActivityLastRun = Date.now(); runActivity().catch(() => {}); }, 5000);
-  setInterval(() => { g.__fakeActivityLastRun = Date.now(); runActivity().catch(() => {}); }, 20 * 60 * 1000);
+  setInterval(() => { g.__fakeActivityLastRun = Date.now(); runActivity().catch(() => {}); }, 45 * 60 * 1000);
 }
 
 export async function GET(req: NextRequest) {
@@ -291,7 +311,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!g.__fakeActivityPostedMatches) g.__fakeActivityPostedMatches = new Set();
+  if (!g.__fakeActivityPostedMatches)      g.__fakeActivityPostedMatches      = new Set();
+  if (!g.__fakeActivityTipsterLastPost)    g.__fakeActivityTipsterLastPost    = new Map();
+  if (!g.__fakeActivityTipsterLastComment) g.__fakeActivityTipsterLastComment = new Map();
   const now = Date.now();
   const tipsters = getFakeTipsters();
   const results = { postsCreated: 0, commentsCreated: 0, errors: [] as string[] };
@@ -303,6 +325,11 @@ export async function GET(req: NextRequest) {
     const finishedIds = new Set(allMatches.filter(m => m.status === 'finished').map(m => m.id));
     const settled = settleActivityTips(finishedIds);
 
+    // Only tipsters who haven't posted recently
+    const availablePosters = tipsters.filter(t =>
+      now - (g.__fakeActivityTipsterLastPost!.get(t.id) ?? 0) >= TIPSTER_POST_COOLDOWN_MS
+    );
+
     // Match-linked posts
     const relevant = allMatches.filter(m => {
       const t = new Date(m.kickoffTime).getTime();
@@ -312,8 +339,8 @@ export async function GET(req: NextRequest) {
     }).slice(0, 6);
 
     for (const match of relevant) {
-      if (Math.random() > 0.4) continue;
-      const tipster = randPick(tipsters);
+      if (Math.random() > 0.4 || availablePosters.length === 0) continue;
+      const tipster = randPick(availablePosters);
       const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
       const odds = resolveOddsForPick(pick, match.odds);
       const template = randPick(MATCH_POSTS);
@@ -326,19 +353,25 @@ export async function GET(req: NextRequest) {
         });
         recordActivityTip(tipster.id, match.id, pick, odds);
         g.__fakeActivityPostedMatches!.add(match.id);
+        g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
         results.postsCreated++;
       } catch (e) { results.errors.push(`post ${match.id}: ${e}`); }
     }
 
-    // Comments — only on match-linked posts so replies are always relevant
+    // Comments — only match-linked posts, only tipsters not on comment cooldown
+    const availableCommenters = tipsters.filter(t =>
+      now - (g.__fakeActivityTipsterLastComment!.get(t.id) ?? 0) >= TIPSTER_COMMENT_COOLDOWN_MS
+    );
     const recentPosts = await listPosts(20, null);
-    for (const post of recentPosts.filter(p => !!p.matchTitle && Math.random() > 0.5).slice(0, randInt(2, 4))) {
-      const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
+    for (const post of recentPosts.filter(p => !!p.matchTitle && Math.random() > 0.5).slice(0, randInt(1, 3))) {
+      const commenter = randPick(availableCommenters.filter(t => t.id !== post.userId));
+      if (!commenter) continue;
       try {
         await addComment({
           postId: post.id, userId: commenter.id, authorName: commenter.displayName,
           authorAvatar: commenter.avatar, content: smartComment(post),
         });
+        g.__fakeActivityTipsterLastComment!.set(commenter.id, now);
         results.commentsCreated++;
       } catch (e) { results.errors.push(`comment ${post.id}: ${e}`); }
     }

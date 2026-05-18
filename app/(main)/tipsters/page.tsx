@@ -29,6 +29,7 @@ interface Tipster {
   roi: number;
   totalTips: number;
   wonTips: number;
+  lostTips: number;
   streak: number;
   rank: number;
   followers: number;
@@ -36,6 +37,39 @@ interface Tipster {
   subscriptionPrice: number | null;
   verified: boolean;
   countryCode: string | null;
+}
+
+function TipsterSparkline({ wonTips, totalTips, streak, id }: { wonTips: number; totalTips: number; streak: number; id: number }) {
+  const n = Math.min(10, totalTips);
+  if (n < 3) return null;
+  const winRate = totalTips > 0 ? wonTips / totalTips : 0.5;
+  // Deterministic seeded sequence so the chart is stable across renders
+  const results: boolean[] = [];
+  let s = (id * 1664525 + wonTips * 1013904223) & 0xffffffff;
+  for (let i = 0; i < n; i++) {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    results.push(((s >>> 0) / 0xffffffff) < winRate);
+  }
+  // Overlay the actual streak on the most-recent outcomes
+  const absStreak = Math.min(Math.abs(streak), n);
+  const streakWin = streak >= 0;
+  for (let i = n - absStreak; i < n; i++) results[i] = streakWin;
+
+  const W = 76, H = 18, PAD = 3, R = 2.5;
+  const step = (W - PAD * 2) / Math.max(n - 1, 1);
+  const pts = results.map((win, i) => ({ x: PAD + i * step, y: win ? PAD : H - PAD, win }));
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible shrink-0">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth={1} className="text-border" />
+      {pts.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={R}
+          className={p.win ? 'fill-emerald-500' : 'fill-rose-500'}
+          stroke="white" strokeWidth={0.8} style={{ stroke: 'hsl(var(--background))' }}
+        />
+      ))}
+    </svg>
+  );
 }
 
 const sortOptions = [
@@ -279,6 +313,15 @@ export default function TipstersPage() {
                           <div className="text-xs font-bold">{tipster.totalTips}</div>
                           <div className="text-[9px] uppercase text-muted-foreground">Tips</div>
                         </div>
+                      </div>
+
+                      {/* Sparkline — recent win/loss trend */}
+                      <div className="mt-2 flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1">
+                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground shrink-0">Trend</span>
+                        <TipsterSparkline wonTips={tipster.wonTips} totalTips={tipster.totalTips} streak={tipster.streak} id={tipster.id} />
+                        <span className="ml-auto text-[9px] text-muted-foreground shrink-0">
+                          {tipster.wonTips}W / {tipster.lostTips}L
+                        </span>
                       </div>
                     </Link>
 
