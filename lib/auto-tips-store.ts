@@ -26,6 +26,7 @@ export interface GeneratedTip {
   analysis: string;
   isPremium: boolean;
   status: 'pending' | 'won' | 'lost' | 'void';
+  settledByProb?: boolean;
   likes: number;
   dislikes: number;
   comments: number;
@@ -432,10 +433,11 @@ export function settleStaleAutoTips(
         if (outcome) { tip.status = outcome; changed = true; continue; }
       }
 
-      // Fallback: probabilistic using tipster win rate
+      // Fallback: probabilistic using tipster win rate — mark so real scores can override later
       const tipster = getFakeTipsterById(tip.tipsterId);
       const winChance = tipster ? tipster.winRate / 100 : 0.55;
       tip.status = r < winChance ? 'won' : 'lost';
+      tip.settledByProb = true;
       changed = true;
     }
   }
@@ -451,11 +453,12 @@ export function settleTipWithResult(matchId: string, homeScore: number, awayScor
   if (!list) return;
   let changed = false;
   for (const tip of list) {
-    if (tip.status !== 'pending') continue;
+    // Settle pending tips AND override any probabilistic settlements with real scores
+    if (tip.status !== 'pending' && !tip.settledByProb) continue;
     const r = rng(hashStr(tip.id))();
-    if (r > 0.97) { tip.status = 'void'; changed = true; continue; }
+    if (r > 0.97 && tip.status === 'pending') { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
     const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore);
-    if (outcome) { tip.status = outcome; changed = true; }
+    if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; }
   }
   if (changed) persist();
 }

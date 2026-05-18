@@ -11,6 +11,33 @@ export const dynamic = 'force-dynamic';
 
 const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 
+// ── Real odds resolver ────────────────────────────────────────────────────────
+// Use actual bookmaker odds from the match when available, fall back to
+// a realistic randomised value so we never show a made-up "1.45" flat rate.
+function resolveOddsForPick(
+  pick: string,
+  matchOdds?: { home: number; draw?: number; away: number } | null,
+): number {
+  if (matchOdds) {
+    const p = pick.toLowerCase();
+    if (p === 'home win') return matchOdds.home;
+    if (p === 'away win') return matchOdds.away;
+    if (p === 'draw' && matchOdds.draw) return matchOdds.draw;
+    if (p === 'over 2.5 goals') return parseFloat((1.55 + Math.random() * 0.6).toFixed(2));
+    if (p === 'both teams score') return parseFloat((1.65 + Math.random() * 0.5).toFixed(2));
+  }
+  // Fallback: realistic range per pick type
+  const base: Record<string, [number, number]> = {
+    'home win': [1.35, 2.50],
+    'away win': [1.90, 4.20],
+    'draw':     [2.80, 3.80],
+    'over 2.5 goals': [1.55, 2.10],
+    'both teams score': [1.60, 2.00],
+  };
+  const range = base[pick.toLowerCase()] ?? [1.45, 3.75];
+  return parseFloat((range[0] + Math.random() * (range[1] - range[0])).toFixed(2));
+}
+
 // ── Tip pick logic ────────────────────────────────────────────────────────────
 // Sports that never end in a draw (no draw market available)
 const NO_DRAW_SPORTS = new Set(['basketball', 'tennis', 'baseball', 'hockey', 'mma', 'boxing', 'american-football']);
@@ -227,7 +254,7 @@ async function runActivity() {
     if (Math.random() > 0.4) continue;
     const tipster = randPick(tipsters);
     const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
-    const odds = parseFloat((1.45 + Math.random() * 2.3).toFixed(2));
+    const odds = resolveOddsForPick(pick, match.odds);
     const template = randPick(MATCH_POSTS);
     const content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
     await createPost({
@@ -239,17 +266,9 @@ async function runActivity() {
     g.__fakeActivityPostedMatches!.add(match.id);
   }
 
-  // Generic post
-  const genericTipster = randPick(tipsters);
-  await createPost({
-    userId: genericTipster.id, authorName: genericTipster.displayName,
-    authorAvatar: genericTipster.avatar, content: randPick(GENERIC_POSTS),
-    matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null,
-  }).catch(() => {});
-
-  // Comments on recent posts — use smartComment for context-aware replies
+  // Comments on recent match-linked posts only — keeps replies relevant
   const posts = await listPosts(15, null);
-  for (const post of posts.filter(() => Math.random() > 0.6).slice(0, 3)) {
+  for (const post of posts.filter(p => !!p.matchTitle && Math.random() > 0.6).slice(0, 3)) {
     const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
     await addComment({
       postId: post.id, userId: commenter.id, authorName: commenter.displayName,
@@ -296,7 +315,7 @@ export async function GET(req: NextRequest) {
       if (Math.random() > 0.4) continue;
       const tipster = randPick(tipsters);
       const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
-      const odds = parseFloat((1.45 + Math.random() * 2.3).toFixed(2));
+      const odds = resolveOddsForPick(pick, match.odds);
       const template = randPick(MATCH_POSTS);
       const content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
       try {
@@ -311,21 +330,9 @@ export async function GET(req: NextRequest) {
       } catch (e) { results.errors.push(`post ${match.id}: ${e}`); }
     }
 
-    // Generic posts
-    for (let i = 0; i < randInt(1, 2); i++) {
-      const tipster = randPick(tipsters);
-      try {
-        await createPost({
-          userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
-          content: randPick(GENERIC_POSTS), matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null,
-        });
-        results.postsCreated++;
-      } catch (e) { results.errors.push(`generic post: ${e}`); }
-    }
-
-    // Comments — use smartComment for context-aware replies
+    // Comments — only on match-linked posts so replies are always relevant
     const recentPosts = await listPosts(20, null);
-    for (const post of recentPosts.filter(() => Math.random() > 0.5).slice(0, randInt(2, 4))) {
+    for (const post of recentPosts.filter(p => !!p.matchTitle && Math.random() > 0.5).slice(0, randInt(2, 4))) {
       const commenter = randPick(tipsters.filter(t => t.id !== post.userId));
       try {
         await addComment({

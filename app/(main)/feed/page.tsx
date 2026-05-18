@@ -339,14 +339,107 @@ function PostCard({ post, initialFollowing = false, currentUserId }: { post: Pos
   );
 }
 
+interface MatchSuggestion {
+  id: string;
+  title: string;
+  league: string;
+  kickoffTime: string;
+  odds?: { home: number; draw?: number; away: number } | null;
+  markets?: Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }> | null;
+}
+
+const PICK_LABELS = ['Home Win', 'Draw', 'Away Win', 'Over 2.5 Goals', 'Under 2.5 Goals', 'Both Teams to Score - Yes', 'Both Teams to Score - No', 'Home or Draw', 'Away or Draw'];
+
+function oddsForPick(pick: string, match: MatchSuggestion): string {
+  const p = pick.toLowerCase();
+  if (match.odds) {
+    if (p === 'home win') return match.odds.home.toFixed(2);
+    if (p === 'away win') return match.odds.away.toFixed(2);
+    if (p === 'draw' && match.odds.draw) return match.odds.draw.toFixed(2);
+  }
+  if (match.markets) {
+    for (const mkt of match.markets) {
+      const sel = mkt.selections.find(s => s.label.toLowerCase() === p);
+      if (sel) return sel.odds.toFixed(2);
+    }
+  }
+  return '';
+}
+
 function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPosted: () => void }) {
   const [content, setContent] = useState('');
   const [pick, setPick] = useState('');
   const [odds, setOdds] = useState<string>('');
   const [matchTitle, setMatchTitle] = useState('');
+  const [matchSearch, setMatchSearch] = useState('');
+  const [suggestions, setSuggestions] = useState<MatchSuggestion[]>([]);
+  const [selectedMatch, setSelectedMatch] = useState<MatchSuggestion | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [allMatches, setAllMatches] = useState<MatchSuggestion[]>([]);
   const [showExtras, setShowExtras] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const fetchMatches = async () => {
+    if (allMatches.length > 0) return;
+    setLoadingMatches(true);
+    try {
+      const res = await fetch('/api/matches?limit=100');
+      const data = await res.json();
+      const list: MatchSuggestion[] = (data.matches || []).map((m: {
+        id: string; homeTeam: { name: string }; awayTeam: { name: string };
+        league: { name: string }; kickoffTime: string;
+        odds?: { home: number; draw?: number; away: number };
+        markets?: Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }>;
+      }) => ({
+        id: m.id,
+        title: `${m.homeTeam.name} vs ${m.awayTeam.name}`,
+        league: m.league.name,
+        kickoffTime: m.kickoffTime,
+        odds: m.odds ?? null,
+        markets: m.markets ?? null,
+      }));
+      setAllMatches(list);
+    } catch { /* ignore */ } finally {
+      setLoadingMatches(false);
+    }
+  };
+
+  const handleMatchSearchChange = (val: string) => {
+    setMatchSearch(val);
+    setMatchTitle(val);
+    setSelectedMatch(null);
+    if (val.trim().length >= 2) {
+      const q = val.toLowerCase();
+      const filtered = allMatches.filter(m => m.title.toLowerCase().includes(q) || m.league.toLowerCase().includes(q)).slice(0, 6);
+      setSuggestions(filtered);
+      setShowDropdown(filtered.length > 0);
+    } else {
+      setSuggestions([]);
+      setShowDropdown(false);
+    }
+  };
+
+  const handleSelectMatch = (match: MatchSuggestion) => {
+    setSelectedMatch(match);
+    setMatchTitle(match.title);
+    setMatchSearch(match.title);
+    setShowDropdown(false);
+    if (pick) {
+      const autoOdds = oddsForPick(pick, match);
+      if (autoOdds) setOdds(autoOdds);
+    }
+  };
+
+  const handlePickChange = (val: string) => {
+    setPick(val);
+    if (selectedMatch && val) {
+      const autoOdds = oddsForPick(val, selectedMatch);
+      if (autoOdds) setOdds(autoOdds);
+    }
+  };
 
   if (!me) {
     return (
@@ -375,11 +468,13 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
         pick: pick.trim() || null,
         odds: odds.trim() ? Number(odds) : null,
         matchTitle: matchTitle.trim() || null,
+        matchId: selectedMatch?.id ?? null,
       }),
     });
     setSubmitting(false);
     if (r.ok) {
-      setContent(''); setPick(''); setOdds(''); setMatchTitle(''); setShowExtras(false);
+      setContent(''); setPick(''); setOdds(''); setMatchTitle(''); setMatchSearch('');
+      setSelectedMatch(null); setShowExtras(false);
       onPosted();
     }
   };
@@ -401,14 +496,66 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
               className="min-h-0 resize-none border-0 bg-transparent text-sm focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
             />
             {showExtras && (
-              <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
-                <input value={matchTitle} onChange={e => setMatchTitle(e.target.value)} placeholder="Match" className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px]" />
-                <input value={pick} onChange={e => setPick(e.target.value)} placeholder="Pick" className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px]" />
-                <input value={odds} onChange={e => setOdds(e.target.value)} type="number" step="0.01" placeholder="Odds" className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px]" />
+              <div className="mt-2 space-y-1.5">
+                {/* Match search with autocomplete */}
+                <div className="relative" ref={dropdownRef}>
+                  <input
+                    value={matchSearch}
+                    onChange={e => handleMatchSearchChange(e.target.value)}
+                    onFocus={() => { fetchMatches(); if (suggestions.length > 0) setShowDropdown(true); }}
+                    onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                    placeholder="Search match (e.g. Arsenal vs Chelsea)"
+                    className="h-7 w-full rounded-md border border-border bg-background px-2 py-0 text-[11px] outline-none focus:border-primary"
+                  />
+                  {loadingMatches && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">loading…</span>}
+                  {showDropdown && suggestions.length > 0 && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
+                      {suggestions.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={() => handleSelectMatch(s)}
+                          className="flex w-full flex-col px-2.5 py-1.5 text-left hover:bg-accent"
+                        >
+                          <span className="text-[11px] font-semibold">{s.title}</span>
+                          <span className="text-[9px] text-muted-foreground">{s.league}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Pick selector + odds */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <select
+                    value={pick}
+                    onChange={e => handlePickChange(e.target.value)}
+                    className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px] outline-none focus:border-primary"
+                  >
+                    <option value="">Pick…</option>
+                    {PICK_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                  <input
+                    value={odds}
+                    onChange={e => setOdds(e.target.value)}
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    placeholder="Odds"
+                    className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px] outline-none focus:border-primary"
+                  />
+                </div>
+                {pick && odds && (
+                  <div className="flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2 py-1">
+                    <TrendingUp className="h-3 w-3 text-primary" />
+                    <span className="text-[11px] font-semibold text-primary">{pick}</span>
+                    <span className="text-[11px] font-bold text-primary">@ {Number(odds).toFixed(2)}</span>
+                    {selectedMatch && <span className="ml-auto text-[9px] text-muted-foreground truncate">{selectedMatch.title}</span>}
+                  </div>
+                )}
               </div>
             )}
             <div className="mt-2 flex items-center justify-between">
-              <button onClick={() => setShowExtras(s => !s)} className="text-[10px] text-primary hover:underline">
+              <button onClick={() => { setShowExtras(s => !s); if (!showExtras) fetchMatches(); }} className="text-[10px] text-primary hover:underline">
                 {showExtras ? '− Hide tip details' : '+ Add a tip'}
               </button>
               <Button size="sm" onClick={submit} disabled={submitting || !content.trim()} className="h-7 rounded-full text-xs">
