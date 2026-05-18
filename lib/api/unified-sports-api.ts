@@ -2848,7 +2848,9 @@ const THE_ODDS_API_SPORTS: Record<string, { sportId: number; leagueId: number }>
 
 // Track quota exhaustion so we don't keep hammering the API
 let theOddsApiOutOfCredits = 0; // timestamp when last 401/429 happened
-const QUOTA_BACKOFF_MS = 60 * 60 * 1000; // 1 hour back-off
+let theOddsApiMonthlyExhausted = false; // true when OUT_OF_USAGE_CREDITS received
+const QUOTA_BACKOFF_MS = 60 * 60 * 1000; // 1 hour back-off for 429 rate limits
+const MONTHLY_BACKOFF_MS = 30 * 24 * 60 * 60 * 1000; // 30 day back-off for monthly quota
 
 export async function fetchTheOddsAPI(
   endpoint: string,
@@ -2862,8 +2864,12 @@ export async function fetchTheOddsAPI(
     return null;
   }
 
-  // If out of credits, skip until back-off expires
-  if (theOddsApiOutOfCredits > 0 && Date.now() - theOddsApiOutOfCredits < QUOTA_BACKOFF_MS) {
+  // If monthly quota exhausted, skip until next month
+  if (theOddsApiMonthlyExhausted && theOddsApiOutOfCredits > 0 && Date.now() - theOddsApiOutOfCredits < MONTHLY_BACKOFF_MS) {
+    return null;
+  }
+  // If temporarily rate-limited (429), skip for 1 hour
+  if (!theOddsApiMonthlyExhausted && theOddsApiOutOfCredits > 0 && Date.now() - theOddsApiOutOfCredits < QUOTA_BACKOFF_MS) {
     return null;
   }
 
@@ -2887,13 +2893,25 @@ export async function fetchTheOddsAPI(
       if (response.status === 401 || response.status === 429) {
         try {
           const body = await response.json();
-          if (body?.error_code === 'OUT_OF_USAGE_CREDITS' || body?.error_code === 'INVALID_API_KEY' || response.status === 429) {
+          if (body?.error_code === 'OUT_OF_USAGE_CREDITS') {
             theOddsApiOutOfCredits = Date.now();
-            apiStatus.theOddsApi.lastError = `${body?.error_code || 'QUOTA_EXCEEDED'}`;
-            console.warn('[TheOddsAPI] Quota exhausted or invalid key — backing off for 1 hour. Falling back to computed odds.');
+            theOddsApiMonthlyExhausted = true;
+            apiStatus.theOddsApi.lastError = 'OUT_OF_USAGE_CREDITS';
+            console.warn('[TheOddsAPI] Monthly quota exhausted — backing off for 30 days. Real odds will resume next billing cycle.');
+          } else if (body?.error_code === 'INVALID_API_KEY') {
+            theOddsApiOutOfCredits = Date.now();
+            theOddsApiMonthlyExhausted = false;
+            apiStatus.theOddsApi.lastError = 'INVALID_API_KEY';
+            console.warn('[TheOddsAPI] Invalid API key — check THE_ODDS_API_KEY secret.');
+          } else if (response.status === 429) {
+            theOddsApiOutOfCredits = Date.now();
+            theOddsApiMonthlyExhausted = false;
+            apiStatus.theOddsApi.lastError = 'RATE_LIMITED';
+            console.warn('[TheOddsAPI] Rate limited — backing off for 1 hour.');
           }
         } catch {
           theOddsApiOutOfCredits = Date.now();
+          theOddsApiMonthlyExhausted = false;
         }
       }
       return null;
@@ -3046,8 +3064,23 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
   if (!apiKey || apiKey === 'your_api_key_here') return new Map();
 
   const sportKeys = Object.keys(THE_ODDS_API_SPORTS);
-  // Fetch all in parallel
-  const results = await Promise.allSettled(sportKeys.map(sk => fetchOddsForSport(sk)));
+
+  // Fetch in small batches to avoid rate-limit bursting on free-tier accounts.
+  // The Odds API allows ~500 req/month; firing 47 at once triggers 429s which
+  // sets the 1-hour backoff flag and blocks all odds for an hour.
+  const BATCH_SIZE = 4;
+  const BATCH_DELAY_MS = 300;
+  const allResults: PromiseSettledResult<TheOddsApiEvent[]>[] = [];
+  for (let i = 0; i < sportKeys.length; i += BATCH_SIZE) {
+    if (isTheOddsApiQuotaExhausted()) break; // stop early if we hit quota mid-way
+    const batch = sportKeys.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.allSettled(batch.map(sk => fetchOddsForSport(sk)));
+    allResults.push(...batchResults);
+    if (i + BATCH_SIZE < sportKeys.length) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+    }
+  }
+  const results = allResults;
 
   const index = new Map<string, { odds: MatchOdds; markets: Market[] }>();
   for (const result of results) {
