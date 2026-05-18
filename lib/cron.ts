@@ -98,11 +98,44 @@ function isStrategyTime(): boolean {
 }
 
 const LIVE_SCORES_EVERY_N_TICKS = 1; // every 5-min tick (fast enough for goal alerts)
+const FAKE_ACTIVITY_EVERY_N_TICKS = 3; // every 15 min
+const FAKE_VOTES_EVERY_N_TICKS = 6;    // every 30 min
+
+async function runFakeActivity(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/fake-activity`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
+    });
+    if (!r.ok) console.warn('[cron] fake-activity failed:', r.status);
+  } catch (e) {
+    console.warn('[cron] fake-activity error', e instanceof Error ? e.message : e);
+  }
+}
+
+async function runFakeVotes(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/fake-votes?secret=${process.env.CRON_SECRET || 'betcheza-cron-2024'}`, {
+      cache: 'no-store',
+    });
+    if (!r.ok) console.warn('[cron] fake-votes failed:', r.status);
+  } catch (e) {
+    console.warn('[cron] fake-votes error', e instanceof Error ? e.message : e);
+  }
+}
 
 async function tick(): Promise<void> {
   state.tickCount++;
   void runMatchReminders();
   void runLiveScores();
+
+  if (state.tickCount % FAKE_ACTIVITY_EVERY_N_TICKS === 0) {
+    void runFakeActivity();
+  }
+
+  if (state.tickCount % FAKE_VOTES_EVERY_N_TICKS === 0) {
+    void runFakeVotes();
+  }
 
   if (state.tickCount % JACKPOT_SYNC_EVERY_N_TICKS === 0) {
     void runJackpotSync();
@@ -134,5 +167,5 @@ export function startCron(): void {
   }, 240_000); // 4 min
 
   state.timer = setInterval(() => { void tick(); }, TICK_MS);
-  console.log('[cron] started — match-reminders (5 min), live-scores (5 min), jackpot-sync (60 min), daily-strategy (9am EAT)');
+  console.log('[cron] started — match-reminders (5 min), live-scores (5 min), fake-activity (15 min), fake-votes (30 min), jackpot-sync (60 min), daily-strategy (9am EAT)');
 }
