@@ -21,6 +21,89 @@ export interface FeedPost {
   commentCount: number;
   liked?: boolean;
   createdAt: string;
+  hashtags?: string[];
+}
+
+// ─── HASHTAG HELPERS ──────────────────────────────────────────────────────────
+export function extractHashtags(content: string): string[] {
+  const matches = content.match(/#([a-zA-Z][a-zA-Z0-9_]{0,49})/g) ?? [];
+  return [...new Set(matches.map(h => h.slice(1).toLowerCase()))].slice(0, 10);
+}
+
+async function storeHashtags(postId: string, content: string): Promise<void> {
+  if (!hasDb()) return;
+  const tags = extractHashtags(content);
+  for (const tag of tags) {
+    await query(
+      `INSERT IGNORE INTO feed_hashtags (tag, post_id, created_at) VALUES (?, ?, NOW())`,
+      [tag, postId]
+    ).catch(() => {});
+  }
+}
+
+export async function getTrendingHashtags(limit = 20): Promise<Array<{ tag: string; count: number }>> {
+  if (!hasDb()) return [];
+  try {
+    const r = await query<{ tag: string; count: number }>(
+      `SELECT tag, COUNT(*) AS count
+       FROM feed_hashtags
+       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+       GROUP BY tag
+       ORDER BY count DESC
+       LIMIT ?`,
+      [limit]
+    );
+    return r.rows;
+  } catch { return []; }
+}
+
+export async function listPostsByHashtag(tag: string, limit = 50, viewerId?: number | null): Promise<FeedPost[]> {
+  if (!hasDb()) return [];
+  try {
+    const r = await query<{
+      id: string; user_id: number; author_name: string; author_avatar: string | null;
+      content: string; match_id: string | null; match_title: string | null;
+      pick: string | null; odds: number | null; image_url: string | null;
+      likes: number; comment_count: number; created_at: string;
+      author_role: string | null; author_username: string | null; hashtags: string | null;
+    }>(
+      `SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
+              fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
+              fp.likes, fp.comment_count, fp.created_at,
+              u.role AS author_role, u.username AS author_username,
+              GROUP_CONCAT(fh2.tag ORDER BY fh2.id SEPARATOR ',') AS hashtags
+       FROM feed_posts fp
+       JOIN feed_hashtags fh ON fh.post_id = fp.id AND fh.tag = ?
+       LEFT JOIN feed_hashtags fh2 ON fh2.post_id = fp.id
+       LEFT JOIN users u ON u.id = fp.user_id
+       GROUP BY fp.id
+       ORDER BY fp.created_at DESC
+       LIMIT ?`,
+      [tag.toLowerCase(), limit]
+    );
+    let likedSet = new Set<string>();
+    if (viewerId && r.rows.length > 0) {
+      const ids = r.rows.map(p => p.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const lr = await query<{ post_id: string }>(
+        `SELECT post_id FROM feed_post_likes WHERE user_id = ? AND post_id IN (${placeholders})`,
+        [viewerId, ...ids]
+      );
+      likedSet = new Set(lr.rows.map(x => x.post_id));
+    }
+    return r.rows.map(x => ({
+      id: x.id, userId: x.user_id, authorName: x.author_name, authorAvatar: x.author_avatar,
+      authorRole: x.author_role, authorUsername: x.author_username,
+      content: x.content, matchId: x.match_id, matchTitle: x.match_title, pick: x.pick,
+      odds: x.odds, imageUrl: x.image_url, likes: x.likes || 0, commentCount: x.comment_count || 0,
+      liked: likedSet.has(x.id),
+      hashtags: x.hashtags ? x.hashtags.split(',') : [],
+      createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
+    }));
+  } catch (e) {
+    console.error('[feed] listPostsByHashtag error:', e);
+    return [];
+  }
 }
 
 export interface FeedComment {
@@ -68,13 +151,16 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
         content: string; match_id: string | null; match_title: string | null;
         pick: string | null; odds: number | null; image_url: string | null;
         likes: number; comment_count: number; created_at: string;
-        author_role: string | null; author_username: string | null;
+        author_role: string | null; author_username: string | null; hashtags: string | null;
       }>(`SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
                  fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
                  fp.likes, fp.comment_count, fp.created_at,
-                 u.role AS author_role, u.username AS author_username
+                 u.role AS author_role, u.username AS author_username,
+                 GROUP_CONCAT(fh.tag ORDER BY fh.id SEPARATOR ',') AS hashtags
           FROM feed_posts fp
           LEFT JOIN users u ON u.id = fp.user_id
+          LEFT JOIN feed_hashtags fh ON fh.post_id = fp.id
+          GROUP BY fp.id
           ORDER BY fp.created_at DESC LIMIT ?`,
         [limit]);
 
@@ -95,6 +181,7 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
           content: x.content, matchId: x.match_id, matchTitle: x.match_title, pick: x.pick,
           odds: x.odds, imageUrl: x.image_url, likes: x.likes || 0, commentCount: x.comment_count || 0,
           liked: likedSet.has(x.id),
+          hashtags: x.hashtags ? x.hashtags.split(',') : [],
           createdAt: typeof x.created_at === 'string' ? x.created_at : new Date(x.created_at).toISOString(),
         }));
       }
@@ -125,6 +212,8 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
          post.matchId || null, sanitise(post.matchTitle), sanitise(post.pick),
          post.odds || null, post.imageUrl || null],
       );
+      // Store hashtags extracted from content (non-blocking)
+      void storeHashtags(post.id, post.content ?? '');
       // DB succeeded — don't duplicate in memory
     } catch (e) {
       // DB write failed — log loudly and propagate rather than silently

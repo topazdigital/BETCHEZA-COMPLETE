@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button';
 import {
   Heart, MessageCircle, Send, Sparkles, Loader2, Flame, TrendingUp, Users, Lock,
-  Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff, Megaphone,
+  Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff, Megaphone, Hash, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -34,6 +34,26 @@ interface Post {
   liked?: boolean;
   commentCount: number;
   createdAt: string;
+  hashtags?: string[];
+}
+
+function renderContent(content: string, onHashtagClick?: (tag: string) => void) {
+  const parts = content.split(/(#[a-zA-Z][a-zA-Z0-9_]{0,49})/g);
+  return parts.map((part, i) => {
+    if (/^#[a-zA-Z][a-zA-Z0-9_]{0,49}$/.test(part)) {
+      const tag = part.slice(1).toLowerCase();
+      return (
+        <button
+          key={i}
+          onClick={() => onHashtagClick?.(tag)}
+          className="text-primary font-semibold hover:underline focus:outline-none"
+        >
+          {part}
+        </button>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
 }
 
 interface Comment {
@@ -209,7 +229,7 @@ function CommentList({ postId, open }: { postId: string; open: boolean }) {
   );
 }
 
-function PostCard({ post, initialFollowing = false, currentUserId }: { post: Post; initialFollowing?: boolean; currentUserId?: number | null }) {
+function PostCard({ post, initialFollowing = false, currentUserId, onHashtagClick }: { post: Post; initialFollowing?: boolean; currentUserId?: number | null; onHashtagClick?: (tag: string) => void }) {
   const [openComments, setOpenComments] = useState(false);
   const [liked, setLiked] = useState(!!post.liked);
   const [likes, setLikes] = useState(post.likes);
@@ -255,7 +275,7 @@ function PostCard({ post, initialFollowing = false, currentUserId }: { post: Pos
               <p className="text-[10px] text-muted-foreground mt-0.5">from Betcheza Admin</p>
             </div>
           </div>
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight font-medium">{post.content}</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight font-medium">{renderContent(post.content, onHashtagClick)}</p>
           <div className="mt-3 flex items-center gap-1.5">
             <button onClick={toggleLike} disabled={busy} className={cn('flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition-colors', liked ? 'bg-rose-500/15 text-rose-500' : 'text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500')}>
               <Heart className={cn('h-3.5 w-3.5', liked && 'fill-rose-500')} />{likes}
@@ -297,7 +317,7 @@ function PostCard({ post, initialFollowing = false, currentUserId }: { post: Pos
           )}
         </div>
 
-        <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight">{post.content}</p>
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight">{renderContent(post.content, onHashtagClick)}</p>
 
         {(post.pick || post.odds) && (
           <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-2 py-1">
@@ -682,7 +702,42 @@ function TipOfDay() {
   );
 }
 
-function TrendingRail() {
+interface HashtagItem { tag: string; count: number; }
+
+function TrendingHashtags({ onHashtagClick }: { onHashtagClick: (tag: string) => void }) {
+  const { data } = useSWR<{ hashtags: HashtagItem[] }>(
+    '/api/feed/hashtags/trending?limit=12',
+    fetcher,
+    { refreshInterval: 120_000, revalidateOnFocus: false, dedupingInterval: 120_000 },
+  );
+  const tags = data?.hashtags ?? [];
+  if (!tags.length) return null;
+  return (
+    <Card className="border-border/60">
+      <CardContent className="p-3">
+        <div className="mb-2.5 flex items-center gap-1.5">
+          <Hash className="h-3.5 w-3.5 text-primary" />
+          <h3 className="text-xs font-bold">Trending Hashtags</h3>
+          <span className="ml-auto rounded-full bg-primary/15 px-1.5 py-0 text-[9px] font-semibold text-primary">7d</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map(({ tag, count }) => (
+            <button
+              key={tag}
+              onClick={() => onHashtagClick(tag)}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/8 px-2 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
+            >
+              #{tag}
+              <span className="text-[9px] text-muted-foreground font-normal">{count}</span>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrendingRail({ onHashtagClick }: { onHashtagClick: (tag: string) => void }) {
   const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60_000 });
   const trending = data?.trending ?? [];
   const stats = data?.stats;
@@ -780,6 +835,8 @@ function TrendingRail() {
         </CardContent>
       </Card>
 
+      <TrendingHashtags onHashtagClick={onHashtagClick} />
+
       <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-purple-500/5 to-card">
         <CardContent className="p-3">
           <div className="mb-1.5 flex items-center gap-1.5">
@@ -827,9 +884,17 @@ function TrendingRail() {
 
 export default function FeedPage() {
   const { data: meRes } = useSWR<Me>('/api/auth/me', fetcher);
-  const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[] }>(POSTS_KEY, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
+  const [activeHashtag, setActiveHashtag] = useState<string | null>(null);
+  const postsKey = activeHashtag ? `${POSTS_KEY}?hashtag=${encodeURIComponent(activeHashtag)}` : POSTS_KEY;
+  const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[] }>(postsKey, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
   const posts = postsRes?.posts ?? [];
   const scrolledRef = useRef(false);
+
+  const handleHashtagClick = (tag: string) => {
+    setActiveHashtag(prev => prev === tag ? null : tag);
+    scrolledRef.current = false;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Scroll to and highlight a specific post when opened from a notification link (/feed#<postId>).
   // Only fires once when posts first arrive so it doesn't repeat on every SWR refresh.
@@ -865,7 +930,7 @@ export default function FeedPage() {
   );
   const followStatuses = batchRes?.statuses ?? {};
 
-  const refresh = () => mutate(POSTS_KEY);
+  const refresh = () => mutate(postsKey);
 
   return (
     <div className="overflow-x-hidden">
@@ -906,6 +971,20 @@ export default function FeedPage() {
               {/* Composer */}
               <Composer me={meRes?.user ?? null} onPosted={refresh} />
 
+              {/* Hashtag filter banner */}
+              {activeHashtag && (
+                <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2">
+                  <Hash className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-xs font-semibold text-primary flex-1">#{activeHashtag}</span>
+                  <button
+                    onClick={() => setActiveHashtag(null)}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3 w-3" /> Clear filter
+                  </button>
+                </div>
+              )}
+
               {/* Feed */}
               {postsError ? (
                 <Card className="border-border/60">
@@ -932,7 +1011,7 @@ export default function FeedPage() {
                 </CardContent></Card>
               ) : (
                 <div className="space-y-2.5">
-                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} currentUserId={meRes?.user?.id ?? null} />)}
+                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} currentUserId={meRes?.user?.id ?? null} onHashtagClick={handleHashtagClick} />)}
                 </div>
               )}
             </main>
@@ -940,7 +1019,7 @@ export default function FeedPage() {
             {/* RIGHT RAIL */}
             <aside className="hidden lg:block">
               <div className="sticky top-4">
-                <TrendingRail />
+                <TrendingRail onHashtagClick={handleHashtagClick} />
               </div>
             </aside>
         </div>
