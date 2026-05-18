@@ -1358,7 +1358,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                     label="1"
                     sublabel={match.homeTeam.name.split(' ')[0]}
                     value={match.odds.home}
-                    selected={isSelected(match.id, 'h2h', match.homeTeam.name)}
+                    disabled={isFinished}
+                    selected={!isFinished && isSelected(match.id, 'h2h', match.homeTeam.name)}
                     onClick={() => addSelection({
                       matchId: match.id,
                       matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1374,7 +1375,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                       label="X"
                       sublabel="Draw"
                       value={match.odds.draw}
-                      selected={isSelected(match.id, 'h2h', 'Draw')}
+                      disabled={isFinished}
+                      selected={!isFinished && isSelected(match.id, 'h2h', 'Draw')}
                       onClick={() => addSelection({
                         matchId: match.id,
                         matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1390,7 +1392,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                     label="2"
                     sublabel={match.awayTeam.name.split(' ')[0]}
                     value={match.odds.away}
-                    selected={isSelected(match.id, 'h2h', match.awayTeam.name)}
+                    disabled={isFinished}
+                    selected={!isFinished && isSelected(match.id, 'h2h', match.awayTeam.name)}
                     onClick={() => addSelection({
                       matchId: match.id,
                       matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1465,7 +1468,10 @@ export default function MatchDetailPage({ params }: PageProps) {
                     <TrendingUp className="h-3 w-3 text-white/60" />
                     Betting Markets
                   </h3>
-                  <span className="text-[9px] text-white/30">Tap to add to slip</span>
+                  {isFinished
+                    ? <span className="text-[9px] text-rose-400/70 font-semibold">Match finished</span>
+                    : <span className="text-[9px] text-white/30">Tap to add to slip</span>
+                  }
                 </div>
                 {/* 1X2 odds hero row */}
                 {match.odds && (
@@ -1477,11 +1483,12 @@ export default function MatchDetailPage({ params }: PageProps) {
                         ...(match.odds.draw !== undefined ? [{ label: 'X', sublabel: 'Draw', value: match.odds.draw, outcome: 'Draw' }] : []),
                         { label: '2', sublabel: match.awayTeam.name.split(' ')[0], value: match.odds.away, outcome: match.awayTeam.name },
                       ].map((o) => {
-                        const sel = isSelected(match.id, 'h2h', o.outcome)
+                        const sel = !isFinished && isSelected(match.id, 'h2h', o.outcome)
                         return (
                           <button
                             key={o.label}
-                            onClick={() => addSelection({
+                            disabled={isFinished}
+                            onClick={isFinished ? undefined : () => addSelection({
                               matchId: match.id,
                               matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
                               marketKey: 'h2h',
@@ -1491,7 +1498,10 @@ export default function MatchDetailPage({ params }: PageProps) {
                               matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
                             })}
                             className={cn(
-                              'flex flex-col items-center rounded-lg border py-2 px-1 transition-all active:scale-95',
+                              'flex flex-col items-center rounded-lg border py-2 px-1 transition-all',
+                              isFinished
+                                ? 'cursor-default opacity-50'
+                                : 'active:scale-95',
                               sel
                                 ? 'bg-primary/20 border-primary text-primary'
                                 : 'bg-white/8 border-white/15 text-white hover:bg-white/15',
@@ -1516,11 +1526,12 @@ export default function MatchDetailPage({ params }: PageProps) {
                           <p className="mb-1 text-[9px] uppercase tracking-wider text-white/40 font-semibold">{mkt.name}</p>
                           <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
                             {mkt.outcomes.slice(0, 3).map((o, oi) => {
-                              const sel = isSelected(match.id, mkt.key, o.name)
+                              const sel = !isFinished && isSelected(match.id, mkt.key, o.name)
                               return (
                                 <button
                                   key={oi}
-                                  onClick={() => addSelection({
+                                  disabled={isFinished}
+                                  onClick={isFinished ? undefined : () => addSelection({
                                     matchId: match.id,
                                     matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
                                     marketKey: mkt.key,
@@ -1530,7 +1541,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                                     matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
                                   })}
                                   className={cn(
-                                    'flex flex-col items-center rounded-md border py-1.5 px-1 text-center transition-all active:scale-95',
+                                    'flex flex-col items-center rounded-md border py-1.5 px-1 text-center transition-all',
+                                    isFinished ? 'cursor-default opacity-50' : 'active:scale-95',
                                     sel
                                       ? 'bg-primary/20 border-primary text-primary'
                                       : 'bg-white/8 border-white/10 text-white hover:bg-white/15',
@@ -2255,12 +2267,13 @@ export default function MatchDetailPage({ params }: PageProps) {
                           gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))`,
                         }}>
                           {mkt.outcomes.map((o, i) => {
-                            const sel = isSelected(match.id, mkt.key, o.name)
+                            const sel = !isFinished && isSelected(match.id, mkt.key, o.name)
                             return (
                               <button
                                 key={i}
                                 type="button"
-                                onClick={() => addSelection({
+                                disabled={isFinished}
+                                onClick={isFinished ? undefined : () => addSelection({
                                   matchId: match.id,
                                   matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
                                   marketKey: mkt.key,
@@ -2270,7 +2283,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                                   matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
                                 })}
                                 className={cn(
-                                  "rounded-lg border px-3 py-2.5 text-center transition-all active:scale-95",
+                                  "rounded-lg border px-3 py-2.5 text-center transition-all",
+                                  isFinished ? "cursor-default opacity-60" : "active:scale-95",
                                   sel
                                     ? "border-primary bg-primary/10 text-primary"
                                     : "border-border/50 bg-muted/40 hover:bg-muted/60 hover:border-primary/40"
@@ -2743,7 +2757,7 @@ const MARKET_GROUP_ORDER = [
   { key: 'corners_11_5',    label: 'Total Corners O/U 11.5' },
 ]
 
-function MarketsSection({ match }: { match: MatchDetails['match'] }) {
+function MarketsSection({ match, isFinished }: { match: MatchDetails['match']; isFinished?: boolean }) {
   const { addSelection, isSelected } = useBetSlip()
   const [expanded, setExpanded] = useState(false)
 
@@ -2766,7 +2780,10 @@ function MarketsSection({ match }: { match: MatchDetails['match'] }) {
         <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
           <TrendingUp className="h-3.5 w-3.5" />
           Betting Markets
-          <span className="ml-auto text-[10px] font-normal normal-case">Tap odds to add to slip</span>
+          {isFinished
+            ? <span className="ml-auto text-[10px] font-semibold normal-case text-rose-500/70">Match finished — betting closed</span>
+            : <span className="ml-auto text-[10px] font-normal normal-case">Tap odds to add to slip</span>
+          }
         </h3>
 
         {visibleMarkets.map((mkt) => {
@@ -2780,11 +2797,12 @@ function MarketsSection({ match }: { match: MatchDetails['match'] }) {
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{mkt.name}</p>
               <div className={cn('grid gap-1', cols)}>
                 {displayOutcomes.map((o, oi) => {
-                  const selected = isSelected(match.id, mkt.key, o.name)
+                  const selected = !isFinished && isSelected(match.id, mkt.key, o.name)
                   return (
                     <button
                       key={oi}
-                      onClick={() => addSelection({
+                      disabled={isFinished}
+                      onClick={isFinished ? undefined : () => addSelection({
                         matchId: match.id,
                         matchName,
                         marketKey: mkt.key,
@@ -2794,7 +2812,8 @@ function MarketsSection({ match }: { match: MatchDetails['match'] }) {
                         matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
                       })}
                       className={cn(
-                        'flex flex-col items-center rounded-lg border px-1.5 py-1.5 text-center transition-all active:scale-95',
+                        'flex flex-col items-center rounded-lg border px-1.5 py-1.5 text-center transition-all',
+                        isFinished ? 'cursor-default opacity-60' : 'active:scale-95',
                         selected
                           ? 'bg-primary/10 border-primary text-primary'
                           : 'bg-muted/40 border-border/50 text-foreground hover:bg-muted/70 hover:border-primary/40',
@@ -2969,7 +2988,7 @@ function MatchInfoRail({
 
       {/* Betting markets */}
       {match.markets && match.markets.length > 0 && (
-        <MarketsSection match={match} />
+        <MarketsSection match={match} isFinished={isFinished} />
       )}
 
       {/* Standings snapshot */}
@@ -3063,19 +3082,22 @@ function MatchInfoRail({
 
 // ===== Sub-components =====
 
-function OddsButton({ label, sublabel, value, onClick, selected }: { label: string; sublabel: string; value: number; onClick?: () => void; selected?: boolean }) {
+function OddsButton({ label, sublabel, value, onClick, selected, disabled }: { label: string; sublabel: string; value: number; onClick?: () => void; selected?: boolean; disabled?: boolean }) {
   return (
     <div
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       className={cn(
-        "rounded-xl border p-3 text-center cursor-pointer transition-all active:scale-95",
-        selected
+        "rounded-xl border p-3 text-center transition-all",
+        disabled
+          ? "cursor-default opacity-50"
+          : "cursor-pointer active:scale-95",
+        selected && !disabled
           ? "bg-primary/25 border-primary/70"
           : "bg-white/8 border-white/15 hover:bg-white/15 hover:border-white/25",
       )}
     >
       <p className="text-[10px] uppercase tracking-widest text-white/40 font-medium">{label}</p>
-      <p className={cn("text-xl font-black mt-0.5", selected ? "text-primary" : "text-white")}>{value.toFixed(2)}</p>
+      <p className={cn("text-xl font-black mt-0.5", selected && !disabled ? "text-primary" : "text-white")}>{value.toFixed(2)}</p>
       <p className="text-[9px] text-white/30 truncate mt-0.5">{sublabel}</p>
     </div>
   )
