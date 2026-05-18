@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { Bell, Check, ExternalLink, Loader2, MessageSquare, Heart, UserPlus, Trophy, Newspaper, AlertCircle, Megaphone, Zap, X } from 'lucide-react';
+import { Bell, Check, ExternalLink, Loader2, MessageSquare, Heart, UserPlus, Trophy, Newspaper, AlertCircle, Megaphone, Zap, X, Star, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
@@ -22,6 +22,7 @@ interface NotifRow {
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   post_like: Heart,
   post_comment: MessageSquare,
+  comment: MessageSquare,
   comment_reply: MessageSquare,
   follow_new: UserPlus,
   tipster_post: Megaphone,
@@ -31,14 +32,19 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   team_result: Trophy,
   team_news: Newspaper,
   match_lineup: Zap,
+  match_reminder: Clock,
   odds_drop: AlertCircle,
   admin_broadcast: Megaphone,
+  tip_of_the_day: Star,
+  jackpot_win: Trophy,
+  jackpot_alert: Zap,
   system: Bell,
 };
 
 const COLORS: Record<string, string> = {
   post_like: 'text-pink-500 bg-pink-500/10',
   post_comment: 'text-blue-500 bg-blue-500/10',
+  comment: 'text-blue-500 bg-blue-500/10',
   comment_reply: 'text-blue-500 bg-blue-500/10',
   follow_new: 'text-violet-500 bg-violet-500/10',
   tipster_post: 'text-amber-500 bg-amber-500/10',
@@ -48,8 +54,12 @@ const COLORS: Record<string, string> = {
   team_result: 'text-emerald-500 bg-emerald-500/10',
   team_news: 'text-sky-500 bg-sky-500/10',
   match_lineup: 'text-cyan-500 bg-cyan-500/10',
+  match_reminder: 'text-orange-500 bg-orange-500/10',
   odds_drop: 'text-red-500 bg-red-500/10',
   admin_broadcast: 'text-purple-500 bg-purple-500/10',
+  tip_of_the_day: 'text-yellow-500 bg-yellow-500/10',
+  jackpot_win: 'text-emerald-500 bg-emerald-500/10',
+  jackpot_alert: 'text-indigo-500 bg-indigo-500/10',
   system: 'text-muted-foreground bg-muted',
 };
 

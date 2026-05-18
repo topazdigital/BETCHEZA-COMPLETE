@@ -46,7 +46,7 @@ export async function POST(
     type: 'follow_new',
     title: 'New follower',
     content: `${followerName} just started following you`,
-    link: `/users/${user.userId}`,
+    link: `/tipsters/${user.userId}`,
   }).catch(() => {});
   return NextResponse.json({ success: true });
 }

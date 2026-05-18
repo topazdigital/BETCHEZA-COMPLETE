@@ -53,6 +53,42 @@ interface TipFormData {
   marketKey: string
 }
 
+// ── Market category helpers ───────────────────────────────────────────────
+type MarketCategory = 'main' | 'goals' | 'handicap' | 'halftime' | 'other'
+
+function categorizeMarket(key: string): MarketCategory {
+  const k = key.toLowerCase()
+  if (
+    k.includes('h2h') || k.includes('moneyline') || k === 'double_chance' ||
+    k === 'draw_no_bet' || k === 'dnb' || k.includes('winner') ||
+    k === 'match_result' || k === '1x2' || k === 'result' || k === 'outrights'
+  ) return 'main'
+  if (
+    k.includes('total') || k.includes('btts') || k.includes('both_teams') ||
+    k.includes('goals') || k.includes('goal') || k.includes('over_under') ||
+    k.includes('over/under') || k.includes('clean_sheet') || k.includes('scoring')
+  ) return 'goals'
+  if (
+    k.includes('spread') || k.includes('handicap') || k.includes('asian') ||
+    k.includes('european') || k.includes('line')
+  ) return 'handicap'
+  if (
+    k.includes('half') || k.startsWith('ht') || k.includes('_ht') ||
+    k.includes('q1') || k.includes('q2') || k.includes('quarter') ||
+    k.includes('period') || k.includes('first_half') || k.includes('2nd_half') ||
+    k.includes('second_half') || k.includes('halftime')
+  ) return 'halftime'
+  return 'other'
+}
+
+const CATEGORY_LABELS: Record<MarketCategory, string> = {
+  main: 'Main',
+  goals: 'Goals',
+  handicap: 'Handicap',
+  halftime: 'H/T',
+  other: 'Other',
+}
+
 // Catalog of common manual-entry markets — used ONLY when the user picks
 // "Enter manually". We never auto-generate odds; the user types the price
 // they actually got from their bookmaker.
@@ -117,6 +153,7 @@ export function AddTipForm({
   const [isPremium, setIsPremium] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [activeCategory, setActiveCategory] = useState<MarketCategory>('main')
 
   // ONLY real bookmaker markets — never auto-generated. If a market arrives
   // empty we drop it so we don't show fake "0.00" prices.
@@ -124,6 +161,24 @@ export function AddTipForm({
     if (!providedMarkets) return []
     return providedMarkets.filter(m => m && m.outcomes && m.outcomes.length > 0)
   }, [providedMarkets])
+
+  // Which categories actually have at least one market
+  const availableCategories = useMemo<MarketCategory[]>(() => {
+    const cats = new Set<MarketCategory>()
+    for (const m of realMarkets) cats.add(categorizeMarket(m.key))
+    const order: MarketCategory[] = ['main', 'goals', 'handicap', 'halftime', 'other']
+    return order.filter(c => cats.has(c))
+  }, [realMarkets])
+
+  // Auto-select the first available category when markets load
+  const effectiveCategory = availableCategories.includes(activeCategory)
+    ? activeCategory
+    : (availableCategories[0] ?? 'main')
+
+  const visibleMarkets = useMemo(
+    () => realMarkets.filter(m => categorizeMarket(m.key) === effectiveCategory),
+    [realMarkets, effectiveCategory],
+  )
 
   const selectedMarket = realMarkets.find(m => m.key === selectedMarketKey)
 
@@ -259,36 +314,73 @@ export function AddTipForm({
       )}
 
       {mode === 'real' && realMarkets.length > 0 ? (
-        <div className="space-y-3">
-          <Label className="flex items-center gap-2">
-            Pick a market <span className="text-destructive">*</span>
-            {errors.prediction && <span className="text-xs text-destructive">{errors.prediction}</span>}
-          </Label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="flex items-center gap-1.5 text-xs">
+              Pick a market <span className="text-destructive">*</span>
+            </Label>
+            {errors.prediction && (
+              <span className="text-[10px] text-destructive">{errors.prediction}</span>
+            )}
+          </div>
 
-          <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-            {realMarkets.map((market) => (
-              <div key={market.key} className="space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground">{market.name}</p>
-                <div className="flex flex-wrap gap-1.5">
+          {/* Category tabs — compact pill nav */}
+          {availableCategories.length > 1 && (
+            <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-none">
+              {availableCategories.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setActiveCategory(cat)}
+                  className={cn(
+                    "shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-all whitespace-nowrap",
+                    effectiveCategory === cat
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80",
+                  )}
+                >
+                  {CATEGORY_LABELS[cat]}
+                  <span className="ml-1 opacity-60">
+                    {realMarkets.filter(m => categorizeMarket(m.key) === cat).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Markets for active category */}
+          <div className="space-y-2 max-h-[220px] overflow-y-auto pr-0.5">
+            {visibleMarkets.map((market) => (
+              <div key={market.key} className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {market.name}
+                </p>
+                <div className="flex flex-wrap gap-1">
                   {market.outcomes.map((outcome) => {
-                    const isSelected = selectedMarketKey === market.key && selectedOutcome?.name === outcome.name
+                    const isSelected =
+                      selectedMarketKey === market.key && selectedOutcome?.name === outcome.name
                     return (
                       <button
                         key={`${market.key}-${outcome.name}`}
                         type="button"
                         onClick={() => handleSelectOutcome(market, outcome)}
                         className={cn(
-                          "relative flex flex-col items-center rounded-lg border-2 px-3 py-1.5 text-xs transition-all min-w-[80px]",
+                          "relative flex flex-col items-center rounded-md border px-2 py-1 text-xs transition-all min-w-[64px]",
                           isSelected
                             ? "border-primary bg-primary/10 text-primary"
-                            : "border-border hover:border-primary/50 hover:bg-muted"
+                            : "border-border hover:border-primary/40 hover:bg-muted",
                         )}
                       >
                         {isSelected && (
-                          <Check className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-primary text-white p-0.5" />
+                          <Check className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-primary text-white p-0.5" />
                         )}
-                        <span className="font-medium text-[11px] text-center line-clamp-2">{outcome.name}</span>
-                        <span className={cn("font-bold text-sm", isSelected ? "text-primary" : "text-foreground")}>
+                        <span className="font-medium text-[10px] text-center line-clamp-1 leading-tight">
+                          {outcome.name}
+                        </span>
+                        <span className={cn(
+                          "font-bold text-[13px] leading-tight",
+                          isSelected ? "text-primary" : "text-foreground",
+                        )}>
                           {outcome.price.toFixed(2)}
                         </span>
                       </button>

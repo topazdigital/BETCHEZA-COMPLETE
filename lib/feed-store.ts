@@ -384,12 +384,12 @@ export async function addComment(input: Omit<FeedComment, 'id' | 'createdAt'>): 
       const r = await query<{ user_id: number; content: string }>(
         `SELECT user_id, content FROM feed_posts WHERE id = ? LIMIT 1`, [comment.postId]);
       if (r.rows[0] && r.rows[0].user_id !== comment.userId) {
-        void dispatchNotification({ userId: r.rows[0].user_id, type: 'comment', title: `${comment.authorName} commented on your post`, content: comment.content, link: `/feed#${comment.postId}` }).catch(() => {});
+        void dispatchNotification({ userId: r.rows[0].user_id, type: 'post_comment', title: `${comment.authorName} commented on your post`, content: comment.content, link: `/feed` }).catch(() => {});
       }
     } else {
       const post = mem.posts.find(p => p.id === comment.postId);
       if (post && post.userId !== comment.userId) {
-        void dispatchNotification({ userId: post.userId, type: 'comment', title: `${comment.authorName} commented on your post`, content: comment.content, link: `/feed#${comment.postId}` }).catch(() => {});
+        void dispatchNotification({ userId: post.userId, type: 'post_comment', title: `${comment.authorName} commented on your post`, content: comment.content, link: `/feed` }).catch(() => {});
       }
     }
   } catch { /* notification is non-critical */ }
