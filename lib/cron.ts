@@ -83,9 +83,32 @@ async function runDailyStrategy(): Promise<void> {
       state.lastStrategyDate = todayStr;
       const data = await r.json() as { date?: string; picks?: unknown[]; message?: string };
       console.log(`[cron] daily-strategy: ${data.message ?? `posted ${data.picks?.length ?? 0} picks for ${data.date}`}`);
+      // Fire the Tip of the Day notification 2 minutes after picks are generated
+      setTimeout(() => { void runTipOfTheDay(); }, 2 * 60 * 1000);
     }
   } catch (e) {
     console.warn('[cron] daily-strategy error', e instanceof Error ? e.message : e);
+  }
+}
+
+async function runTipOfTheDay(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/tip-of-the-day`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
+    });
+    if (!r.ok) {
+      console.warn('[cron] tip-of-the-day failed:', r.status);
+    } else {
+      const data = await r.json() as { ok: boolean; skipped?: boolean; pick?: { match: string; pick: string; odds: number }; pushCount?: number; inAppCount?: number };
+      if (data.skipped) {
+        console.log('[cron] tip-of-the-day: already sent today');
+      } else if (data.ok && data.pick) {
+        console.log(`[cron] tip-of-the-day: sent "${data.pick.pick} @ ${data.pick.odds}" to ${data.pushCount ?? 0} push + ${data.inAppCount ?? 0} in-app`);
+      }
+    }
+  } catch (e) {
+    console.warn('[cron] tip-of-the-day error', e instanceof Error ? e.message : e);
   }
 }
 
@@ -167,6 +190,18 @@ export function startCron(): void {
     }
   }, 240_000); // 4 min
 
+  // Fire Tip of the Day on startup if it's past 9:05am EAT (6:05 UTC) and
+  // daily-strategy has already run (picks exist). The 2-min chain from
+  // runDailyStrategy handles fresh runs; this covers restarts after 9am.
+  setTimeout(() => {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const utcMin = now.getUTCMinutes();
+    if (utcHour > 6 || (utcHour === 6 && utcMin >= 5)) {
+      void runTipOfTheDay();
+    }
+  }, 270_000); // 4.5 min (after daily-strategy has had time to run)
+
   state.timer = setInterval(() => { void tick(); }, TICK_MS);
-  console.log('[cron] started — match-reminders (5 min), live-scores (5 min), fake-activity (15 min), fake-votes (30 min), jackpot-sync (60 min), daily-strategy (9am EAT)');
+  console.log('[cron] started — match-reminders (5 min), live-scores (5 min), fake-activity (15 min), fake-votes (30 min), jackpot-sync (60 min), daily-strategy + tip-of-the-day (9am EAT)');
 }
