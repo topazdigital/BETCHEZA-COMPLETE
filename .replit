@@ -1,4 +1,4 @@
-modules = ["web", "bash", "python-3.11", "nodejs-22"]
+modules = ["nodejs-20", "bash", "web"]
 [agent]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"
@@ -58,3 +58,4 @@ FOOTBALL_DATA_API_KEY = "a88e7138cd4747c299e34ebd2ba8d970"
 SPORTSGAMEODDS_API_KEY = "56b729df59f151a4c45c15059c5ba402"
 THE_ODDS_API_KEY = "056ed4c2935190a39a4e22b24b2ad9e8"
 DB_HOST = "157.250.205.180"
+JWT_SECRET = "betcheza-production-secret-key-replit-2024"
