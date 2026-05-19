@@ -4,7 +4,6 @@ import { getFakeTipsters } from '@/lib/fake-tipsters';
 
 export const dynamic = 'force-dynamic';
 
-// In-process cache — trending changes slowly; 2-min TTL is fine.
 const CACHE_TTL = 2 * 60_000;
 const g = globalThis as { __trendingCache?: { data: unknown; ts: number } };
 
@@ -14,21 +13,23 @@ export async function GET() {
     return NextResponse.json(g.__trendingCache.data);
   }
 
-  const posts = await listPosts(50);
+  const posts = await listPosts(200);
 
   const since = now - 24 * 60 * 60 * 1000;
   const recent = posts.filter(p => new Date(p.createdAt).getTime() >= since);
 
   const trending = [...recent]
-    .filter(p => p.pick)
+    .filter(p => p.pick && p.odds && Number(p.odds) > 1)
     .sort((a, b) => (b.likes + b.commentCount * 2) - (a.likes + a.commentCount * 2))
     .slice(0, 6)
     .map(p => ({
       id: p.id,
       authorName: p.authorName,
+      authorUsername: p.authorUsername,
       pick: p.pick,
       odds: p.odds,
       matchTitle: p.matchTitle,
+      matchId: p.matchId ?? null,
       likes: p.likes,
       commentCount: p.commentCount,
       createdAt: p.createdAt,
@@ -37,10 +38,27 @@ export async function GET() {
   const totalPosts = posts.length;
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
   const totalComments = posts.reduce((s, p) => s + p.commentCount, 0);
-  const activeUsers = new Set(posts.map(p => p.userId)).size;
+  const realActiveUsers = new Set(posts.map(p => p.userId)).size;
+
+  // Combine real active users with fake tipsters for a fuller community picture
   const fakeTipsters = getFakeTipsters();
-  const onlineTipsterList = fakeTipsters.filter(t => t.isOnline);
-  const onlineTipsters = onlineTipsterList.length;
+
+  // Rotate online status every 3 minutes using time bucket for determinism
+  const timeBucket = Math.floor(now / (3 * 60_000));
+  const onlineTipsterList = fakeTipsters.filter((t, i) => {
+    // Keep base isOnline but add a rotation so the count changes over time
+    const slot = (i + timeBucket) % 7;
+    return t.isOnline || slot === 0;
+  });
+
+  // Real users who posted in the last hour count as "online"
+  const recentlyActiveReal = new Set(
+    posts
+      .filter(p => now - new Date(p.createdAt).getTime() < 60 * 60_000)
+      .map(p => p.userId),
+  ).size;
+
+  const onlineTipsters = onlineTipsterList.length + recentlyActiveReal;
   const onlineAvatars = onlineTipsterList.slice(0, 5).map(t => ({
     id: t.id,
     name: t.displayName,
@@ -48,14 +66,21 @@ export async function GET() {
     username: t.username,
   }));
 
+  // Augment post/like/comment counts with fake-tipster activity so the pulse
+  // never looks empty on a fresh installation.
+  const fakeTipCount = fakeTipsters.reduce((s, t) => s + Math.min(t.totalTips, 5), 0);
+  const fakeLikeCount = fakeTipsters.reduce((s, t) => s + Math.floor(t.followersCount * 0.03), 0);
+  const fakeCommentCount = Math.floor(fakeLikeCount * 0.4);
+  const fakeActiveUsers = Math.min(fakeTipsters.filter(t => t.isOnline).length, 40);
+
   const payload = {
     trending,
     stats: {
-      postsToday: recent.length,
-      totalPosts,
-      totalLikes,
-      totalComments,
-      activeUsers,
+      postsToday: recent.length + Math.floor(fakeTipCount / 10),
+      totalPosts: totalPosts + Math.floor(fakeTipCount / 5),
+      totalLikes: totalLikes + fakeLikeCount,
+      totalComments: totalComments + fakeCommentCount,
+      activeUsers: realActiveUsers + fakeActiveUsers,
       onlineTipsters,
       onlineAvatars,
     },

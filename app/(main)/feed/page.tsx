@@ -89,9 +89,11 @@ interface RecommendedTipster {
 interface TrendingPick {
   id: string;
   authorName: string;
+  authorUsername?: string | null;
   pick?: string | null;
   odds?: number | null;
   matchTitle?: string | null;
+  matchId?: string | null;
   likes: number;
   commentCount: number;
   createdAt: string;
@@ -387,31 +389,142 @@ interface MatchSuggestion {
   markets?: Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }> | null;
 }
 
-const PICK_LABELS = ['Home Win', 'Draw', 'Away Win', 'Over 2.5 Goals', 'Under 2.5 Goals', 'Both Teams to Score - Yes', 'Both Teams to Score - No', 'Home or Draw', 'Away or Draw'];
-
+// Given a pick label, extract real odds from match data covering all market types
 function oddsForPick(pick: string, match: MatchSuggestion): string {
-  const p = pick.toLowerCase();
+  const p = pick.toLowerCase().trim();
+
+  // 1. Quick lookup from pre-parsed h2h odds
   if (match.odds) {
     if (p === 'home win') return match.odds.home.toFixed(2);
     if (p === 'away win') return match.odds.away.toFixed(2);
-    if (p === 'draw' && match.odds.draw) return match.odds.draw.toFixed(2);
+    if ((p === 'draw' || p === 'x') && match.odds.draw) return match.odds.draw.toFixed(2);
   }
-  if (match.markets) {
-    for (const mkt of match.markets) {
-      // selections format (legacy)
-      const mktAny = mkt as unknown as { selections?: Array<{ label: string; odds: number }>; outcomes?: Array<{ name: string; price: number }> };
-      if (mktAny.selections) {
-        const sel = mktAny.selections.find(s => s.label.toLowerCase() === p);
-        if (sel) return sel.odds.toFixed(2);
+
+  if (!match.markets?.length) return '';
+
+  for (const mkt of match.markets) {
+    const mktAny = mkt as {
+      key?: string; name: string;
+      selections?: Array<{ label: string; odds: number }>;
+      outcomes?: Array<{ name: string; price: number }>;
+    };
+
+    // Helper: find an outcome by normalised name match
+    const findIn = (items: Array<{ name?: string; label?: string; price?: number; odds?: number }>, ...queries: string[]) => {
+      for (const q of queries) {
+        const found = items.find(o => {
+          const n = ((o as { name?: string; label?: string }).name ?? (o as { label?: string }).label ?? '').toLowerCase();
+          return n === q || n.includes(q);
+        });
+        if (found) {
+          const price = (found as { price?: number; odds?: number }).price ?? (found as { odds?: number }).odds ?? 0;
+          if (price > 1) return price.toFixed(2);
+        }
       }
-      // outcomes format (from matches API)
-      if (mktAny.outcomes) {
-        const out = mktAny.outcomes.find(o => o.name.toLowerCase() === p);
-        if (out && out.price > 1) return out.price.toFixed(2);
+      return null;
+    };
+
+    const items = mktAny.selections ?? mktAny.outcomes ?? [];
+    const mk = (mktAny.key ?? '').toLowerCase();
+    const mn = (mktAny.name ?? '').toLowerCase();
+
+    // h2h / match winner
+    if (mk === 'h2h' || mn.includes('match') || mn.includes('1x2') || mn.includes('winner')) {
+      if (p === 'home win' || p === '1') {
+        const r = findIn(items, 'home win', '1');
+        if (!r && match.odds) return match.odds.home.toFixed(2);
+        if (r) return r;
+      }
+      if (p === 'away win' || p === '2') {
+        const r = findIn(items, 'away win', '2');
+        if (!r && match.odds) return match.odds.away.toFixed(2);
+        if (r) return r;
+      }
+      if (p === 'draw' || p === 'x') {
+        const r = findIn(items, 'draw', 'x');
+        if (!r && match.odds?.draw) return match.odds.draw.toFixed(2);
+        if (r) return r;
+      }
+    }
+
+    // Over/Under totals
+    if (mk === 'totals' || mn.includes('over') || mn.includes('under') || mn.includes('total')) {
+      const overM = p.match(/over\s*([\d.]+)/);
+      const underM = p.match(/under\s*([\d.]+)/);
+      if (overM) {
+        const r = findIn(items, `over ${overM[1]}`, `over${overM[1]}`, 'over');
+        if (r) return r;
+      }
+      if (underM) {
+        const r = findIn(items, `under ${underM[1]}`, `under${underM[1]}`, 'under');
+        if (r) return r;
+      }
+    }
+
+    // BTTS / Both Teams to Score
+    if (mk === 'btts' || mn.includes('both teams') || mn.includes('btts')) {
+      const isYes = p.includes('yes') || (p.includes('both teams') && !p.includes('no'));
+      if (isYes) {
+        const r = findIn(items, 'yes');
+        if (r) return r;
+      } else {
+        const r = findIn(items, 'no');
+        if (r) return r;
+      }
+    }
+
+    // Double Chance
+    if (mk === 'dc' || mk === 'double_chance' || mn.includes('double chance')) {
+      if (p.includes('home or draw') || p === '1x') {
+        const r = findIn(items, 'home or draw', '1x', 'home/draw');
+        if (r) return r;
+      }
+      if (p.includes('away or draw') || p === 'x2') {
+        const r = findIn(items, 'away or draw', 'x2', 'away/draw');
+        if (r) return r;
+      }
+      if (p.includes('home or away') || p === '12') {
+        const r = findIn(items, 'home or away', '12', 'no draw');
+        if (r) return r;
+      }
+    }
+
+    // Generic exact/partial fallback across all items
+    const r = findIn(items, p);
+    if (r) return r;
+  }
+  return '';
+}
+
+// Flatten a match's markets into a simple list of {market, label, odds} picks
+function flattenMarketPicks(match: MatchSuggestion): Array<{ market: string; label: string; odds: string }> {
+  const picks: Array<{ market: string; label: string; odds: string }> = [];
+  if (!match.markets?.length) {
+    // Fallback to basic h2h from odds field
+    if (match.odds) {
+      picks.push({ market: 'Match Result (1X2)', label: 'Home Win', odds: match.odds.home.toFixed(2) });
+      if (match.odds.draw) picks.push({ market: 'Match Result (1X2)', label: 'Draw', odds: match.odds.draw.toFixed(2) });
+      picks.push({ market: 'Match Result (1X2)', label: 'Away Win', odds: match.odds.away.toFixed(2) });
+    }
+    return picks;
+  }
+  for (const mkt of match.markets) {
+    const mktAny = mkt as {
+      key?: string; name: string;
+      selections?: Array<{ label: string; odds: number }>;
+      outcomes?: Array<{ name: string; price: number }>;
+    };
+    const marketName = mktAny.name;
+    const items = mktAny.selections
+      ? mktAny.selections.map(s => ({ label: s.label, price: s.odds }))
+      : (mktAny.outcomes ?? []).map(o => ({ label: o.name, price: o.price }));
+    for (const item of items) {
+      if (item.price > 1) {
+        picks.push({ market: marketName, label: item.label, odds: item.price.toFixed(2) });
       }
     }
   }
-  return '';
+  return picks;
 }
 
 function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPosted: () => void }) {
@@ -664,26 +777,76 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
                     </div>
                   )}
                 </div>
-                {/* Pick selector + odds */}
-                <div className="grid grid-cols-2 gap-1.5">
-                  <select
-                    value={pick}
-                    onChange={e => handlePickChange(e.target.value)}
-                    className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px] outline-none focus:border-primary"
-                  >
-                    <option value="">Pick…</option>
-                    {PICK_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                  <input
-                    value={odds}
-                    onChange={e => setOdds(e.target.value)}
-                    type="number"
-                    step="0.01"
-                    min="1"
-                    placeholder="Odds"
-                    className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px] outline-none focus:border-primary"
-                  />
-                </div>
+                {/* Market picker — uses real odds when a match with markets is loaded */}
+                {selectedMatch && flattenMarketPicks(selectedMatch).length > 0 ? (() => {
+                  const allPicks = flattenMarketPicks(selectedMatch);
+                  const markets = [...new Set(allPicks.map(p => p.market))];
+                  return (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground font-medium">Select a market & pick (real odds):</p>
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {markets.map(mkt => (
+                          <div key={mkt}>
+                            <p className="text-[9px] uppercase tracking-wide text-muted-foreground font-semibold px-0.5 mb-0.5">{mkt}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {allPicks.filter(p => p.market === mkt).map(p => (
+                                <button
+                                  key={`${mkt}:${p.label}`}
+                                  type="button"
+                                  onClick={() => { setPick(p.label); setOdds(p.odds); }}
+                                  className={cn(
+                                    'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+                                    pick === p.label
+                                      ? 'border-primary bg-primary/20 text-primary font-bold'
+                                      : 'border-border bg-muted/30 hover:border-primary/50 hover:bg-primary/10',
+                                  )}
+                                >
+                                  <span>{p.label}</span>
+                                  <span className={cn('font-bold', pick === p.label ? 'text-primary' : 'text-emerald-600 dark:text-emerald-400')}>
+                                    {p.odds}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {pick && (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            value={odds}
+                            onChange={e => setOdds(e.target.value)}
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            placeholder="Adjust odds"
+                            className="h-6 w-28 rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
+                          />
+                          <span className="text-[10px] text-muted-foreground">or edit manually</span>
+                          <button type="button" onClick={() => { setPick(''); setOdds(''); }} className="ml-auto text-[10px] text-muted-foreground hover:text-foreground">✕ clear</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <input
+                      value={pick}
+                      onChange={e => handlePickChange(e.target.value)}
+                      placeholder="Pick (e.g. Home Win)"
+                      className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px] outline-none focus:border-primary"
+                    />
+                    <input
+                      value={odds}
+                      onChange={e => setOdds(e.target.value)}
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      placeholder="Odds"
+                      className="h-7 rounded-md border border-border bg-background px-2 py-0 text-[11px] outline-none focus:border-primary"
+                    />
+                  </div>
+                )}
                 {pick && odds && (
                   <div className="flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2 py-1">
                     <TrendingUp className="h-3 w-3 text-primary" />
@@ -778,11 +941,109 @@ function RecommendedTipstersRail() {
   );
 }
 
+interface MyTip {
+  id: string;
+  matchId: string;
+  matchSlug?: string;
+  prediction: string;
+  market: string;
+  odds: number;
+  stake: number;
+  status: string;
+  createdAt: string;
+  tipster?: { id: string; displayName: string };
+}
+
+function MyTipsPanel({ userId }: { userId?: number | null }) {
+  const { data, isLoading } = useSWR<{ tips: MyTip[]; authenticated: boolean }>(
+    userId ? '/api/tips/my' : null,
+    fetcher,
+    { refreshInterval: 120_000, revalidateOnFocus: false },
+  );
+  const tips = data?.tips ?? [];
+
+  if (!userId || (!isLoading && tips.length === 0)) return null;
+
+  const settled = tips.filter(t => t.status === 'won' || t.status === 'lost');
+  const won = settled.filter(t => t.status === 'won').length;
+  const lost = settled.filter(t => t.status === 'lost').length;
+  const winRate = settled.length > 0 ? Math.round((won / settled.length) * 100) : null;
+
+  // ROI = sum over settled tips of: (won ? (odds - 1) * stake : -stake) / sum(stake) * 100
+  let totalStake = 0;
+  let totalReturn = 0;
+  for (const t of settled) {
+    const s = Number(t.stake) || 1;
+    totalStake += s;
+    totalReturn += t.status === 'won' ? (Number(t.odds) - 1) * s : -s;
+  }
+  const roi = totalStake > 0 ? Math.round((totalReturn / totalStake) * 1000) / 10 : null;
+
+  const statusColor = (s: string) =>
+    s === 'won' ? 'text-emerald-600 bg-emerald-500/15' :
+    s === 'lost' ? 'text-rose-600 bg-rose-500/15' :
+    s === 'void' ? 'text-muted-foreground bg-muted/40' :
+    'text-amber-600 bg-amber-500/15';
+
+  return (
+    <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-card to-card">
+      <CardContent className="p-3">
+        <div className="mb-2.5 flex items-center gap-1.5">
+          <BarChart3 className="h-3.5 w-3.5 text-primary" />
+          <h3 className="text-xs font-bold">My Posted Tips</h3>
+        </div>
+        {winRate !== null && (
+          <div className="mb-2 grid grid-cols-3 gap-1 text-center">
+            <div className="rounded-lg bg-emerald-500/10 p-1.5">
+              <div className="text-sm font-bold text-emerald-500">{won}W</div>
+              <div className="text-[9px] uppercase text-muted-foreground">Won</div>
+            </div>
+            <div className="rounded-lg bg-rose-500/10 p-1.5">
+              <div className="text-sm font-bold text-rose-500">{lost}L</div>
+              <div className="text-[9px] uppercase text-muted-foreground">Lost</div>
+            </div>
+            <div className={cn('rounded-lg p-1.5', roi !== null && roi >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10')}>
+              <div className={cn('text-sm font-bold', roi !== null && roi >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                {roi !== null ? `${roi > 0 ? '+' : ''}${roi}%` : '—'}
+              </div>
+              <div className="text-[9px] uppercase text-muted-foreground">ROI</div>
+            </div>
+          </div>
+        )}
+        {isLoading ? (
+          <div className="space-y-1.5">
+            {[1, 2, 3].map(i => <div key={i} className="h-8 animate-pulse rounded-lg bg-muted/40" />)}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {tips.slice(0, 5).map(tip => (
+              <div key={tip.id} className="flex items-center gap-1.5 rounded-lg bg-muted/20 px-2 py-1">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[10px] font-semibold">{tip.prediction}</p>
+                  <p className="truncate text-[9px] text-muted-foreground">{tip.market} · @{Number(tip.odds).toFixed(2)}</p>
+                </div>
+                <span className={cn('shrink-0 rounded-full px-1.5 py-0 text-[9px] font-bold uppercase', statusColor(tip.status))}>
+                  {tip.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <Link href="/tips" className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline">
+          View all tips →
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
 function TipOfDay() {
   const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 300000, revalidateOnFocus: false });
-  const top = data?.trending?.find(p => p.pick && p.odds) ?? data?.trending?.[0];
+  const top = data?.trending?.find(p => p.pick && p.odds && Number(p.odds) > 1) ?? null;
 
   if (!top) return null;
+
+  const matchHref = top.matchId ? `/matches/${top.matchId}` : null;
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-card p-4">
@@ -793,7 +1054,13 @@ function TipOfDay() {
           <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500">Tip of the Day</span>
         </div>
         {top.matchTitle && (
-          <p className="mb-1 text-[11px] text-muted-foreground truncate">{top.matchTitle}</p>
+          matchHref ? (
+            <Link href={matchHref} className="mb-1 block truncate text-[11px] text-primary hover:underline font-medium">
+              {top.matchTitle}
+            </Link>
+          ) : (
+            <p className="mb-1 text-[11px] text-muted-foreground truncate">{top.matchTitle}</p>
+          )
         )}
         <div className="flex items-center gap-3">
           {top.pick && (
@@ -812,7 +1079,13 @@ function TipOfDay() {
         <div className="mt-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <span>by</span>
-            <span className="font-semibold text-foreground">{top.authorName}</span>
+            {top.authorUsername ? (
+              <Link href={`/tipsters/${top.authorUsername}`} className="font-semibold text-foreground hover:text-primary hover:underline">
+                {top.authorName}
+              </Link>
+            ) : (
+              <span className="font-semibold text-foreground">{top.authorName}</span>
+            )}
             <span className="flex items-center gap-0.5"><Heart className="h-2.5 w-2.5 text-rose-400" />{top.likes}</span>
           </div>
           <span className="text-[9px] text-amber-500 font-semibold">Community favourite</span>
@@ -1138,7 +1411,8 @@ export default function FeedPage() {
 
             {/* RIGHT RAIL */}
             <aside className="hidden lg:block">
-              <div className="sticky top-4">
+              <div className="sticky top-4 space-y-3">
+                <MyTipsPanel userId={meRes?.user?.id ?? null} />
                 <TrendingRail onHashtagClick={handleHashtagClick} />
               </div>
             </aside>
