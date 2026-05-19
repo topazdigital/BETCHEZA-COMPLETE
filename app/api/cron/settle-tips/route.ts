@@ -5,7 +5,7 @@ import {
   settleTipsByTeamNames,
   settleStaleAutoTips,
 } from '@/lib/auto-tips-store';
-import { getMatchById } from '@/lib/api/unified-sports-api';
+import { getMatchById, getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,11 +21,14 @@ export async function GET(req: Request) {
   const now = Date.now();
   const TWO_HOURS = 2 * 3600_000;
 
-  // Collect unique matchIds from pending tips whose kickoff is >2h ago
+  // Collect unique matchIds from:
+  //  - pending tips whose kickoff is >2h ago
+  //  - probabilistically-settled tips (settledByProb=true) that need real score override
   const allTips = listAllAutoTips(2000);
   const matchIds = new Set<string>();
   for (const tip of allTips) {
-    if (tip.status !== 'pending') continue;
+    const isProbSettled = tip.status !== 'pending' && tip.settledByProb === true;
+    if (tip.status !== 'pending' && !isProbSettled) continue;
     if (!tip.kickoff) continue;
     const t = new Date(tip.kickoff).getTime();
     if (!Number.isFinite(t)) continue;
@@ -79,6 +82,22 @@ export async function GET(req: Request) {
       await new Promise(r => setTimeout(r, 200));
     }
   }
+
+  // Secondary pass: scan the full match cache (API + DB) by team name to catch
+  // tips whose matchId lookup failed (e.g., old match evicted from ESPN cache).
+  // This corrects already-probabilistically-settled tips too.
+  try {
+    const allCachedMatches = await getAllMatches();
+    const finishedMatches = allCachedMatches.filter(
+      m => m.status === 'finished' &&
+           typeof m.homeScore === 'number' &&
+           typeof m.awayScore === 'number'
+    );
+    for (const m of finishedMatches) {
+      if (!m.homeTeam?.name || !m.awayTeam?.name) continue;
+      settleTipsByTeamNames(m.homeTeam.name, m.awayTeam.name, m.homeScore as number, m.awayScore as number);
+    }
+  } catch { /* non-fatal */ }
 
   // For any remaining pending tips that still couldn't be settled with real data,
   // fall back to probabilistic settlement so nothing stays pending forever

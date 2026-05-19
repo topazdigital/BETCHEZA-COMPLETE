@@ -552,33 +552,82 @@ function checkPickResultLocal(
   const homeNorm = norm(pick.homeTeam);
   const awayNorm = norm(pick.awayTeam);
   const pickNorm = norm(pickValue);
+  const total = homeScore + awayScore;
 
+  // ── 1X2 ────────────────────────────────────────────────────────────────
   if (market === '1x2') {
     if (homeScore > awayScore) return pickNorm === homeNorm || pickValue.includes('home') || pickNorm === 'homewin' ? 'win' : 'loss';
     if (awayScore > homeScore) return pickNorm === awayNorm || pickValue.includes('away') || pickNorm === 'awaywin' ? 'win' : 'loss';
     return pickValue.includes('draw') || pickNorm === 'draw' || pickNorm === 'x' ? 'win' : 'loss';
   }
+
+  // ── Double Chance ───────────────────────────────────────────────────────
   if (market === 'double chance') {
-    // X2 = Away or Draw: wins when away wins OR draw
     const isX2 = pickValue.includes('x2') || (pickValue.includes('away') && (pickValue.includes('draw') || pickValue.includes('or')));
-    // 1X = Home or Draw: wins when home wins OR draw
     const is1X = pickValue.includes('1x') || (pickValue.includes('home') && (pickValue.includes('draw') || pickValue.includes('or')));
     if (isX2) return awayScore >= homeScore ? 'win' : 'loss';
     if (is1X) return homeScore >= awayScore ? 'win' : 'loss';
-    // 12 = Home or Away: wins when either team wins (no draw)
     return homeScore !== awayScore ? 'win' : 'loss';
   }
-  if (market === 'over/under' || market === 'total goals') {
-    const total = homeScore + awayScore;
+
+  // ── Draw No Bet ─────────────────────────────────────────────────────────
+  if (market === 'draw no bet' || market.includes('draw no bet') || market === 'dnb') {
+    if (homeScore === awayScore) return null; // void/push on draw — keep pending display
+    if (pickValue.includes('home') || pickNorm === homeNorm) return homeScore > awayScore ? 'win' : 'loss';
+    if (pickValue.includes('away') || pickNorm === awayNorm) return awayScore > homeScore ? 'win' : 'loss';
+    return null;
+  }
+
+  // ── Over/Under (goals, corners, cards, etc.) ────────────────────────────
+  if (market.includes('over') || market.includes('under') || market.includes('total') || market.includes('o/u') || market.includes('ou')) {
     const over = pickValue.match(/over\s*([\d.]+)/i);
     const under = pickValue.match(/under\s*([\d.]+)/i);
-    if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
-    if (under) return total < parseFloat(under[1]) ? 'win' : 'loss';
+    // For corners/cards we don't have that data — fall back to goals total
+    if (market.includes('goal') || market.includes('total goals') || market === 'over/under') {
+      if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
+      if (under) return total < parseFloat(under[1]) ? 'win' : 'loss';
+    } else if (market.includes('corner')) {
+      // We don't have corner data — cannot settle
+      return null;
+    } else {
+      // Generic o/u on goals
+      if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
+      if (under) return total < parseFloat(under[1]) ? 'win' : 'loss';
+    }
   }
-  if (market === 'btts' || market === 'both teams to score') {
+
+  // ── BTTS ────────────────────────────────────────────────────────────────
+  if (market === 'btts' || market.includes('both teams to score') || market === 'both teams score') {
     const btts = homeScore > 0 && awayScore > 0;
-    return pickValue === 'yes' ? (btts ? 'win' : 'loss') : (!btts ? 'win' : 'loss');
+    const wantYes = pickValue === 'yes' || pickValue.includes('yes');
+    return wantYes ? (btts ? 'win' : 'loss') : (!btts ? 'win' : 'loss');
   }
+
+  // ── Asian Handicap (approximate) ────────────────────────────────────────
+  if (market.includes('asian handicap') || market.includes('handicap')) {
+    const hcpMatch = pickValue.match(/([+-]?\d+(?:\.\d+)?)/);
+    if (hcpMatch) {
+      const hcp = parseFloat(hcpMatch[1]);
+      const isHome = pickValue.includes('home') || pickNorm.startsWith(homeNorm.slice(0, 4));
+      const adjustedMargin = isHome ? (homeScore - awayScore + hcp) : (awayScore - homeScore + hcp);
+      if (adjustedMargin > 0) return 'win';
+      if (adjustedMargin < 0) return 'loss';
+      return null; // push
+    }
+  }
+
+  // ── Correct Score ───────────────────────────────────────────────────────
+  if (market.includes('correct score')) {
+    const scoreMatch = pickValue.match(/(\d+)[:\-](\d+)/);
+    if (scoreMatch) {
+      return parseInt(scoreMatch[1]) === homeScore && parseInt(scoreMatch[2]) === awayScore ? 'win' : 'loss';
+    }
+  }
+
+  // ── Half-Time Result ────────────────────────────────────────────────────
+  // We don't have HT data from the API — cannot settle
+  if (market.includes('half') || market.includes('ht')) return null;
+
   return null;
 }
 
@@ -588,11 +637,29 @@ async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPredi
   const hasPending = days.some(d => d.date <= todayStr && d.picks.some(p => p.result === 'pending'));
   if (!hasPending) return days;
 
-  let allMatches: Array<{ homeTeam: { name: string }; awayTeam: { name: string }; status: string; homeScore: number | null; awayScore: number | null }> = [];
+  type MatchEntry = { homeTeam: { name: string }; awayTeam: { name: string }; status: string; homeScore: number | null; awayScore: number | null };
+  let allMatches: MatchEntry[] = [];
   try {
     const { getAllMatches } = await import('@/lib/api/unified-sports-api');
-    allMatches = await getAllMatches() as typeof allMatches;
-  } catch { return days; }
+    allMatches = await getAllMatches() as MatchEntry[];
+  } catch { /* continue with empty list */ }
+
+  // Secondary: pull finished matches directly from DB match_cache to catch leagues
+  // (ISL, CSL, etc.) that may not surface in the in-memory cache at settle time.
+  try {
+    const dbResult = await query<{ payload: string }>(`SELECT payload FROM match_cache WHERE cache_key = 'all_matches' LIMIT 1`);
+    if (dbResult.rows.length) {
+      const dbMatches: MatchEntry[] = JSON.parse(dbResult.rows[0].payload);
+      const existing = new Set(allMatches.map(m => `${m.homeTeam?.name}|${m.awayTeam?.name}`));
+      for (const m of dbMatches) {
+        if (m.status === 'finished' && !existing.has(`${m.homeTeam?.name}|${m.awayTeam?.name}`)) {
+          allMatches.push(m);
+        }
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  if (allMatches.length === 0) return days;
 
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
   const updated = days.map(day => {
