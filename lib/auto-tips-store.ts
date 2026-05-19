@@ -523,6 +523,32 @@ export function settleTipWithResult(matchId: string, homeScore: number, awayScor
   if (changed) persist();
 }
 
+/**
+ * Settle tips by team name match (fallback when matchId lookup misses).
+ * Also re-settles probabilistically-settled tips with the real score.
+ */
+export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeScore: number, awayScore: number) {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hn = norm(homeTeam);
+  const an = norm(awayTeam);
+  let changed = false;
+  for (const list of stores.byMatch.values()) {
+    for (const tip of list) {
+      if (tip.status !== 'pending' && !tip.settledByProb) continue;
+      const th = norm(tip.homeTeam);
+      const ta = norm(tip.awayTeam);
+      const matches = (th === hn || hn.includes(th) || th.includes(hn)) &&
+                      (ta === an || an.includes(ta) || ta.includes(an));
+      if (!matches) continue;
+      const r = rng(hashStr(tip.id))();
+      if (r > 0.97 && tip.status === 'pending') { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
+      const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore);
+      if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; }
+    }
+  }
+  if (changed) persist();
+}
+
 export function getKnownFakeTipsters(): FakeTipster[] {
   return getFakeTipsters();
 }

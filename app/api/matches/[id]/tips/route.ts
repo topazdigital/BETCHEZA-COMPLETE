@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { slugToMatchId } from '@/lib/utils/match-url';
-import { seedTipsForMatch, listTipsForMatch, settleTipWithResult, type GeneratedTip } from '@/lib/auto-tips-store';
+import { seedTipsForMatch, listTipsForMatch, settleTipWithResult, settleTipsByTeamNames, type GeneratedTip } from '@/lib/auto-tips-store';
 import { getFakeTipsterById, getFakeTipsters } from '@/lib/fake-tipsters';
 import { getMatchById } from '@/lib/api/unified-sports-api';
 import { setBaselineLikes, getLikeCount, getCommentCount } from '@/lib/tip-engagement-store';
@@ -145,12 +145,14 @@ export async function GET(
   });
 
   // If match is finished and we have real scores, settle all pending tips now.
+  // Also settle by team names as a fallback in case matchId differs from stored ID.
   if (
     matchStatus === 'finished' &&
     typeof finalHomeScore === 'number' &&
     typeof finalAwayScore === 'number'
   ) {
     settleTipWithResult(matchId, finalHomeScore, finalAwayScore);
+    settleTipsByTeamNames(realHome, realAway, finalHomeScore, finalAwayScore);
   }
 
   const autoTipsRaw = listTipsForMatch(matchId);

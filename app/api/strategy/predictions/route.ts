@@ -32,6 +32,8 @@ export interface DayPrediction {
   status: 'upcoming' | 'active' | 'completed';
   result?: 'win' | 'loss';
   actualReturn?: number;
+  isManual?: boolean;
+  scheduledFor?: string | null;
 }
 
 export interface WeeklyStrategy {
@@ -89,6 +91,8 @@ interface DbRow {
   result: 'win' | 'loss' | null;
   actual_return: number | null;
   picks: string | null;
+  is_manual: number | null;
+  scheduled_for: string | null;
 }
 
 async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
@@ -116,6 +120,8 @@ async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
       status: row.status,
       result: row.result || undefined,
       actualReturn: row.actual_return || undefined,
+      isManual: row.is_manual === 1,
+      scheduledFor: row.scheduled_for || null,
     }));
 
     return days;
@@ -158,6 +164,8 @@ async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
         status: row.status,
         result: row.result || undefined,
         actualReturn: row.actual_return || undefined,
+        isManual: row.is_manual === 1,
+        scheduledFor: row.scheduled_for || null,
       }));
       weeks.push({
         weekId: wid,
@@ -413,9 +421,9 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
       return { ...base, status, day: d.day, stake: d.stake, save: d.save, targetWin: d.targetWin };
     });
 
-    // Auto-generate today's picks if today is active but has no picks
+    // Auto-generate today's picks if today is active but has no picks AND not manually posted
     const todayIdx = merged.findIndex((d) => d.date === todayStr);
-    if (todayIdx >= 0 && merged[todayIdx].picks.length === 0) {
+    if (todayIdx >= 0 && merged[todayIdx].picks.length === 0 && !merged[todayIdx].isManual) {
       try {
         const autoPicks = await autoGenerateTodayPicks(weekId, todayStr, dayNumber);
         const combined = autoPicks.reduce((acc, p) => acc * p.odds, 1);
@@ -424,8 +432,8 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
         merged[todayIdx].status = 'active';
         // Persist to DB
         await execute(
-          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
+          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, posted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), NOW())
            ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active',
              day_number = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
              target_win = VALUES(target_win), generated_at = NOW()`,
@@ -497,6 +505,8 @@ async function ensureTableExists(): Promise<void> {
         result enum('win','loss') DEFAULT NULL,
         actual_return decimal(12,2) DEFAULT NULL,
         picks longtext DEFAULT NULL,
+        is_manual tinyint(1) NOT NULL DEFAULT 0,
+        scheduled_for date DEFAULT NULL,
         generated_at timestamp NULL DEFAULT NULL,
         posted_at timestamp NULL DEFAULT NULL,
         settled_at timestamp NULL DEFAULT NULL,
@@ -508,6 +518,9 @@ async function ensureTableExists(): Promise<void> {
         KEY idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    // Add columns if they don't exist (for existing tables)
+    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS is_manual tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
+    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS scheduled_for date DEFAULT NULL`).catch(() => {});
   } catch { }
 }
 
@@ -645,17 +658,25 @@ export async function POST(req: NextRequest) {
   if (body.picks && typeof body.day === 'number') {
     const dayIdx = body.day - 1;
     if (dayIdx >= 0 && dayIdx < current.days.length) {
+      const isManual = body.isManual === true;
+      const scheduledFor: string | null = body.scheduledFor || null;
       current.days[dayIdx].picks = body.picks;
       const combined = body.picks.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
       current.days[dayIdx].combinedOdds = parseFloat(combined.toFixed(2));
+      if (isManual) current.days[dayIdx].isManual = true;
+      if (scheduledFor) current.days[dayIdx].scheduledFor = scheduledFor;
 
       const dayData = current.days[dayIdx];
+      // For scheduled posts, use the target date instead of today
+      const targetDate = scheduledFor || dayData.date;
+      const targetStatus = scheduledFor && scheduledFor > getTodayStrEAT(new Date()) ? 'upcoming' : 'active';
       try {
+        await ensureTableExists();
         await execute(
-          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), generated_at = NOW(), posted_at = NOW(), status = 'active'`,
-          [dayData.date, weekId, dayData.day, dayData.stake, dayData.save, dayData.targetWin, dayData.combinedOdds, JSON.stringify(body.picks)]
+          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, scheduled_for, generated_at, posted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), is_manual = VALUES(is_manual), scheduled_for = VALUES(scheduled_for), generated_at = NOW(), posted_at = NOW(), status = VALUES(status)`,
+          [targetDate, weekId, dayData.day, dayData.stake, dayData.save, dayData.targetWin, dayData.combinedOdds, targetStatus, JSON.stringify(body.picks), isManual ? 1 : 0, scheduledFor]
         );
       } catch { }
     }

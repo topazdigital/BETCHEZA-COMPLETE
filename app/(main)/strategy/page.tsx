@@ -157,10 +157,19 @@ function DayCard({
       {open && (
         <div className="border-t border-border px-3 pb-3 pt-3 sm:px-4 space-y-2">
           {isLocked && !isYesterday ? (
-            <div className="flex flex-col items-center gap-2 py-4 text-center text-muted-foreground">
+            <div className="flex flex-col items-center gap-3 py-4 text-center text-muted-foreground">
               <Lock className="h-6 w-6 opacity-40" />
               <p className="text-sm font-medium">Today&apos;s picks are for subscribers only</p>
-              <p className="text-xs">Subscribe below to unlock all current &amp; upcoming days.</p>
+              <p className="text-xs">Subscribe to unlock all current &amp; upcoming days instantly.</p>
+              <button
+                onClick={() => {
+                  const el = document.getElementById('paywall-gate');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
+                className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                Subscribe — KES 5,000 via M-Pesa
+              </button>
             </div>
           ) : day.picks.length > 0 ? (
             <>
@@ -535,7 +544,7 @@ export default function StrategyPage() {
 
           {/* Paywall after the list */}
           {!hasAccess && (
-            <div className="mt-2">
+            <div className="mt-2" id="paywall-gate">
               <PaywallGate
                 daysRemaining={daysRemaining}
                 onUnlocked={(d) => setAccess({ hasAccess: true, ...d })}
