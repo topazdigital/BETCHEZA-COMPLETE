@@ -458,9 +458,24 @@ export function computeRealTipsterStats(tipsterId: number): {
  * Half-Time Result, Half-Time / Full-Time (X/X format), Odd/Even,
  * Correct Score, Asian Handicap (approximate).
  */
-function determineTipOutcome(prediction: string, homeScore: number, awayScore: number): 'won' | 'lost' | null {
+type TipMatchData = {
+  htHomeScore?: number | null;
+  htAwayScore?: number | null;
+  corners?: { home: number; away: number };
+  yellowCards?: { home: number; away: number };
+  redCards?: { home: number; away: number };
+};
+
+function determineTipOutcome(
+  prediction: string,
+  homeScore: number,
+  awayScore: number,
+  market?: string,
+  matchData?: TipMatchData,
+): 'won' | 'lost' | null {
   const total = homeScore + awayScore;
   const pred = prediction.toLowerCase().trim();
+  const mkt = (market || '').toLowerCase();
 
   // ── 1X2 ─────────────────────────────────────────────────────────────────
   if (pred === 'home win' || pred === '1' || pred === 'home' || pred.endsWith('home win') || pred.endsWith(' win') && pred.startsWith('home')) {
@@ -504,13 +519,72 @@ function determineTipOutcome(prediction: string, homeScore: number, awayScore: n
   if (pred === 'yes' && !pred.includes('btts')) return homeScore > 0 && awayScore > 0 ? 'won' : 'lost';
   if (pred === 'no'  && !pred.includes('btts')) return !(homeScore > 0 && awayScore > 0) ? 'won' : 'lost';
 
+  // ── Half-Time Result ─────────────────────────────────────────────────────
+  // Market "Half-Time Result" or "HT Result" — uses HT scores from linescores
+  const isHtMarket = mkt.includes('half-time result') || mkt.includes('half time result') ||
+    mkt === 'ht result' || mkt.includes('first half result') ||
+    pred.includes('half-time') || pred.includes('half time') || pred.startsWith('ht ');
+  if (isHtMarket) {
+    const ht = matchData?.htHomeScore;
+    const at = matchData?.htAwayScore;
+    if (ht == null || at == null) return null; // no HT data — keep pending
+    const htPred = pred.replace(/half.time\s+/gi, '').replace(/^ht\s+/i, '').trim();
+    if (htPred === 'draw' || htPred === 'x') return ht === at ? 'won' : 'lost';
+    if (htPred === 'home win' || htPred === '1' || htPred === 'home') return ht > at ? 'won' : 'lost';
+    if (htPred === 'away win' || htPred === '2' || htPred === 'away') return at > ht ? 'won' : 'lost';
+    // Fallback: plain "draw", "home win", "away win" with HT market label
+    if (pred === 'draw') return ht === at ? 'won' : 'lost';
+    if (pred === 'home win' || pred === 'home') return ht > at ? 'won' : 'lost';
+    if (pred === 'away win' || pred === 'away') return at > ht ? 'won' : 'lost';
+    return null;
+  }
+
+  // ── Total Corners ─────────────────────────────────────────────────────────
+  if (mkt.includes('corner') || pred.includes('corner')) {
+    const cd = matchData?.corners;
+    if (!cd) return null; // no corner data — keep pending
+    const totalCorners = cd.home + cd.away;
+    const overC = pred.match(/over\s*([\d.]+)/);
+    const underC = pred.match(/under\s*([\d.]+)/);
+    if (overC) return totalCorners > parseFloat(overC[1]) ? 'won' : 'lost';
+    if (underC) return totalCorners < parseFloat(underC[1]) ? 'won' : 'lost';
+    return null;
+  }
+
+  // ── Total Cards / Yellow Cards ────────────────────────────────────────────
+  if (mkt.includes('card') || pred.includes('yellow card') || pred.includes('red card')) {
+    const yd = matchData?.yellowCards;
+    const rd = matchData?.redCards;
+    if (mkt.includes('yellow') || pred.includes('yellow')) {
+      if (!yd) return null;
+      const tot = yd.home + yd.away;
+      const overY = pred.match(/over\s*([\d.]+)/);
+      const underY = pred.match(/under\s*([\d.]+)/);
+      if (overY) return tot > parseFloat(overY[1]) ? 'won' : 'lost';
+      if (underY) return tot < parseFloat(underY[1]) ? 'won' : 'lost';
+    }
+    if (mkt.includes('red') || pred.includes('red card')) {
+      if (!rd) return null;
+      const tot = rd.home + rd.away;
+      const overR = pred.match(/over\s*([\d.]+)/);
+      if (overR) return tot > parseFloat(overR[1]) ? 'won' : 'lost';
+      const yesRed = pred.includes('yes');
+      const noRed = pred.includes('no');
+      if (yesRed) return tot > 0 ? 'won' : 'lost';
+      if (noRed) return tot === 0 ? 'won' : 'lost';
+    }
+    return null;
+  }
+
   // ── Half-Time / Full-Time (e.g. "1/1", "X/2", "2/1") ───────────────────
   const htFtM = pred.match(/^([12x])\/([12x])$/);
   if (htFtM) {
-    // We don't have HT score in the store, so we can only verify FT part.
-    // If FT matches, consider it a GUESS — return null to keep pending.
-    // This avoids incorrectly settling HT/FT tips.
-    return null;
+    const ht = matchData?.htHomeScore;
+    const at = matchData?.htAwayScore;
+    if (ht == null || at == null) return null; // need HT score
+    const htSide = ht > at ? '1' : at > ht ? '2' : 'x';
+    const ftSide = homeScore > awayScore ? '1' : awayScore > homeScore ? '2' : 'x';
+    return htFtM[1] === htSide && htFtM[2] === ftSide ? 'won' : 'lost';
   }
 
   // ── Odd / Even Goals ────────────────────────────────────────────────────
@@ -541,12 +615,6 @@ function determineTipOutcome(prediction: string, homeScore: number, awayScore: n
     return null; // push
   }
 
-  // ── Half-Time Result (text-based) ────────────────────────────────────────
-  // We can't verify without HT score — leave pending
-  if (pred.includes('half-time') || pred.includes('half time') || pred.includes('ht ')) {
-    return null;
-  }
-
   // ── Match winner (team-name based) ───────────────────────────────────────
   if (pred.includes('match winner')) return null;
 
@@ -555,10 +623,10 @@ function determineTipOutcome(prediction: string, homeScore: number, awayScore: n
 
 // For the admin dashboard: deterministically resolve win/loss for older auto
 // tips (kickoff is in the past) so KPIs aren't 100% pending.
-// Accepts optional real match result data: Map<matchId, {homeScore, awayScore}>
+// Accepts optional real match result data: Map<matchId, {homeScore, awayScore, ...TipMatchData}>
 export function settleStaleAutoTips(
   now = Date.now(),
-  realResults?: Map<string, { homeScore: number; awayScore: number }>,
+  realResults?: Map<string, { homeScore: number; awayScore: number } & TipMatchData>,
 ) {
   let changed = false;
   // Always re-apply known results to fix any probabilistic settlements
@@ -581,9 +649,22 @@ export function settleStaleAutoTips(
       // Use real match result if available
       const real = realResults?.get(tip.matchId);
       if (real) {
-        const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore);
+        const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
         if (outcome) { tip.status = outcome; changed = true; continue; }
       }
+
+      // Don't probabilistically settle markets that require specific stats
+      // (HT result, corners, cards, HT/FT) — they need real data, not guesses
+      const mktLow = (tip.market || '').toLowerCase();
+      const predLow = tip.prediction.toLowerCase();
+      const needsSpecialData =
+        mktLow.includes('corner') || predLow.includes('corner') ||
+        mktLow.includes('card') || predLow.includes('yellow card') || predLow.includes('red card') ||
+        mktLow.includes('half-time result') || mktLow.includes('half time result') ||
+        mktLow.includes('ht result') || mktLow.includes('first half result') ||
+        predLow.includes('half-time') || predLow.includes('half time') || predLow.startsWith('ht ') ||
+        /^[12x]\/[12x]$/.test(predLow); // HT/FT double-result format
+      if (needsSpecialData) continue; // leave pending — don't guess on these markets
 
       // Fallback: probabilistic using tipster win rate — mark so real scores can override later
       // Only use probabilistic if the match is MORE than 4 hours old (give APIs time to update)
@@ -603,7 +684,7 @@ export function settleStaleAutoTips(
  * Settle a specific tip immediately using the real match score.
  * Called from the match tips route once ESPN reports the final score.
  */
-export function settleTipWithResult(matchId: string, homeScore: number, awayScore: number) {
+export function settleTipWithResult(matchId: string, homeScore: number, awayScore: number, matchData?: TipMatchData) {
   const list = stores.byMatch.get(matchId);
   if (!list) return;
   let changed = false;
@@ -612,7 +693,7 @@ export function settleTipWithResult(matchId: string, homeScore: number, awayScor
     if (tip.status !== 'pending' && !tip.settledByProb) continue;
     const r = rng(hashStr(tip.id))();
     if (r > 0.97 && tip.status === 'pending') { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
-    const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore);
+    const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
     if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; }
   }
   if (changed) persist();
@@ -622,7 +703,7 @@ export function settleTipWithResult(matchId: string, homeScore: number, awayScor
  * Settle tips by team name match (fallback when matchId lookup misses).
  * Also re-settles probabilistically-settled tips with the real score.
  */
-export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeScore: number, awayScore: number) {
+export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeScore: number, awayScore: number, matchData?: TipMatchData) {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
   const hn = norm(homeTeam);
   const an = norm(awayTeam);
@@ -637,7 +718,7 @@ export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeSc
       if (!matches) continue;
       const r = rng(hashStr(tip.id))();
       if (r > 0.97 && tip.status === 'pending') { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
-      const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore);
+      const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
       if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; }
     }
   }

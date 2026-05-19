@@ -56,7 +56,14 @@ export async function GET(req: Request) {
         if (homeScore === null || awayScore === null) return null;
         const homeTeam = match.homeTeam?.name || '';
         const awayTeam = match.awayTeam?.name || '';
-        return { matchId, homeScore, awayScore, homeTeam, awayTeam };
+        const matchData = {
+          htHomeScore: match.htHomeScore ?? null,
+          htAwayScore: match.htAwayScore ?? null,
+          corners: match.sportSpecificData?.corners,
+          yellowCards: match.sportSpecificData?.yellowCards,
+          redCards: match.sportSpecificData?.redCards,
+        };
+        return { matchId, homeScore, awayScore, homeTeam, awayTeam, matchData };
       } catch {
         return null;
       }
@@ -65,11 +72,11 @@ export async function GET(req: Request) {
     for (const r of results) {
       if (r.status === 'fulfilled' && r.value) {
         fetched++;
-        const { matchId, homeScore, awayScore, homeTeam, awayTeam } = r.value;
+        const { matchId, homeScore, awayScore, homeTeam, awayTeam, matchData } = r.value;
         // Settle by matchId first (exact), then by team name (fuzzy fallback)
-        settleTipWithResult(matchId, homeScore, awayScore);
+        settleTipWithResult(matchId, homeScore, awayScore, matchData);
         if (homeTeam && awayTeam) {
-          settleTipsByTeamNames(homeTeam, awayTeam, homeScore, awayScore);
+          settleTipsByTeamNames(homeTeam, awayTeam, homeScore, awayScore, matchData);
         }
         settled++;
       } else {

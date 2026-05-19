@@ -545,6 +545,11 @@ function checkPickResultLocal(
   pick: StrategyPick,
   homeScore: number,
   awayScore: number,
+  htHomeScore?: number | null,
+  htAwayScore?: number | null,
+  corners?: { home: number; away: number },
+  yellowCards?: { home: number; away: number },
+  redCards?: { home: number; away: number },
 ): 'win' | 'loss' | null {
   const market = (pick.market || '').toLowerCase();
   const pickValue = (pick.pick || '').toLowerCase();
@@ -582,13 +587,21 @@ function checkPickResultLocal(
   if (market.includes('over') || market.includes('under') || market.includes('total') || market.includes('o/u') || market.includes('ou')) {
     const over = pickValue.match(/over\s*([\d.]+)/i);
     const under = pickValue.match(/under\s*([\d.]+)/i);
-    // For corners/cards we don't have that data — fall back to goals total
-    if (market.includes('goal') || market.includes('total goals') || market === 'over/under') {
+    if (market.includes('corner') || pickValue.includes('corner')) {
+      if (!corners) return null; // no corner data yet — keep pending
+      const tc = corners.home + corners.away;
+      if (over) return tc > parseFloat(over[1]) ? 'win' : 'loss';
+      if (under) return tc < parseFloat(under[1]) ? 'win' : 'loss';
+      return null;
+    } else if (market.includes('yellow card') || market.includes('card')) {
+      if (!yellowCards) return null;
+      const tc = yellowCards.home + yellowCards.away;
+      if (over) return tc > parseFloat(over[1]) ? 'win' : 'loss';
+      if (under) return tc < parseFloat(under[1]) ? 'win' : 'loss';
+      return null;
+    } else if (market.includes('goal') || market.includes('total goals') || market === 'over/under') {
       if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
       if (under) return total < parseFloat(under[1]) ? 'win' : 'loss';
-    } else if (market.includes('corner')) {
-      // We don't have corner data — cannot settle
-      return null;
     } else {
       // Generic o/u on goals
       if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
@@ -625,8 +638,19 @@ function checkPickResultLocal(
   }
 
   // ── Half-Time Result ────────────────────────────────────────────────────
-  // We don't have HT data from the API — cannot settle
-  if (market.includes('half') || market.includes('ht')) return null;
+  if (market.includes('half') || market.includes('ht')) {
+    if (htHomeScore == null || htAwayScore == null) return null; // no HT data yet
+    // Determine HT outcome
+    const htWinner = htHomeScore > htAwayScore ? 'home' : htAwayScore > htHomeScore ? 'away' : 'draw';
+    if (pickValue.includes('draw') || pickNorm === 'x') return htWinner === 'draw' ? 'win' : 'loss';
+    if (pickValue.includes('home win') || pickNorm === 'homewin' || pickNorm === '1') return htWinner === 'home' ? 'win' : 'loss';
+    if (pickValue.includes('away win') || pickNorm === 'awaywin' || pickNorm === '2') return htWinner === 'away' ? 'win' : 'loss';
+    // Plain "home", "away", "draw" predictions
+    if (pickNorm === 'home' || pickNorm === homeNorm) return htWinner === 'home' ? 'win' : 'loss';
+    if (pickNorm === 'away' || pickNorm === awayNorm) return htWinner === 'away' ? 'win' : 'loss';
+    if (pickNorm === 'draw') return htWinner === 'draw' ? 'win' : 'loss';
+    return null;
+  }
 
   return null;
 }
@@ -637,7 +661,20 @@ async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPredi
   const hasPending = days.some(d => d.date <= todayStr && d.picks.some(p => p.result === 'pending'));
   if (!hasPending) return days;
 
-  type MatchEntry = { homeTeam: { name: string }; awayTeam: { name: string }; status: string; homeScore: number | null; awayScore: number | null };
+  type MatchEntry = {
+    homeTeam: { name: string };
+    awayTeam: { name: string };
+    status: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    htHomeScore?: number | null;
+    htAwayScore?: number | null;
+    sportSpecificData?: {
+      corners?: { home: number; away: number };
+      yellowCards?: { home: number; away: number };
+      redCards?: { home: number; away: number };
+    };
+  };
   let allMatches: MatchEntry[] = [];
   try {
     const { getAllMatches } = await import('@/lib/api/unified-sports-api');
@@ -680,7 +717,13 @@ async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPredi
                (ma === pa || ma.includes(pa) || pa.includes(ma));
       });
       if (!match || match.homeScore === null || match.awayScore === null) return pick;
-      const result = checkPickResultLocal(pick, match.homeScore, match.awayScore);
+      const result = checkPickResultLocal(
+        pick, match.homeScore, match.awayScore,
+        match.htHomeScore, match.htAwayScore,
+        match.sportSpecificData?.corners,
+        match.sportSpecificData?.yellowCards,
+        match.sportSpecificData?.redCards,
+      );
       if (!result) return pick;
       changed = true;
       return { ...pick, result, actualScore: `${match.homeScore}-${match.awayScore}` };

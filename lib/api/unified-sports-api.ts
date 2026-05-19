@@ -43,6 +43,8 @@ export interface UnifiedMatch {
   status: 'scheduled' | 'live' | 'halftime' | 'finished' | 'postponed' | 'cancelled';
   homeScore: number | null;
   awayScore: number | null;
+  htHomeScore?: number | null; // first-half score (from ESPN linescores[0])
+  htAwayScore?: number | null;
   minute?: number;
   period?: string;
   league: {
@@ -1198,6 +1200,32 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     const { odds, markets } = extractEspnOdds(competition.odds, hasDraw);
     const venue = competition.venue?.fullName;
 
+    // Extract HT scores from ESPN linescores (soccer only: index 0 = 1st half goals)
+    const isSoccer = sportType === 'soccer';
+    const hasStartedG = status !== 'scheduled';
+    const htHomeScoreG = isSoccer && hasStartedG ? (homeCompetitor?.linescores?.[0]?.value ?? null) : null;
+    const htAwayScoreG = isSoccer && hasStartedG ? (awayCompetitor?.linescores?.[0]?.value ?? null) : null;
+
+    // Extract stats from ESPN competitor.statistics array
+    const getStatG = (stats: Array<{name: string; displayValue: string}> | undefined, key: string): number | undefined => {
+      const s = stats?.find(s => s.name?.toLowerCase().includes(key));
+      return s ? (parseInt(s.displayValue || '0', 10)) : undefined;
+    };
+    let sportSpecificDataG: SportSpecificData | undefined;
+    if (isSoccer) {
+      const hc = getStatG(homeCompetitor?.statistics, 'corner kick') ?? getStatG(homeCompetitor?.statistics, 'corner');
+      const ac = getStatG(awayCompetitor?.statistics, 'corner kick') ?? getStatG(awayCompetitor?.statistics, 'corner');
+      const hy = getStatG(homeCompetitor?.statistics, 'yellow card');
+      const ay = getStatG(awayCompetitor?.statistics, 'yellow card');
+      const hr = getStatG(homeCompetitor?.statistics, 'red card');
+      const ar = getStatG(awayCompetitor?.statistics, 'red card');
+      const sdg: Record<string, unknown> = {};
+      if (hc !== undefined && ac !== undefined) sdg.corners = { home: hc, away: ac };
+      if (hy !== undefined && ay !== undefined) sdg.yellowCards = { home: hy, away: ay };
+      if (hr !== undefined && ar !== undefined) sdg.redCards = { home: hr, away: ar };
+      if (Object.keys(sdg).length) sportSpecificDataG = sdg as SportSpecificData;
+    }
+
     matches.push({
       id: `espn_${leagueKeyForId}_${event.id}`,
       externalId: event.id,
@@ -1232,6 +1260,8 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
         awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
           ? parseInt(awayCompetitor.score, 10)
           : null,
+      htHomeScore: htHomeScoreG,
+      htAwayScore: htAwayScoreG,
       minute: extractLiveMinute(event.status, sportType) ?? undefined,
       period: event.status.displayClock,
       league: {
@@ -1252,6 +1282,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       markets,
       tipsCount: 0,
       venue,
+      ...(sportSpecificDataG ? { sportSpecificData: sportSpecificDataG } : {}),
     });
   }
 
@@ -2699,6 +2730,32 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
     const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw);
     const venue = competition?.venue?.fullName;
 
+    // Extract HT scores from ESPN linescores (soccer only: index 0 = 1st half goals)
+    const isSoccerLeague = config.sportType === 'soccer';
+    const hasStarted = status !== 'scheduled';
+    const htHomeScore = isSoccerLeague && hasStarted ? (homeCompetitor?.linescores?.[0]?.value ?? null) : null;
+    const htAwayScore = isSoccerLeague && hasStarted ? (awayCompetitor?.linescores?.[0]?.value ?? null) : null;
+
+    // Extract stats from ESPN competitor.statistics array
+    const getEspnStat = (stats: Array<{name: string; displayValue: string}> | undefined, key: string): number | undefined => {
+      const s = stats?.find(s => s.name?.toLowerCase().includes(key));
+      return s ? (parseInt(s.displayValue || '0', 10)) : undefined;
+    };
+    let sportSpecificData: SportSpecificData | undefined;
+    if (isSoccerLeague) {
+      const hc = getEspnStat(homeCompetitor?.statistics, 'corner kick') ?? getEspnStat(homeCompetitor?.statistics, 'corner');
+      const ac = getEspnStat(awayCompetitor?.statistics, 'corner kick') ?? getEspnStat(awayCompetitor?.statistics, 'corner');
+      const hy = getEspnStat(homeCompetitor?.statistics, 'yellow card');
+      const ay = getEspnStat(awayCompetitor?.statistics, 'yellow card');
+      const hr = getEspnStat(homeCompetitor?.statistics, 'red card');
+      const ar = getEspnStat(awayCompetitor?.statistics, 'red card');
+      const sd: Record<string, unknown> = {};
+      if (hc !== undefined && ac !== undefined) sd.corners = { home: hc, away: ac };
+      if (hy !== undefined && ay !== undefined) sd.yellowCards = { home: hy, away: ay };
+      if (hr !== undefined && ar !== undefined) sd.redCards = { home: hr, away: ar };
+      if (Object.keys(sd).length) sportSpecificData = sd as SportSpecificData;
+    }
+
     return {
       id: `espn_${config.league.replace(/[^a-z0-9]/gi, '')}_${event.id}`,
       externalId: event.id,
@@ -2736,6 +2793,8 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
         awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
           ? parseInt(awayCompetitor.score, 10)
           : null,
+      htHomeScore,
+      htAwayScore,
       minute: extractLiveMinute(event.status, config.sportType) ?? undefined,
       period: event.status.displayClock,
       league: {
@@ -2759,6 +2818,7 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
       markets,
       tipsCount: 0,
       venue,
+      ...(sportSpecificData ? { sportSpecificData } : {}),
     };
   });
 
@@ -4429,6 +4489,12 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
       status,
       homeScore: homeScoreNum,
       awayScore: awayScoreNum,
+      // Extract HT scores from linescores (soccer only: index 0 = 1st half goals)
+      // Cast required because the summary header competitor type omits linescores
+      htHomeScore: cfg.sportType === 'soccer' && isStartedOrFinished
+        ? ((homeComp as {linescores?: Array<{value: number}>}).linescores?.[0]?.value ?? null) : null,
+      htAwayScore: cfg.sportType === 'soccer' && isStartedOrFinished
+        ? ((awayComp as {linescores?: Array<{value: number}>}).linescores?.[0]?.value ?? null) : null,
       league: {
         id: cfg.leagueId,
         name: cfg.leagueName,
