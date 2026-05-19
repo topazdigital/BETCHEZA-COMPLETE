@@ -1,11 +1,18 @@
 // Auto-generated fake-tipster tips on REAL matches.
-// Persists to .local/state/auto-tips.json so picks survive restarts and
-// remain consistent between the match Tips tab and tipster profile pages.
+// Primary storage: MySQL auto_tips table (when DB_HOST is configured).
+// Fallback: .local/state/auto-tips.json for dev / no-DB environments.
+// Both stores are written on every change; DB takes precedence on startup.
 
 import fs from 'fs';
 import path from 'path';
 import { getFakeTipsterById, getFakeTipsters, pickTipstersForMatch, type FakeTipster } from './fake-tipsters';
 import { seedTipEngagement } from './tip-engagement-store';
+import {
+  initAutoTipsTable,
+  loadAllTipsFromDb,
+  upsertTipsToDb,
+  bulkUpdateStatusInDb,
+} from './auto-tips-db';
 
 export interface GeneratedTip {
   id: string;
@@ -73,8 +80,17 @@ function persist() {
     for (const [k, v] of stores.byMatch) obj[k] = v;
     fs.writeFileSync(FILE, JSON.stringify(obj));
   } catch (e) {
-    console.warn('[auto-tips] persist failed', e);
+    console.warn('[auto-tips] persist (JSON) failed', e);
   }
+}
+
+// Fire-and-forget DB sync — never blocks the hot path.
+function syncToDb(tips: GeneratedTip[]) {
+  upsertTipsToDb(tips).catch(e => console.warn('[auto-tips] syncToDb failed', e));
+}
+
+function syncStatusesToDb(updates: Array<{ id: string; status: GeneratedTip['status']; settledByProb: boolean }>) {
+  bulkUpdateStatusInDb(updates).catch(e => console.warn('[auto-tips] syncStatusesToDb failed', e));
 }
 
 // ── Known real match results (used to override probabilistic settlements) ──────
@@ -111,46 +127,87 @@ function applyKnownResults(tips: GeneratedTip[]): boolean {
   return changed;
 }
 
-function load() {
-  if (stores.loaded) return;
-  stores.loaded = true;
+function indexTips(tips: GeneratedTip[]) {
+  const allTipsters = getFakeTipsters();
+  for (const tip of tips) {
+    const existing = stores.byMatch.get(tip.matchId) || [];
+    if (!existing.find(t => t.id === tip.id)) existing.push(tip);
+    stores.byMatch.set(tip.matchId, existing);
+    const list = stores.byTipster.get(tip.tipsterId) || [];
+    if (!list.find(t => t.id === tip.id)) list.push(tip);
+    stores.byTipster.set(tip.tipsterId, list);
+    const others = allTipsters
+      .filter(x => x.id !== tip.tipsterId)
+      .map(x => ({ id: x.id, username: x.username, displayName: x.displayName, avatar: x.avatar }));
+    seedTipEngagement(tip.id, {
+      likes: tip.likes,
+      comments: tip.comments,
+      tipsters: others,
+      homeTeam: tip.homeTeam,
+      awayTeam: tip.awayTeam,
+      venue: 'home',
+      confidence: tip.confidence,
+      createdAt: tip.createdAt,
+      league: tip.league,
+      market: tip.market,
+      odds: tip.odds,
+    });
+  }
+}
+
+async function loadFromDb(): Promise<boolean> {
+  try {
+    const dbOk = await initAutoTipsTable();
+    if (!dbOk) return false;
+    const tips = await loadAllTipsFromDb();
+    if (!tips) return false;
+    let needsCorrection = false;
+    if (applyKnownResults(tips)) needsCorrection = true;
+    indexTips(tips);
+    if (needsCorrection) {
+      const statusUpdates = tips.map(t => ({ id: t.id, status: t.status, settledByProb: !!t.settledByProb }));
+      syncStatusesToDb(statusUpdates);
+    }
+    console.log(`[auto-tips] loaded ${tips.length} tips from DB`);
+    return true;
+  } catch (e) {
+    console.warn('[auto-tips] loadFromDb failed:', e);
+    return false;
+  }
+}
+
+function loadFromFile() {
   try {
     if (!fs.existsSync(FILE)) return;
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Record<string, GeneratedTip[]>;
-    const allTipsters = getFakeTipsters();
     let needsPersist = false;
-    for (const [k, v] of Object.entries(raw)) {
-      // Apply known results to fix any probabilistically settled tips on load
+    const allTips: GeneratedTip[] = [];
+    for (const [, v] of Object.entries(raw)) {
       if (applyKnownResults(v)) needsPersist = true;
-      stores.byMatch.set(k, v);
-      for (const tip of v) {
-        const list = stores.byTipster.get(tip.tipsterId) || [];
-        list.push(tip);
-        stores.byTipster.set(tip.tipsterId, list);
-        // Re-seed engagement on cold start so counts/comments survive a restart.
-        const others = allTipsters
-          .filter(x => x.id !== tip.tipsterId)
-          .map(x => ({ id: x.id, username: x.username, displayName: x.displayName, avatar: x.avatar }));
-        seedTipEngagement(tip.id, {
-          likes: tip.likes,
-          comments: tip.comments,
-          tipsters: others,
-          homeTeam: tip.homeTeam,
-          awayTeam: tip.awayTeam,
-          venue: 'home',
-          confidence: tip.confidence,
-          createdAt: tip.createdAt,
-          league: tip.league,
-          market: tip.market,
-          odds: tip.odds,
-        });
-      }
+      allTips.push(...v);
     }
-    // Persist corrected results back to file
+    indexTips(allTips);
     if (needsPersist) persist();
+    // Opportunistically back-fill DB with file data
+    if (allTips.length > 0) syncToDb(allTips);
+    console.log(`[auto-tips] loaded ${allTips.length} tips from JSON file`);
   } catch (e) {
-    console.warn('[auto-tips] load failed', e);
+    console.warn('[auto-tips] loadFromFile failed:', e);
   }
+}
+
+function load() {
+  if (stores.loaded) return;
+  stores.loaded = true;
+  // Try DB first (async); fall back to JSON synchronously so the store is
+  // immediately usable while DB is connecting on first boot.
+  loadFromFile(); // instant — seeds memory right away
+  loadFromDb().then(dbOk => {
+    if (dbOk) {
+      // DB loaded additional / fresher tips — file already indexed above,
+      // duplicates are deduped in indexTips. No further action needed.
+    }
+  });
 }
 load();
 
@@ -163,7 +220,13 @@ export function settleByKnownResults(): number {
   for (const list of stores.byMatch.values()) {
     if (applyKnownResults(list)) fixed++;
   }
-  if (fixed > 0) persist();
+  if (fixed > 0) {
+    persist();
+    const updates: Array<{ id: string; status: GeneratedTip['status']; settledByProb: boolean }> = [];
+    for (const list of stores.byMatch.values())
+      for (const t of list) updates.push({ id: t.id, status: t.status, settledByProb: !!t.settledByProb });
+    syncStatusesToDb(updates);
+  }
   return fixed;
 }
 
@@ -204,7 +267,13 @@ export function addKnownResult(
       }
     }
   }
-  if (fixed > 0) persist();
+  if (fixed > 0) {
+    persist();
+    const updates: Array<{ id: string; status: GeneratedTip['status']; settledByProb: boolean }> = [];
+    for (const list of stores.byMatch.values())
+      for (const t of list) updates.push({ id: t.id, status: t.status, settledByProb: !!t.settledByProb });
+    syncStatusesToDb(updates);
+  }
   return fixed;
 }
 
@@ -388,6 +457,7 @@ export function seedTipsForMatch(ctx: MatchContext): GeneratedTip[] {
     });
   }
   persist();
+  syncToDb(tips);
   return tips;
 }
 
@@ -608,6 +678,28 @@ function determineTipOutcome(
     (mkt.includes('1x2') || mkt.includes('match result')) && (pred === 'draw' || pred === 'x')
   ) {
     return homeScore === awayScore ? 'won' : 'lost';
+  }
+
+  // ── BTTS & Result (compound market: result + BTTS) ────────────────────────
+  // MUST come before generic BTTS check — "Home & Yes" means home WINS + BTTS,
+  // not just BTTS Yes. If treated as pure BTTS it returns wrong outcomes.
+  // Market names: "BTTS & Result", "BTTS & Match Result", "Both Teams Score & Result"
+  // Predictions: "Home & Yes", "Away & Yes", "Draw & Yes", "Home & No", etc.
+  const isBttsAndResult =
+    (mkt.includes('btts') || mkt.includes('both teams')) &&
+    (mkt.includes('result') || mkt.includes('& result') || mkt.includes('and result'));
+  if (isBttsAndResult) {
+    const both = homeScore > 0 && awayScore > 0;
+    const homeWins = homeScore > awayScore;
+    const awayWins = awayScore > homeScore;
+    const isDraw = homeScore === awayScore;
+    const hasYes = pred.includes('yes') || pred.endsWith('& yes') || pred.includes('& yes');
+    const hasNo = pred.includes('no') || pred.endsWith('& no') || pred.includes('& no');
+    const bttsPart = hasYes ? both : hasNo ? !both : both; // default yes
+    if (pred.includes('home') || pred.startsWith('1 &') || pred.startsWith('1&')) return homeWins && bttsPart ? 'won' : 'lost';
+    if (pred.includes('away') || pred.startsWith('2 &') || pred.startsWith('2&')) return awayWins && bttsPart ? 'won' : 'lost';
+    if (pred.includes('draw') || pred.startsWith('x &') || pred.startsWith('x&')) return isDraw && bttsPart ? 'won' : 'lost';
+    return bttsPart ? 'won' : 'lost'; // fallback: just evaluate BTTS part
   }
 
   // ── BTTS (Both Teams to Score) ────────────────────────────────────────────
@@ -832,7 +924,13 @@ export function bulkResettleWithRealData(
       }
     }
   }
-  if (corrected > 0) persist();
+  if (corrected > 0) {
+    persist();
+    const updates: Array<{ id: string; status: GeneratedTip['status']; settledByProb: boolean }> = [];
+    for (const list of stores.byMatch.values())
+      for (const t of list) updates.push({ id: t.id, status: t.status, settledByProb: !!t.settledByProb });
+    syncStatusesToDb(updates);
+  }
   return corrected;
 }
 
@@ -868,7 +966,10 @@ export function settleTipWithResult(matchId: string, homeScore: number, awayScor
       changed = true;
     }
   }
-  if (changed) persist();
+  if (changed) {
+    persist();
+    if (list) syncStatusesToDb(list.map(t => ({ id: t.id, status: t.status, settledByProb: !!t.settledByProb })));
+  }
 }
 
 /**
@@ -908,7 +1009,13 @@ export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeSc
       }
     }
   }
-  if (changed) persist();
+  if (changed) {
+    persist();
+    const updates: Array<{ id: string; status: GeneratedTip['status']; settledByProb: boolean }> = [];
+    for (const list of stores.byMatch.values())
+      for (const t of list) updates.push({ id: t.id, status: t.status, settledByProb: !!t.settledByProb });
+    syncStatusesToDb(updates);
+  }
 }
 
 export function getKnownFakeTipsters(): FakeTipster[] {

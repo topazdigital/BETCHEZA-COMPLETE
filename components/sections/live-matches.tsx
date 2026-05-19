@@ -7,7 +7,7 @@ import { LiveIndicator } from '@/components/matches/live-indicator';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { useLiveMatches, useUpcomingMatches } from '@/lib/hooks/use-matches';
-import { matchIdToSlug } from '@/lib/utils/match-url';
+import { matchToSlug } from '@/lib/utils/match-url';
 import { useUserSettings } from '@/contexts/user-settings-context';
 import { formatTime, formatDate, isToday, isTomorrow } from '@/lib/utils/timezone';
 
@@ -85,7 +85,7 @@ export function LiveMatchesSection() {
                 return (
                   <Link
                     key={m.id}
-                    href={`/matches/${matchIdToSlug(m.id)}`}
+                    href={`/matches/${matchToSlug(m.id, m.homeTeam.name, m.awayTeam.name)}`}
                     className="group flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-primary/50"
                   >
                     <div className="min-w-0">

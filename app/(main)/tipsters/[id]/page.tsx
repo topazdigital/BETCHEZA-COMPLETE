@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { matchIdToSlug } from "@/lib/utils/match-url"
+import { matchToSlug } from "@/lib/utils/match-url"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
@@ -540,7 +540,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
                   // the API surfaced a usable match id (skip mock placeholder ids).
                   const rawId = (tip.match as { id?: string }).id ?? null
                   const isReal = !!rawId && !rawId.startsWith('match_')
-                  const matchHref = isReal ? `/matches/${matchIdToSlug(rawId!)}` : null
+                  const matchHref = isReal ? `/matches/${matchToSlug(rawId!, tip.match.homeTeam, tip.match.awayTeam)}` : null
                   const Wrapper: React.ElementType = matchHref ? Link : 'div'
                   const wrapperProps = matchHref ? { href: matchHref } : {}
                   return (
@@ -548,56 +548,51 @@ export default function TipsterProfilePage({ params }: PageProps) {
                     key={tip.id}
                     {...(wrapperProps as Record<string, unknown>)}
                     className={cn(
-                      "block rounded-lg border p-4 transition-colors",
+                      "block rounded-lg border px-3 py-2 transition-colors",
                       tip.status === 'won' && "border-success/30 bg-success/5",
                       tip.status === 'lost' && "border-destructive/30 bg-destructive/5",
-                      tip.status === 'pending' && "border-warning/30 bg-warning/5",
-                      tip.status === 'void' && "border-muted-foreground/30 bg-muted/30",
+                      tip.status === 'pending' && "border-warning/20 bg-warning/3",
+                      tip.status === 'void' && "border-muted-foreground/20 bg-muted/20",
                       matchHref && "hover:border-primary/40 hover:shadow-sm cursor-pointer",
                     )}
                   >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <div className={cn("font-semibold text-sm", matchHref && "group-hover:text-primary")}>
-                          {tip.match.homeTeam} vs {tip.match.awayTeam}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {tip.match.league} - {format(new Date(tip.match.kickoffTime), "dd MMM HH:mm")}
-                        </div>
-                      </div>
+                    {/* Row 1: teams + status badge */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={cn("font-semibold text-xs truncate", matchHref && "group-hover:text-primary")}>
+                        {tip.match.homeTeam} vs {tip.match.awayTeam}
+                      </span>
                       <Badge 
                         variant={tip.status === 'won' ? 'default' : tip.status === 'lost' ? 'destructive' : 'secondary'}
                         className={cn(
-                          "inline-flex items-center gap-1",
+                          "shrink-0 text-[10px] px-1.5 py-0 h-4",
                           tip.status === 'won' && "bg-success text-success-foreground",
                           tip.status === 'void' && "bg-muted text-muted-foreground border border-border"
                         )}
                       >
-                        {tip.status === 'void' && <MinusCircle className="h-3 w-3" />}
                         {tip.status.toUpperCase()}
                       </Badge>
                     </div>
-                    
-                    <div className="flex items-center gap-3 mb-2">
-                      <Badge variant="outline">{tip.market}</Badge>
+                    {/* Row 2: league + date */}
+                    <div className="text-[10px] text-muted-foreground mb-1">
+                      {tip.match.league} · {format(new Date(tip.match.kickoffTime), "dd MMM HH:mm")}
+                    </div>
+                    {/* Row 3: market + pick + odds + score */}
+                    <div className="flex items-center gap-1.5 flex-wrap text-xs mb-1">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{tip.market}</Badge>
                       <span className="font-medium">{tip.selection}</span>
                       <span className="font-mono text-primary font-bold">@{tip.odds}</span>
-                    </div>
-                    
-                    <p className="text-sm text-muted-foreground mb-2">{tip.analysis}</p>
-                    
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>Confidence: {tip.confidence}%</span>
-                      <span>Stake: {tip.stake}/5</span>
                       {tip.status !== 'pending' && !tip.settledByProb && tip.match.homeScore !== null && (
-                        <span className="font-mono">
-                          Final: <strong>{tip.match.homeScore} - {tip.match.awayScore}</strong>
-                          {tip.status === 'void' && ' · push'}
+                        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                          Final: <strong>{tip.match.homeScore}–{tip.match.awayScore}</strong>
                         </span>
                       )}
+                    </div>
+                    {/* Row 4: analysis (1 line) + open link */}
+                    <div className="flex items-center gap-2">
+                      <p className="text-[10px] text-muted-foreground line-clamp-1 flex-1">{tip.analysis}</p>
                       {matchHref && (
-                        <span className="ml-auto inline-flex items-center gap-0.5 text-primary group-hover:underline">
-                          Open match <ChevronRight className="h-3 w-3" />
+                        <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-primary">
+                          Open <ChevronRight className="h-2.5 w-2.5" />
                         </span>
                       )}
                     </div>

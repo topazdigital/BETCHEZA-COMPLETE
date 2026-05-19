@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TeamLogo } from "@/components/ui/team-logo"
 import { cn } from "@/lib/utils"
-import { matchIdToSlug } from "@/lib/utils/match-url"
+import { matchToSlug } from "@/lib/utils/match-url"
 
 export interface FeaturedItem {
   matchId: string
@@ -78,7 +78,7 @@ function FavoritedTipCard({ item }: { item: FeaturedItem }) {
 
   return (
     <Link
-      href={`/matches/${matchIdToSlug(match.id)}`}
+      href={`/matches/${matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name)}`}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all duration-200",
         "hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5",
@@ -285,7 +285,7 @@ export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
 
   return (
     <Link
-      href={`/matches/${matchIdToSlug(match.id)}`}
+      href={`/matches/${matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name)}`}
       className={cn(
         "group flex h-full min-h-[200px] flex-col rounded-xl border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-md",
         pinned ? "border-amber-500/50" : "border-amber-500/30",
