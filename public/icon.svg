@@ -1,15 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="bz-fav-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#10B981"/>
-      <stop offset="100%" stop-color="#059669"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3BAEE8"/>
+      <stop offset="100%" stop-color="#1E7DC0"/>
     </linearGradient>
   </defs>
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bz-fav-bg)"/>
-  <g stroke="#FFFFFF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <path d="M 18 12 L 18 52"/>
-    <path d="M 18 12 L 33 12 Q 43 12 43 21 Q 43 30 33 30 L 18 30"/>
-    <path d="M 18 30 L 35 30 Q 47 30 47 41 Q 47 52 35 52 L 18 52"/>
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- Crown -->
+  <path d="M14 28 L20 14 L27 22 L32 10 L37 22 L44 14 L50 28 Z" fill="white"/>
+  <circle cx="14" cy="28" r="3" fill="white"/>
+  <circle cx="32" cy="10" r="3" fill="white"/>
+  <circle cx="50" cy="28" r="3" fill="white"/>
+  <!-- B letter -->
+  <g fill="white">
+    <rect x="20" y="28" width="5" height="28" rx="1"/>
+    <path d="M25 28 Q38 28 38 35 Q38 42 25 42 L25 28Z" />
+    <path d="M25 42 Q40 42 40 49.5 Q40 56 25 56 L25 42Z"/>
   </g>
-  <circle cx="50" cy="14" r="4" fill="#FBBF24"/>
 </svg>

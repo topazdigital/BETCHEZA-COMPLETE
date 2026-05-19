@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
-import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck, RefreshCw } from 'lucide-react';
+import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck, RefreshCw, X, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WeeklyStrategy, DayPrediction, StrategyPick } from '@/app/api/strategy/predictions/route';
+import { useAuth } from '@/contexts/auth-context';
+import { useAuthModal } from '@/contexts/auth-modal-context';
 
 const WEEK_PLAN = [
   { day: 1, stake: 1000,  save: 0,      targetWin: 3000  },
@@ -28,50 +30,40 @@ function PickResultIcon({ result }: { result?: string }) {
   return <Circle className="h-4 w-4 text-muted-foreground shrink-0" />;
 }
 
-function PickCard({ pick, locked }: { pick: StrategyPick; locked?: boolean }) {
-  const matchTime = pick.matchTime ? new Date(pick.matchTime) : null;
-
-  if (locked) {
-    return (
-      <div className="rounded-lg border border-border bg-card/60 p-3 select-none">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <div className="min-w-0 flex-1">
-            <div className="h-2.5 w-24 rounded bg-muted/60 animate-pulse mb-1" />
-            <div className="h-3 w-40 rounded bg-muted/50 animate-pulse" />
-          </div>
-          <div className="h-5 w-10 rounded bg-muted/40 animate-pulse shrink-0" />
-        </div>
-        <div className="flex gap-2 mt-1.5">
-          <div className="h-4 w-16 rounded bg-muted/40 animate-pulse" />
-          <div className="h-4 w-20 rounded bg-muted/30 animate-pulse" />
-        </div>
-      </div>
-    );
-  }
-
+function PickCard({ pick }: { pick: StrategyPick }) {
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] text-muted-foreground truncate">{pick.league}</p>
-          <p className="text-sm font-semibold leading-tight truncate">{pick.homeTeam} vs {pick.awayTeam}</p>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+    <div className={cn(
+      'rounded-lg border p-3 text-sm',
+      pick.result === 'win' ? 'border-green-500/30 bg-green-500/5' :
+      pick.result === 'loss' ? 'border-red-500/30 bg-red-500/5' :
+      'border-border bg-muted/30'
+    )}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <PickResultIcon result={pick.result} />
-          <span className="font-mono text-base font-bold text-primary">{pick.odds.toFixed(2)}</span>
+          <div className="min-w-0">
+            <p className="font-semibold truncate">{pick.homeTeam} vs {pick.awayTeam}</p>
+            <p className="text-[11px] text-muted-foreground">{pick.league}</p>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <span className="font-mono font-bold text-primary">@{pick.odds.toFixed(2)}</span>
+          {pick.actualScore && (
+            <p className="text-[10px] text-muted-foreground">{pick.actualScore}</p>
+          )}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2 mb-1.5">
-        <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{pick.market}</span>
-        <span className="text-[12px] font-medium text-foreground">→ {pick.pick}</span>
-        <span className={cn(
-          'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-          pick.confidence === 'High' ? 'bg-green-500/15 text-green-600' : pick.confidence === 'Medium' ? 'bg-yellow-500/15 text-yellow-600' : 'bg-muted text-muted-foreground'
-        )}>{pick.confidence}</span>
-        {matchTime && <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground"><Clock className="h-3 w-3" />{matchTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{pick.market}</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
+          {pick.pick}
+        </span>
+        {pick.result === 'win' && <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-[11px] font-bold text-green-600">WON ✓</span>}
+        {pick.result === 'loss' && <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-bold text-red-600">LOST ✗</span>}
       </div>
-      {pick.reasoning && <p className="text-[11px] text-muted-foreground leading-relaxed">{pick.reasoning}</p>}
-      {pick.actualScore && <p className="mt-1 text-[11px] font-medium text-foreground">Score: {pick.actualScore}</p>}
+      {pick.reasoning && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed">{pick.reasoning}</p>
+      )}
     </div>
   );
 }
@@ -81,11 +73,13 @@ function DayCard({
   planItem,
   isLocked,
   isYesterday,
+  onSubscribe,
 }: {
   day: DayPrediction;
   planItem: typeof WEEK_PLAN[0];
   isLocked?: boolean;
   isYesterday?: boolean;
+  onSubscribe?: () => void;
 }) {
   const [open, setOpen] = useState(day.status === 'active' || isYesterday === true);
   const isActive = day.status === 'active';
@@ -95,7 +89,7 @@ function DayCard({
     <div className={cn(
       'rounded-xl border transition-all',
       isActive ? 'border-primary/60 bg-primary/5 shadow-md shadow-primary/10' : 'border-border bg-card',
-      isLocked && !isYesterday && 'opacity-60',
+      isLocked && !isYesterday && 'opacity-70',
     )}>
       <button
         onClick={() => setOpen((o) => !o)}
@@ -116,7 +110,17 @@ function DayCard({
               <span className="font-semibold text-sm">Day {day.day}</span>
               {isActive && <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-bold text-primary uppercase">Today</span>}
               {isYesterday && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground uppercase">Yesterday</span>}
-              {isLocked && !isYesterday && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 uppercase">Subscribe</span>}
+              {isLocked && !isYesterday && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); onSubscribe?.(); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onSubscribe?.(); } }}
+                  className="rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold text-primary-foreground uppercase hover:bg-primary/80 transition-colors cursor-pointer"
+                >
+                  Subscribe
+                </span>
+              )}
               {isCompleted && day.result && !isLocked && (
                 <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', day.result === 'win' ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600')}>
                   {day.result}
@@ -162,12 +166,10 @@ function DayCard({
               <p className="text-sm font-medium">Today&apos;s picks are for subscribers only</p>
               <p className="text-xs">Subscribe to unlock all current &amp; upcoming days instantly.</p>
               <button
-                onClick={() => {
-                  const el = document.getElementById('paywall-gate');
-                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }}
-                className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 transition-colors"
+                onClick={onSubscribe}
+                className="rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2"
               >
+                <CreditCard className="h-4 w-4" />
                 Subscribe — KES 5,000 via M-Pesa
               </button>
             </div>
@@ -200,7 +202,20 @@ function DayCard({
   );
 }
 
-function PaywallGate({ onUnlocked, daysRemaining }: { onUnlocked: (data: { daysRemaining: number; startDayOffset: number }) => void; daysRemaining?: number }) {
+/* ────────────────────────────────────────────────────────── */
+/* Subscribe Modal — M-Pesa STK push (not a wallet deposit)  */
+/* ────────────────────────────────────────────────────────── */
+function SubscribeModal({
+  open,
+  onClose,
+  onUnlocked,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onUnlocked: (data: { daysRemaining: number; startDayOffset: number }) => void;
+}) {
+  const { isAuthenticated } = useAuth();
+  const { open: openAuthModal } = useAuthModal();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
@@ -208,6 +223,15 @@ function PaywallGate({ onUnlocked, daysRemaining }: { onUnlocked: (data: { daysR
   const [error, setError] = useState('');
   const [step, setStep] = useState<'form' | 'pending'>('form');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setStep('form');
+      setError('');
+      setReference(null);
+      if (pollRef.current) clearInterval(pollRef.current);
+    }
+  }, [open]);
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -228,21 +252,27 @@ function PaywallGate({ onUnlocked, daysRemaining }: { onUnlocked: (data: { daysR
           clearInterval(pollRef.current!);
           setPolling(false);
           onUnlocked({ daysRemaining: data.daysRemaining || 7, startDayOffset: data.startDayOffset || 0 });
+          onClose();
           return;
         }
         if (data.status === 'failed' || attempts >= 30) {
           clearInterval(pollRef.current!);
           setPolling(false);
           setStep('form');
-          setError(data.status === 'failed' ? 'Payment was declined. Please try again.' : 'Payment verification timed out. If you paid, refresh the page.');
+          setError(data.status === 'failed' ? 'Payment was declined. Please try again.' : 'Payment timed out. If you paid, refresh the page.');
         }
       } catch { /* silent */ }
     }, 5000);
   };
 
   const handlePay = async () => {
-    const cleaned = phone.replace(/\s+/g, '');
-    if (!cleaned) { setError('Enter your M-Pesa phone number'); return; }
+    if (!isAuthenticated) {
+      onClose();
+      openAuthModal('login');
+      return;
+    }
+    const cleaned = phone.replace(/\s+/g, '').replace(/^0/, '254').replace(/^\+/, '');
+    if (!cleaned || cleaned.length < 9) { setError('Enter a valid M-Pesa phone number'); return; }
     setLoading(true);
     setError('');
     try {
@@ -252,9 +282,13 @@ function PaywallGate({ onUnlocked, daysRemaining }: { onUnlocked: (data: { daysR
         body: JSON.stringify({ phone: cleaned }),
       });
       const data = await res.json() as { success?: boolean; hasAccess?: boolean; reference?: string; error?: string; daysRemaining?: number; startDayOffset?: number };
-      if (data.hasAccess) { onUnlocked({ daysRemaining: data.daysRemaining || 7, startDayOffset: data.startDayOffset || 0 }); return; }
+      if (data.hasAccess) {
+        onUnlocked({ daysRemaining: data.daysRemaining || 7, startDayOffset: data.startDayOffset || 0 });
+        onClose();
+        return;
+      }
       if (!data.success || !data.reference) {
-        setError(data.error || 'Payment failed. Check credentials in Admin → Gateways.');
+        setError(data.error || 'Payment initiation failed. Please try again.');
         setLoading(false);
         return;
       }
@@ -269,87 +303,132 @@ function PaywallGate({ onUnlocked, daysRemaining }: { onUnlocked: (data: { daysR
     }
   };
 
+  if (!open) return null;
+
   return (
-    <div className="relative rounded-2xl overflow-hidden border border-primary/30 bg-gradient-to-br from-primary/10 via-card to-card">
-      {/* Blurred preview */}
-      <div className="pointer-events-none select-none blur-sm opacity-40 px-4 py-3 space-y-2">
-        {[1,2,3].map(i => (
-          <div key={i} className="h-16 rounded-xl bg-muted/60 animate-pulse" />
-        ))}
-      </div>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
 
-      {/* Overlay */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-4 py-6 backdrop-blur-sm bg-background/70">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 border border-primary/30">
-          <Lock className="h-6 w-6 text-primary" />
-        </div>
-        <div className="text-center">
-          <h3 className="text-lg font-bold text-foreground">Weekly Premium Picks</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-            Subscribe weekly to unlock all 7 days of AI-powered compounding picks. Your 7-day window starts the moment you pay — no waiting until Monday.
-          </p>
+      {/* Modal panel */}
+      <div className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 border border-primary/30">
+              <TrendingUp className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">3 Daily Odds — Subscribe</h2>
+              <p className="text-xs text-muted-foreground">7-day compounding picks plan</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted transition-colors">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <div className="w-full max-w-xs">
-          <div className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2">
-            <ShieldCheck className="h-4 w-4 text-green-500 shrink-0" />
-            <p className="text-sm font-bold text-green-600 dark:text-green-400">KES 5,000 / week · M-Pesa</p>
+        <div className="px-5 pb-6 space-y-4">
+          {/* Price badge */}
+          <div className="flex items-center justify-between rounded-xl border border-green-500/30 bg-green-500/8 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-green-500" />
+              <div>
+                <p className="text-sm font-bold text-green-600 dark:text-green-400">KES 5,000 / week</p>
+                <p className="text-[11px] text-muted-foreground">via M-Pesa STK push</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-semibold text-foreground">7 days access</p>
+              <p className="text-[11px] text-muted-foreground">Starts immediately</p>
+            </div>
           </div>
 
-          {/* Feature points */}
-          <div className="mb-3 rounded-lg border border-border bg-card/60 px-3 py-2 space-y-1">
+          {/* What you get */}
+          <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1.5">
             {[
-              'Your Day 1 starts TODAY — no matter what day it is',
-              'Full 7-day compounding plan unlocked instantly',
-              'Renew each week to continue the strategy',
-              'Yesterday\'s tips always free — no subscription needed',
+              'Your Day 1 starts TODAY — no waiting for Monday',
+              'All 7 days of compounding picks unlocked instantly',
+              'Combined odds 3.0–4.0 every day',
+              'Renew weekly to keep the strategy running',
+              'Yesterday\'s picks always free — no subscription needed',
             ].map((f, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
-                <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0 mt-0.5" />
+              <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
                 <span>{f}</span>
               </div>
             ))}
           </div>
 
-          {step === 'form' ? (
-            <div className="space-y-2">
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="tel"
-                  placeholder="e.g. 0712 345 678"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handlePay()}
-                  className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
+          {!isAuthenticated ? (
+            <div className="space-y-3 text-center">
+              <p className="text-sm text-muted-foreground">Sign in to continue with your subscription</p>
+              <button
+                onClick={() => { onClose(); openAuthModal('login'); }}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors"
+              >
+                Sign In / Register
+              </button>
+            </div>
+          ) : step === 'form' ? (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">
+                  M-Pesa Phone Number
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="tel"
+                    placeholder="0712 345 678 or 254712345678"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handlePay()}
+                    className="w-full rounded-xl border border-border bg-background pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
               </div>
               {error && <p className="text-xs text-red-500 text-center">{error}</p>}
               <button
                 onClick={handlePay}
                 disabled={loading}
-                className="w-full rounded-lg bg-primary text-primary-foreground py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending STK Push…</> : 'Subscribe — KES 5,000 via M-Pesa'}
+                {loading
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending M-Pesa request…</>
+                  : <><CreditCard className="h-4 w-4" /> Pay KES 5,000 &amp; Unlock Now</>
+                }
               </button>
+              <p className="text-[11px] text-muted-foreground text-center">
+                Payment goes directly to Betcheza — not your wallet balance. Picks unlock immediately on confirmation.
+              </p>
             </div>
           ) : (
-            <div className="text-center space-y-3">
-              <div className="flex items-center justify-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <p className="text-sm font-medium">Check your phone for M-Pesa prompt</p>
+            <div className="text-center space-y-4 py-2">
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 border-2 border-primary/30">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-foreground">Check your phone!</p>
+                  <p className="text-xs text-muted-foreground mt-1">Enter your M-Pesa PIN to confirm the KES 5,000 payment</p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">Enter your M-Pesa PIN to confirm. This page unlocks automatically.</p>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold text-primary">This page unlocks automatically</p>
+                <p className="text-[11px] text-muted-foreground">No need to refresh — we&apos;ll detect your payment and unlock instantly</p>
+              </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
+              {reference && <p className="text-[10px] text-muted-foreground font-mono">Ref: {reference}</p>}
               <button
-                onClick={() => { setStep('form'); if (pollRef.current) clearInterval(pollRef.current); }}
+                onClick={() => { setStep('form'); setError(''); if (pollRef.current) clearInterval(pollRef.current); }}
                 className="text-xs text-muted-foreground underline hover:text-foreground"
               >
                 Try a different number
               </button>
-              {reference && (
-                <p className="text-[10px] text-muted-foreground font-mono">Ref: {reference}</p>
-              )}
             </div>
           )}
         </div>
@@ -373,6 +452,7 @@ export default function StrategyPage() {
   );
 
   const [access, setAccess] = useState<AccessInfo | null>(null);
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
 
   useEffect(() => {
     fetch('/api/strategy/access')
@@ -383,27 +463,28 @@ export default function StrategyPage() {
 
   const hasAccess = access?.hasAccess ?? false;
   const daysRemaining = access?.daysRemaining;
-  // startDayOffset: 0=Mon,1=Tue...6=Sun — the plan day user started on
-  const startDayOffset = access?.startDayOffset ?? 0;
 
   const current = data?.current;
   const past = data?.past || [];
 
-  // Compute which day is "today" in the user's personal subscription window
-  // If user subscribed on plan Day 3 (Wednesday), their Day 1 was Wednesday.
-  // Now we figure out what "today" maps to in the plan.
   const todayPlanIndex = (() => {
     if (!current?.days) return -1;
     return current.days.findIndex(d => d.status === 'active');
   })();
 
-  // Yesterday in the plan (index before today)
   const yesterdayPlanIndex = todayPlanIndex > 0 ? todayPlanIndex - 1 : -1;
 
   const expiresDate = access?.expiresAt ? new Date(access.expiresAt) : null;
 
   return (
     <div className="mx-auto max-w-2xl px-3 py-4 sm:px-4 sm:py-6">
+      {/* Subscribe Modal */}
+      <SubscribeModal
+        open={showSubscribeModal}
+        onClose={() => setShowSubscribeModal(false)}
+        onUnlocked={(d) => setAccess({ hasAccess: true, ...d })}
+      />
+
       {/* Header */}
       <div className="mb-5">
         <div className="flex items-center gap-2 mb-1">
@@ -429,87 +510,78 @@ export default function StrategyPage() {
         </div>
       )}
 
-      {/* How the weekly subscription works */}
+      {/* How subscription works — for non-subscribers */}
       {!hasAccess && (
         <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
           <p className="font-semibold flex items-center gap-1.5"><Info className="h-3.5 w-3.5" /> How the weekly subscription works</p>
-          <p>Pay KES 5,000 and your <strong>personal 7-day plan starts immediately</strong> — today becomes Day 1 for you. If you join on what is calendar Day 6, your subscription runs Day 6 → Day 5 of the following week, giving you exactly 7 unique daily picks. Renew every 7 days to keep access. Yesterday&apos;s picks are always free below.</p>
+          <p>Pay KES 5,000 and your <strong>personal 7-day plan starts immediately</strong> — today becomes Day 1 for you. Renew every 7 days to keep access. Yesterday&apos;s picks are always free below.</p>
         </div>
       )}
 
-      {/* Strategy Summary Table */}
-      <div className="mb-5 rounded-xl border border-border bg-card overflow-hidden">
-        <div className="border-b border-border bg-muted/40 px-4 py-2.5 flex items-center gap-2">
-          <Trophy className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-sm">Weekly Plan Overview</span>
+      {/* Subscribe CTA — top of page for non-subscribers */}
+      {!hasAccess && (
+        <button
+          onClick={() => setShowSubscribeModal(true)}
+          className="mb-5 w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
+        >
+          <CreditCard className="h-4 w-4" />
+          Subscribe — KES 5,000 / week via M-Pesa
+        </button>
+      )}
+
+      {/* Weekly plan overview */}
+      <div className="mb-3 overflow-hidden rounded-xl border border-border bg-card">
+        <div className="border-b border-border bg-muted/30 px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold">Weekly Plan Overview</span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-[11px] text-muted-foreground uppercase tracking-wide">
-                <th className="px-3 py-2 text-left">Day</th>
-                <th className="px-3 py-2 text-right">Stake</th>
-                <th className="px-3 py-2 text-right">Save</th>
-                <th className="px-3 py-2 text-right">Win</th>
+              <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                <th className="px-4 py-2 text-left font-medium">Day</th>
+                <th className="px-4 py-2 text-right font-medium">Stake</th>
+                <th className="px-4 py-2 text-right font-medium text-blue-500">Save</th>
+                <th className="px-4 py-2 text-right font-medium text-green-500">Win</th>
               </tr>
             </thead>
             <tbody>
-              {WEEK_PLAN.map((row, i) => {
-                const dayData = current?.days[i];
-                const isToday = dayData?.status === 'active';
-                return (
-                  <tr key={row.day} className={cn('border-b border-border/50 last:border-0', isToday && 'bg-primary/5')}>
-                    <td className="px-3 py-2 font-medium flex items-center gap-1.5">
-                      Day {row.day}
-                      {isToday && <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-[9px] font-bold text-primary uppercase">Today</span>}
-                      {dayData?.result === 'win' && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
-                      {dayData?.result === 'loss' && <XCircle className="h-3.5 w-3.5 text-red-500" />}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">{formatKES(row.stake)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-blue-500">{row.save > 0 ? formatKES(row.save) : '—'}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-green-500">{formatKES(row.targetWin)}</td>
-                  </tr>
-                );
-              })}
+              {WEEK_PLAN.map((p) => (
+                <tr key={p.day} className="border-b border-border/50 last:border-0">
+                  <td className="px-4 py-2 font-medium">Day {p.day}</td>
+                  <td className="px-4 py-2 text-right font-mono">{formatKES(p.stake)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-blue-500">{p.save > 0 ? formatKES(p.save) : '–'}</td>
+                  <td className="px-4 py-2 text-right font-mono font-bold text-green-500">{formatKES(p.targetWin)}</td>
+                </tr>
+              ))}
             </tbody>
+            <tfoot>
+              <tr className="bg-muted/30 text-xs font-semibold">
+                <td className="px-4 py-2">Total</td>
+                <td className="px-4 py-2 text-right font-mono text-muted-foreground">KES 54,000</td>
+                <td className="px-4 py-2 text-right font-mono text-blue-500">KES 49,000</td>
+                <td className="px-4 py-2 text-right font-mono text-green-600">KES 108,000</td>
+              </tr>
+            </tfoot>
           </table>
-        </div>
-        <div className="grid grid-cols-3 border-t border-border bg-muted/30">
-          <div className="px-3 py-2.5 text-center">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total Savings</p>
-            <p className="font-mono font-bold text-blue-500 text-sm">KES 49,000</p>
-          </div>
-          <div className="px-3 py-2.5 text-center border-x border-border">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Day 7 Win</p>
-            <p className="font-mono font-bold text-green-500 text-sm">KES 60,000</p>
-          </div>
-          <div className="px-3 py-2.5 text-center">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Weekly Profit</p>
-            <p className="font-mono font-bold text-primary text-sm">KES 108,000</p>
-          </div>
         </div>
       </div>
 
-      {/* Disclaimer */}
-      <div className="mb-5 flex gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-xs text-yellow-700 dark:text-yellow-400">
-        <Info className="h-4 w-4 shrink-0 mt-0.5" />
-        <p>This is a strategy guide, not a guarantee. Betting carries risk — only stake what you can afford to lose. Picks are AI-generated based on form, odds value, and match data.</p>
+      <div className="mb-2 flex items-center gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+        <Info className="h-3 w-3 shrink-0" />
+        This is a strategy guide, not a guarantee. Betting involves risk — only stake what you can afford to lose. Picks are AI-assisted, not financial advice.
       </div>
 
       {/* Current week days */}
-      {isLoading || access === null ? (
-        <div className="space-y-3">
-          {[1,2,3].map((i) => (
-            <div key={i} className="h-16 rounded-xl bg-muted/30 animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between mb-2">
+      {!isLoading && current && (
+        <div className="mt-4">
+          <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-semibold">
-                Week of {current ? new Date(current.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '—'}
+                Week of {new Date(current.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
               </span>
             </div>
             {!hasAccess && (
@@ -517,44 +589,32 @@ export default function StrategyPage() {
             )}
           </div>
 
-          {/* Show all days. Today and future are locked for non-subscribers. Yesterday is always free. */}
-          {(current?.days || WEEK_PLAN.map((p, i) => ({
-            day: p.day, date: '', picks: [], combinedOdds: 0,
-            status: 'upcoming' as const,
-            stake: p.stake, save: p.save, targetWin: p.targetWin,
-          }))).map((day, i) => {
-            const isToday = day.status === 'active';
-            const isPast = day.status === 'completed';
-            const isYesterday = i === yesterdayPlanIndex;
+          <div className="space-y-2">
+            {(current?.days || WEEK_PLAN.map((p, i) => ({
+              day: p.day, date: '', picks: [], combinedOdds: 0,
+              status: 'upcoming' as const,
+              stake: p.stake, save: p.save, targetWin: p.targetWin,
+            }))).map((day, i) => {
+              const isToday = day.status === 'active';
+              const isYesterday = i === yesterdayPlanIndex;
+              const isLocked = !hasAccess && (isToday || day.status === 'upcoming');
 
-            // Locking logic: non-subscribers can see yesterday (free) and completed past days' results
-            // but TODAY and future days are locked
-            const isLocked = !hasAccess && (isToday || day.status === 'upcoming');
-
-            return (
-              <DayCard
-                key={day.day}
-                day={day}
-                planItem={WEEK_PLAN[i]}
-                isLocked={isLocked}
-                isYesterday={!hasAccess && isYesterday}
-              />
-            );
-          })}
-
-          {/* Paywall after the list */}
-          {!hasAccess && (
-            <div className="mt-2" id="paywall-gate">
-              <PaywallGate
-                daysRemaining={daysRemaining}
-                onUnlocked={(d) => setAccess({ hasAccess: true, ...d })}
-              />
-            </div>
-          )}
+              return (
+                <DayCard
+                  key={day.day}
+                  day={day}
+                  planItem={WEEK_PLAN[i]}
+                  isLocked={isLocked}
+                  isYesterday={!hasAccess && isYesterday}
+                  onSubscribe={() => setShowSubscribeModal(true)}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Renewal notice for expiring soon */}
+      {/* Renewal notice */}
       {hasAccess && daysRemaining !== undefined && daysRemaining <= 2 && (
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
           <RefreshCw className="h-4 w-4 shrink-0" />
@@ -562,7 +622,7 @@ export default function StrategyPage() {
         </div>
       )}
 
-      {/* Past weeks (always visible for credibility) */}
+      {/* Past weeks */}
       {past.length > 0 && (
         <div className="mt-8">
           <h2 className="mb-3 flex items-center gap-2 font-semibold text-sm text-muted-foreground uppercase tracking-wide">

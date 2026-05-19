@@ -75,10 +75,14 @@ export function Header() {
             </>
           ) : (
             <>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <span className="font-mono text-lg font-bold text-primary-foreground">{branding.siteName.charAt(0).toUpperCase()}</span>
-              </div>
-              <span className="hidden font-semibold text-foreground sm:inline">{branding.siteName}</span>
+              <img
+                src="/icon.svg"
+                alt={branding.siteName}
+                className="h-8 w-8 rounded-lg"
+              />
+              <span className="font-bold text-foreground text-base tracking-tight">
+                <span className="text-primary">B</span>etcheza
+              </span>
             </>
           )}
         </Link>

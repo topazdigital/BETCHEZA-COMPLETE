@@ -130,10 +130,10 @@ export function Footer() {
           {/* Brand */}
           <div>
             <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-                <span className="font-mono text-sm font-bold text-primary-foreground">B</span>
-              </div>
-              <span className="text-sm font-semibold text-foreground">{siteName}</span>
+              <img src="/icon.svg" alt={siteName} className="h-7 w-7 rounded-md" />
+              <span className="text-sm font-bold text-foreground">
+                <span className="text-primary">B</span>etcheza
+              </span>
             </Link>
             <p className="mt-2 text-xs text-muted-foreground">{description}</p>
           </div>

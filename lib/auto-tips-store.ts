@@ -77,6 +77,41 @@ function persist() {
   }
 }
 
+// ── Known real match results (used to override probabilistic settlements) ──────
+// Add any match where we know the real score and want to correct settlement.
+const KNOWN_RESULTS: Array<{ home: string; away: string; homeScore: number; awayScore: number }> = [
+  { home: 'chapecoense', away: 'clube do remo', homeScore: 2, awayScore: 3 },
+  { home: 'chapecoense af', away: 'clube do remo', homeScore: 2, awayScore: 3 },
+];
+
+function normTeam(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function applyKnownResults(tips: GeneratedTip[]): boolean {
+  let changed = false;
+  for (const tip of tips) {
+    if (!tip.settledByProb) continue;
+    const th = normTeam(tip.homeTeam || '');
+    const ta = normTeam(tip.awayTeam || '');
+    for (const kr of KNOWN_RESULTS) {
+      const kh = normTeam(kr.home);
+      const ka = normTeam(kr.away);
+      const homeMatch = th === kh || kh.includes(th) || th.includes(kh);
+      const awayMatch = ta === ka || ka.includes(ta) || ta.includes(ka);
+      if (homeMatch && awayMatch) {
+        const outcome = determineTipOutcome(tip.prediction, kr.homeScore, kr.awayScore);
+        if (outcome) {
+          tip.status = outcome;
+          tip.settledByProb = false;
+          changed = true;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
 function load() {
   if (stores.loaded) return;
   stores.loaded = true;
@@ -84,7 +119,10 @@ function load() {
     if (!fs.existsSync(FILE)) return;
     const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Record<string, GeneratedTip[]>;
     const allTipsters = getFakeTipsters();
+    let needsPersist = false;
     for (const [k, v] of Object.entries(raw)) {
+      // Apply known results to fix any probabilistically settled tips on load
+      if (applyKnownResults(v)) needsPersist = true;
       stores.byMatch.set(k, v);
       for (const tip of v) {
         const list = stores.byTipster.get(tip.tipsterId) || [];
@@ -109,11 +147,56 @@ function load() {
         });
       }
     }
+    // Persist corrected results back to file
+    if (needsPersist) persist();
   } catch (e) {
     console.warn('[auto-tips] load failed', e);
   }
 }
 load();
+
+/**
+ * Re-settle all probabilistically-settled tips using the KNOWN_RESULTS list.
+ * Call this from admin to fix incorrect WON/LOST badges without restarting.
+ */
+export function settleByKnownResults(): number {
+  let fixed = 0;
+  for (const list of stores.byMatch.values()) {
+    if (applyKnownResults(list)) fixed++;
+  }
+  if (fixed > 0) persist();
+  return fixed;
+}
+
+/**
+ * Add a known result and immediately re-settle any matching tips.
+ * Used from admin to correct specific match outcomes.
+ */
+export function addKnownResult(homeTeam: string, awayTeam: string, homeScore: number, awayScore: number): number {
+  let fixed = 0;
+  const norm = normTeam;
+  const kh = norm(homeTeam);
+  const ka = norm(awayTeam);
+  for (const list of stores.byMatch.values()) {
+    for (const tip of list) {
+      if (!tip.settledByProb) continue;
+      const th = norm(tip.homeTeam || '');
+      const ta = norm(tip.awayTeam || '');
+      const homeMatch = th === kh || kh.includes(th) || th.includes(kh);
+      const awayMatch = ta === ka || ka.includes(ta) || ta.includes(ka);
+      if (homeMatch && awayMatch) {
+        const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore);
+        if (outcome) {
+          tip.status = outcome;
+          tip.settledByProb = false;
+          fixed++;
+        }
+      }
+    }
+  }
+  if (fixed > 0) persist();
+  return fixed;
+}
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -473,6 +556,10 @@ export function settleStaleAutoTips(
   realResults?: Map<string, { homeScore: number; awayScore: number }>,
 ) {
   let changed = false;
+  // Always re-apply known results to fix any probabilistic settlements
+  for (const list of stores.byMatch.values()) {
+    if (applyKnownResults(list)) changed = true;
+  }
   for (const list of stores.byMatch.values()) {
     for (const tip of list) {
       if (tip.status !== 'pending') continue;
