@@ -146,13 +146,27 @@ export async function GET(
 
   // If match is finished and we have real scores, settle all pending tips now.
   // Also settle by team names as a fallback in case matchId differs from stored ID.
+  // IMPORTANT: always pass matchData so HT-Result, corners, cards markets settle correctly.
   if (
     matchStatus === 'finished' &&
     typeof finalHomeScore === 'number' &&
     typeof finalAwayScore === 'number'
   ) {
-    settleTipWithResult(matchId, finalHomeScore, finalAwayScore);
-    settleTipsByTeamNames(realHome, realAway, finalHomeScore, finalAwayScore);
+    let matchData: { htHomeScore?: number | null; htAwayScore?: number | null; corners?: { home: number; away: number }; yellowCards?: { home: number; away: number }; redCards?: { home: number; away: number } } | undefined;
+    try {
+      const fullMatch = await getMatchById(matchId);
+      if (fullMatch) {
+        matchData = {
+          htHomeScore: fullMatch.htHomeScore ?? null,
+          htAwayScore: fullMatch.htAwayScore ?? null,
+          corners: fullMatch.sportSpecificData?.corners,
+          yellowCards: fullMatch.sportSpecificData?.yellowCards,
+          redCards: fullMatch.sportSpecificData?.redCards,
+        };
+      }
+    } catch { /* best-effort */ }
+    settleTipWithResult(matchId, finalHomeScore, finalAwayScore, matchData);
+    settleTipsByTeamNames(realHome, realAway, finalHomeScore, finalAwayScore, matchData);
   }
 
   const autoTipsRaw = listTipsForMatch(matchId);

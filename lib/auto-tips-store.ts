@@ -91,7 +91,6 @@ function normTeam(s: string) {
 function applyKnownResults(tips: GeneratedTip[]): boolean {
   let changed = false;
   for (const tip of tips) {
-    if (!tip.settledByProb) continue;
     const th = normTeam(tip.homeTeam || '');
     const ta = normTeam(tip.awayTeam || '');
     for (const kr of KNOWN_RESULTS) {
@@ -100,8 +99,8 @@ function applyKnownResults(tips: GeneratedTip[]): boolean {
       const homeMatch = th === kh || kh.includes(th) || th.includes(kh);
       const awayMatch = ta === ka || ka.includes(ta) || ta.includes(ka);
       if (homeMatch && awayMatch) {
-        const outcome = determineTipOutcome(tip.prediction, kr.homeScore, kr.awayScore);
-        if (outcome) {
+        const outcome = determineTipOutcome(tip.prediction, kr.homeScore, kr.awayScore, tip.market);
+        if (outcome && outcome !== tip.status) {
           tip.status = outcome;
           tip.settledByProb = false;
           changed = true;
@@ -169,25 +168,36 @@ export function settleByKnownResults(): number {
 }
 
 /**
- * Add a known result and immediately re-settle any matching tips.
+ * Add a known result and immediately re-settle ALL matching tips (pending,
+ * probabilistically settled, or previously settled with wrong real scores).
  * Used from admin to correct specific match outcomes.
  */
-export function addKnownResult(homeTeam: string, awayTeam: string, homeScore: number, awayScore: number): number {
+export function addKnownResult(
+  homeTeam: string,
+  awayTeam: string,
+  homeScore: number,
+  awayScore: number,
+  matchData?: TipMatchData,
+): number {
   let fixed = 0;
   const norm = normTeam;
   const kh = norm(homeTeam);
   const ka = norm(awayTeam);
   for (const list of stores.byMatch.values()) {
     for (const tip of list) {
-      if (!tip.settledByProb) continue;
       const th = norm(tip.homeTeam || '');
       const ta = norm(tip.awayTeam || '');
       const homeMatch = th === kh || kh.includes(th) || th.includes(kh);
       const awayMatch = ta === ka || ka.includes(ta) || ta.includes(ka);
       if (homeMatch && awayMatch) {
-        const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore);
-        if (outcome) {
+        const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
+        if (outcome && outcome !== tip.status) {
           tip.status = outcome;
+          tip.settledByProb = false;
+          fixed++;
+        } else if (!outcome && tip.status !== 'pending' && tip.settledByProb) {
+          // Can't determine outcome (needs special data) — reset to pending so real data can settle it
+          tip.status = 'pending';
           tip.settledByProb = false;
           fixed++;
         }
@@ -474,72 +484,164 @@ function determineTipOutcome(
   matchData?: TipMatchData,
 ): 'won' | 'lost' | null {
   const total = homeScore + awayScore;
-  const pred = prediction.toLowerCase().trim();
-  const mkt = (market || '').toLowerCase();
+  // Normalise: lowercase, collapse multiple spaces, strip leading/trailing whitespace
+  const pred = prediction.toLowerCase().replace(/\s+/g, ' ').trim();
+  const mkt = (market || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-  // ── 1X2 ─────────────────────────────────────────────────────────────────
-  if (pred === 'home win' || pred === '1' || pred === 'home' || pred.endsWith('home win') || pred.endsWith(' win') && pred.startsWith('home')) {
-    return homeScore > awayScore ? 'won' : 'lost';
+  // ── Half-Time Result ─────────────────────────────────────────────────────
+  // Must come FIRST — before 1X2 — because HT markets may use "draw", "home win" etc.
+  // Market "Half-Time Result" or "HT Result" — uses HT scores from linescores
+  const isHtMarket =
+    mkt.includes('half-time result') || mkt.includes('half time result') ||
+    mkt === 'ht result' || mkt === 'ht' ||
+    mkt.includes('first half result') || mkt.includes('1st half') ||
+    pred.includes('half-time') || pred.includes('half time') ||
+    pred.startsWith('ht ') || pred === 'ht draw' || pred === 'ht home' || pred === 'ht away';
+  if (isHtMarket) {
+    const htH = matchData?.htHomeScore;
+    const htA = matchData?.htAwayScore;
+    if (htH == null || htA == null) return null; // no HT data — keep pending
+    // Strip market prefix to get raw selection ("draw", "home win", "away win", etc.)
+    const htPred = pred
+      .replace(/half[- ]time\s*/gi, '')
+      .replace(/^ht\s*/i, '')
+      .replace(/result\s*/gi, '')
+      .trim();
+    // Draw / X
+    if (htPred === 'draw' || htPred === 'x' || htPred === 'the draw') return htH === htA ? 'won' : 'lost';
+    // Home win
+    if (htPred === 'home win' || htPred === '1' || htPred === 'home') return htH > htA ? 'won' : 'lost';
+    // Away win
+    if (htPred === 'away win' || htPred === '2' || htPred === 'away') return htA > htH ? 'won' : 'lost';
+    // Double chance variants in HT market
+    if (htPred === '1x' || htPred === 'home or draw') return htH >= htA ? 'won' : 'lost';
+    if (htPred === 'x2' || htPred === 'away or draw') return htA >= htH ? 'won' : 'lost';
+    if (htPred === '12' || htPred === 'home or away') return htH !== htA ? 'won' : 'lost';
+    return null;
   }
-  if (pred === 'away win' || pred === '2' || pred === 'away' || pred.endsWith('away win')) {
-    return awayScore > homeScore ? 'won' : 'lost';
+
+  // ── Half-Time / Full-Time (e.g. "1/1", "X/2", "2/1") ───────────────────
+  // Also must be before 1X2 checks
+  const htFtM = pred.match(/^([12x])\/([12x])$/);
+  if (htFtM) {
+    const htH = matchData?.htHomeScore;
+    const htA = matchData?.htAwayScore;
+    if (htH == null || htA == null) return null; // need HT score — keep pending
+    const htSide = htH > htA ? '1' : htA > htH ? '2' : 'x';
+    const ftSide = homeScore > awayScore ? '1' : awayScore > homeScore ? '2' : 'x';
+    return htFtM[1] === htSide && htFtM[2] === ftSide ? 'won' : 'lost';
   }
-  if (pred === 'draw' || pred === 'x' || pred === 'the draw' || (pred.endsWith(' draw') && !pred.includes('no bet') && !pred.includes('or'))) {
-    return homeScore === awayScore ? 'won' : 'lost';
+
+  // ── Draw No Bet ──────────────────────────────────────────────────────────
+  // Check before 1X2 so "draw no bet - home" doesn't match the 1X2 draw branch
+  if (pred.includes('draw no bet') || pred.startsWith('dnb') || mkt.includes('draw no bet')) {
+    if (homeScore === awayScore) return null; // push/void on a draw
+    const homeWin = homeScore > awayScore;
+    const isHome = pred.includes('home') || pred.endsWith('- home') || pred === 'dnb home';
+    const isAway = pred.includes('away') || pred.endsWith('- away') || pred === 'dnb away';
+    if (isHome) return homeWin ? 'won' : 'lost';
+    if (isAway) return !homeWin ? 'won' : 'lost';
+    return null;
   }
 
   // ── Double Chance ────────────────────────────────────────────────────────
-  // 1X = Home or Draw: home wins OR draw → wins when home >= away
-  if (pred === '1x' || pred === 'home or draw' || pred.includes('1x (home or draw)') ||
-      (pred.includes('home') && pred.includes('or') && pred.includes('draw') && !pred.includes('away'))) {
+  // Check before 1X2 so "home or draw" doesn't fall through to draw check
+  // 1X = Home or Draw: home wins OR draw → wins when home score >= away score
+  if (
+    pred === '1x' || pred === 'home or draw' || pred === 'home/draw' ||
+    pred.includes('1x (home or draw)') || pred.includes('home or draw (1x)') ||
+    pred.startsWith('1x -') || pred.startsWith('home or draw -') ||
+    // "Home or Draw (1X)" style labels
+    (pred.includes('home') && pred.includes('or') && pred.includes('draw') && !pred.includes('away')) ||
+    mkt.includes('double chance') && (pred.includes('1x') || (pred.includes('home') && pred.includes('draw')))
+  ) {
     return homeScore >= awayScore ? 'won' : 'lost';
   }
-  // X2 = Away or Draw: away wins OR draw → wins when away >= home
-  if (pred === 'x2' || pred === 'away or draw' || pred.includes('x2 (away or draw)') ||
-      (pred.includes('away') && pred.includes('or') && pred.includes('draw') && !pred.includes('home'))) {
+  // X2 = Away or Draw: away wins OR draw → wins when away score >= home score
+  if (
+    pred === 'x2' || pred === 'away or draw' || pred === 'away/draw' ||
+    pred.includes('x2 (away or draw)') || pred.includes('away or draw (x2)') ||
+    pred.startsWith('x2 -') || pred.startsWith('away or draw -') ||
+    // "Away or Draw (X2)" style labels — away can appear before home in text
+    (pred.includes('away') && pred.includes('or') && pred.includes('draw') && !pred.includes('home')) ||
+    // Also catch "Away or Draw" when home is not mentioned but draw is
+    (pred.includes('x2') && !pred.includes('home')) ||
+    mkt.includes('double chance') && (pred.includes('x2') || (pred.includes('away') && pred.includes('draw')))
+  ) {
     return awayScore >= homeScore ? 'won' : 'lost';
   }
-  // 12 = Home or Away: either team wins (no draw)
-  if (pred === '12' || pred.includes('home or away') || pred.includes('12 (home or away)')) {
+  // 12 = Home or Away: either team wins (no draw allowed)
+  if (
+    pred === '12' || pred === 'home or away' || pred === 'home/away' ||
+    pred.includes('home or away') || pred.includes('12 (home or away)') ||
+    mkt.includes('double chance') && pred.includes('12')
+  ) {
     return homeScore !== awayScore ? 'won' : 'lost';
   }
 
-  // ── Over / Under ─────────────────────────────────────────────────────────
+  // ── 1X2 / Match Result ───────────────────────────────────────────────────
+  // Home win
+  if (
+    pred === 'home win' || pred === '1' || pred === 'home' ||
+    pred === 'home team to win' || pred === 'home team win' ||
+    pred.endsWith(' home win') || pred.endsWith('- home win') ||
+    (pred.endsWith(' win') && pred.startsWith('home')) ||
+    (mkt.includes('1x2') || mkt.includes('match result') || mkt.includes('match winner')) && pred === '1'
+  ) {
+    return homeScore > awayScore ? 'won' : 'lost';
+  }
+  // Away win
+  if (
+    pred === 'away win' || pred === '2' || pred === 'away' ||
+    pred === 'away team to win' || pred === 'away team win' ||
+    pred.endsWith(' away win') || pred.endsWith('- away win') ||
+    (pred.endsWith(' win') && pred.startsWith('away')) ||
+    (mkt.includes('1x2') || mkt.includes('match result') || mkt.includes('match winner')) && pred === '2'
+  ) {
+    return awayScore > homeScore ? 'won' : 'lost';
+  }
+  // Draw
+  if (
+    pred === 'draw' || pred === 'x' || pred === 'the draw' || pred === 'draw (x)' ||
+    pred === 'match draw' || pred === 'full time draw' ||
+    (pred.endsWith(' draw') && !pred.includes('no bet') && !pred.includes('or') && !pred.includes('away') && !pred.includes('home')) ||
+    (mkt.includes('1x2') || mkt.includes('match result')) && (pred === 'draw' || pred === 'x')
+  ) {
+    return homeScore === awayScore ? 'won' : 'lost';
+  }
+
+  // ── BTTS (Both Teams to Score) ────────────────────────────────────────────
+  if (
+    pred.includes('both teams to score') || pred.includes('both teams score') ||
+    pred.startsWith('btts') || mkt.includes('btts') || mkt.includes('both teams to score')
+  ) {
+    const isNo = pred.includes('- no') || pred.endsWith(' no') || pred === 'btts - no' || pred === 'btts no';
+    const isYes = pred.includes('- yes') || pred.endsWith(' yes') || pred === 'btts - yes' || pred === 'btts yes';
+    const both = homeScore > 0 && awayScore > 0;
+    if (isNo) return !both ? 'won' : 'lost';
+    if (isYes || pred.includes('both teams to score')) return both ? 'won' : 'lost';
+    // Plain "yes" / "no" under BTTS market
+    if (pred === 'yes') return both ? 'won' : 'lost';
+    if (pred === 'no') return !both ? 'won' : 'lost';
+    return both ? 'won' : 'lost'; // default to "yes" interpretation
+  }
+  // Standalone yes/no (only if not already caught above)
+  if (pred === 'yes') return homeScore > 0 && awayScore > 0 ? 'won' : 'lost';
+  if (pred === 'no')  return !(homeScore > 0 && awayScore > 0) ? 'won' : 'lost';
+
+  // ── Over / Under (goals / total) ──────────────────────────────────────────
+  // Must come after BTTS and 1X2 checks
   const overM = pred.match(/over\s+([\d.]+)/);
   if (overM) return total > parseFloat(overM[1]) ? 'won' : 'lost';
   const underM = pred.match(/under\s+([\d.]+)/);
   if (underM) return total < parseFloat(underM[1]) ? 'won' : 'lost';
+  // "O2.5" / "U2.5" shorthand
+  const overShort = pred.match(/^o\s*([\d.]+)$/);
+  if (overShort) return total > parseFloat(overShort[1]) ? 'won' : 'lost';
+  const underShort = pred.match(/^u\s*([\d.]+)$/);
+  if (underShort) return total < parseFloat(underShort[1]) ? 'won' : 'lost';
 
-  // ── BTTS ─────────────────────────────────────────────────────────────────
-  if (pred.includes('both teams to score') || pred.startsWith('btts')) {
-    const no = pred.includes('no') || pred.includes('- no');
-    const both = homeScore > 0 && awayScore > 0;
-    return (no ? !both : both) ? 'won' : 'lost';
-  }
-  if (pred === 'yes' && !pred.includes('btts')) return homeScore > 0 && awayScore > 0 ? 'won' : 'lost';
-  if (pred === 'no'  && !pred.includes('btts')) return !(homeScore > 0 && awayScore > 0) ? 'won' : 'lost';
-
-  // ── Half-Time Result ─────────────────────────────────────────────────────
-  // Market "Half-Time Result" or "HT Result" — uses HT scores from linescores
-  const isHtMarket = mkt.includes('half-time result') || mkt.includes('half time result') ||
-    mkt === 'ht result' || mkt.includes('first half result') ||
-    pred.includes('half-time') || pred.includes('half time') || pred.startsWith('ht ');
-  if (isHtMarket) {
-    const ht = matchData?.htHomeScore;
-    const at = matchData?.htAwayScore;
-    if (ht == null || at == null) return null; // no HT data — keep pending
-    const htPred = pred.replace(/half.time\s+/gi, '').replace(/^ht\s+/i, '').trim();
-    if (htPred === 'draw' || htPred === 'x') return ht === at ? 'won' : 'lost';
-    if (htPred === 'home win' || htPred === '1' || htPred === 'home') return ht > at ? 'won' : 'lost';
-    if (htPred === 'away win' || htPred === '2' || htPred === 'away') return at > ht ? 'won' : 'lost';
-    // Fallback: plain "draw", "home win", "away win" with HT market label
-    if (pred === 'draw') return ht === at ? 'won' : 'lost';
-    if (pred === 'home win' || pred === 'home') return ht > at ? 'won' : 'lost';
-    if (pred === 'away win' || pred === 'away') return at > ht ? 'won' : 'lost';
-    return null;
-  }
-
-  // ── Total Corners ─────────────────────────────────────────────────────────
+  // ── Total Corners ──────────────────────────────────────────────────────────
   if (mkt.includes('corner') || pred.includes('corner')) {
     const cd = matchData?.corners;
     if (!cd) return null; // no corner data — keep pending
@@ -551,11 +653,10 @@ function determineTipOutcome(
     return null;
   }
 
-  // ── Total Cards / Yellow Cards ────────────────────────────────────────────
+  // ── Total Cards / Yellow Cards / Red Cards ────────────────────────────────
   if (mkt.includes('card') || pred.includes('yellow card') || pred.includes('red card')) {
-    const yd = matchData?.yellowCards;
-    const rd = matchData?.redCards;
     if (mkt.includes('yellow') || pred.includes('yellow')) {
+      const yd = matchData?.yellowCards;
       if (!yd) return null;
       const tot = yd.home + yd.away;
       const overY = pred.match(/over\s*([\d.]+)/);
@@ -564,58 +665,36 @@ function determineTipOutcome(
       if (underY) return tot < parseFloat(underY[1]) ? 'won' : 'lost';
     }
     if (mkt.includes('red') || pred.includes('red card')) {
+      const rd = matchData?.redCards;
       if (!rd) return null;
       const tot = rd.home + rd.away;
       const overR = pred.match(/over\s*([\d.]+)/);
       if (overR) return tot > parseFloat(overR[1]) ? 'won' : 'lost';
-      const yesRed = pred.includes('yes');
-      const noRed = pred.includes('no');
-      if (yesRed) return tot > 0 ? 'won' : 'lost';
-      if (noRed) return tot === 0 ? 'won' : 'lost';
+      if (pred.includes('yes')) return tot > 0 ? 'won' : 'lost';
+      if (pred.includes('no'))  return tot === 0 ? 'won' : 'lost';
     }
     return null;
   }
 
-  // ── Half-Time / Full-Time (e.g. "1/1", "X/2", "2/1") ───────────────────
-  const htFtM = pred.match(/^([12x])\/([12x])$/);
-  if (htFtM) {
-    const ht = matchData?.htHomeScore;
-    const at = matchData?.htAwayScore;
-    if (ht == null || at == null) return null; // need HT score
-    const htSide = ht > at ? '1' : at > ht ? '2' : 'x';
-    const ftSide = homeScore > awayScore ? '1' : awayScore > homeScore ? '2' : 'x';
-    return htFtM[1] === htSide && htFtM[2] === ftSide ? 'won' : 'lost';
-  }
+  // ── Odd / Even Goals ──────────────────────────────────────────────────────
+  if (pred === 'odd' || pred === 'odd goals' || pred === 'total goals odd')  return total % 2 !== 0 ? 'won' : 'lost';
+  if (pred === 'even' || pred === 'even goals' || pred === 'total goals even') return total % 2 === 0 ? 'won' : 'lost';
 
-  // ── Odd / Even Goals ────────────────────────────────────────────────────
-  if (pred === 'odd')  return total % 2 !== 0 ? 'won' : 'lost';
-  if (pred === 'even') return total % 2 === 0 ? 'won' : 'lost';
-
-  // ── Correct Score ────────────────────────────────────────────────────────
-  const csM = pred.match(/^(\d+)[:\-](\d+)$/);
+  // ── Correct Score ─────────────────────────────────────────────────────────
+  const csM = pred.match(/^(\d+)\s*[:\-]\s*(\d+)$/);
   if (csM) return parseInt(csM[1]) === homeScore && parseInt(csM[2]) === awayScore ? 'won' : 'lost';
 
-  // ── Draw No Bet ──────────────────────────────────────────────────────────
-  if (pred.includes('draw no bet') || pred.startsWith('dnb')) {
-    if (homeScore === awayScore) return null; // push/void
-    const homeWin = homeScore > awayScore;
-    const isHome = pred.includes('home') || pred.endsWith('- home');
-    const isAway = pred.includes('away') || pred.endsWith('- away');
-    if (isHome) return homeWin ? 'won' : 'lost';
-    if (isAway) return !homeWin ? 'won' : 'lost';
-  }
-
-  // ── Asian Handicap (approximate — treat as 1X2 direction) ──────────────
+  // ── Asian Handicap (approximate — treat as 1X2 direction) ────────────────
   const ahM = pred.match(/asian handicap[:\s]*([-+]?[\d.]+)/);
   if (ahM) {
     const line = parseFloat(ahM[1]);
     const adjHome = homeScore + line;
     if (adjHome > awayScore) return 'won';
     if (adjHome < awayScore) return 'lost';
-    return null; // push
+    return null; // push/void
   }
 
-  // ── Match winner (team-name based) ───────────────────────────────────────
+  // ── Match winner (team-name based — cannot resolve without team names) ────
   if (pred.includes('match winner')) return null;
 
   return null;
@@ -682,26 +761,43 @@ export function settleStaleAutoTips(
 
 /**
  * Settle a specific tip immediately using the real match score.
- * Called from the match tips route once ESPN reports the final score.
+ * Called from the match tips route once the API reports the final score.
+ * Re-settles ALL tips for this match — including pending, probabilistic, and
+ * any previously incorrectly settled tips — so bad outcomes are always corrected.
  */
 export function settleTipWithResult(matchId: string, homeScore: number, awayScore: number, matchData?: TipMatchData) {
   const list = stores.byMatch.get(matchId);
   if (!list) return;
   let changed = false;
   for (const tip of list) {
-    // Settle pending tips AND override any probabilistic settlements with real scores
-    if (tip.status !== 'pending' && !tip.settledByProb) continue;
+    // Skip void tips — those are intentional and shouldn't be overridden
+    if (tip.status === 'void' && !tip.settledByProb) continue;
+    // Allow ~3% void rate for pending tips only (don't re-void already-settled tips)
     const r = rng(hashStr(tip.id))();
-    if (r > 0.97 && tip.status === 'pending') { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
+    if (r > 0.97 && tip.status === 'pending') {
+      tip.status = 'void';
+      tip.settledByProb = false;
+      changed = true;
+      continue;
+    }
     const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
-    if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; }
+    if (outcome && outcome !== tip.status) {
+      tip.status = outcome;
+      tip.settledByProb = false;
+      changed = true;
+    } else if (outcome && tip.settledByProb) {
+      // Confirm the outcome with real data even if status value happens to match
+      tip.settledByProb = false;
+      changed = true;
+    }
   }
   if (changed) persist();
 }
 
 /**
  * Settle tips by team name match (fallback when matchId lookup misses).
- * Also re-settles probabilistically-settled tips with the real score.
+ * Re-settles ALL matching tips — pending, probabilistic, and incorrectly settled —
+ * so every tip gets the correct outcome as soon as real score data is available.
  */
 export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeScore: number, awayScore: number, matchData?: TipMatchData) {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -710,16 +806,29 @@ export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeSc
   let changed = false;
   for (const list of stores.byMatch.values()) {
     for (const tip of list) {
-      if (tip.status !== 'pending' && !tip.settledByProb) continue;
+      // Skip intentionally voided tips
+      if (tip.status === 'void' && !tip.settledByProb) continue;
       const th = norm(tip.homeTeam);
       const ta = norm(tip.awayTeam);
       const matches = (th === hn || hn.includes(th) || th.includes(hn)) &&
                       (ta === an || an.includes(ta) || ta.includes(an));
       if (!matches) continue;
       const r = rng(hashStr(tip.id))();
-      if (r > 0.97 && tip.status === 'pending') { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
+      if (r > 0.97 && tip.status === 'pending') {
+        tip.status = 'void';
+        tip.settledByProb = false;
+        changed = true;
+        continue;
+      }
       const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
-      if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; }
+      if (outcome && outcome !== tip.status) {
+        tip.status = outcome;
+        tip.settledByProb = false;
+        changed = true;
+      } else if (outcome && tip.settledByProb) {
+        tip.settledByProb = false;
+        changed = true;
+      }
     }
   }
   if (changed) persist();
