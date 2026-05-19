@@ -583,8 +583,9 @@ function checkPickResultLocal(
 }
 
 async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPrediction[]> {
-  const today = new Date().toISOString().slice(0, 10);
-  const hasPending = days.some(d => d.date < today && d.picks.some(p => p.result === 'pending'));
+  const todayStr = getTodayStrEAT(new Date());
+  // Include today's picks so subscribers see results as each match finishes
+  const hasPending = days.some(d => d.date <= todayStr && d.picks.some(p => p.result === 'pending'));
   if (!hasPending) return days;
 
   let allMatches: Array<{ homeTeam: { name: string }; awayTeam: { name: string }; status: string; homeScore: number | null; awayScore: number | null }> = [];
@@ -595,7 +596,8 @@ async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPredi
 
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
   const updated = days.map(day => {
-    if (day.date >= today) return day;
+    // Skip future days (but allow today and past)
+    if (day.date > todayStr) return day;
     if (!day.picks.some(p => p.result === 'pending')) return day;
 
     let changed = false;

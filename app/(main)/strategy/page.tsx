@@ -771,7 +771,10 @@ export default function StrategyPage() {
             }))).map((day, i) => {
               const isToday = day.status === 'active';
               const isYesterday = i === yesterdayPlanIndex;
-              const isLocked = !hasAccess && (isToday || day.status === 'upcoming');
+              // Today's picks become free for everyone once ALL matches in the day are finished
+              const todayAllSettled = isToday && day.picks.length > 0 && day.picks.every(p => p.result !== 'pending');
+              // Non-subscribers: locked for today (until all done) and upcoming; free for yesterday and settled today
+              const isLocked = !hasAccess && !isYesterday && (day.status === 'upcoming' || (isToday && !todayAllSettled));
 
               return (
                 <DayCard

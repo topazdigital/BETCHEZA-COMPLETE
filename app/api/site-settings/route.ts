@@ -17,6 +17,7 @@ export async function GET() {
     siteDescription: s.site_description,
     logoUrl: s.logo_url,
     logoDarkUrl: s.logo_dark_url,
+    footerLogoUrl: s.footer_logo_url,
     faviconUrl: s.favicon_url,
     primaryColor: s.primary_color,
     googleAnalyticsId: s.google_analytics_id,

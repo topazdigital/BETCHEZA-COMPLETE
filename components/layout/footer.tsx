@@ -26,6 +26,8 @@ interface SocialLink {
 interface PublicSettings {
   siteName?: string;
   siteDescription?: string;
+  logoUrl?: string;
+  footerLogoUrl?: string;
   socialLinks?: SocialLink[];
 }
 
@@ -104,6 +106,8 @@ export function Footer() {
   const socialLinks = (data?.socialLinks ?? []).filter(
     (l) => l.enabled !== false && l.url,
   );
+  // Use footer-specific logo if set, otherwise fall back to main logo, then default icon
+  const footerLogoSrc = data?.footerLogoUrl || data?.logoUrl || '/icon.svg';
 
   const linkCls = "text-xs text-muted-foreground hover:text-foreground";
   return (
@@ -130,9 +134,9 @@ export function Footer() {
           {/* Brand */}
           <div>
             <Link href="/" className="flex items-center gap-2">
-              <img src="/icon.svg" alt={siteName} className="h-7 w-7 rounded-md" />
+              <img src={footerLogoSrc} alt={siteName} className="h-7 w-7 rounded-md" />
               <span className="text-sm font-bold text-foreground">
-                <span className="text-primary">B</span>etcheza
+                <span className="text-primary">{siteName.charAt(0)}</span>{siteName.slice(1)}
               </span>
             </Link>
             <p className="mt-2 text-xs text-muted-foreground">{description}</p>

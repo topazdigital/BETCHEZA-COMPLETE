@@ -5,6 +5,7 @@ export interface SiteSettings {
   site_description: string;
   logo_url: string;
   logo_dark_url: string;
+  footer_logo_url: string;
   favicon_url: string;
   primary_color: string;
   default_theme: string;
@@ -66,6 +67,7 @@ const DEFAULTS: SiteSettings = {
   site_description: 'Your trusted betting tips community. Get expert predictions, track your performance, and compete with other tipsters.',
   logo_url: '/betcheza-logo-light.svg',
   logo_dark_url: '/betcheza-logo-dark.svg',
+  footer_logo_url: '',
   favicon_url: '/uploads/branding/betcheza-logo.png',
   primary_color: '#10B981',
   default_theme: 'light',

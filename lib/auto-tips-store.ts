@@ -463,23 +463,28 @@ function determineTipOutcome(prediction: string, homeScore: number, awayScore: n
   const pred = prediction.toLowerCase().trim();
 
   // ── 1X2 ─────────────────────────────────────────────────────────────────
-  if (pred === 'home win' || pred === '1' || pred.endsWith('home win')) {
+  if (pred === 'home win' || pred === '1' || pred === 'home' || pred.endsWith('home win') || pred.endsWith(' win') && pred.startsWith('home')) {
     return homeScore > awayScore ? 'won' : 'lost';
   }
-  if (pred === 'away win' || pred === '2' || pred.endsWith('away win')) {
+  if (pred === 'away win' || pred === '2' || pred === 'away' || pred.endsWith('away win')) {
     return awayScore > homeScore ? 'won' : 'lost';
   }
-  if (pred === 'draw' || pred === 'x' || pred.endsWith(' draw') || pred === 'the draw') {
+  if (pred === 'draw' || pred === 'x' || pred === 'the draw' || (pred.endsWith(' draw') && !pred.includes('no bet') && !pred.includes('or'))) {
     return homeScore === awayScore ? 'won' : 'lost';
   }
 
   // ── Double Chance ────────────────────────────────────────────────────────
-  if (pred === '1x' || pred.includes('home or draw') || pred.includes('1x (home or draw)')) {
+  // 1X = Home or Draw: home wins OR draw → wins when home >= away
+  if (pred === '1x' || pred === 'home or draw' || pred.includes('1x (home or draw)') ||
+      (pred.includes('home') && pred.includes('or') && pred.includes('draw') && !pred.includes('away'))) {
     return homeScore >= awayScore ? 'won' : 'lost';
   }
-  if (pred === 'x2' || pred.includes('away or draw') || pred.includes('x2 (away or draw)')) {
+  // X2 = Away or Draw: away wins OR draw → wins when away >= home
+  if (pred === 'x2' || pred === 'away or draw' || pred.includes('x2 (away or draw)') ||
+      (pred.includes('away') && pred.includes('or') && pred.includes('draw') && !pred.includes('home'))) {
     return awayScore >= homeScore ? 'won' : 'lost';
   }
+  // 12 = Home or Away: either team wins (no draw)
   if (pred === '12' || pred.includes('home or away') || pred.includes('12 (home or away)')) {
     return homeScore !== awayScore ? 'won' : 'lost';
   }
@@ -581,6 +586,9 @@ export function settleStaleAutoTips(
       }
 
       // Fallback: probabilistic using tipster win rate — mark so real scores can override later
+      // Only use probabilistic if the match is MORE than 4 hours old (give APIs time to update)
+      const matchAge = now - new Date(tip.kickoff).getTime();
+      if (matchAge < 4 * 3600_000) continue; // too soon — keep pending, wait for real data
       const tipster = getFakeTipsterById(tip.tipsterId);
       const winChance = tipster ? tipster.winRate / 100 : 0.55;
       tip.status = r < winChance ? 'won' : 'lost';

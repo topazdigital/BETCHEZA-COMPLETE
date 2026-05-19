@@ -30,6 +30,7 @@ interface Settings {
   facebook_pixel_id: string
   logo_url: string
   logo_dark_url: string
+  footer_logo_url: string
   favicon_url: string
   twofa_enabled: string
   twofa_method: string
@@ -121,6 +122,7 @@ const defaultSettings: Settings = {
   facebook_pixel_id: "",
   logo_url: "",
   logo_dark_url: "",
+  footer_logo_url: "",
   favicon_url: "",
   twofa_enabled: "false",
   twofa_method: "email",
@@ -716,6 +718,18 @@ export default function AdminSettingsPage() {
                     <div className="rounded-md border border-border bg-slate-900 p-3"><img src={settings.logo_dark_url} alt="dark logo preview" className="h-10 object-contain" /></div>
                   )}
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="footerLogoUrl">Footer Logo (optional — uses main logo if blank)</Label>
+                <Input id="footerLogoUrl" placeholder="https://… or /uploads/footer-logo.png" value={settings.footer_logo_url || ''} onChange={(e) => updateSetting('footer_logo_url', e.target.value)} />
+                <BrandingFileUpload
+                  label="Upload footer logo"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
+                  onUploaded={(url) => saveSettingNow('footer_logo_url', url)}
+                />
+                {settings.footer_logo_url && (
+                  <div className="rounded-md border border-border bg-muted/40 p-3"><img src={settings.footer_logo_url} alt="footer logo preview" className="h-10 object-contain" /></div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="faviconUrl">Favicon (PNG, ICO or SVG)</Label>
