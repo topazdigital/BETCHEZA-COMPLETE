@@ -203,35 +203,44 @@ function DayCard({
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* Subscribe Modal — M-Pesa STK push (not a wallet deposit)  */
+/* Subscribe Modal — Wallet or M-Pesa STK push              */
 /* ────────────────────────────────────────────────────────── */
 function SubscribeModal({
   open,
   onClose,
   onUnlocked,
+  walletBalance = 0,
 }: {
   open: boolean;
   onClose: () => void;
   onUnlocked: (data: { daysRemaining: number; startDayOffset: number }) => void;
+  walletBalance?: number;
 }) {
+  const COST = 5000;
   const { isAuthenticated } = useAuth();
   const { open: openAuthModal } = useAuthModal();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
-  const [polling, setPolling] = useState(false);
   const [reference, setReference] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [step, setStep] = useState<'form' | 'pending'>('form');
+  const [topUpAmount, setTopUpAmount] = useState<number | null>(null);
+  const [walletContrib, setWalletContrib] = useState(0);
+  const [step, setStep] = useState<'choose' | 'mpesa-form' | 'topup-form' | 'pending'>('choose');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const canPayFull = walletBalance >= COST;
+  const canPayPartial = walletBalance > 0 && walletBalance < COST;
 
   useEffect(() => {
     if (!open) {
-      setStep('form');
+      setStep(isAuthenticated ? 'choose' : 'choose');
       setError('');
       setReference(null);
+      setTopUpAmount(null);
+      setWalletContrib(0);
       if (pollRef.current) clearInterval(pollRef.current);
     }
-  }, [open]);
+  }, [open, isAuthenticated]);
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -250,27 +259,70 @@ function SubscribeModal({
         const data = await res.json() as { hasAccess?: boolean; status?: string; daysRemaining?: number; startDayOffset?: number };
         if (data.hasAccess) {
           clearInterval(pollRef.current!);
-          setPolling(false);
           onUnlocked({ daysRemaining: data.daysRemaining || 7, startDayOffset: data.startDayOffset || 0 });
           onClose();
           return;
         }
         if (data.status === 'failed' || attempts >= 30) {
           clearInterval(pollRef.current!);
-          setPolling(false);
-          setStep('form');
+          setStep(walletContrib > 0 ? 'topup-form' : 'mpesa-form');
           setError(data.status === 'failed' ? 'Payment was declined. Please try again.' : 'Payment timed out. If you paid, refresh the page.');
         }
       } catch { /* silent */ }
     }, 5000);
   };
 
-  const handlePay = async () => {
-    if (!isAuthenticated) {
-      onClose();
-      openAuthModal('login');
-      return;
+  // Pay full amount from wallet
+  const handleWalletPay = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/strategy/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'wallet' }),
+      });
+      const data = await res.json() as { hasAccess?: boolean; paidVia?: string; error?: string; needsTopUp?: boolean; topUpAmount?: number; walletBalance?: number; daysRemaining?: number; startDayOffset?: number };
+      if (data.hasAccess) {
+        onUnlocked({ daysRemaining: data.daysRemaining || 7, startDayOffset: data.startDayOffset || 0 });
+        onClose();
+        return;
+      }
+      setError(data.error || 'Wallet payment failed. Please try again.');
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Start top-up flow (wallet partial + M-Pesa for the rest)
+  const handleTopUpInit = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/strategy/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'wallet' }),
+      });
+      const data = await res.json() as { needsTopUp?: boolean; topUpAmount?: number; walletBalance?: number; error?: string };
+      if (data.needsTopUp && data.topUpAmount) {
+        setTopUpAmount(data.topUpAmount);
+        setWalletContrib(data.walletBalance || 0);
+        setStep('topup-form');
+      } else {
+        setError(data.error || 'Could not calculate top-up amount. Please try again.');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pay full via M-Pesa (no wallet used)
+  const handleMpesaPay = async () => {
     const cleaned = phone.replace(/\s+/g, '').replace(/^0/, '254').replace(/^\+/, '');
     if (!cleaned || cleaned.length < 9) { setError('Enter a valid M-Pesa phone number'); return; }
     setLoading(true);
@@ -289,12 +341,43 @@ function SubscribeModal({
       }
       if (!data.success || !data.reference) {
         setError(data.error || 'Payment initiation failed. Please try again.');
-        setLoading(false);
         return;
       }
       setReference(data.reference);
       setStep('pending');
-      setPolling(true);
+      startPolling(data.reference);
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pay top-up amount via M-Pesa (wallet already partially covers)
+  const handleTopUpPay = async () => {
+    const cleaned = phone.replace(/\s+/g, '').replace(/^0/, '254').replace(/^\+/, '');
+    if (!cleaned || cleaned.length < 9) { setError('Enter a valid M-Pesa phone number'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/strategy/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'wallet', phone: cleaned }),
+      });
+      const data = await res.json() as { success?: boolean; hasAccess?: boolean; reference?: string; error?: string; topUpAmount?: number; walletContribution?: number; daysRemaining?: number; startDayOffset?: number };
+      if (data.hasAccess) {
+        onUnlocked({ daysRemaining: data.daysRemaining || 7, startDayOffset: data.startDayOffset || 0 });
+        onClose();
+        return;
+      }
+      if (!data.success || !data.reference) {
+        setError(data.error || 'Payment initiation failed. Please try again.');
+        return;
+      }
+      setWalletContrib(data.walletContribution || walletContrib);
+      setReference(data.reference);
+      setStep('pending');
       startPolling(data.reference);
     } catch {
       setError('Network error. Please try again.');
@@ -305,16 +388,13 @@ function SubscribeModal({
 
   if (!open) return null;
 
+  const pendingMpesaAmount = topUpAmount ?? COST;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal panel */}
-      <div className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border shadow-2xl overflow-hidden">
+      <div className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border shadow-2xl overflow-hidden max-h-[95vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <div className="flex items-center gap-3">
@@ -332,29 +412,31 @@ function SubscribeModal({
         </div>
 
         <div className="px-5 pb-6 space-y-4">
-          {/* Price badge */}
+          {/* Price banner */}
           <div className="flex items-center justify-between rounded-xl border border-green-500/30 bg-green-500/8 px-4 py-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-green-500" />
               <div>
                 <p className="text-sm font-bold text-green-600 dark:text-green-400">KES 5,000 / week</p>
-                <p className="text-[11px] text-muted-foreground">via M-Pesa STK push</p>
+                <p className="text-[11px] text-muted-foreground">7-day access, starts today</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs font-semibold text-foreground">7 days access</p>
-              <p className="text-[11px] text-muted-foreground">Starts immediately</p>
-            </div>
+            {isAuthenticated && walletBalance > 0 && (
+              <div className="text-right">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Wallet</p>
+                <p className="text-sm font-mono font-bold text-primary">KES {walletBalance.toLocaleString()}</p>
+              </div>
+            )}
           </div>
 
-          {/* What you get */}
+          {/* Benefits */}
           <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1.5">
             {[
-              'Your Day 1 starts TODAY — no waiting for Monday',
+              'Day 1 starts TODAY — no waiting for Monday',
               'All 7 days of compounding picks unlocked instantly',
               'Combined odds 3.0–4.0 every day',
               'Renew weekly to keep the strategy running',
-              'Yesterday\'s picks always free — no subscription needed',
+              "Yesterday's picks always free — no subscription needed",
             ].map((f, i) => (
               <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
                 <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
@@ -363,6 +445,7 @@ function SubscribeModal({
             ))}
           </div>
 
+          {/* ── Not signed in ── */}
           {!isAuthenticated ? (
             <div className="space-y-3 text-center">
               <p className="text-sm text-muted-foreground">Sign in to continue with your subscription</p>
@@ -373,12 +456,66 @@ function SubscribeModal({
                 Sign In / Register
               </button>
             </div>
-          ) : step === 'form' ? (
+
+          /* ── Choose payment method ── */
+          ) : step === 'choose' ? (
             <div className="space-y-3">
+              {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+
+              {/* Wallet full payment */}
+              {canPayFull && (
+                <button
+                  onClick={handleWalletPay}
+                  disabled={loading}
+                  className="w-full rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 py-3.5 text-sm font-bold text-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
+                  Pay KES 5,000 from Wallet
+                </button>
+              )}
+
+              {/* Wallet partial + M-Pesa top-up */}
+              {canPayPartial && (
+                <button
+                  onClick={handleTopUpInit}
+                  disabled={loading}
+                  className="w-full rounded-xl border border-primary/40 bg-primary/5 hover:bg-primary/10 py-3 text-sm font-semibold text-primary transition-colors disabled:opacity-60 flex flex-col items-center gap-0.5"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+                    <>
+                      <span className="flex items-center gap-1.5"><Coins className="h-4 w-4" /> Use KES {walletBalance.toLocaleString()} from Wallet + KES {(COST - walletBalance).toLocaleString()} via M-Pesa</span>
+                      <span className="text-[11px] font-normal text-muted-foreground">Wallet covers part — top up the rest via M-Pesa</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Divider */}
+              {(canPayFull || canPayPartial) && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-[11px] text-muted-foreground">or pay entirely via</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+              )}
+
+              {/* Full M-Pesa */}
+              <button
+                onClick={() => setStep('mpesa-form')}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+              >
+                <Phone className="h-4 w-4" /> Pay KES 5,000 via M-Pesa
+              </button>
+            </div>
+
+          /* ── Full M-Pesa form ── */
+          ) : step === 'mpesa-form' ? (
+            <div className="space-y-3">
+              <button onClick={() => { setStep('choose'); setError(''); }} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                ← Back
+              </button>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">
-                  M-Pesa Phone Number
-                </label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">M-Pesa Phone Number</label>
                 <div className="relative">
                   <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
@@ -386,26 +523,58 @@ function SubscribeModal({
                     placeholder="0712 345 678 or 254712345678"
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handlePay()}
+                    onKeyDown={e => e.key === 'Enter' && handleMpesaPay()}
                     className="w-full rounded-xl border border-border bg-background pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
               </div>
               {error && <p className="text-xs text-red-500 text-center">{error}</p>}
               <button
-                onClick={handlePay}
+                onClick={handleMpesaPay}
                 disabled={loading}
                 className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {loading
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending M-Pesa request…</>
-                  : <><CreditCard className="h-4 w-4" /> Pay KES 5,000 &amp; Unlock Now</>
-                }
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : <><CreditCard className="h-4 w-4" /> Pay KES 5,000 &amp; Unlock</>}
               </button>
-              <p className="text-[11px] text-muted-foreground text-center">
-                Payment goes directly to Betcheza — not your wallet balance. Picks unlock immediately on confirmation.
-              </p>
+              <p className="text-[11px] text-muted-foreground text-center">M-Pesa payment goes to Betcheza — this does NOT affect your wallet balance.</p>
             </div>
+
+          /* ── Top-up form (partial wallet + remaining M-Pesa) ── */
+          ) : step === 'topup-form' ? (
+            <div className="space-y-3">
+              <button onClick={() => { setStep('choose'); setError(''); setTopUpAmount(null); }} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                ← Back
+              </button>
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 space-y-1 text-xs">
+                <p className="font-semibold text-blue-600 dark:text-blue-400">Split payment breakdown</p>
+                <p className="text-muted-foreground">✓ KES {walletBalance.toLocaleString()} — deducted from your wallet automatically</p>
+                <p className="text-muted-foreground">📱 KES {(topUpAmount ?? COST - walletBalance).toLocaleString()} — you will receive an M-Pesa STK push</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">M-Pesa number for KES {(topUpAmount ?? COST - walletBalance).toLocaleString()} top-up</label>
+                <div className="relative">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="tel"
+                    placeholder="0712 345 678"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleTopUpPay()}
+                    className="w-full rounded-xl border border-border bg-background pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+              {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+              <button
+                onClick={handleTopUpPay}
+                disabled={loading}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</> : <><CreditCard className="h-4 w-4" /> Confirm &amp; Top Up KES {(topUpAmount ?? COST - walletBalance).toLocaleString()}</>}
+              </button>
+            </div>
+
+          /* ── Waiting for M-Pesa PIN ── */
           ) : (
             <div className="text-center space-y-4 py-2">
               <div className="flex flex-col items-center gap-3">
@@ -414,7 +583,10 @@ function SubscribeModal({
                 </div>
                 <div>
                   <p className="text-sm font-bold text-foreground">Check your phone!</p>
-                  <p className="text-xs text-muted-foreground mt-1">Enter your M-Pesa PIN to confirm the KES 5,000 payment</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Enter your M-Pesa PIN to confirm the KES {pendingMpesaAmount.toLocaleString()} payment
+                    {walletContrib > 0 && <span className="block text-primary font-medium">KES {walletContrib.toLocaleString()} already deducted from your wallet</span>}
+                  </p>
                 </div>
               </div>
               <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 space-y-1">
@@ -424,7 +596,7 @@ function SubscribeModal({
               {error && <p className="text-xs text-red-500">{error}</p>}
               {reference && <p className="text-[10px] text-muted-foreground font-mono">Ref: {reference}</p>}
               <button
-                onClick={() => { setStep('form'); setError(''); if (pollRef.current) clearInterval(pollRef.current); }}
+                onClick={() => { setStep(walletContrib > 0 ? 'topup-form' : 'mpesa-form'); setError(''); if (pollRef.current) clearInterval(pollRef.current); }}
                 className="text-xs text-muted-foreground underline hover:text-foreground"
               >
                 Try a different number
@@ -442,6 +614,7 @@ interface AccessInfo {
   expiresAt?: string;
   startDayOffset?: number;
   daysRemaining?: number;
+  walletBalance?: number;
 }
 
 export default function StrategyPage() {
@@ -483,6 +656,7 @@ export default function StrategyPage() {
         open={showSubscribeModal}
         onClose={() => setShowSubscribeModal(false)}
         onUnlocked={(d) => setAccess({ hasAccess: true, ...d })}
+        walletBalance={access?.walletBalance ?? 0}
       />
 
       {/* Header */}
