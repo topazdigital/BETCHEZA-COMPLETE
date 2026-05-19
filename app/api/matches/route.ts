@@ -331,15 +331,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
-    if (sportId) {
-      // Sport-specific: go direct (cached per-sport in unified-sports-api)
-      const apiMatches = await getMatchesBySport(parseInt(sportId));
+    if (leagueId) {
+      // League-specific is most specific — always takes priority over sportId.
+      // Previously sportId was checked first, which caused ALL soccer matches to
+      // appear under every league page (e.g. Chinese teams in Premier League).
+      const apiMatches = await getMatchesByLeague(parseInt(leagueId));
       matches = apiMatches.map(convertToMatchData).filter(m => !isStaleLive(m));
       const sources = new Set(apiMatches.map(m => m.source));
       apiSource = Array.from(sources).join('+') || 'espn';
-    } else if (leagueId) {
-      // League-specific: go direct
-      const apiMatches = await getMatchesByLeague(parseInt(leagueId));
+    } else if (sportId) {
+      // Sport-specific (no league filter): return all matches for this sport
+      const apiMatches = await getMatchesBySport(parseInt(sportId));
       matches = apiMatches.map(convertToMatchData).filter(m => !isStaleLive(m));
       const sources = new Set(apiMatches.map(m => m.source));
       apiSource = Array.from(sources).join('+') || 'espn';

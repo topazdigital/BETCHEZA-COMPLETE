@@ -128,10 +128,14 @@ export default function LeaguePage({ params }: PageProps) {
   const matches = isPastSeason
     ? []
     : knownLeague
-    // Extra client-side guard: only show matches whose sportId matches the league.
-    // Prevents cross-sport contamination when ESPN reuses the same numeric league ID
-    // across different sports (e.g. MLB matches appearing under a soccer league page).
-    ? allMatches.filter(m => !knownLeague.sportId || (m as { sportId?: number }).sportId === knownLeague.sportId)
+    // Client-side safety filter: must match BOTH leagueId AND sportId so that
+    // a stale SWR cache can't bleed matches from other leagues onto this page.
+    ? allMatches.filter(m => {
+        const md = m as { leagueId?: number; sportId?: number };
+        const leagueMatch = md.leagueId === knownLeague.id;
+        const sportMatch = !knownLeague.sportId || md.sportId === knownLeague.sportId;
+        return leagueMatch && sportMatch;
+      })
     : allMatches.filter(m => {
         const ms = (m.league?.slug || slugify(m.league?.name || '')).toLowerCase()
         return ms === normalisedSlug || ms === slug.toLowerCase()

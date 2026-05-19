@@ -371,37 +371,97 @@ export function computeRealTipsterStats(tipsterId: number): {
 /**
  * Determine if a tip won or lost based on actual match score.
  * Returns null if the prediction type is unrecognised.
+ * Covers: 1X2, Double Chance, Draw No Bet, Over/Under, BTTS,
+ * Half-Time Result, Half-Time / Full-Time (X/X format), Odd/Even,
+ * Correct Score, Asian Handicap (approximate).
  */
 function determineTipOutcome(prediction: string, homeScore: number, awayScore: number): 'won' | 'lost' | null {
   const total = homeScore + awayScore;
   const pred = prediction.toLowerCase().trim();
 
+  // ── 1X2 ─────────────────────────────────────────────────────────────────
   if (pred === 'home win' || pred === '1' || pred.endsWith('home win')) {
     return homeScore > awayScore ? 'won' : 'lost';
   }
   if (pred === 'away win' || pred === '2' || pred.endsWith('away win')) {
     return awayScore > homeScore ? 'won' : 'lost';
   }
-  if (pred === 'draw' || pred === 'x' || pred.endsWith('draw')) {
+  if (pred === 'draw' || pred === 'x' || pred.endsWith(' draw') || pred === 'the draw') {
     return homeScore === awayScore ? 'won' : 'lost';
   }
+
+  // ── Double Chance ────────────────────────────────────────────────────────
+  if (pred === '1x' || pred.includes('home or draw') || pred.includes('1x (home or draw)')) {
+    return homeScore >= awayScore ? 'won' : 'lost';
+  }
+  if (pred === 'x2' || pred.includes('away or draw') || pred.includes('x2 (away or draw)')) {
+    return awayScore >= homeScore ? 'won' : 'lost';
+  }
+  if (pred === '12' || pred.includes('home or away') || pred.includes('12 (home or away)')) {
+    return homeScore !== awayScore ? 'won' : 'lost';
+  }
+
+  // ── Over / Under ─────────────────────────────────────────────────────────
   const overM = pred.match(/over\s+([\d.]+)/);
   if (overM) return total > parseFloat(overM[1]) ? 'won' : 'lost';
   const underM = pred.match(/under\s+([\d.]+)/);
   if (underM) return total < parseFloat(underM[1]) ? 'won' : 'lost';
+
+  // ── BTTS ─────────────────────────────────────────────────────────────────
   if (pred.includes('both teams to score') || pred.startsWith('btts')) {
-    const yes = pred.includes('yes') || (!pred.includes('no') && !pred.includes('- no'));
+    const no = pred.includes('no') || pred.includes('- no');
     const both = homeScore > 0 && awayScore > 0;
-    return yes === both ? 'won' : 'lost';
+    return (no ? !both : both) ? 'won' : 'lost';
   }
-  if (pred.includes('home or draw') || pred === '1x') {
-    return homeScore >= awayScore ? 'won' : 'lost';
+  if (pred === 'yes' && !pred.includes('btts')) return homeScore > 0 && awayScore > 0 ? 'won' : 'lost';
+  if (pred === 'no'  && !pred.includes('btts')) return !(homeScore > 0 && awayScore > 0) ? 'won' : 'lost';
+
+  // ── Half-Time / Full-Time (e.g. "1/1", "X/2", "2/1") ───────────────────
+  const htFtM = pred.match(/^([12x])\/([12x])$/);
+  if (htFtM) {
+    // We don't have HT score in the store, so we can only verify FT part.
+    // If FT matches, consider it a GUESS — return null to keep pending.
+    // This avoids incorrectly settling HT/FT tips.
+    return null;
   }
-  if (pred.includes('away or draw') || pred === 'x2') {
-    return awayScore >= homeScore ? 'won' : 'lost';
+
+  // ── Odd / Even Goals ────────────────────────────────────────────────────
+  if (pred === 'odd')  return total % 2 !== 0 ? 'won' : 'lost';
+  if (pred === 'even') return total % 2 === 0 ? 'won' : 'lost';
+
+  // ── Correct Score ────────────────────────────────────────────────────────
+  const csM = pred.match(/^(\d+)[:\-](\d+)$/);
+  if (csM) return parseInt(csM[1]) === homeScore && parseInt(csM[2]) === awayScore ? 'won' : 'lost';
+
+  // ── Draw No Bet ──────────────────────────────────────────────────────────
+  if (pred.includes('draw no bet') || pred.startsWith('dnb')) {
+    if (homeScore === awayScore) return null; // push/void
+    const homeWin = homeScore > awayScore;
+    const isHome = pred.includes('home') || pred.endsWith('- home');
+    const isAway = pred.includes('away') || pred.endsWith('- away');
+    if (isHome) return homeWin ? 'won' : 'lost';
+    if (isAway) return !homeWin ? 'won' : 'lost';
   }
-  // Match winner (team name based)
+
+  // ── Asian Handicap (approximate — treat as 1X2 direction) ──────────────
+  const ahM = pred.match(/asian handicap[:\s]*([-+]?[\d.]+)/);
+  if (ahM) {
+    const line = parseFloat(ahM[1]);
+    const adjHome = homeScore + line;
+    if (adjHome > awayScore) return 'won';
+    if (adjHome < awayScore) return 'lost';
+    return null; // push
+  }
+
+  // ── Half-Time Result (text-based) ────────────────────────────────────────
+  // We can't verify without HT score — leave pending
+  if (pred.includes('half-time') || pred.includes('half time') || pred.includes('ht ')) {
+    return null;
+  }
+
+  // ── Match winner (team-name based) ───────────────────────────────────────
   if (pred.includes('match winner')) return null;
+
   return null;
 }
 

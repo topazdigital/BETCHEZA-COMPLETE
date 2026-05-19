@@ -1540,15 +1540,27 @@ export function deriveSoccerMarkets(home: number, draw: number, away: number, ho
   });
 
   // ── Half-Time / Full-Time ────────────────────────────────────────────────
+  // Apply a minimum floor of 2 % per outcome so extreme mismatches don't
+  // produce impossible odds like 124x. Real bookmakers cap HT/FT at ~33-50x.
   const htFtRaw: [string, number][] = [
-    ['1/1', htHome * nH * 1.25], ['1/X', htHome * nD * 0.45], ['1/2', htHome * nA * 0.30],
-    ['X/1', htDraw * nH * 1.05], ['X/X', htDraw * nD * 1.05], ['X/2', htDraw * nA * 1.05],
-    ['2/1', htAway * nH * 0.30], ['2/X', htAway * nD * 0.45], ['2/2', htAway * nA * 1.25],
+    ['1/1', Math.max(htHome * nH * 1.25, 0.02)],
+    ['1/X', Math.max(htHome * nD * 0.45,  0.02)],
+    ['1/2', Math.max(htHome * nA * 0.30,  0.02)],
+    ['X/1', Math.max(htDraw * nH * 1.05,  0.02)],
+    ['X/X', Math.max(htDraw * nD * 1.05,  0.02)],
+    ['X/2', Math.max(htDraw * nA * 1.05,  0.02)],
+    ['2/1', Math.max(htAway * nH * 0.30,  0.02)],
+    ['2/X', Math.max(htAway * nD * 0.45,  0.02)],
+    ['2/2', Math.max(htAway * nA * 1.25,  0.02)],
   ];
   const htFtSum = htFtRaw.reduce((s, [, p]) => s + p, 0);
+  // Hard cap: no HT/FT outcome should exceed 40.00 (realistic bookmaker limit)
   markets.push({
     key: 'ht_ft', name: 'Half-Time / Full-Time',
-    outcomes: htFtRaw.map(([name, p]) => ({ name, price: price(p / htFtSum) })),
+    outcomes: htFtRaw.map(([name, p]) => ({
+      name,
+      price: Math.min(40.00, price(p / htFtSum)),
+    })),
   });
 
   // ── BTTS & Result ────────────────────────────────────────────────────────

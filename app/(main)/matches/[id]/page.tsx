@@ -221,6 +221,7 @@ interface MatchTip {
   analysis: string
   isPremium: boolean
   status: string
+  settledByProb?: boolean
   likes: number
   liked?: boolean
   dislikes: number
@@ -4075,14 +4076,19 @@ function TipCard({ tip }: { tip: MatchTip }) {
           </Button>
         </div>
         <div className="flex items-center gap-1.5">
-          {tip.status === 'won' && (
+          {tip.status === 'won' && !tip.settledByProb && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-600 border border-emerald-500/20">
               <CheckCircle2 className="h-2.5 w-2.5" />WON
             </span>
           )}
-          {tip.status === 'lost' && (
+          {tip.status === 'lost' && !tip.settledByProb && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-500 border border-rose-500/20">
               ✕ LOST
+            </span>
+          )}
+          {(tip.settledByProb && (tip.status === 'won' || tip.status === 'lost')) && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-yellow-600 border border-yellow-500/20" title="Result unverified — awaiting official score">
+              ~ UNVERIFIED
             </span>
           )}
           {tip.status === 'void' && (

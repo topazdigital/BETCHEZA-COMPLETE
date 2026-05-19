@@ -58,6 +58,7 @@ function autoTipToWire(tip: GeneratedTip) {
     analysis: tip.analysis,
     isPremium: tip.isPremium,
     status: tip.status,
+    settledByProb: tip.settledByProb ?? false,
     likes: tip.likes,
     dislikes: tip.dislikes,
     comments: tip.comments,
