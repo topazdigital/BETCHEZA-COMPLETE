@@ -5,8 +5,10 @@ import {
   listTipsForTipster,
   seedTipsForMatch,
   settleStaleAutoTips,
+  bulkResettleWithRealData,
   computeRealTipsterStats,
   type GeneratedTip,
+  type TipMatchData,
 } from '@/lib/auto-tips-store';
 import { getAllMatches, type UnifiedMatch } from '@/lib/api/unified-sports-api';
 
@@ -398,20 +400,30 @@ export async function GET(request: NextRequest, context: RouteContext) {
       // falls back to empty — tips will still show with synthetic scores
     }
 
-    // Build real results index so stale tips get settled against actual scores.
-    const realResults = new Map<string, { homeScore: number; awayScore: number }>();
+    // Build a FULL real-results map including HT scores, corners, and cards.
+    // This is critical so HT-Result, corners, and card markets settle correctly.
+    const realResults = new Map<string, { homeScore: number; awayScore: number } & TipMatchData>();
     for (const m of allMatchesCached) {
       if (m.status === 'finished' && m.homeScore != null && m.awayScore != null) {
         realResults.set(String(m.id), {
           homeScore: Number(m.homeScore),
           awayScore: Number(m.awayScore),
+          htHomeScore: m.htHomeScore ?? null,
+          htAwayScore: m.htAwayScore ?? null,
+          corners: m.sportSpecificData?.corners,
+          yellowCards: m.sportSpecificData?.yellowCards,
+          redCards: m.sportSpecificData?.redCards,
         });
       }
     }
 
     // Make sure this tipster has tips on real upcoming matches and any
-    // tip whose kickoff has passed gets settled using real scores where available.
+    // tip whose kickoff has passed gets settled — including correcting any
+    // previously wrong outcomes (probabilistic or logic errors).
     bootstrapTipsterTipsFromMatches(tipsterId, allMatchesCached);
+    // bulkResettleWithRealData corrects ALL tips (pending, prob-settled, wrong-outcome)
+    // settleStaleAutoTips handles remaining pending tips without real data
+    bulkResettleWithRealData(realResults);
     settleStaleAutoTips(undefined, realResults);
 
     // Build a matchId → real match index so finished tips can carry the

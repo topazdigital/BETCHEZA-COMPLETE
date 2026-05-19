@@ -4,6 +4,8 @@ import {
   settleTipWithResult,
   settleTipsByTeamNames,
   settleStaleAutoTips,
+  bulkResettleWithRealData,
+  type TipMatchData,
 } from '@/lib/auto-tips-store';
 import { getMatchById, getAllMatches } from '@/lib/api/unified-sports-api';
 
@@ -90,25 +92,45 @@ export async function GET(req: Request) {
     }
   }
 
-  // Secondary pass: scan the full match cache (API + DB) by team name to catch
-  // tips whose matchId lookup failed (e.g., old match evicted from ESPN cache).
-  // This corrects already-probabilistically-settled tips too.
+  // Secondary pass: scan the full match cache to build a complete real-results map.
+  // This catches tips whose matchId lookup failed AND corrects any probabilistically
+  // settled tips using full data (HT scores, corners, cards).
   try {
     const allCachedMatches = await getAllMatches();
-    const finishedMatches = allCachedMatches.filter(
-      m => m.status === 'finished' &&
-           typeof m.homeScore === 'number' &&
-           typeof m.awayScore === 'number'
-    );
-    for (const m of finishedMatches) {
-      if (!m.homeTeam?.name || !m.awayTeam?.name) continue;
-      settleTipsByTeamNames(m.homeTeam.name, m.awayTeam.name, m.homeScore as number, m.awayScore as number);
+    const fullRealResults = new Map<string, { homeScore: number; awayScore: number } & TipMatchData>();
+    for (const m of allCachedMatches) {
+      if (m.status !== 'finished' || typeof m.homeScore !== 'number' || typeof m.awayScore !== 'number') continue;
+      fullRealResults.set(String(m.id), {
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        htHomeScore: m.htHomeScore ?? null,
+        htAwayScore: m.htAwayScore ?? null,
+        corners: m.sportSpecificData?.corners,
+        yellowCards: m.sportSpecificData?.yellowCards,
+        redCards: m.sportSpecificData?.redCards,
+      });
+      // Also settle by team names as a fuzzy-match fallback
+      if (m.homeTeam?.name && m.awayTeam?.name) {
+        const md: TipMatchData = {
+          htHomeScore: m.htHomeScore ?? null,
+          htAwayScore: m.htAwayScore ?? null,
+          corners: m.sportSpecificData?.corners,
+          yellowCards: m.sportSpecificData?.yellowCards,
+          redCards: m.sportSpecificData?.redCards,
+        };
+        settleTipsByTeamNames(m.homeTeam.name, m.awayTeam.name, m.homeScore, m.awayScore, md);
+      }
     }
-  } catch { /* non-fatal */ }
-
-  // For any remaining pending tips that still couldn't be settled with real data,
-  // fall back to probabilistic settlement so nothing stays pending forever
-  settleStaleAutoTips(now);
+    // Bulk-resettle ALL tips (pending, probabilistic, or previously wrong) using full data
+    const corrected = bulkResettleWithRealData(fullRealResults, now);
+    console.log(`[settle-tips] bulk-resettle corrected: ${corrected} tips`);
+    // Also pass the full real results to stale-settle for any edge cases
+    settleStaleAutoTips(now, fullRealResults);
+  } catch (e) {
+    console.error('[settle-tips] secondary pass error:', e);
+    // For any remaining pending tips, fall back to probabilistic settlement
+    settleStaleAutoTips(now);
+  }
 
   console.log(`[settle-tips] matches checked: ${ids.length}, real scores fetched: ${fetched}, settled: ${settled}, api failures: ${failed}`);
 

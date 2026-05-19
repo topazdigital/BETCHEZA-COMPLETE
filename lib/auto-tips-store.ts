@@ -468,7 +468,7 @@ export function computeRealTipsterStats(tipsterId: number): {
  * Half-Time Result, Half-Time / Full-Time (X/X format), Odd/Even,
  * Correct Score, Asian Handicap (approximate).
  */
-type TipMatchData = {
+export type TipMatchData = {
   htHomeScore?: number | null;
   htAwayScore?: number | null;
   corners?: { home: number; away: number };
@@ -629,38 +629,30 @@ function determineTipOutcome(
   if (pred === 'yes') return homeScore > 0 && awayScore > 0 ? 'won' : 'lost';
   if (pred === 'no')  return !(homeScore > 0 && awayScore > 0) ? 'won' : 'lost';
 
-  // ── Over / Under (goals / total) ──────────────────────────────────────────
-  // Must come after BTTS and 1X2 checks
-  const overM = pred.match(/over\s+([\d.]+)/);
-  if (overM) return total > parseFloat(overM[1]) ? 'won' : 'lost';
-  const underM = pred.match(/under\s+([\d.]+)/);
-  if (underM) return total < parseFloat(underM[1]) ? 'won' : 'lost';
-  // "O2.5" / "U2.5" shorthand
-  const overShort = pred.match(/^o\s*([\d.]+)$/);
-  if (overShort) return total > parseFloat(overShort[1]) ? 'won' : 'lost';
-  const underShort = pred.match(/^u\s*([\d.]+)$/);
-  if (underShort) return total < parseFloat(underShort[1]) ? 'won' : 'lost';
-
   // ── Total Corners ──────────────────────────────────────────────────────────
+  // MUST come before generic Over/Under goals check — "Over 11.5" under a corner
+  // market must use corner totals, NOT goal totals.
   if (mkt.includes('corner') || pred.includes('corner')) {
     const cd = matchData?.corners;
     if (!cd) return null; // no corner data — keep pending
     const totalCorners = cd.home + cd.away;
-    const overC = pred.match(/over\s*([\d.]+)/);
-    const underC = pred.match(/under\s*([\d.]+)/);
+    const overC = pred.match(/over\s*([\d.]+)/i);
+    const underC = pred.match(/under\s*([\d.]+)/i);
     if (overC) return totalCorners > parseFloat(overC[1]) ? 'won' : 'lost';
     if (underC) return totalCorners < parseFloat(underC[1]) ? 'won' : 'lost';
     return null;
   }
 
   // ── Total Cards / Yellow Cards / Red Cards ────────────────────────────────
+  // Also before generic Over/Under so "Over 3.5" under a cards market
+  // uses card totals, not goal totals.
   if (mkt.includes('card') || pred.includes('yellow card') || pred.includes('red card')) {
     if (mkt.includes('yellow') || pred.includes('yellow')) {
       const yd = matchData?.yellowCards;
       if (!yd) return null;
       const tot = yd.home + yd.away;
-      const overY = pred.match(/over\s*([\d.]+)/);
-      const underY = pred.match(/under\s*([\d.]+)/);
+      const overY = pred.match(/over\s*([\d.]+)/i);
+      const underY = pred.match(/under\s*([\d.]+)/i);
       if (overY) return tot > parseFloat(overY[1]) ? 'won' : 'lost';
       if (underY) return tot < parseFloat(underY[1]) ? 'won' : 'lost';
     }
@@ -668,13 +660,25 @@ function determineTipOutcome(
       const rd = matchData?.redCards;
       if (!rd) return null;
       const tot = rd.home + rd.away;
-      const overR = pred.match(/over\s*([\d.]+)/);
+      const overR = pred.match(/over\s*([\d.]+)/i);
       if (overR) return tot > parseFloat(overR[1]) ? 'won' : 'lost';
       if (pred.includes('yes')) return tot > 0 ? 'won' : 'lost';
       if (pred.includes('no'))  return tot === 0 ? 'won' : 'lost';
     }
     return null;
   }
+
+  // ── Over / Under (goals / total) ──────────────────────────────────────────
+  // Comes AFTER corner/card market checks so those use their own stat sources.
+  const overM = pred.match(/over\s+([\d.]+)/i);
+  if (overM) return total > parseFloat(overM[1]) ? 'won' : 'lost';
+  const underM = pred.match(/under\s+([\d.]+)/i);
+  if (underM) return total < parseFloat(underM[1]) ? 'won' : 'lost';
+  // "O2.5" / "U2.5" shorthand
+  const overShort = pred.match(/^o\s*([\d.]+)$/);
+  if (overShort) return total > parseFloat(overShort[1]) ? 'won' : 'lost';
+  const underShort = pred.match(/^u\s*([\d.]+)$/);
+  if (underShort) return total < parseFloat(underShort[1]) ? 'won' : 'lost';
 
   // ── Odd / Even Goals ──────────────────────────────────────────────────────
   if (pred === 'odd' || pred === 'odd goals' || pred === 'total goals odd')  return total % 2 !== 0 ? 'won' : 'lost';
@@ -712,6 +716,33 @@ export function settleStaleAutoTips(
   for (const list of stores.byMatch.values()) {
     if (applyKnownResults(list)) changed = true;
   }
+
+  // FIRST PASS: correct any probabilistically-settled or wrongly-settled tips
+  // using real match data — this must happen BEFORE the pending-only pass below
+  if (realResults && realResults.size > 0) {
+    for (const list of stores.byMatch.values()) {
+      for (const tip of list) {
+        // Only skip intentionally voided non-prob tips
+        if (tip.status === 'void' && !tip.settledByProb) continue;
+        // Skip tips that are correctly settled with real data (not prob)
+        if ((tip.status === 'won' || tip.status === 'lost') && !tip.settledByProb) continue;
+        // Only process if kickoff has passed
+        if (!tip.kickoff) continue;
+        const kt = new Date(tip.kickoff).getTime();
+        if (!Number.isFinite(kt) || now - kt < 2 * 3600_000) continue;
+        const real = realResults.get(tip.matchId);
+        if (!real) continue;
+        const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
+        if (outcome && (outcome !== tip.status || tip.settledByProb)) {
+          tip.status = outcome;
+          tip.settledByProb = false;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  // SECOND PASS: handle genuinely pending tips — settle with real data or probabilistically
   for (const list of stores.byMatch.values()) {
     for (const tip of list) {
       if (tip.status !== 'pending') continue;
@@ -723,13 +754,13 @@ export function settleStaleAutoTips(
 
       const r = rng(hashStr(tip.id))();
       // ~3% void rate
-      if (r > 0.97) { tip.status = 'void'; changed = true; continue; }
+      if (r > 0.97) { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
 
       // Use real match result if available
       const real = realResults?.get(tip.matchId);
       if (real) {
         const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
-        if (outcome) { tip.status = outcome; changed = true; continue; }
+        if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; continue; }
       }
 
       // Don't probabilistically settle markets that require specific stats
@@ -757,6 +788,52 @@ export function settleStaleAutoTips(
     }
   }
   if (changed) persist();
+}
+
+/**
+ * Bulk re-settle ALL stored tips using a full map of real match results.
+ * Corrects any wrong outcomes — including probabilistic, wrong real-data, and pending.
+ * This is the single source of truth for settlement correctness.
+ * Call this whenever you have fresh real match data (cron, tipster page, match page).
+ */
+export function bulkResettleWithRealData(
+  realResults: Map<string, { homeScore: number; awayScore: number } & TipMatchData>,
+  now = Date.now(),
+): number {
+  let corrected = 0;
+  for (const list of stores.byMatch.values()) {
+    for (const tip of list) {
+      // Never override an intentionally voided (non-prob) tip
+      if (tip.status === 'void' && !tip.settledByProb) continue;
+      // Only process tips whose kickoff has passed (2h grace period)
+      if (!tip.kickoff) continue;
+      const kt = new Date(tip.kickoff).getTime();
+      if (!Number.isFinite(kt) || now - kt < 2 * 3600_000) continue;
+
+      const real = realResults.get(tip.matchId);
+      if (!real) continue;
+
+      const r = rng(hashStr(tip.id))();
+      // Void rate only applies to tips that are still pending
+      if (tip.status === 'pending' && r > 0.97) {
+        tip.status = 'void';
+        tip.settledByProb = false;
+        corrected++;
+        continue;
+      }
+
+      const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
+      if (!outcome) continue; // cannot determine — leave as-is (HT with no HT data, etc.)
+
+      if (outcome !== tip.status || tip.settledByProb) {
+        tip.status = outcome;
+        tip.settledByProb = false;
+        corrected++;
+      }
+    }
+  }
+  if (corrected > 0) persist();
+  return corrected;
 }
 
 /**
