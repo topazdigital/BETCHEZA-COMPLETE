@@ -8,15 +8,18 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    const limit = Number(req.nextUrl.searchParams.get('limit') || 50);
+    const limit = Number(req.nextUrl.searchParams.get('limit') || 25);
+    const offset = Number(req.nextUrl.searchParams.get('offset') || 0);
     const hashtag = req.nextUrl.searchParams.get('hashtag')?.toLowerCase().trim() || null;
-    const posts = hashtag
-      ? await listPostsByHashtag(hashtag, limit, user?.userId ?? null)
-      : await listPosts(limit, user?.userId ?? null);
-    return NextResponse.json({ success: true, posts });
+    const allPosts = hashtag
+      ? await listPostsByHashtag(hashtag, limit + offset, user?.userId ?? null)
+      : await listPosts(limit + offset, user?.userId ?? null);
+    const posts = allPosts.slice(offset, offset + limit);
+    const hasMore = allPosts.length > offset + limit;
+    return NextResponse.json({ success: true, posts, hasMore, offset, limit });
   } catch (e) {
     console.error('[feed/posts] GET error:', e);
-    return NextResponse.json({ success: true, posts: [] });
+    return NextResponse.json({ success: true, posts: [], hasMore: false });
   }
 }
 
@@ -58,5 +61,6 @@ export async function POST(req: NextRequest) {
     odds: typeof body.odds === 'number' ? body.odds : null,
     imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl : null,
   });
+
   return NextResponse.json({ success: true, post });
 }

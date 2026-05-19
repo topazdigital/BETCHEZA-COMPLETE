@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -1278,13 +1278,33 @@ function TrendingRail({ onHashtagClick }: { onHashtagClick: (tag: string) => voi
 export default function FeedPage() {
   const { data: meRes } = useSWR<Me>('/api/auth/me', fetcher);
   const [activeHashtag, setActiveHashtag] = useState<string | null>(null);
-  const postsKey = activeHashtag ? `${POSTS_KEY}?hashtag=${encodeURIComponent(activeHashtag)}` : POSTS_KEY;
-  const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[] }>(postsKey, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
+  const [fetchLimit, setFetchLimit] = useState(25);
+  const postsKey = activeHashtag
+    ? `${POSTS_KEY}?hashtag=${encodeURIComponent(activeHashtag)}&limit=${fetchLimit}`
+    : `${POSTS_KEY}?limit=${fetchLimit}`;
+  const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[]; hasMore?: boolean }>(postsKey, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
   const posts = postsRes?.posts ?? [];
+  const hasMore = postsRes?.hasMore ?? false;
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const scrolledRef = useRef(false);
+
+  const loadMore = useCallback(() => {
+    if (!isLoading && hasMore) setFetchLimit(l => l + 25);
+  }, [isLoading, hasMore]);
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) loadMore();
+    }, { rootMargin: '200px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadMore]);
 
   const handleHashtagClick = (tag: string) => {
     setActiveHashtag(prev => prev === tag ? null : tag);
+    setFetchLimit(25);
     scrolledRef.current = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1403,9 +1423,18 @@ export default function FeedPage() {
                   </div>
                 </CardContent></Card>
               ) : (
-                <div className="space-y-2.5">
-                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} currentUserId={meRes?.user?.id ?? null} isCurrentUserAdmin={meRes?.user?.role === 'admin' || meRes?.user?.role === 'super_admin'} onHashtagClick={handleHashtagClick} />)}
-                </div>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} currentUserId={meRes?.user?.id ?? null} isCurrentUserAdmin={meRes?.user?.role === 'admin' || meRes?.user?.role === 'super_admin'} onHashtagClick={handleHashtagClick} />)}
+                  </div>
+                  {/* Infinite scroll sentinel */}
+                  <div ref={loadMoreRef} className="py-2 flex items-center justify-center">
+                    {isLoading && posts.length > 0 && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    {!hasMore && posts.length > 0 && (
+                      <p className="text-xs text-muted-foreground">You&apos;ve seen all posts</p>
+                    )}
+                  </div>
+                </>
               )}
             </main>
 

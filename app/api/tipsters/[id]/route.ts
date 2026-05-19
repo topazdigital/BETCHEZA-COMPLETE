@@ -272,18 +272,21 @@ function syntheticScore(prediction: string, status: 'won' | 'lost' | 'void' | 'p
 }
 
 function autoTipToRecent(t: GeneratedTip, realMatch?: UnifiedMatch) {
+  // Only show real verified scores — never fabricate them from prediction type
   let homeScore: number | null = null;
   let awayScore: number | null = null;
-  if (realMatch?.homeScore != null && realMatch?.awayScore != null && realMatch.status === 'finished') {
+  if (
+    realMatch?.homeScore != null &&
+    realMatch?.awayScore != null &&
+    realMatch.status === 'finished' &&
+    !t.settledByProb
+  ) {
     homeScore = Number(realMatch.homeScore);
     awayScore = Number(realMatch.awayScore);
-  } else if (t.status !== 'pending') {
-    const synthetic = syntheticScore(t.prediction, t.status);
-    homeScore = synthetic.homeScore;
-    awayScore = synthetic.awayScore;
   }
   return {
     id: t.id,
+    settledByProb: !!t.settledByProb,
     match: {
       id: t.matchId,
       homeTeam: t.homeTeam,

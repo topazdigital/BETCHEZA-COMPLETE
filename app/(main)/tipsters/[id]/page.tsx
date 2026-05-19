@@ -517,6 +517,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
               <CardContent className="space-y-2 pt-0">
                 {recentTips?.map((tip: {
                   id: number;
+                  settledByProb?: boolean;
                   match: {
                     homeTeam: string;
                     awayTeam: string;
@@ -588,7 +589,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>Confidence: {tip.confidence}%</span>
                       <span>Stake: {tip.stake}/5</span>
-                      {tip.status !== 'pending' && tip.match.homeScore !== null && (
+                      {tip.status !== 'pending' && !tip.settledByProb && tip.match.homeScore !== null && (
                         <span className="font-mono">
                           Final: <strong>{tip.match.homeScore} - {tip.match.awayScore}</strong>
                           {tip.status === 'void' && ' · push'}

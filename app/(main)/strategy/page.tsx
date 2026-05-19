@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
-import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins } from 'lucide-react';
+import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WeeklyStrategy, DayPrediction, StrategyPick } from '@/app/api/strategy/predictions/route';
 
@@ -127,7 +127,7 @@ function DayCard({ day, planItem }: { day: DayPrediction; planItem: typeof WEEK_
           {day.picks.length > 0 ? (
             <>
               <div className="flex items-center justify-between mb-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Today's Picks</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Today&apos;s Picks</p>
                 {day.combinedOdds > 0 && (
                   <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-mono font-bold text-primary">
                     Combined: {day.combinedOdds.toFixed(2)}x
@@ -151,12 +151,170 @@ function DayCard({ day, planItem }: { day: DayPrediction; planItem: typeof WEEK_
   );
 }
 
+function PaywallGate({ onUnlocked }: { onUnlocked: () => void }) {
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const [reference, setReference] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [step, setStep] = useState<'form' | 'pending'>('form');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  const startPolling = (ref: string) => {
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch('/api/strategy/access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'check', reference: ref }),
+        });
+        const data = await res.json() as { hasAccess?: boolean; status?: string };
+        if (data.hasAccess) {
+          clearInterval(pollRef.current!);
+          setPolling(false);
+          onUnlocked();
+          return;
+        }
+        if (data.status === 'failed' || attempts >= 30) {
+          clearInterval(pollRef.current!);
+          setPolling(false);
+          setStep('form');
+          setError(data.status === 'failed' ? 'Payment was declined. Please try again.' : 'Payment verification timed out. If you paid, refresh the page.');
+        }
+      } catch { /* silent */ }
+    }, 5000);
+  };
+
+  const handlePay = async () => {
+    const cleaned = phone.replace(/\s+/g, '');
+    if (!cleaned) { setError('Enter your M-Pesa phone number'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/strategy/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleaned }),
+      });
+      const data = await res.json() as { success?: boolean; hasAccess?: boolean; reference?: string; error?: string };
+      if (data.hasAccess) { onUnlocked(); return; }
+      if (!data.success || !data.reference) {
+        setError(data.error || 'Payment failed. Check credentials in Admin → Gateways.');
+        setLoading(false);
+        return;
+      }
+      setReference(data.reference);
+      setStep('pending');
+      setPolling(true);
+      startPolling(data.reference);
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative rounded-2xl overflow-hidden border border-primary/30 bg-gradient-to-br from-primary/10 via-card to-card">
+      {/* Blurred preview behind */}
+      <div className="pointer-events-none select-none blur-sm opacity-40 px-4 py-3 space-y-2">
+        {[1,2,3].map(i => (
+          <div key={i} className="h-16 rounded-xl bg-muted/60 animate-pulse" />
+        ))}
+      </div>
+
+      {/* Paywall overlay */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-4 py-6 backdrop-blur-sm bg-background/70">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 border border-primary/30">
+          <Lock className="h-6 w-6 text-primary" />
+        </div>
+        <div className="text-center">
+          <h3 className="text-lg font-bold text-foreground">Premium Daily Picks</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+            Unlock all 7 daily sure odds picks with our proven compounding strategy. One-time access via M-Pesa.
+          </p>
+        </div>
+
+        <div className="w-full max-w-xs">
+          <div className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2">
+            <ShieldCheck className="h-4 w-4 text-green-500 shrink-0" />
+            <p className="text-sm font-bold text-green-600 dark:text-green-400">KES 5,000 · M-Pesa STK Push</p>
+          </div>
+
+          {step === 'form' ? (
+            <div className="space-y-2">
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="tel"
+                  placeholder="e.g. 0712 345 678"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handlePay()}
+                  className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+              {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+              <button
+                onClick={handlePay}
+                disabled={loading}
+                className="w-full rounded-lg bg-primary text-primary-foreground py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending STK Push…</> : 'Pay KES 5,000 via M-Pesa'}
+              </button>
+            </div>
+          ) : (
+            <div className="text-center space-y-3">
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <p className="text-sm font-medium">Check your phone for M-Pesa prompt</p>
+              </div>
+              <p className="text-xs text-muted-foreground">Enter your M-Pesa PIN to confirm payment. This page will unlock automatically.</p>
+              {error && <p className="text-xs text-red-500">{error}</p>}
+              <button
+                onClick={() => { setStep('form'); if (pollRef.current) clearInterval(pollRef.current); }}
+                className="text-xs text-muted-foreground underline hover:text-foreground"
+              >
+                Try a different number
+              </button>
+              {reference && (
+                <p className="text-[10px] text-muted-foreground font-mono">Ref: {reference}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Daily AI-powered picks</span>
+          <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> All 7 days unlocked</span>
+          <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Lifetime access</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StrategyPage() {
   const { data, isLoading } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
     '/api/strategy/predictions',
     fetcher,
     { revalidateOnFocus: false }
   );
+
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/strategy/access')
+      .then(r => r.json())
+      .then((d: { hasAccess?: boolean }) => setHasAccess(!!d.hasAccess))
+      .catch(() => setHasAccess(false));
+  }, []);
 
   const current = data?.current;
   const past = data?.past || [];
@@ -236,11 +394,21 @@ export default function StrategyPage() {
       </div>
 
       {/* Current week days */}
-      {isLoading ? (
+      {isLoading || hasAccess === null ? (
         <div className="space-y-3">
           {[1,2,3].map((i) => (
             <div key={i} className="h-16 rounded-xl bg-muted/30 animate-pulse" />
           ))}
+        </div>
+      ) : !hasAccess ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">
+              Week of {current ? new Date(current.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '—'}
+            </span>
+          </div>
+          <PaywallGate onUnlocked={() => setHasAccess(true)} />
         </div>
       ) : (
         <div className="space-y-3">
@@ -250,7 +418,7 @@ export default function StrategyPage() {
               Week of {current ? new Date(current.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '—'}
             </span>
           </div>
-          {(current?.days || WEEK_PLAN.map((p, i) => ({
+          {(current?.days || WEEK_PLAN.map((p) => ({
             day: p.day, date: '', picks: [], combinedOdds: 0, status: 'upcoming' as const,
             stake: p.stake, save: p.save, targetWin: p.targetWin,
           }))).map((day, i) => (
@@ -259,8 +427,8 @@ export default function StrategyPage() {
         </div>
       )}
 
-      {/* Past weeks */}
-      {past.length > 0 && (
+      {/* Past weeks (always visible for credibility) */}
+      {hasAccess && past.length > 0 && (
         <div className="mt-8">
           <h2 className="mb-3 flex items-center gap-2 font-semibold text-sm text-muted-foreground uppercase tracking-wide">
             <Coins className="h-4 w-4" /> Past Weeks
