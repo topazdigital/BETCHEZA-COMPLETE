@@ -121,14 +121,17 @@ export default function LeaguePage({ params }: PageProps) {
   const knownLeague = ALL_LEAGUES.find(l => l.slug === normalisedSlug)
 
   const { matches: allMatches, isLoading: matchesLoading } = useMatches(
-    knownLeague ? { leagueId: knownLeague.id } : undefined
+    knownLeague ? { leagueId: knownLeague.id, sportId: knownLeague.sportId } : undefined
   )
 
   const isPastSeason = selectedSeason !== null
   const matches = isPastSeason
     ? []
     : knownLeague
-    ? allMatches
+    // Extra client-side guard: only show matches whose sportId matches the league.
+    // Prevents cross-sport contamination when ESPN reuses the same numeric league ID
+    // across different sports (e.g. MLB matches appearing under a soccer league page).
+    ? allMatches.filter(m => !knownLeague.sportId || (m as { sportId?: number }).sportId === knownLeague.sportId)
     : allMatches.filter(m => {
         const ms = (m.league?.slug || slugify(m.league?.name || '')).toLowerCase()
         return ms === normalisedSlug || ms === slug.toLowerCase()

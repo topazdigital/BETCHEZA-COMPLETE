@@ -546,9 +546,14 @@ function checkPickResultLocal(
     return pickValue.includes('draw') || pickNorm === 'draw' || pickNorm === 'x' ? 'win' : 'loss';
   }
   if (market === 'double chance') {
-    if (homeScore > awayScore) return pickValue.includes('home') || pickValue.includes('or') ? 'win' : 'loss';
-    if (awayScore > homeScore) return pickValue.includes('away') || pickValue.includes('or') ? 'win' : 'loss';
-    return pickValue.includes('draw') || pickValue.includes('or') ? 'win' : 'loss';
+    // X2 = Away or Draw: wins when away wins OR draw
+    const isX2 = pickValue.includes('x2') || (pickValue.includes('away') && (pickValue.includes('draw') || pickValue.includes('or')));
+    // 1X = Home or Draw: wins when home wins OR draw
+    const is1X = pickValue.includes('1x') || (pickValue.includes('home') && (pickValue.includes('draw') || pickValue.includes('or')));
+    if (isX2) return awayScore >= homeScore ? 'win' : 'loss';
+    if (is1X) return homeScore >= awayScore ? 'win' : 'loss';
+    // 12 = Home or Away: wins when either team wins (no draw)
+    return homeScore !== awayScore ? 'win' : 'loss';
   }
   if (market === 'over/under' || market === 'total goals') {
     const total = homeScore + awayScore;

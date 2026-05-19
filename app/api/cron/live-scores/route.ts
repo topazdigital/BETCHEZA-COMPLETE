@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLiveMatches } from '@/lib/api/unified-sports-api';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,19 +89,53 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, live: matches.length, goals: 0 });
     }
 
-    // Send push notifications to all subscribed users
-    const subs = await listPushSubscriptions();
-    const pushSubs = subs.filter(s => s.topics.includes('live_scores') || s.topics.includes('all'));
+    // Gather all push subscriptions once
+    const allSubs = await listPushSubscriptions();
+    const liveSubs = allSubs.filter(s => s.topics.includes('live_scores') || s.topics.includes('all'));
+    // Build a map of userId → subscriptions for targeted tip notifications
+    const subsByUser = new Map<number, typeof allSubs>();
+    for (const sub of allSubs) {
+      if (!sub.userId) continue;
+      const list = subsByUser.get(sub.userId) ?? [];
+      list.push(sub);
+      subsByUser.set(sub.userId, list);
+    }
 
     let pushed = 0;
     for (const goal of goals) {
       const title = '⚽ Score Update';
       const body = goal.title;
       const url = `/matches/${goal.matchId}`;
-      for (const sub of pushSubs) {
+
+      // 1. Broadcast to all live-score subscribers
+      for (const sub of liveSubs) {
         sendPushToSubscription(sub, { title, body, url, tag: `score-${goal.matchId}` }).catch(() => {});
         pushed++;
       }
+
+      // 2. Targeted push to users who have a pending tip on this exact match
+      try {
+        const tipRows = await query<{ user_id: number }>(
+          `SELECT DISTINCT user_id FROM feed_posts WHERE match_id = ? AND pick IS NOT NULL AND user_id IS NOT NULL LIMIT 200`,
+          [goal.matchId],
+        );
+        const tipUserIds = new Set(tipRows.rows.map(r => r.user_id));
+        for (const uid of tipUserIds) {
+          // Skip users already covered by live_scores broadcast
+          if (liveSubs.some(s => s.userId === uid)) continue;
+          const userSubs = subsByUser.get(uid) ?? [];
+          for (const sub of userSubs) {
+            sendPushToSubscription(sub, {
+              title: '📊 Your Tip Match Updated',
+              body: goal.title,
+              url,
+              tag: `tip-score-${goal.matchId}`,
+            }).catch(() => {});
+            pushed++;
+          }
+        }
+      } catch { /* DB unavailable — skip tip notifications */ }
+
       console.log(`[live-scores] Goal detected: ${goal.title}`);
     }
 

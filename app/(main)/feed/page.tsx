@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button';
 import {
   Heart, MessageCircle, Send, Sparkles, Loader2, Flame, TrendingUp, Users, Lock,
-  Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff, Megaphone, Hash, X,
+  Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff, Megaphone, Hash, X, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -65,7 +65,7 @@ interface Comment {
 }
 
 interface Me {
-  user?: { id: number; username?: string; email?: string; displayName?: string; avatarUrl?: string | null } | null;
+  user?: { id: number; username?: string; email?: string; displayName?: string; avatarUrl?: string | null; role?: string | null } | null;
 }
 
 interface RecommendedTipster {
@@ -229,14 +229,26 @@ function CommentList({ postId, open }: { postId: string; open: boolean }) {
   );
 }
 
-function PostCard({ post, initialFollowing = false, currentUserId, onHashtagClick }: { post: Post; initialFollowing?: boolean; currentUserId?: number | null; onHashtagClick?: (tag: string) => void }) {
+function PostCard({ post, initialFollowing = false, currentUserId, isCurrentUserAdmin, onHashtagClick }: { post: Post; initialFollowing?: boolean; currentUserId?: number | null; isCurrentUserAdmin?: boolean; onHashtagClick?: (tag: string) => void }) {
   const [openComments, setOpenComments] = useState(false);
   const [liked, setLiked] = useState(!!post.liked);
   const [likes, setLikes] = useState(post.likes);
   const [busy, setBusy] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   const isAdmin = post.authorRole === 'admin';
   const isOwnPost = currentUserId != null && post.userId === currentUserId;
+
+  const deletePost = async () => {
+    if (!confirm(`Delete this post by ${post.authorName}?`)) return;
+    const r = await fetch(`/api/admin/feed/${post.id}`, { method: 'DELETE' });
+    if (r.ok) {
+      setDeleted(true);
+      mutate(POSTS_KEY);
+    }
+  };
+
+  if (deleted) return null;
   const profileHref = post.authorUsername ? tipsterHref(post.authorUsername, post.authorUsername) : null;
 
   const toggleLike = async () => {
@@ -284,7 +296,7 @@ function PostCard({ post, initialFollowing = false, currentUserId, onHashtagClic
               <MessageCircle className="h-3.5 w-3.5" />{post.commentCount}
             </button>
           </div>
-          {openComments && <CommentsSection postId={post.id} />}
+          <CommentList postId={post.id} open={openComments} />
         </CardContent>
       </Card>
     );
@@ -312,9 +324,16 @@ function PostCard({ post, initialFollowing = false, currentUserId, onHashtagClic
               <p className="text-[10px] text-muted-foreground mt-0">on {post.matchTitle}</p>
             )}
           </div>
-          {!isOwnPost && (
-            <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={initialFollowing} />
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {!isOwnPost && (
+              <FollowTipsterButton tipsterId={post.userId} tipsterName={post.authorName} variant="pill" className="h-6 px-2 text-[10px]" initialFollowing={initialFollowing} />
+            )}
+            {isCurrentUserAdmin && (
+              <button onClick={deletePost} title="Delete post" className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500 transition-colors">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
 
         <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-tight">{renderContent(post.content, onHashtagClick)}</p>
@@ -379,8 +398,17 @@ function oddsForPick(pick: string, match: MatchSuggestion): string {
   }
   if (match.markets) {
     for (const mkt of match.markets) {
-      const sel = mkt.selections.find(s => s.label.toLowerCase() === p);
-      if (sel) return sel.odds.toFixed(2);
+      // selections format (legacy)
+      const mktAny = mkt as unknown as { selections?: Array<{ label: string; odds: number }>; outcomes?: Array<{ name: string; price: number }> };
+      if (mktAny.selections) {
+        const sel = mktAny.selections.find(s => s.label.toLowerCase() === p);
+        if (sel) return sel.odds.toFixed(2);
+      }
+      // outcomes format (from matches API)
+      if (mktAny.outcomes) {
+        const out = mktAny.outcomes.find(o => o.name.toLowerCase() === p);
+        if (out && out.price > 1) return out.price.toFixed(2);
+      }
     }
   }
   return '';
@@ -492,15 +520,33 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
     }
   };
 
-  const handleSelectMatch = (match: MatchSuggestion) => {
+  const handleSelectMatch = async (match: MatchSuggestion) => {
     setSelectedMatch(match);
     setMatchTitle(match.title);
     setMatchSearch(match.title);
     setShowDropdown(false);
+    // Eagerly set odds from whatever we already have
     if (pick) {
-      const autoOdds = oddsForPick(pick, match);
-      if (autoOdds) setOdds(autoOdds);
+      const earlyOdds = oddsForPick(pick, match);
+      if (earlyOdds) setOdds(earlyOdds);
     }
+    // Fetch full market data so all pick types (BTTS, O/U, DC) have correct odds
+    try {
+      const res = await fetch(`/api/matches/${match.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        const fullMatch: MatchSuggestion = {
+          ...match,
+          odds: data.match?.odds ?? data.odds ?? match.odds,
+          markets: data.match?.markets ?? data.markets ?? match.markets,
+        };
+        setSelectedMatch(fullMatch);
+        if (pick) {
+          const autoOdds = oddsForPick(pick, fullMatch);
+          if (autoOdds) setOdds(autoOdds);
+        }
+      }
+    } catch { /* keep existing data */ }
   };
 
   const handlePickChange = (val: string) => {
@@ -1085,7 +1131,7 @@ export default function FeedPage() {
                 </CardContent></Card>
               ) : (
                 <div className="space-y-2.5">
-                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} currentUserId={meRes?.user?.id ?? null} onHashtagClick={handleHashtagClick} />)}
+                  {posts.map(p => <PostCard key={p.id} post={p} initialFollowing={!!followStatuses[p.userId]} currentUserId={meRes?.user?.id ?? null} isCurrentUserAdmin={meRes?.user?.role === 'admin' || meRes?.user?.role === 'super_admin'} onHashtagClick={handleHashtagClick} />)}
                 </div>
               )}
             </main>
