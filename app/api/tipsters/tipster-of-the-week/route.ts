@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getTopTipsterThisWeek, computeRealTipsterStats } from '@/lib/auto-tips-store';
+import { getTopTipsterThisWeek, computeRealTipsterStats, computeRealRoi, computeRealStreak } from '@/lib/auto-tips-store';
 import { getFakeTipsterById, getFakeTipsters } from '@/lib/fake-tipsters';
 import { tipsterHref } from '@/lib/utils/slug';
 
@@ -46,6 +46,8 @@ export async function GET() {
 
   const allTime = computeRealTipsterStats(best.tipsterId);
   const performanceVerified = allTime.won + allTime.lost >= 10;
+  const allTimeRoi = computeRealRoi(best.tipsterId);
+  const allTimeStreak = computeRealStreak(best.tipsterId);
 
   return NextResponse.json({
     tipster: {
@@ -54,12 +56,12 @@ export async function GET() {
       displayName: fake.displayName,
       avatar: fake.avatar ?? null,
       bio: fake.bio,
-      winRate: best.winRate,
-      roi: best.roi,
-      streak: best.streak,
-      wonTips: best.won,
-      lostTips: best.lost,
-      totalTips: best.total,
+      winRate: allTime.winRate > 0 ? allTime.winRate : best.winRate,
+      roi: allTimeRoi,
+      streak: allTimeStreak,
+      wonTips: allTime.won,
+      lostTips: allTime.lost,
+      totalTips: allTime.totalSettled + allTime.pending,
       isPro: fake.isPro,
       verified: fake.isVerified,
       countryCode: fake.countryCode,

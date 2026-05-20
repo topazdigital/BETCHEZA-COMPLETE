@@ -164,6 +164,7 @@ interface MatchDetails {
     attendance?: number
     broadcasts?: string[]
     legInfo?: string
+    roundName?: string
     aggregateScore?: { home: number; away: number }
   }
   bookmakerOdds: BookmakerOdd[]
@@ -1303,8 +1304,10 @@ export default function MatchDetailPage({ params }: PageProps) {
                       <>
                         <p className="mt-0.5 text-[10px] text-white/40 font-medium">FULL TIME</p>
                         <p className="mt-0 text-[9px] text-white/30">{formatDate(match.kickoffTime, timezone)}</p>
-                        {match.legInfo && (
-                          <p className="mt-1 text-[9px] font-semibold text-amber-400/80 bg-amber-400/10 rounded-full px-2 py-0.5">{match.legInfo}</p>
+                        {(match.roundName || match.legInfo) && (
+                          <p className="mt-1 text-[9px] font-semibold text-amber-400/80 bg-amber-400/10 rounded-full px-2 py-0.5">
+                            {match.roundName && match.legInfo ? `${match.roundName} · ${match.legInfo}` : match.roundName || match.legInfo}
+                          </p>
                         )}
                         {match.aggregateScore && (
                           <p className="mt-0.5 text-[9px] text-white/40">Agg: {match.aggregateScore.home}–{match.aggregateScore.away}</p>
@@ -1320,6 +1323,11 @@ export default function MatchDetailPage({ params }: PageProps) {
                     <p className="mt-1 text-[10px] text-white/40">
                       {getDayLabel(match.kickoffTime, timezone)}
                     </p>
+                    {(match.roundName || match.legInfo) && (
+                      <p className="mt-1 text-[9px] font-semibold text-amber-400/80 bg-amber-400/10 rounded-full px-2 py-0.5">
+                        {match.roundName && match.legInfo ? `${match.roundName} · ${match.legInfo}` : match.roundName || match.legInfo}
+                      </p>
+                    )}
                     <div className="mt-2 text-xl text-white/20 font-light">vs</div>
                   </>
                 )}

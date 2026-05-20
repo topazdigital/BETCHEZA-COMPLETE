@@ -961,6 +961,28 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const compNotes = (competition as { notes?: Array<{ type?: string; headline?: string }> } | undefined)?.notes || [];
     const legNote = compNotes.find(n => /leg|round|tie|agg/i.test(n.headline || '') || /leg|round/i.test(n.type || ''));
     const legInfo: string | null = legNote?.headline || null;
+
+    // Extract round name (Final, Semi-Final, Quarter-Final, Playoff, etc.) from notes / season slug
+    const seasonSlug = (competition as { season?: { slug?: string } } | undefined)?.season?.slug || '';
+    const ROUND_PATTERNS: Array<[RegExp, string]> = [
+      [/\bfinal\b(?!.*\bsemi|\bquarter)/i, 'Final'],
+      [/\bsemi.final\b|\bsemifinals?\b|\bsemifinale\b/i, 'Semi-Final'],
+      [/\bquarter.final\b|\bquarterfinals?\b/i, 'Quarter-Final'],
+      [/\bround.of.16\b|\blast.16\b/i, 'Round of 16'],
+      [/\bround.of.32\b/i, 'Round of 32'],
+      [/\bthird.place\b|\b3rd.place\b/i, 'Third Place'],
+      [/\bpromotion.playoff\b/i, 'Promotion Playoff'],
+      [/\brelegation.playoff\b/i, 'Relegation Playoff'],
+      [/\bplayoff\b|\bplay.off\b/i, 'Playoff'],
+    ];
+    function detectRound(text: string): string | null {
+      const t = text.toLowerCase();
+      for (const [re, label] of ROUND_PATTERNS) { if (re.test(t)) return label; }
+      return null;
+    }
+    const roundName: string | null =
+      detectRound(seasonSlug) ||
+      compNotes.reduce<string | null>((acc, n) => acc || detectRound(n.headline || ''), null);
     const aggRaw = legInfo || compNotes.map(n => n.headline || '').join(' ');
     const aggMatch = aggRaw.match(/agg(?:regate)?[:\s]+(\d+)[–\-](\d+)/i);
     const aggregateScore = aggMatch ? { home: parseInt(aggMatch[1]), away: parseInt(aggMatch[2]) } : null;
@@ -1014,6 +1036,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         broadcasts,
         source: match.source,
         legInfo,
+        roundName,
         aggregateScore,
       },
       bookmakerOdds,

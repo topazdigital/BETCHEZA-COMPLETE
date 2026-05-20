@@ -1890,39 +1890,37 @@ function extractLegInfo(notes?: Array<{ type?: string; headline?: string }> | nu
 
 function extractRoundName(notes?: Array<{ type?: string; headline?: string }> | null, event?: { season?: { slug?: string } }): string | null {
   const seasonSlug = (event as { season?: { slug?: string } } | undefined)?.season?.slug || '';
-  const ROUND_MAP: Record<string, string> = {
-    'final': 'Final',
-    'semi-final': 'Semi-Final',
-    'semi_final': 'Semi-Final',
-    'semifinals': 'Semi-Final',
-    'quarterfinal': 'Quarter-Final',
-    'quarterfinals': 'Quarter-Final',
-    'quarter-final': 'Quarter-Final',
-    'round-of-16': 'Round of 16',
-    'round-of-32': 'Round of 32',
-    'third-place': 'Third Place',
-    'third_place': 'Third Place',
-    'playoff': 'Playoff',
-    'playoffs': 'Playoff',
-    'promotion-playoff': 'Promotion Playoff',
-    'relegation-playoff': 'Relegation Playoff',
-  };
-  if (seasonSlug) {
-    const slug = seasonSlug.toLowerCase();
-    for (const [key, label] of Object.entries(ROUND_MAP)) {
-      if (slug.includes(key)) return label;
+  const ROUND_MAP: Array<[RegExp, string]> = [
+    [/\bfinal\b(?!.*\bsemi|\bquarter)/i, 'Final'],
+    [/\bsemi.final\b|\bsemifinals?\b|\bsemifinale\b|\bsemi\b.*\bfinal\b/i, 'Semi-Final'],
+    [/\bquarter.final\b|\bquarterfinals?\b/i, 'Quarter-Final'],
+    [/\bround.of.16\b|\br16\b|\blast.16\b/i, 'Round of 16'],
+    [/\bround.of.32\b|\br32\b/i, 'Round of 32'],
+    [/\bround.of.64\b/i, 'Round of 64'],
+    [/\bthird.place\b|\b3rd.place\b/i, 'Third Place'],
+    [/\bpromotion.playoff\b/i, 'Promotion Playoff'],
+    [/\brelegation.playoff\b/i, 'Relegation Playoff'],
+    [/\bplayoff\b|\bplay.off\b/i, 'Playoff'],
+  ];
+
+  function matchRound(text: string): string | null {
+    const t = text.toLowerCase();
+    for (const [re, label] of ROUND_MAP) {
+      if (re.test(t)) return label;
     }
+    return null;
+  }
+
+  if (seasonSlug) {
+    const found = matchRound(seasonSlug);
+    if (found) return found;
   }
   if (notes) {
     for (const n of notes) {
-      const h = (n.headline || '').toLowerCase().trim();
+      const h = (n.headline || '').trim();
       if (!h) continue;
-      for (const [key, label] of Object.entries(ROUND_MAP)) {
-        if (h.includes(key)) return label;
-      }
-      if (/\bfinal\b/i.test(h) && !/semi|quarter/i.test(h)) return 'Final';
-      if (/\bsemi.final\b/i.test(h)) return 'Semi-Final';
-      if (/\bquarter.final\b/i.test(h)) return 'Quarter-Final';
+      const found = matchRound(h);
+      if (found) return found;
     }
   }
   return null;

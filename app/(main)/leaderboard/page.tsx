@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { Trophy, Medal, TrendingUp, Flame, Calendar, ChevronRight, Crown, Star, Swords, Zap } from 'lucide-react';
+import { Trophy, Medal, TrendingUp, Flame, Calendar, ChevronRight, Crown, Star, Swords, Zap, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -22,9 +22,11 @@ interface ApiTipster {
   roi: number;
   totalTips: number;
   wonTips: number;
+  lostTips: number;
   streak: number;
   isPro?: boolean;
   verified?: boolean;
+  performanceVerified?: boolean;
 }
 
 interface Row {
@@ -41,6 +43,7 @@ interface Row {
   streak: number;
   change: number;
   verified: boolean;
+  performanceVerified: boolean;
 }
 
 const PERIOD_DEFS: Record<string, { sort: 'winRate' | 'roi' | 'streak'; tipsRatio: number }> = {
@@ -185,8 +188,6 @@ export default function LeaderboardPage() {
   const data: Row[] = useMemo(() => {
     const list = apiData?.tipsters || [];
     return list.slice(0, 25).map((t, i) => {
-      const tipsScaled = Math.max(3, Math.round((t.totalTips || 50) * def.tipsRatio));
-      const wonScaled = Math.round(tipsScaled * (t.winRate / 100));
       const hash = Array.from(t.username).reduce((a, c) => a + c.charCodeAt(0), 0);
       const change = ((hash + i * 3) % 7) - 3;
       return {
@@ -197,15 +198,16 @@ export default function LeaderboardPage() {
         avatar: (t.displayName || t.username || '?').charAt(0).toUpperCase(),
         avatarUrl: t.avatar,
         winRate: t.winRate,
-        tips: tipsScaled,
-        won: wonScaled,
+        tips: t.totalTips || 0,
+        won: t.wonTips || 0,
         roi: t.roi,
         streak: t.streak,
         change,
         verified: !!t.verified,
+        performanceVerified: !!t.performanceVerified,
       };
     });
-  }, [apiData, def.tipsRatio]);
+  }, [apiData]);
 
   return (
     <div className="flex-1 overflow-hidden">
@@ -380,6 +382,7 @@ export default function LeaderboardPage() {
                         <div className="font-semibold text-xs truncate flex items-center gap-1">
                           {entry.displayName}
                           {entry.verified && <Star className="h-2.5 w-2.5 fill-primary text-primary shrink-0" />}
+                          {entry.performanceVerified && <ShieldCheck className="h-2.5 w-2.5 shrink-0 text-emerald-500" />}
                         </div>
                         <div className="text-[10px] text-muted-foreground">@{entry.username}</div>
                       </div>
@@ -447,6 +450,7 @@ export default function LeaderboardPage() {
                                   <div className="font-medium text-xs truncate flex items-center gap-1">
                                     {entry.displayName}
                                     {entry.verified && <Star className="h-2.5 w-2.5 fill-primary text-primary" />}
+                                    {entry.performanceVerified && <ShieldCheck className="h-2.5 w-2.5 text-emerald-500" />}
                                   </div>
                                   <div className="text-[10px] text-muted-foreground truncate">@{entry.username}</div>
                                 </div>

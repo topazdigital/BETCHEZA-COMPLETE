@@ -540,9 +540,12 @@ export default function HomePage() {
                           className="group rounded-xl border border-border bg-card p-3 transition-all hover:border-primary/50 hover:shadow-lg"
                         >
                           <div className="mb-2.5 flex items-center gap-2.5">
-                            <div className="relative">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-base font-bold text-primary-foreground">
-                                {initial}
+                            <div className="relative shrink-0">
+                              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-primary text-base font-bold text-primary-foreground">
+                                {(tipster as { avatar?: string | null }).avatar ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={(tipster as { avatar?: string | null }).avatar!} alt="" className="h-full w-full object-cover" />
+                                ) : initial}
                               </div>
                               {index < 3 && (
                                 <div className={cn(
@@ -555,9 +558,14 @@ export default function HomePage() {
                                 </div>
                               )}
                             </div>
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-foreground group-hover:text-primary">
-                                {tipster.displayName || tipster.username}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1 truncate">
+                                <span className="truncate text-sm font-semibold text-foreground group-hover:text-primary">
+                                  {tipster.displayName || tipster.username}
+                                </span>
+                                {(tipster as { performanceVerified?: boolean }).performanceVerified && (
+                                  <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-500" />
+                                )}
                               </div>
                               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                                 <span>{tipster.totalTips} tips</span>
@@ -576,7 +584,7 @@ export default function HomePage() {
                               <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Win Rate</div>
                             </div>
                             <div className="rounded-lg bg-primary/10 py-1">
-                              <div className="text-base font-bold text-primary">+{tipster.roi}%</div>
+                              <div className="text-base font-bold text-primary">{tipster.roi >= 0 ? '+' : ''}{tipster.roi}%</div>
                               <div className="text-[9px] uppercase tracking-wide text-muted-foreground">ROI</div>
                             </div>
                           </div>
