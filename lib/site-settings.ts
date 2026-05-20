@@ -1,4 +1,6 @@
 import { query, getPool } from './db';
+import { existsSync } from 'fs';
+import path from 'path';
 
 export interface SiteSettings {
   site_name: string;
@@ -97,6 +99,26 @@ const DEFAULTS: SiteSettings = {
   recaptcha_secret_key: '',
 };
 
+const UPLOAD_FALLBACKS: Partial<Record<keyof SiteSettings, string>> = {
+  logo_url: '/uploads/branding/logo-light.png',
+  logo_dark_url: '/uploads/branding/logo-dark.png',
+  footer_logo_url: '/uploads/branding/logo-light.png',
+  favicon_url: '/uploads/branding/logo-icon.png',
+};
+
+function resolveUploadPaths(settings: SiteSettings): void {
+  for (const [key, fallback] of Object.entries(UPLOAD_FALLBACKS) as [keyof SiteSettings, string][]) {
+    const stored = settings[key];
+    if (stored && stored.startsWith('/uploads/')) {
+      const diskPath = path.join(process.cwd(), 'public', stored);
+      if (!existsSync(diskPath)) {
+        const fallbackDisk = path.join(process.cwd(), 'public', fallback);
+        (settings as Record<string, string>)[key] = existsSync(fallbackDisk) ? fallback : '';
+      }
+    }
+  }
+}
+
 const g = globalThis as { __siteSettingsCache?: { value: SiteSettings; ts: number } };
 const CACHE_TTL_MS = 30_000;
 
@@ -139,6 +161,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       }
     }
   }
+  resolveUploadPaths(merged);
   g.__siteSettingsCache = { value: merged, ts: now };
   return merged;
 }
