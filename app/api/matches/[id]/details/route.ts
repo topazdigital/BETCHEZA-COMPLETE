@@ -871,16 +871,52 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const finalOdds = realOdds || null;
 
     // Only build derived markets when we have real odds to ground them in.
-    const isSoccer = (cfg?.sportType || 'soccer') === 'soccer';
-    const derivedMarkets = isSoccer && finalOdds?.home && finalOdds?.draw !== undefined && finalOdds?.away
-      ? deriveSoccerMarkets(
-          finalOdds.home,
-          finalOdds.draw,
-          finalOdds.away,
-          match.homeTeam.name,
-          match.awayTeam.name,
-        )
-      : (match.markets || []);
+    const sportType = cfg?.sportType || 'soccer';
+    const isSoccer = sportType === 'soccer';
+
+    // Extract the point spread and total line from ESPN pickcenter markets so
+    // the sport-specific derive functions can produce accurate alternate lines.
+    const espnSpreadMarket = (summaryMarkets || []).find((m: { key: string; outcomes?: Array<{ point?: number }> }) => m.key === 'spreads');
+    const espnTotalsMarket = (summaryMarkets || []).find((m: { key: string; outcomes?: Array<{ point?: number }> }) => m.key === 'totals');
+    const spreadValue: number | undefined = espnSpreadMarket?.outcomes?.[0]?.point;
+    const totalLine: number | undefined = espnTotalsMarket?.outcomes?.[0]?.point;
+
+    let derivedMarkets: ReturnType<typeof deriveSoccerMarkets>;
+    if (isSoccer && finalOdds?.home && finalOdds?.draw !== undefined && finalOdds?.away) {
+      derivedMarkets = deriveSoccerMarkets(
+        finalOdds.home,
+        finalOdds.draw,
+        finalOdds.away,
+        match.homeTeam.name,
+        match.awayTeam.name,
+      );
+    } else if ((sportType === 'basketball') && finalOdds?.home && finalOdds?.away) {
+      const { deriveBasketballMarkets } = await import('@/lib/api/unified-sports-api');
+      derivedMarkets = deriveBasketballMarkets(
+        finalOdds.home, finalOdds.away, spreadValue, totalLine,
+        match.homeTeam.name, match.awayTeam.name,
+      );
+    } else if (sportType === 'baseball' && finalOdds?.home && finalOdds?.away) {
+      const { deriveBaseballMarkets } = await import('@/lib/api/unified-sports-api');
+      derivedMarkets = deriveBaseballMarkets(
+        finalOdds.home, finalOdds.away, totalLine,
+        match.homeTeam.name, match.awayTeam.name,
+      );
+    } else if (sportType === 'hockey' && finalOdds?.home && finalOdds?.away) {
+      const { deriveHockeyMarkets } = await import('@/lib/api/unified-sports-api');
+      derivedMarkets = deriveHockeyMarkets(
+        finalOdds.home, finalOdds.draw, finalOdds.away, totalLine,
+        match.homeTeam.name, match.awayTeam.name,
+      );
+    } else if (sportType === 'football' && finalOdds?.home && finalOdds?.away) {
+      const { deriveAmericanFootballMarkets } = await import('@/lib/api/unified-sports-api');
+      derivedMarkets = deriveAmericanFootballMarkets(
+        finalOdds.home, finalOdds.away, spreadValue, totalLine,
+        match.homeTeam.name, match.awayTeam.name,
+      );
+    } else {
+      derivedMarkets = (match.markets || []) as ReturnType<typeof deriveSoccerMarkets>;
+    }
 
     // Merge strategy:
     // 1. ESPN pickcenter markets (h2h, totals, spreads) — have real provider odds → keep as-is.

@@ -1752,6 +1752,403 @@ export function deriveSoccerMarkets(home: number, draw: number, away: number, ho
   return markets;
 }
 
+// ─── Basketball markets (NBA / WNBA / NCAA) ──────────────────────────────────
+// Derives period-level betting markets that ESPN pickcenter doesn't return.
+// Uses the full-game moneyline and total to anchor all period prices.
+export function deriveBasketballMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  spreadValue: number | undefined,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  // Normal CDF approximation (logistic)
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── 1st Half Moneyline ───────────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_1h',
+    name: '1st Half - Moneyline',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma = 11; // typical SD for basketball final total
+    // ── Alternate Total Points ─────────────────────────────────────────────────
+    for (const offset of [-5, -3, -1, 1, 3, 5]) {
+      const line = totalLine + offset + (offset > 0 ? -0.5 : 0.5);
+      const z = (line - totalLine) / sigma;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.05 || pOver > 0.95) continue;
+      const safeKey = String(Math.abs(line)).replace('.', '_');
+      markets.push({
+        key: `alt_total_${safeKey}`,
+        name: `Total Points O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── 1st Half Total ─────────────────────────────────────────────────────────
+    const halfTotal = Math.round(totalLine / 2 * 2) / 2;
+    markets.push({
+      key: 'totals_1h',
+      name: '1st Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── 2nd Half Total ─────────────────────────────────────────────────────────
+    markets.push({
+      key: 'totals_2h',
+      name: '2nd Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── Quarter Totals (Q1–Q4) ────────────────────────────────────────────────
+    const qTotal = Math.round(totalLine / 4 * 2) / 2;
+    for (const [qKey, qName] of [
+      ['totals_1q', '1st Quarter Total'],
+      ['totals_2q', '2nd Quarter Total'],
+      ['totals_3q', '3rd Quarter Total'],
+      ['totals_4q', '4th Quarter Total'],
+    ] as [string, string][]) {
+      markets.push({
+        key: qKey,
+        name: qName,
+        outcomes: [
+          { name: `Over ${qTotal}`,  price: price(0.50), point: qTotal },
+          { name: `Under ${qTotal}`, price: price(0.50), point: qTotal },
+        ],
+      });
+    }
+
+    // ── 1st Quarter Moneyline ─────────────────────────────────────────────────
+    markets.push({
+      key: 'h2h_1q',
+      name: '1st Quarter - Moneyline',
+      outcomes: [
+        { name: homeTeam, price: price(nH) },
+        { name: awayTeam, price: price(nA) },
+      ],
+    });
+  }
+
+  // ── Alternate Spreads ─────────────────────────────────────────────────────
+  if (spreadValue !== undefined && spreadValue !== 0) {
+    const sigma = 11;
+    for (const altLine of [-8.5, -6.5, -4.5, -2.5, 2.5, 4.5, 6.5, 8.5]) {
+      if (Math.abs(altLine - spreadValue) < 1.5) continue;
+      const z = altLine / sigma;
+      const pHomeCover = normCDF(-z); // P(home covers altLine spread)
+      if (pHomeCover < 0.15 || pHomeCover > 0.85) continue;
+      const safeKey = String(altLine).replace('-', 'm').replace('.', '_');
+      markets.push({
+        key: `alt_spread_${safeKey}`,
+        name: `Alternate Spread`,
+        outcomes: [
+          { name: `${homeTeam} ${altLine > 0 ? '+' : ''}${altLine}`,   price: price(pHomeCover),     point: altLine },
+          { name: `${awayTeam} ${-altLine > 0 ? '+' : ''}${-altLine}`, price: price(1 - pHomeCover), point: -altLine },
+        ],
+      });
+    }
+  }
+
+  return markets;
+}
+
+// ─── Baseball markets (MLB) ───────────────────────────────────────────────────
+export function deriveBaseballMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── Run Line Alternatives ──────────────────────────────────────────────────
+  const sigma = 2.2; // typical MLB scoring SD
+  for (const rl of [-2.5, -1.5, 1.5, 2.5]) {
+    const z = rl / sigma;
+    const pHomeCover = normCDF(-z);
+    if (pHomeCover < 0.1 || pHomeCover > 0.9) continue;
+    markets.push({
+      key: `run_line_${String(rl).replace('-', 'm').replace('.', '_')}`,
+      name: `Run Line`,
+      outcomes: [
+        { name: `${homeTeam} ${rl > 0 ? '+' : ''}${rl}`,   price: price(pHomeCover),     point: rl },
+        { name: `${awayTeam} ${-rl > 0 ? '+' : ''}${-rl}`, price: price(1 - pHomeCover), point: -rl },
+      ],
+    });
+  }
+
+  // ── 1st 5 Innings Moneyline ────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_f5',
+    name: 'First 5 Innings - Moneyline',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma2 = 1.8;
+    // ── Alternate Totals ───────────────────────────────────────────────────────
+    for (const offset of [-1.5, -0.5, 0.5, 1.5]) {
+      const line = totalLine + offset;
+      const z = (line - totalLine) / sigma2;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.1 || pOver > 0.9) continue;
+      markets.push({
+        key: `alt_total_${String(line).replace('.', '_')}`,
+        name: `Total Runs O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── 1st 5 Innings Total ────────────────────────────────────────────────────
+    const f5Total = Math.round(totalLine * 0.55 * 2) / 2; // ~55% of runs in first 5
+    markets.push({
+      key: 'totals_f5',
+      name: 'First 5 Innings Total',
+      outcomes: [
+        { name: `Over ${f5Total}`,  price: price(0.50), point: f5Total },
+        { name: `Under ${f5Total}`, price: price(0.50), point: f5Total },
+      ],
+    });
+  }
+
+  return markets;
+}
+
+// ─── Ice Hockey markets (NHL) ─────────────────────────────────────────────────
+export function deriveHockeyMarkets(
+  homeOdds: number,
+  drawOdds: number | undefined,
+  awayOdds: number,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds;
+  const pD = drawOdds ? 1 / drawOdds : 0.2;
+  const pA = 1 / awayOdds;
+  const norm = pH + pD + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── Puck Line Alternatives ─────────────────────────────────────────────────
+  const sigma = 1.3;
+  for (const pl of [-2.5, 2.5]) {
+    const z = pl / sigma;
+    const pHomeCover = normCDF(-z);
+    if (pHomeCover < 0.1 || pHomeCover > 0.9) continue;
+    markets.push({
+      key: `puck_line_${String(pl).replace('-', 'm').replace('.', '_')}`,
+      name: `Puck Line`,
+      outcomes: [
+        { name: `${homeTeam} ${pl > 0 ? '+' : ''}${pl}`,   price: price(pHomeCover),     point: pl },
+        { name: `${awayTeam} ${-pl > 0 ? '+' : ''}${-pl}`, price: price(1 - pHomeCover), point: -pl },
+      ],
+    });
+  }
+
+  // ── Regulation Moneyline (3-way, excl. OT/SO) ────────────────────────────
+  markets.push({
+    key: 'h2h_regulation',
+    name: 'Regulation - 3-Way',
+    outcomes: [
+      { name: homeTeam,  price: price(nH) },
+      { name: 'Draw',    price: price(pD / norm * MARGIN) },
+      { name: awayTeam,  price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma2 = 1.1;
+    // ── Alternate Totals ───────────────────────────────────────────────────────
+    for (const offset of [-1, -0.5, 0.5, 1]) {
+      const line = totalLine + offset;
+      const z = (line - totalLine) / sigma2;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.1 || pOver > 0.9) continue;
+      markets.push({
+        key: `alt_total_${String(line).replace('.', '_')}`,
+        name: `Total Goals O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── Period Totals (P1, P2, P3) ─────────────────────────────────────────────
+    const pTotal = Math.round(totalLine / 3 * 2) / 2;
+    for (const [pKey, pName] of [
+      ['totals_p1', '1st Period Total'],
+      ['totals_p2', '2nd Period Total'],
+      ['totals_p3', '3rd Period Total'],
+    ] as [string, string][]) {
+      markets.push({
+        key: pKey,
+        name: pName,
+        outcomes: [
+          { name: `Over ${pTotal}`,  price: price(0.50), point: pTotal },
+          { name: `Under ${pTotal}`, price: price(0.50), point: pTotal },
+        ],
+      });
+    }
+  }
+
+  return markets;
+}
+
+// ─── American Football markets (NFL / NCAA) ───────────────────────────────────
+export function deriveAmericanFootballMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  spreadValue: number | undefined,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── 1st Half Moneyline ───────────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_1h',
+    name: '1st Half - Moneyline',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma = 10;
+    // ── Alternate Totals ──────────────────────────────────────────────────────
+    for (const offset of [-7, -4, -1, 1, 4, 7]) {
+      const line = totalLine + offset + (offset > 0 ? -0.5 : 0.5);
+      const z = (line - totalLine) / sigma;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.05 || pOver > 0.95) continue;
+      const safeKey = String(Math.abs(line)).replace('.', '_');
+      markets.push({
+        key: `alt_total_${safeKey}`,
+        name: `Total Points O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── 1st Half Total ────────────────────────────────────────────────────────
+    const halfTotal = Math.round(totalLine / 2 * 2) / 2;
+    markets.push({
+      key: 'totals_1h',
+      name: '1st Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── 2nd Half Total ────────────────────────────────────────────────────────
+    markets.push({
+      key: 'totals_2h',
+      name: '2nd Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── Quarter Totals (Q1 & Q2) ──────────────────────────────────────────────
+    const qTotal = Math.round(totalLine / 4 * 2) / 2;
+    for (const [qKey, qName] of [
+      ['totals_1q', '1st Quarter Total'],
+      ['totals_2q', '2nd Quarter Total'],
+    ] as [string, string][]) {
+      markets.push({
+        key: qKey,
+        name: qName,
+        outcomes: [
+          { name: `Over ${qTotal}`,  price: price(0.50), point: qTotal },
+          { name: `Under ${qTotal}`, price: price(0.50), point: qTotal },
+        ],
+      });
+    }
+  }
+
+  // ── Alternate Spreads ─────────────────────────────────────────────────────
+  if (spreadValue !== undefined && spreadValue !== 0) {
+    const sigma = 10;
+    for (const altLine of [-10.5, -7.5, -4.5, -2.5, 2.5, 4.5, 7.5, 10.5]) {
+      if (Math.abs(altLine - spreadValue) < 1.5) continue;
+      const z = altLine / sigma;
+      const pHomeCover = normCDF(-z);
+      if (pHomeCover < 0.15 || pHomeCover > 0.85) continue;
+      const safeKey = String(altLine).replace('-', 'm').replace('.', '_');
+      markets.push({
+        key: `alt_spread_${safeKey}`,
+        name: `Alternate Spread`,
+        outcomes: [
+          { name: `${homeTeam} ${altLine > 0 ? '+' : ''}${altLine}`,   price: price(pHomeCover),     point: altLine },
+          { name: `${awayTeam} ${-altLine > 0 ? '+' : ''}${-altLine}`, price: price(1 - pHomeCover), point: -altLine },
+        ],
+      });
+    }
+  }
+
+  return markets;
+}
+
 // ============================================
 // ESPN Summary endpoint - rich match details
 // ============================================

@@ -21,8 +21,19 @@ const SPORT_URL_TAG: Record<string, string> = {
   'golf': 'golf',
 };
 
-function buildTeamHref(name: string, id: string, sportSlug?: string): string {
-  const tag = sportSlug ? SPORT_URL_TAG[sportSlug] : undefined;
+function buildTeamHref(name: string, id: string, sportSlug?: string, leagueId?: string): string {
+  let tag = sportSlug ? SPORT_URL_TAG[sportSlug] : undefined;
+  // Disambiguate basketball: NBA vs WNBA vs NCAA
+  if (tag === 'nba' && leagueId) {
+    const lid = String(leagueId).toLowerCase();
+    if (lid.includes('wnba')) tag = 'wnba';
+    else if (lid.includes('college') || lid.includes('ncaa') || lid.includes('mens-college')) tag = 'ncaab';
+  }
+  // Disambiguate American football: NFL vs NCAA
+  if (tag === 'nfl' && leagueId) {
+    const lid = String(leagueId).toLowerCase();
+    if (lid.includes('college') || lid.includes('ncaa') || lid.includes('college-football')) tag = 'ncaaf';
+  }
   if (tag) {
     // Build sport-qualified URL: /teams/{name-slug}-{tag}-{numericId}
     // This lets the team API extract the sport from the URL and avoid cross-sport ID collisions
@@ -225,7 +236,7 @@ export async function GET(request: NextRequest) {
         const existing = teamMap.get(dedupeKey);
         const candidate: TeamEntry = {
           score: ts, isWomen,
-          hit: { type: 'team', id: t.id, title: displayName, subtitle: `${m.league.name} • ${m.league.country}`, href: buildTeamHref(displayName, t.id, m.sport?.slug), logoUrl: t.logo, sportSlug: m.sport?.slug },
+          hit: { type: 'team', id: t.id, title: displayName, subtitle: `${m.league.name} • ${m.league.country}`, href: buildTeamHref(displayName, t.id, m.sport?.slug, String(m.league?.id || '')), logoUrl: t.logo, sportSlug: m.sport?.slug },
         };
         if (!existing) { teamMap.set(dedupeKey, candidate); continue; }
 

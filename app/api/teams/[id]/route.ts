@@ -122,7 +122,13 @@ async function resolveTeamSportLeague(
   espnTeamId: string,
   hint?: { sport: string; league: string },
 ): Promise<{ sport: string; league: string } | null> {
-  const cached = teamLeagueCache.get(espnTeamId);
+  // Use a sport-qualified cache key for non-soccer sports to prevent cross-sport
+  // ID collisions — ESPN team IDs are only unique within a sport, NOT globally
+  // (e.g. soccer team #263 and MLB team #263 are completely different teams).
+  const cacheKey = hint?.sport && hint.sport !== 'soccer'
+    ? `${hint.sport}:${espnTeamId}`
+    : espnTeamId;
+  const cached = teamLeagueCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
   // Strategy 1 (fast & accurate for soccer): fetch the team payload using
@@ -142,7 +148,7 @@ async function resolveTeamSportLeague(
     if (defaultLeagueSlug && defaultLeagueSlug !== 'eng.1') {
       // Validate it's a known soccer league by checking the slug resolves
       const choice = { sport: 'soccer', league: defaultLeagueSlug };
-      teamLeagueCache.set(espnTeamId, choice);
+      teamLeagueCache.set(cacheKey, choice);
       return choice;
     }
     if (defaultLeagueSlug === 'eng.1') {
@@ -151,12 +157,12 @@ async function resolveTeamSportLeague(
       const domestic = leagueFromSlug(slug);
       if (domestic) {
         const choice = { sport: 'soccer', league: domestic };
-        teamLeagueCache.set(espnTeamId, choice);
+        teamLeagueCache.set(cacheKey, choice);
         return choice;
       }
       // No slug country prefix — trust defaultLeague
       const choice = { sport: 'soccer', league: 'eng.1' };
-      teamLeagueCache.set(espnTeamId, choice);
+      teamLeagueCache.set(cacheKey, choice);
       return choice;
     }
     // Fallback to slug-based resolution for teams that don't have defaultLeague
@@ -164,7 +170,7 @@ async function resolveTeamSportLeague(
     const domestic = leagueFromSlug(slug);
     if (domestic) {
       const choice = { sport: 'soccer', league: domestic };
-      teamLeagueCache.set(espnTeamId, choice);
+      teamLeagueCache.set(cacheKey, choice);
       return choice;
     }
     // Women's clubs use slugs like `arsenal_women` / `chelsea_w` which
@@ -176,19 +182,19 @@ async function resolveTeamSportLeague(
         const found = await probeTeamInScoreboard('soccer', wl, espnTeamId);
         if (found) {
           const choice = { sport: 'soccer', league: wl };
-          teamLeagueCache.set(espnTeamId, choice);
+          teamLeagueCache.set(cacheKey, choice);
           return choice;
         }
       }
       // Last-resort: assume WSL when slug contains "women" but no match
       // surfaced (off-season, no recent fixtures cached).
       const choice = { sport: 'soccer', league: 'eng.w.1' };
-      teamLeagueCache.set(espnTeamId, choice);
+      teamLeagueCache.set(cacheKey, choice);
       return choice;
     }
   }
   if (probed && hint) {
-    teamLeagueCache.set(espnTeamId, hint);
+    teamLeagueCache.set(cacheKey, hint);
     return hint;
   }
 
@@ -211,12 +217,12 @@ async function resolveTeamSportLeague(
     );
     const hit = results.find((r): r is { sport: string; league: string } => !!r);
     if (hit) {
-      teamLeagueCache.set(espnTeamId, hit);
+      teamLeagueCache.set(cacheKey, hit);
       return hit;
     }
   }
 
-  teamLeagueCache.set(espnTeamId, null);
+  teamLeagueCache.set(cacheKey, null);
   return null;
 }
 
@@ -226,9 +232,11 @@ async function resolveTeamSportLeague(
 const SPORT_TAG_MAP: Record<string, { sport: string; league: string }> = {
   nba:     { sport: 'basketball', league: 'nba' },
   wnba:    { sport: 'basketball', league: 'wnba' },
+  ncaab:   { sport: 'basketball', league: 'mens-college-basketball' },
   mlb:     { sport: 'baseball',   league: 'mlb' },
   nhl:     { sport: 'hockey',     league: 'nhl' },
   nfl:     { sport: 'football',   league: 'nfl' },
+  ncaaf:   { sport: 'football',   league: 'college-football' },
   rugby:   { sport: 'rugby',      league: 'rugbyunion' },
   mma:     { sport: 'mma',        league: 'ufc' },
   tennis:  { sport: 'tennis',     league: 'atp' },
@@ -717,7 +725,34 @@ export async function GET(
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
   const nameSlug = slugify(teamName);
-  const canonicalId = nameSlug ? `${nameSlug}-${t.id}` : String(t.id);
+
+  // For non-soccer sports we embed the sport tag in the canonical URL so that
+  // reloading the page preserves the sport context. Without it, `parseTeamId`
+  // returns no hint and the resolver defaults to soccer first, potentially
+  // finding a completely different team that happens to share the same ESPN
+  // numeric ID (ESPN IDs are only unique within a sport, not globally).
+  const LEAGUE_TO_SPORT_TAG: Record<string, string> = {
+    'basketball/nba':                      'nba',
+    'basketball/wnba':                     'wnba',
+    'basketball/mens-college-basketball':  'ncaab',
+    'baseball/mlb':                        'mlb',
+    'football/nfl':                        'nfl',
+    'football/college-football':           'ncaaf',
+    'hockey/nhl':                          'nhl',
+    'hockey/nhl-preseason':                'nhl',
+    'rugby/rugbyunion':                    'rugby',
+    'mma/ufc':                             'mma',
+    'tennis/atp':                          'tennis',
+    'tennis/wta':                          'tennis',
+    'cricket/cricket':                     'cricket',
+    'golf/pga':                            'golf',
+  };
+  const sportTag = sport !== 'soccer'
+    ? (LEAGUE_TO_SPORT_TAG[`${sport}/${league}`] || sport)
+    : null;
+  const canonicalId = sportTag
+    ? (nameSlug ? `${nameSlug}-${sportTag}-${t.id}` : `${sportTag}-${t.id}`)
+    : (nameSlug ? `${nameSlug}-${t.id}` : String(t.id));
 
   const team = {
     id: t.id,
