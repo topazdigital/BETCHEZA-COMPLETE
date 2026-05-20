@@ -614,6 +614,80 @@ function determineTipOutcome(
     return null;
   }
 
+  // ── First Team to Score ───────────────────────────────────────────────────
+  // MUST come before 1X2 — bare "Home"/"Away" predictions are shared with 1X2.
+  // We can only settle definitively when one side scored and the other didn't,
+  // or when the game ended 0-0. When both teams scored we return null (no guess).
+  const isFttsMkt =
+    mkt.includes('first team to score') || mkt.includes('first to score') ||
+    mkt.includes('first goal scorer') || mkt === 'first scorer' ||
+    mkt.includes('first goal') && !mkt.includes('first goalscorer') ||
+    pred.includes('first team to score');
+  if (isFttsMkt) {
+    if (total === 0) {
+      // 0-0: no team scored → "None" / "No Goal" wins
+      const isNone = pred.includes('none') || pred.includes('no goal') || pred === 'no' || pred === 'draw';
+      return isNone ? 'won' : 'lost';
+    }
+    if (homeScore > 0 && awayScore === 0) {
+      // Only home scored → home MUST have scored first
+      const isHome = pred.includes('home') || pred === '1';
+      return isHome ? 'won' : 'lost';
+    }
+    if (awayScore > 0 && homeScore === 0) {
+      // Only away scored → away MUST have scored first
+      const isAway = pred.includes('away') || pred === '2';
+      return isAway ? 'won' : 'lost';
+    }
+    // Both teams scored → cannot determine who scored first from final score alone
+    return null; // keep pending; never probabilistically settle
+  }
+
+  // ── Win to Nil ────────────────────────────────────────────────────────────
+  // "Home Win to Nil": home wins AND away scored 0
+  // "Away Win to Nil": away wins AND home scored 0
+  const isWtnMkt =
+    mkt.includes('win to nil') || mkt.includes('win & clean') ||
+    mkt.includes('win and clean') || pred.includes('win to nil');
+  if (isWtnMkt) {
+    const homeWtn = homeScore > awayScore && awayScore === 0;
+    const awayWtn = awayScore > homeScore && homeScore === 0;
+    if (pred.includes('home') || pred === '1') return homeWtn ? 'won' : 'lost';
+    if (pred.includes('away') || pred === '2') return awayWtn ? 'won' : 'lost';
+    if (pred === 'yes') return (homeWtn || awayWtn) ? 'won' : 'lost';
+    if (pred === 'no')  return (!homeWtn && !awayWtn) ? 'won' : 'lost';
+    return null;
+  }
+
+  // ── Score in Both Halves ──────────────────────────────────────────────────
+  // Needs HT score data — return null if unavailable (never probabilistically settle)
+  const isScoreBothHalvesMkt =
+    mkt.includes('score in both halves') || mkt.includes('score both halves') ||
+    mkt.includes('to score in both') || pred.includes('score in both halves') ||
+    pred.includes('score both halves');
+  if (isScoreBothHalvesMkt) {
+    const htH = matchData?.htHomeScore;
+    const htA = matchData?.htAwayScore;
+    if (htH == null || htA == null) return null; // need HT score — keep pending
+    const h2H = homeScore - htH;
+    const h2A = awayScore - htA;
+    const mktIsHome = mkt.includes('home') || pred.includes('home');
+    const mktIsAway = mkt.includes('away') || pred.includes('away');
+    if (mktIsAway) {
+      const ok = htA > 0 && h2A > 0;
+      if (pred === 'yes') return ok ? 'won' : 'lost';
+      if (pred === 'no')  return !ok ? 'won' : 'lost';
+      return ok ? 'won' : 'lost';
+    }
+    if (mktIsHome) {
+      const ok = htH > 0 && h2H > 0;
+      if (pred === 'yes') return ok ? 'won' : 'lost';
+      if (pred === 'no')  return !ok ? 'won' : 'lost';
+      return ok ? 'won' : 'lost';
+    }
+    return null;
+  }
+
   // ── Double Chance ────────────────────────────────────────────────────────
   // Check before 1X2 so "home or draw" doesn't fall through to draw check
   // 1X = Home or Draw: home wins OR draw → wins when home score >= away score
@@ -717,6 +791,56 @@ function determineTipOutcome(
     if (pred === 'no') return !both ? 'won' : 'lost';
     return both ? 'won' : 'lost'; // default to "yes" interpretation
   }
+  // ── Clean Sheet ───────────────────────────────────────────────────────────
+  // MUST come before standalone yes/no — "Yes" under "Away Clean Sheet" is a
+  // clean-sheet question, NOT a BTTS question.
+  // "Home Clean Sheet": the HOME team kept a clean sheet → AWAY scored 0.
+  // "Away Clean Sheet": the AWAY team kept a clean sheet → HOME scored 0.
+  const isCleanSheetMkt =
+    mkt.includes('clean sheet') || pred.includes('clean sheet');
+  if (isCleanSheetMkt) {
+    const homeCsKept = awayScore === 0;   // home team did not concede
+    const awayCsKept = homeScore === 0;   // away team did not concede
+
+    const mktIsAway = mkt.startsWith('away') || mkt.includes('away clean');
+    const mktIsHome = mkt.startsWith('home') || mkt.includes('home clean');
+
+    if (mktIsAway) {
+      if (pred === 'yes' || pred.endsWith(' yes')) return awayCsKept ? 'won' : 'lost';
+      if (pred === 'no'  || pred.endsWith(' no'))  return !awayCsKept ? 'won' : 'lost';
+      // "Away Clean Sheet" with just team-direction label
+      if (pred.includes('away')) return awayCsKept ? 'won' : 'lost';
+      return awayCsKept ? 'won' : 'lost'; // default: "Yes"
+    }
+    if (mktIsHome) {
+      if (pred === 'yes' || pred.endsWith(' yes')) return homeCsKept ? 'won' : 'lost';
+      if (pred === 'no'  || pred.endsWith(' no'))  return !homeCsKept ? 'won' : 'lost';
+      if (pred.includes('home')) return homeCsKept ? 'won' : 'lost';
+      return homeCsKept ? 'won' : 'lost'; // default: "Yes"
+    }
+    // Generic "Clean Sheet" market where prediction names the side
+    if (pred === 'home' || pred === 'home yes') return homeCsKept ? 'won' : 'lost';
+    if (pred === 'away' || pred === 'away yes') return awayCsKept ? 'won' : 'lost';
+    if (pred === 'both')    return (homeCsKept && awayCsKept) ? 'won' : 'lost'; // 0-0
+    if (pred === 'neither') return (!homeCsKept && !awayCsKept) ? 'won' : 'lost';
+    if (pred === 'yes') return (homeCsKept || awayCsKept) ? 'won' : 'lost';
+    if (pred === 'no')  return (!homeCsKept && !awayCsKept) ? 'won' : 'lost';
+    return null;
+  }
+
+  // ── Team to Score (Home / Away) ────────────────────────────────────────────
+  // "Home Team to Score Yes/No" / "Away Team to Score Yes/No"
+  const isTeamToScoreMkt =
+    (mkt.includes('home team to score') || mkt.includes('home to score')) ||
+    (mkt.includes('away team to score') || mkt.includes('away to score'));
+  if (isTeamToScoreMkt) {
+    const mktIsAway2 = mkt.includes('away');
+    const scored = mktIsAway2 ? awayScore > 0 : homeScore > 0;
+    if (pred === 'yes') return scored ? 'won' : 'lost';
+    if (pred === 'no')  return !scored ? 'won' : 'lost';
+    return scored ? 'won' : 'lost';
+  }
+
   // Standalone yes/no (only if not already caught above)
   if (pred === 'yes') return homeScore > 0 && awayScore > 0 ? 'won' : 'lost';
   if (pred === 'no')  return !(homeScore > 0 && awayScore > 0) ? 'won' : 'lost';
@@ -760,6 +884,30 @@ function determineTipOutcome(
     return null;
   }
 
+  // ── Team Total Goals (Home / Away specific Over/Under) ───────────────────
+  // "Home Team Over 1.5" / "Away Team Under 0.5" etc.
+  // MUST come before generic Over/Under so team-specific markets use the right score.
+  const teamGoalsMktHome =
+    mkt.includes('home team goals') || mkt.includes('home goals') ||
+    (mkt.includes('home') && (mkt.includes('total goals') || mkt.includes('over/under')));
+  const teamGoalsMktAway =
+    mkt.includes('away team goals') || mkt.includes('away goals') ||
+    (mkt.includes('away') && (mkt.includes('total goals') || mkt.includes('over/under')));
+  const predHasTeamGoals =
+    /home team (over|under)\s*[\d.]+/i.test(pred) ||
+    /away team (over|under)\s*[\d.]+/i.test(pred);
+  if (teamGoalsMktHome || teamGoalsMktAway || predHasTeamGoals) {
+    const isHomeTeam = teamGoalsMktHome || /home team/i.test(pred);
+    const isAwayTeam = teamGoalsMktAway || /away team/i.test(pred);
+    const teamScore = isAwayTeam ? awayScore : isHomeTeam ? homeScore : null;
+    if (teamScore !== null) {
+      const overTG = pred.match(/over\s*([\d.]+)/i);
+      const underTG = pred.match(/under\s*([\d.]+)/i);
+      if (overTG)  return teamScore > parseFloat(overTG[1])  ? 'won' : 'lost';
+      if (underTG) return teamScore < parseFloat(underTG[1]) ? 'won' : 'lost';
+    }
+  }
+
   // ── Over / Under (goals / total) ──────────────────────────────────────────
   // Comes AFTER corner/card market checks so those use their own stat sources.
   const overM = pred.match(/over\s+([\d.]+)/i);
@@ -772,6 +920,22 @@ function determineTipOutcome(
   const underShort = pred.match(/^u\s*([\d.]+)$/);
   if (underShort) return total < parseFloat(underShort[1]) ? 'won' : 'lost';
 
+  // ── Exact Goals / Total Goals Count ──────────────────────────────────────
+  // "Exactly 2 Goals" / "2 Goals" / "4+ Goals" etc.
+  const exactGoalsM = pred.match(/^(?:exactly\s+)?(\d+)\+?\s*goals?$/i);
+  if (exactGoalsM) {
+    const n = parseInt(exactGoalsM[1]);
+    return pred.includes('+') ? (total >= n ? 'won' : 'lost') : (total === n ? 'won' : 'lost');
+  }
+  // Catch "N goals" under an "Exact Goals" or "Total Goals" market
+  if (mkt.includes('exact goals') || mkt.includes('exact total')) {
+    const exactM2 = pred.match(/^(\d+)\+?$/);
+    if (exactM2) {
+      const n2 = parseInt(exactM2[1]);
+      return pred.includes('+') ? (total >= n2 ? 'won' : 'lost') : (total === n2 ? 'won' : 'lost');
+    }
+  }
+
   // ── Odd / Even Goals ──────────────────────────────────────────────────────
   if (pred === 'odd' || pred === 'odd goals' || pred === 'total goals odd')  return total % 2 !== 0 ? 'won' : 'lost';
   if (pred === 'even' || pred === 'even goals' || pred === 'total goals even') return total % 2 === 0 ? 'won' : 'lost';
@@ -779,6 +943,11 @@ function determineTipOutcome(
   // ── Correct Score ─────────────────────────────────────────────────────────
   const csM = pred.match(/^(\d+)\s*[:\-]\s*(\d+)$/);
   if (csM) return parseInt(csM[1]) === homeScore && parseInt(csM[2]) === awayScore ? 'won' : 'lost';
+  // "Any Other Score" under Correct Score market — wins when no exact score matched
+  if ((mkt.includes('correct score') || mkt.includes('exact score')) &&
+      (pred === 'any other' || pred === 'any other score' || pred === 'other')) {
+    return null; // cannot determine without full correct score set — keep pending
+  }
 
   // ── Asian Handicap (approximate — treat as 1X2 direction) ────────────────
   const ahM = pred.match(/asian handicap[:\s]*([-+]?[\d.]+)/);
@@ -790,8 +959,40 @@ function determineTipOutcome(
     return null; // push/void
   }
 
+  // ── Handicap / Spreads (European / regular handicap) ─────────────────────
+  // Market "Handicap" or marketKey "spreads". Predictions: "Home -1.5", "Away +0.5".
+  // Apply the handicap adjustment to the named side and evaluate.
+  if ((mkt.includes('handicap') || mkt.includes('spread')) && !mkt.includes('asian')) {
+    // Prediction has explicit line: "Home -1.5", "Away +2", etc.
+    const homeHcapM = pred.match(/home\s*([-+][\d.]+)/i);
+    const awayHcapM = pred.match(/away\s*([-+][\d.]+)/i);
+    if (homeHcapM) {
+      const adj = homeScore + parseFloat(homeHcapM[1]);
+      if (adj > awayScore) return 'won';
+      if (adj < awayScore) return 'lost';
+      return null; // push
+    }
+    if (awayHcapM) {
+      const adj = awayScore + parseFloat(awayHcapM[1]);
+      if (adj > homeScore) return 'won';
+      if (adj < homeScore) return 'lost';
+      return null; // push
+    }
+    // Prediction is bare "Home"/"Away"/"Draw" — treat as standard 1X2 direction
+    if (pred === 'home' || pred === '1') return homeScore > awayScore ? 'won' : 'lost';
+    if (pred === 'away' || pred === '2') return awayScore > homeScore ? 'won' : 'lost';
+    if (pred === 'draw' || pred === 'x') return homeScore === awayScore ? 'won' : 'lost';
+  }
+
   // ── Match winner (team-name based — cannot resolve without team names) ────
   if (pred.includes('match winner')) return null;
+
+  // ── Goalscorer / Player markets — need event-level data, never guess ──────
+  if (
+    mkt.includes('goalscorer') || mkt.includes('goal scorer') ||
+    mkt.includes('anytime scorer') || mkt.includes('first scorer') ||
+    mkt.includes('last scorer') || mkt.includes('player to score')
+  ) return null;
 
   return null;
 }
@@ -856,16 +1057,29 @@ export function settleStaleAutoTips(
       }
 
       // Don't probabilistically settle markets that require specific stats
-      // (HT result, corners, cards, HT/FT) — they need real data, not guesses
+      // (HT result, corners, cards, HT/FT, FTTS, goalscorer) — they need real data, not guesses
       const mktLow = (tip.market || '').toLowerCase();
       const predLow = tip.prediction.toLowerCase();
       const needsSpecialData =
+        // Stat-collection markets
         mktLow.includes('corner') || predLow.includes('corner') ||
         mktLow.includes('card') || predLow.includes('yellow card') || predLow.includes('red card') ||
+        // Half-time markets
         mktLow.includes('half-time result') || mktLow.includes('half time result') ||
         mktLow.includes('ht result') || mktLow.includes('first half result') ||
         predLow.includes('half-time') || predLow.includes('half time') || predLow.startsWith('ht ') ||
-        /^[12x]\/[12x]$/.test(predLow); // HT/FT double-result format
+        /^[12x]\/[12x]$/.test(predLow) || // HT/FT double-result format
+        // Score-in-both-halves needs HT score
+        mktLow.includes('score in both halves') || mktLow.includes('score both halves') ||
+        mktLow.includes('to score in both') ||
+        // First Team to Score: ambiguous when both teams scored — needs event data
+        mktLow.includes('first team to score') || mktLow.includes('first to score') ||
+        mktLow === 'first scorer' || (mktLow.includes('first goal') && !mktLow.includes('scorer')) ||
+        // Goalscorer / player markets — always need event-level data
+        mktLow.includes('goalscorer') || mktLow.includes('goal scorer') ||
+        mktLow.includes('anytime scorer') || mktLow.includes('player to score') ||
+        mktLow.includes('first scorer') || mktLow.includes('last scorer') ||
+        mktLow.includes('player ') || mktLow.startsWith('player');
       if (needsSpecialData) continue; // leave pending — don't guess on these markets
 
       // Fallback: probabilistic using tipster win rate — mark so real scores can override later
