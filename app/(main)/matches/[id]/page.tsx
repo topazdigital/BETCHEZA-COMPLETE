@@ -1552,12 +1552,17 @@ export default function MatchDetailPage({ params }: PageProps) {
                     </div>
                   </div>
                 )}
-                {/* Additional markets (BTTS, Over/Under etc.) */}
-                {match.markets && match.markets.length > 0 && (
-                  <div className="space-y-1.5">
-                    {match.markets
-                      .filter(m => m.key !== 'h2h' && m.outcomes && m.outcomes.length > 0)
-                      .map((mkt) => (
+                {/* Additional markets — max 3 priority markets to keep hero compact */}
+                {match.markets && match.markets.length > 0 && (() => {
+                  const HERO_PRIORITY = ['totals', 'spreads', 'btts', 'double_chance', 'draw_no_bet', 'asian_handicap', 'h2h_1h', 'totals_1h']
+                  const heroMarkets = HERO_PRIORITY
+                    .map(k => match.markets!.find(m => m.key === k))
+                    .filter((m): m is NonNullable<typeof m> => !!m && m.outcomes.length > 0)
+                    .slice(0, 3)
+                  if (heroMarkets.length === 0) return null
+                  return (
+                    <div className="space-y-1.5">
+                      {heroMarkets.map((mkt) => (
                         <div key={mkt.key}>
                           <p className="mb-1 text-[9px] uppercase tracking-wider text-white/40 font-semibold">{mkt.name}</p>
                           <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
@@ -1592,8 +1597,9 @@ export default function MatchDetailPage({ params }: PageProps) {
                           </div>
                         </div>
                       ))}
-                  </div>
-                )}
+                    </div>
+                  )
+                })()}
                 {/* "See all" link → Odds tab */}
                 <button
                   onClick={() => setActiveTab('odds')}
@@ -2870,15 +2876,21 @@ function MarketsSection({ match, isFinished, onShareTip }: { match: MatchDetails
 
   if (!match.markets || match.markets.length === 0) return null
 
+  // 'football' is the slug for soccer (European football) in this app's database.
+  // Use tabs only for soccer matches with enough markets to warrant grouping.
+  const isSoccer = match.sport.slug === 'football' || match.sport.slug === 'soccer'
+
   const priorityKeys = MARKET_GROUP_ORDER.map(g => g.key)
-  const ordered = [
+  const orderedBase = [
     ...priorityKeys.map(k => match.markets!.find(m => m.key === k)).filter(Boolean),
     ...match.markets.filter(m => !priorityKeys.includes(m.key) && m.key !== 'h2h'),
   ] as NonNullable<typeof match.markets>
 
-  // 'football' is the slug for soccer (European football) in this app's database.
-  // Use tabs only for soccer matches with enough markets to warrant grouping.
-  const isSoccer = match.sport.slug === 'football' || match.sport.slug === 'soccer'
+  // For non-soccer sports (basketball, baseball, hockey etc.) the moneyline
+  // IS the main market — show it first so the sidebar has ≥3 markets.
+  const h2hMarket = !isSoccer ? match.markets.find(m => m.key === 'h2h') : undefined
+  const ordered = h2hMarket ? [h2hMarket, ...orderedBase] : orderedBase
+
   const useTabs = isSoccer && ordered.length > 5
 
   // Build per-tab market lists

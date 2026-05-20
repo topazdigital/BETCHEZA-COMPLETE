@@ -57,8 +57,10 @@ const TEAM_RESOLVER_CANDIDATES: Array<[string, string]> = [
   ['soccer', 'afc.champions'], ['soccer', 'afc.asian'],
   ['soccer', 'fifa.world'], ['soccer', 'fifa.wwc'], ['soccer', 'fifa.cwc'],
   ['basketball', 'nba'], ['basketball', 'wnba'], ['basketball', 'mens-college-basketball'],
+  ['basketball', 'womens-college-basketball'],
   ['football', 'nfl'], ['football', 'college-football'],
-  ['baseball', 'mlb'], ['hockey', 'nhl'],
+  ['baseball', 'mlb'], ['baseball', 'college-baseball'],
+  ['hockey', 'nhl'], ['hockey', 'college-hockey'],
 ];
 
 // In-memory cache: <espnTeamId> → resolved {sport, league}. ESPN team ids are
@@ -230,18 +232,24 @@ async function resolveTeamSportLeague(
 // route into team URLs for non-soccer sports to prevent cross-sport ID collisions
 // (e.g. ESPN team ID 19 = Talleres in soccer, but also used for MLB teams).
 const SPORT_TAG_MAP: Record<string, { sport: string; league: string }> = {
-  nba:     { sport: 'basketball', league: 'nba' },
-  wnba:    { sport: 'basketball', league: 'wnba' },
-  ncaab:   { sport: 'basketball', league: 'mens-college-basketball' },
-  mlb:     { sport: 'baseball',   league: 'mlb' },
-  nhl:     { sport: 'hockey',     league: 'nhl' },
-  nfl:     { sport: 'football',   league: 'nfl' },
-  ncaaf:   { sport: 'football',   league: 'college-football' },
-  rugby:   { sport: 'rugby',      league: 'rugbyunion' },
-  mma:     { sport: 'mma',        league: 'ufc' },
-  tennis:  { sport: 'tennis',     league: 'atp' },
-  cricket: { sport: 'cricket',    league: 'cricket' },
-  golf:    { sport: 'golf',       league: 'pga' },
+  nba:      { sport: 'basketball', league: 'nba' },
+  wnba:     { sport: 'basketball', league: 'wnba' },
+  ncaab:    { sport: 'basketball', league: 'mens-college-basketball' },
+  ncaaw:    { sport: 'basketball', league: 'womens-college-basketball' },
+  mlb:      { sport: 'baseball',   league: 'mlb' },
+  cbb:      { sport: 'baseball',   league: 'college-baseball' },
+  milb:     { sport: 'baseball',   league: 'milb' },
+  kbo:      { sport: 'baseball',   league: 'kbo-league' },
+  npb:      { sport: 'baseball',   league: 'npb' },
+  nhl:      { sport: 'hockey',     league: 'nhl' },
+  ncaah:    { sport: 'hockey',     league: 'college-hockey' },
+  nfl:      { sport: 'football',   league: 'nfl' },
+  ncaaf:    { sport: 'football',   league: 'college-football' },
+  rugby:    { sport: 'rugby',      league: 'rugbyunion' },
+  mma:      { sport: 'mma',        league: 'ufc' },
+  tennis:   { sport: 'tennis',     league: 'atp' },
+  cricket:  { sport: 'cricket',    league: 'cricket' },
+  golf:     { sport: 'golf',       league: 'pga' },
 };
 
 function parseTeamId(teamId: string): { sport: string; league: string; espnTeamId: string; leagueId?: number } | null {

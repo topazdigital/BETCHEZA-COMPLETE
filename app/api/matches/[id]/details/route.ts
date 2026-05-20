@@ -855,17 +855,37 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     // Sport tag for collision-proof team URLs — ESPN reuses numeric IDs across sports.
     // Maps ESPN league slug → short tag that the team-page route understands.
+    // IMPORTANT: every non-soccer sport MUST have a unique tag so the team page
+    // can disambiguate ESPN IDs that are reused across sports/leagues (e.g. ID 263
+    // is both Dallas Baptist Patriots in college-baseball AND Las Vegas 51s in MLB).
     const LEAGUE_TO_SPORT_TAG: Record<string, string> = {
+      // Basketball
       nba: 'nba', wnba: 'wnba', 'mens-college-basketball': 'ncaab',
-      mlb: 'mlb', nhl: 'nhl', nfl: 'nfl', 'college-football': 'ncaaf',
+      'womens-college-basketball': 'ncaaw',
+      // Baseball — MUST distinguish MLB from college/minor leagues
+      mlb: 'mlb', 'college-baseball': 'cbb', 'milb': 'milb',
+      // Football
+      nfl: 'nfl', 'college-football': 'ncaaf',
+      // Hockey
+      nhl: 'nhl', 'college-hockey': 'ncaah',
+      // Other sports
       rugbyunion: 'rugby', rugbyleague: 'rugby',
       ufc: 'mma', boxing: 'boxing',
       atp: 'tennis', wta: 'tennis',
       cricket: 'cricket', pga: 'golf',
+      lpga: 'golf', 'kbo-league': 'kbo', 'npb': 'npb',
     };
-    const teamSportTag: string | null =
-      (cfg?.league && LEAGUE_TO_SPORT_TAG[cfg.league]) ||
-      (cfg?.sportType && cfg.sportType !== 'soccer' ? cfg.sportType : null);
+    // For any non-soccer sport not in the map above, fall back to
+    // `sport-league` compound so it's always unique across sports/leagues.
+    const teamSportTag: string | null = (() => {
+      if (!cfg?.sportType || cfg.sportType === 'soccer') return null;
+      if (cfg.league && LEAGUE_TO_SPORT_TAG[cfg.league]) return LEAGUE_TO_SPORT_TAG[cfg.league];
+      // Generic compound key — safe but not in SPORT_TAG_MAP so team page
+      // falls back to bare ID; still prevents wrong sport hits as long as
+      // the resolver includes the sport in its cache key.
+      if (cfg.league) return `${cfg.sportType}-${cfg.league.replace(/[^a-z0-9]/gi, '')}`;
+      return cfg.sportType;
+    })();
 
     const sgoPromise: Promise<Array<{
       bookmaker: string; display: string;
