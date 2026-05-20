@@ -2,81 +2,158 @@
  * Competition league detection and scoring utilities.
  *
  * Parses a competition name to detect the target league/sport,
- * validates it against known ESPN leagues, and computes real
+ * validates it against known leagues, and computes real
  * tip-based scores from the auto_tips table.
  */
 
 import { query } from '@/lib/db';
 
-// ── Canonical league list (mirrors ESPN_LEAGUES leagueId→leagueName) ──────────
+// ── Canonical league list ─────────────────────────────────────────────────────
 export interface LeagueRef {
   leagueId: number;
   leagueName: string;
-  sportFocus: string; // 'football' | 'basketball' | 'tennis' | etc.
-  espnKey: string;    // e.g. 'eng.1'
-  aliases: string[];  // additional keywords to match
+  sportFocus: string;
+  espnKey: string;
+  aliases: string[];
 }
 
 export const KNOWN_LEAGUES: LeagueRef[] = [
-  // Football / Soccer
-  { leagueId: 1,  leagueName: 'Premier League',       sportFocus: 'football', espnKey: 'eng.1',                  aliases: ['epl', 'english premier league', 'prem', 'bpl'] },
-  { leagueId: 2,  leagueName: 'La Liga',               sportFocus: 'football', espnKey: 'esp.1',                  aliases: ['laliga', 'spanish league', 'la liga santander'] },
-  { leagueId: 3,  leagueName: 'Bundesliga',             sportFocus: 'football', espnKey: 'ger.1',                  aliases: ['german bundesliga', 'buli'] },
-  { leagueId: 4,  leagueName: 'Serie A',               sportFocus: 'football', espnKey: 'ita.1',                  aliases: ['italian serie a', 'calcio'] },
-  { leagueId: 5,  leagueName: 'Ligue 1',               sportFocus: 'football', espnKey: 'fra.1',                  aliases: ['french ligue 1', 'ligue1'] },
-  { leagueId: 6,  leagueName: 'Eredivisie',            sportFocus: 'football', espnKey: 'ned.1',                  aliases: ['dutch eredivisie', 'netherlands league'] },
-  { leagueId: 7,  leagueName: 'Primeira Liga',         sportFocus: 'football', espnKey: 'por.1',                  aliases: ['portuguese league', 'liga nos', 'liga portugal'] },
-  { leagueId: 8,  leagueName: 'Scottish Premiership',  sportFocus: 'football', espnKey: 'sco.1',                  aliases: ['spfl', 'scottish premier league'] },
-  { leagueId: 9,  leagueName: 'Champions League',      sportFocus: 'football', espnKey: 'uefa.champions',         aliases: ['ucl', 'uefa champions league', 'cl'] },
-  { leagueId: 10, leagueName: 'Europa League',         sportFocus: 'football', espnKey: 'uefa.europa',            aliases: ['uel', 'uefa europa'] },
-  { leagueId: 11, leagueName: 'MLS',                   sportFocus: 'football', espnKey: 'usa.1',                  aliases: ['major league soccer', 'mls soccer'] },
-  { leagueId: 12, leagueName: 'Brazilian Serie A',     sportFocus: 'football', espnKey: 'bra.1',                  aliases: ['brasileirao', 'brazil serie a', 'campeonato brasileiro'] },
-  { leagueId: 13, leagueName: 'Argentine Primera',     sportFocus: 'football', espnKey: 'arg.1',                  aliases: ['argentina primera division', 'liga profesional'] },
-  { leagueId: 14, leagueName: 'Saudi Pro League',      sportFocus: 'football', espnKey: 'sau.1',                  aliases: ['spl', 'saudi league'] },
-  { leagueId: 15, leagueName: 'Turkish Super Lig',     sportFocus: 'football', espnKey: 'tur.1',                  aliases: ['super lig', 'tsl'] },
-  { leagueId: 16, leagueName: 'Belgian Pro League',    sportFocus: 'football', espnKey: 'bel.1',                  aliases: ['jupiler pro league', 'belgian league'] },
-  { leagueId: 25, leagueName: 'Copa Libertadores',     sportFocus: 'football', espnKey: 'conmebol.libertadores',  aliases: ['libertadores'] },
-  { leagueId: 26, leagueName: 'Conference League',     sportFocus: 'football', espnKey: 'uefa.europa.conf',       aliases: ['uecl', 'conference'] },
-  { leagueId: 27, leagueName: 'Liga MX',               sportFocus: 'football', espnKey: 'mex.1',                  aliases: ['mexican league', 'mexico'] },
-  { leagueId: 41, leagueName: 'EFL Championship',      sportFocus: 'football', espnKey: 'eng.2',                  aliases: ['championship', 'eng championship'] },
-  { leagueId: 44, leagueName: 'FA Cup',                sportFocus: 'football', espnKey: 'eng.fa',                 aliases: ['facup'] },
-  // Basketball
-  { leagueId: 101, leagueName: 'NBA',                  sportFocus: 'basketball', espnKey: 'nba',                  aliases: ['national basketball association'] },
-  { leagueId: 102, leagueName: 'EuroLeague',           sportFocus: 'basketball', espnKey: 'euroleague',           aliases: ['euroleague basketball'] },
-  // American Football
-  { leagueId: 401, leagueName: 'NFL',                  sportFocus: 'american-football', espnKey: 'nfl',           aliases: ['national football league', 'nfl football'] },
-  // Baseball
-  { leagueId: 501, leagueName: 'MLB',                  sportFocus: 'baseball', espnKey: 'mlb',                    aliases: ['major league baseball'] },
-  // Ice Hockey
-  { leagueId: 601, leagueName: 'NHL',                  sportFocus: 'ice-hockey', espnKey: 'nhl',                  aliases: ['national hockey league'] },
-  // Tennis
-  { leagueId: 701, leagueName: 'ATP Tour',             sportFocus: 'tennis', espnKey: 'atp',                      aliases: ['atp', 'mens tennis'] },
-  { leagueId: 702, leagueName: 'WTA Tour',             sportFocus: 'tennis', espnKey: 'wta',                      aliases: ['wta', 'womens tennis'] },
-  // MMA
-  { leagueId: 2701, leagueName: 'UFC',                 sportFocus: 'mma', espnKey: 'ufc',                         aliases: ['ultimate fighting championship'] },
+  // ── Africa — East ─────────────────────────────────────────────────────────
+  { leagueId: 201, leagueName: 'Kenya Premier League',         sportFocus: 'football', espnKey: 'ken.1',  aliases: ['kpl', 'kenyan premier league', 'fkf premier league', 'fkf pl', 'kenya football federation'] },
+  { leagueId: 202, leagueName: 'Tanzania Premier League',      sportFocus: 'football', espnKey: 'tan.1',  aliases: ['tanzanian premier league', 'tpl', 'nbssal'] },
+  { leagueId: 203, leagueName: 'Uganda Premier League',        sportFocus: 'football', espnKey: 'uga.1',  aliases: ['ugandan premier league', 'upl', 'fufa premier'] },
+  { leagueId: 204, leagueName: 'Ethiopian Premier League',     sportFocus: 'football', espnKey: 'eth.1',  aliases: ['ethiopia premier', 'ethiopian league'] },
+  { leagueId: 205, leagueName: 'Rwanda Premier League',        sportFocus: 'football', espnKey: 'rwa.1',  aliases: ['rwandan premier league', 'ferwafa premier'] },
+  // ── Africa — West ─────────────────────────────────────────────────────────
+  { leagueId: 210, leagueName: 'Nigerian Premier League',      sportFocus: 'football', espnKey: 'nga.1',  aliases: ['npfl', 'nigeria football premier league', 'nigeria premier', 'nfpl'] },
+  { leagueId: 211, leagueName: 'Ghana Premier League',         sportFocus: 'football', espnKey: 'gha.1',  aliases: ['ghanaian premier league', 'ghpl', 'gpl'] },
+  { leagueId: 212, leagueName: 'Senegal Premier League',       sportFocus: 'football', espnKey: 'sen.1',  aliases: ['senegalese premier league', 'ligue 1 senegal'] },
+  { leagueId: 213, leagueName: 'Ivory Coast League',           sportFocus: 'football', espnKey: 'civ.1',  aliases: ['ligue 1 ivory coast', 'cote divoire league'] },
+  { leagueId: 214, leagueName: 'Cameroon Premier League',      sportFocus: 'football', espnKey: 'cmr.1',  aliases: ['cameroonian premier league', 'elite one cameroon'] },
+  // ── Africa — North/South ──────────────────────────────────────────────────
+  { leagueId: 220, leagueName: 'South Africa Premier Soccer League', sportFocus: 'football', espnKey: 'rsa.1', aliases: ['psl', 'south african psl', 'dstv premiership', 'south africa psl'] },
+  { leagueId: 221, leagueName: 'Egyptian Premier League',      sportFocus: 'football', espnKey: 'egy.1',  aliases: ['egypt premier league', 'nile premier league'] },
+  { leagueId: 222, leagueName: 'Moroccan Botola Pro',          sportFocus: 'football', espnKey: 'mar.1',  aliases: ['moroccan league', 'botola', 'botola pro'] },
+  { leagueId: 223, leagueName: 'Tunisian Ligue 1',             sportFocus: 'football', espnKey: 'tun.1',  aliases: ['tunisian league', 'ligue professionnelle 1'] },
+  { leagueId: 224, leagueName: 'Algerian Ligue Professionnelle', sportFocus: 'football', espnKey: 'alg.1', aliases: ['algerian league', 'ligue professionnelle 1 algerie'] },
+  // ── Africa — Continental ──────────────────────────────────────────────────
+  { leagueId: 230, leagueName: 'CAF Champions League',         sportFocus: 'football', espnKey: 'caf.cl', aliases: ['caf cl', 'caf champions'] },
+  { leagueId: 231, leagueName: 'CAF Confederation Cup',        sportFocus: 'football', espnKey: 'caf.cc', aliases: ['caf confed', 'caf confederation'] },
+  { leagueId: 232, leagueName: 'AFCON',                        sportFocus: 'football', espnKey: 'caf.afcon', aliases: ['africa cup of nations', 'african cup of nations'] },
+  // ── Europe — Top 5 ────────────────────────────────────────────────────────
+  { leagueId: 1,  leagueName: 'English Premier League',        sportFocus: 'football', espnKey: 'eng.1',  aliases: ['premier league', 'epl', 'english premier league', 'prem', 'bpl', 'barclays premier league'] },
+  { leagueId: 2,  leagueName: 'La Liga',                       sportFocus: 'football', espnKey: 'esp.1',  aliases: ['laliga', 'spanish league', 'la liga santander', 'spanish primera division'] },
+  { leagueId: 3,  leagueName: 'Bundesliga',                    sportFocus: 'football', espnKey: 'ger.1',  aliases: ['german bundesliga', 'buli', 'german league'] },
+  { leagueId: 4,  leagueName: 'Serie A',                       sportFocus: 'football', espnKey: 'ita.1',  aliases: ['italian serie a', 'calcio', 'italian league'] },
+  { leagueId: 5,  leagueName: 'Ligue 1',                       sportFocus: 'football', espnKey: 'fra.1',  aliases: ['french ligue 1', 'ligue1', 'french league'] },
+  // ── Europe — Other ────────────────────────────────────────────────────────
+  { leagueId: 6,  leagueName: 'Eredivisie',                    sportFocus: 'football', espnKey: 'ned.1',  aliases: ['dutch eredivisie', 'netherlands league', 'dutch league'] },
+  { leagueId: 7,  leagueName: 'Primeira Liga',                 sportFocus: 'football', espnKey: 'por.1',  aliases: ['portuguese league', 'liga nos', 'liga portugal', 'portugal league'] },
+  { leagueId: 8,  leagueName: 'Scottish Premiership',          sportFocus: 'football', espnKey: 'sco.1',  aliases: ['spfl', 'scottish premier league', 'scottish league'] },
+  { leagueId: 16, leagueName: 'Belgian Pro League',            sportFocus: 'football', espnKey: 'bel.1',  aliases: ['jupiler pro league', 'belgian league', 'belgium pro'] },
+  { leagueId: 15, leagueName: 'Turkish Super Lig',             sportFocus: 'football', espnKey: 'tur.1',  aliases: ['super lig', 'tsl', 'turkey super lig'] },
+  { leagueId: 240, leagueName: 'Greek Super League',           sportFocus: 'football', espnKey: 'gre.1',  aliases: ['greek league', 'super league greece'] },
+  { leagueId: 241, leagueName: 'Russian Premier League',       sportFocus: 'football', espnKey: 'rus.1',  aliases: ['russian league', 'rpfl'] },
+  { leagueId: 242, leagueName: 'Ukrainian Premier League',     sportFocus: 'football', espnKey: 'ukr.1',  aliases: ['ukraine league', 'upl ukraine'] },
+  { leagueId: 243, leagueName: 'Austrian Bundesliga',          sportFocus: 'football', espnKey: 'aut.1',  aliases: ['austria bundesliga', 'austrian league'] },
+  { leagueId: 244, leagueName: 'Swiss Super League',           sportFocus: 'football', espnKey: 'sui.1',  aliases: ['switzerland league', 'swiss league'] },
+  { leagueId: 245, leagueName: 'Danish Superliga',             sportFocus: 'football', espnKey: 'den.1',  aliases: ['denmark superliga', 'danish league'] },
+  { leagueId: 246, leagueName: 'Norwegian Eliteserien',        sportFocus: 'football', espnKey: 'nor.1',  aliases: ['norway league', 'eliteserien'] },
+  { leagueId: 247, leagueName: 'Swedish Allsvenskan',          sportFocus: 'football', espnKey: 'swe.1',  aliases: ['sweden league', 'allsvenskan'] },
+  { leagueId: 248, leagueName: 'Polish Ekstraklasa',           sportFocus: 'football', espnKey: 'pol.1',  aliases: ['poland league', 'ekstraklasa'] },
+  { leagueId: 249, leagueName: 'Czech Fortuna Liga',           sportFocus: 'football', espnKey: 'cze.1',  aliases: ['czech league', 'fortuna liga'] },
+  { leagueId: 250, leagueName: 'Romanian Liga 1',              sportFocus: 'football', espnKey: 'rou.1',  aliases: ['romania league', 'liga 1 romania'] },
+  { leagueId: 251, leagueName: 'Croatian HNL',                 sportFocus: 'football', espnKey: 'cro.1',  aliases: ['croatia league', 'hnl', 'croatia hnl'] },
+  { leagueId: 252, leagueName: 'Serbian SuperLiga',            sportFocus: 'football', espnKey: 'srb.1',  aliases: ['serbia league', 'superliga serbia'] },
+  // ── Europe — Cups/Continental ─────────────────────────────────────────────
+  { leagueId: 9,  leagueName: 'UEFA Champions League',         sportFocus: 'football', espnKey: 'uefa.champions', aliases: ['champions league', 'ucl', 'cl', 'uefa cl'] },
+  { leagueId: 10, leagueName: 'UEFA Europa League',            sportFocus: 'football', espnKey: 'uefa.europa',    aliases: ['europa league', 'uel', 'uefa europa'] },
+  { leagueId: 26, leagueName: 'UEFA Conference League',        sportFocus: 'football', espnKey: 'uefa.europa.conf', aliases: ['conference league', 'uecl', 'conference'] },
+  { leagueId: 44, leagueName: 'FA Cup',                        sportFocus: 'football', espnKey: 'eng.fa',         aliases: ['facup', 'fa cup england'] },
+  { leagueId: 41, leagueName: 'EFL Championship',              sportFocus: 'football', espnKey: 'eng.2',          aliases: ['championship', 'english championship', 'efl'] },
+  // ── Americas ──────────────────────────────────────────────────────────────
+  { leagueId: 11, leagueName: 'MLS',                           sportFocus: 'football', espnKey: 'usa.1',  aliases: ['major league soccer', 'mls soccer', 'us soccer'] },
+  { leagueId: 12, leagueName: 'Brazilian Serie A',             sportFocus: 'football', espnKey: 'bra.1',  aliases: ['brasileirao', 'brazil serie a', 'campeonato brasileiro'] },
+  { leagueId: 13, leagueName: 'Argentine Primera',             sportFocus: 'football', espnKey: 'arg.1',  aliases: ['argentina primera division', 'liga profesional', 'argentina league'] },
+  { leagueId: 25, leagueName: 'Copa Libertadores',             sportFocus: 'football', espnKey: 'conmebol.libertadores', aliases: ['libertadores', 'conmebol libertadores'] },
+  { leagueId: 27, leagueName: 'Liga MX',                       sportFocus: 'football', espnKey: 'mex.1',  aliases: ['mexican league', 'mexico liga mx'] },
+  { leagueId: 260, leagueName: 'Colombian Primera A',          sportFocus: 'football', espnKey: 'col.1',  aliases: ['colombia league', 'dimayor'] },
+  { leagueId: 261, leagueName: 'Chilean Primera Division',     sportFocus: 'football', espnKey: 'chi.1',  aliases: ['chile league', 'primera division chile'] },
+  // ── Middle East / Asia ────────────────────────────────────────────────────
+  { leagueId: 14, leagueName: 'Saudi Pro League',              sportFocus: 'football', espnKey: 'sau.1',  aliases: ['spl', 'saudi league', 'roshn saudi league'] },
+  { leagueId: 270, leagueName: 'UAE Pro League',               sportFocus: 'football', espnKey: 'uae.1',  aliases: ['uae league', 'arabian gulf league'] },
+  { leagueId: 271, leagueName: 'J-League',                     sportFocus: 'football', espnKey: 'jpn.1',  aliases: ['japan j league', 'j1 league', 'japanese league'] },
+  { leagueId: 272, leagueName: 'K-League',                     sportFocus: 'football', espnKey: 'kor.1',  aliases: ['korea k league', 'south korea league', 'k1 league'] },
+  { leagueId: 273, leagueName: 'Chinese Super League',         sportFocus: 'football', espnKey: 'chn.1',  aliases: ['china super league', 'csl'] },
+  { leagueId: 274, leagueName: 'Indian Super League',          sportFocus: 'football', espnKey: 'ind.1',  aliases: ['isl', 'india football', 'isl india'] },
+  { leagueId: 275, leagueName: 'A-League',                     sportFocus: 'football', espnKey: 'aus.1',  aliases: ['australia league', 'a league australia', 'australian a-league'] },
+  // ── Basketball ────────────────────────────────────────────────────────────
+  { leagueId: 101, leagueName: 'NBA',                          sportFocus: 'basketball', espnKey: 'nba',        aliases: ['national basketball association'] },
+  { leagueId: 102, leagueName: 'EuroLeague',                   sportFocus: 'basketball', espnKey: 'euroleague', aliases: ['euroleague basketball'] },
+  { leagueId: 103, leagueName: 'FIBA World Cup',               sportFocus: 'basketball', espnKey: 'fiba',       aliases: ['fiba basketball', 'basketball world cup'] },
+  // ── American Football ─────────────────────────────────────────────────────
+  { leagueId: 401, leagueName: 'NFL',                          sportFocus: 'american-football', espnKey: 'nfl', aliases: ['national football league', 'nfl football'] },
+  // ── Baseball ──────────────────────────────────────────────────────────────
+  { leagueId: 501, leagueName: 'MLB',                          sportFocus: 'baseball', espnKey: 'mlb',          aliases: ['major league baseball'] },
+  // ── Ice Hockey ────────────────────────────────────────────────────────────
+  { leagueId: 601, leagueName: 'NHL',                          sportFocus: 'ice-hockey', espnKey: 'nhl',        aliases: ['national hockey league'] },
+  // ── Tennis ───────────────────────────────────────────────────────────────
+  { leagueId: 701, leagueName: 'ATP Tour',                     sportFocus: 'tennis', espnKey: 'atp',            aliases: ['atp', 'mens tennis'] },
+  { leagueId: 702, leagueName: 'WTA Tour',                     sportFocus: 'tennis', espnKey: 'wta',            aliases: ['wta', 'womens tennis'] },
+  // ── MMA / Combat ─────────────────────────────────────────────────────────
+  { leagueId: 2701, leagueName: 'UFC',                         sportFocus: 'mma', espnKey: 'ufc',               aliases: ['ultimate fighting championship'] },
+  // ── Rugby ─────────────────────────────────────────────────────────────────
+  { leagueId: 800, leagueName: 'Rugby World Cup',              sportFocus: 'rugby', espnKey: 'rugby.world',     aliases: ['rwc', 'world rugby cup'] },
+  { leagueId: 801, leagueName: 'Six Nations',                  sportFocus: 'rugby', espnKey: 'rugby.6nations',  aliases: ['6 nations', 'six nations rugby'] },
+  // ── Cricket ───────────────────────────────────────────────────────────────
+  { leagueId: 900, leagueName: 'ICC Cricket World Cup',        sportFocus: 'cricket', espnKey: 'cricket.wc',   aliases: ['cricket world cup', 'icc wc'] },
+  { leagueId: 901, leagueName: 'IPL',                          sportFocus: 'cricket', espnKey: 'cricket.ipl',  aliases: ['indian premier league cricket', 'ipl cricket'] },
 ];
 
 /**
  * Detect which league (if any) a competition name refers to.
  * Returns null if the competition is general (no specific league).
+ *
+ * Matching is done longest-match-first so "Kenya Premier League"
+ * is caught by its own entry BEFORE it could substring-match
+ * the shorter "Premier League" alias.
  */
 export function detectLeagueFromName(name: string): LeagueRef | null {
   const n = name.toLowerCase().trim();
 
+  // Build a flat list of (league, term, termLength) candidates,
+  // then sort by term length descending so more-specific phrases win.
+  type Candidate = { league: LeagueRef; term: string };
+  const candidates: Candidate[] = [];
+
   for (const league of KNOWN_LEAGUES) {
-    // Check primary name
-    if (n.includes(league.leagueName.toLowerCase())) return league;
-    // Check aliases
+    candidates.push({ league, term: league.leagueName.toLowerCase() });
     for (const alias of league.aliases) {
-      if (n.includes(alias.toLowerCase())) return league;
+      candidates.push({ league, term: alias.toLowerCase() });
     }
   }
+
+  // Longest term first — prevents "Kenya Premier League" from
+  // accidentally matching the shorter "Premier League".
+  candidates.sort((a, b) => b.term.length - a.term.length);
+
+  for (const { league, term } of candidates) {
+    // Use word-boundary-aware matching: the term must appear as a complete
+    // phrase, not as a fragment of a longer word.
+    const idx = n.indexOf(term);
+    if (idx === -1) continue;
+    const before = idx > 0 ? n[idx - 1] : ' ';
+    const after  = idx + term.length < n.length ? n[idx + term.length] : ' ';
+    const beforeOk = /[\s,\-_(]/.test(before) || idx === 0;
+    const afterOk  = /[\s,\-_)]/.test(after)  || idx + term.length === n.length;
+    if (beforeOk && afterOk) return league;
+  }
+
   return null;
 }
 
 /**
  * Given a competition name, returns sport focus even for general competitions.
- * e.g. "Football Weekly" → 'football', "NBA Daily" → 'basketball'
  */
 export function detectSportFocusFromName(name: string): string {
   const n = name.toLowerCase();
@@ -98,7 +175,12 @@ export function detectSportFocusFromName(name: string): string {
 
 /**
  * Validate that a proposed competition name is consistent with available leagues.
- * Returns a validation result with detected league info.
+ *
+ * POLICY: Admin can create competitions for ANY league or competition worldwide.
+ * - If a known league is detected → green confirmation.
+ * - If name sounds like a league but we don't recognise it → yellow warning
+ *   (still valid — admin knows their competition better than the system does).
+ * - General names → valid with no warning.
  */
 export function validateCompetitionLeague(name: string): {
   valid: boolean;
@@ -109,20 +191,25 @@ export function validateCompetitionLeague(name: string): {
   const detected = detectLeagueFromName(name);
   const sportFocus = detectSportFocusFromName(name);
 
-  // Check for "sounds like a league" patterns that we couldn't match
-  const leagueSoundingWords = /\b(league|cup|premier|liga|serie|ligue|bundesliga|championship|division)\b/i;
+  if (detected) {
+    return { valid: true, detected, sportFocus, warning: null };
+  }
+
+  // Check for "sounds like a specific league" patterns
+  const leagueSoundingWords = /\b(league|cup|premier|liga|serie|ligue|bundesliga|championship|division|superliga|premiership|allsvenskan|eliteserien|ekstraklasa)\b/i;
   const hasLeagueWord = leagueSoundingWords.test(name);
 
-  if (hasLeagueWord && !detected) {
+  if (hasLeagueWord) {
+    // Warn but DO NOT block — admin can create competitions for any league
     return {
-      valid: false,
+      valid: true,
       detected: null,
       sportFocus,
-      warning: `The name "${name}" sounds like a specific league competition but no matching league was found. Use a recognised league name (e.g. "Premier League Weekly", "La Liga Daily") or a general name (e.g. "Weekly Football Challenge").`,
+      warning: `"${name}" wasn't matched to a known league — it will run as a general competition. That's fine for local or custom leagues.`,
     };
   }
 
-  return { valid: true, detected, sportFocus, warning: null };
+  return { valid: true, detected: null, sportFocus, warning: null };
 }
 
 // ── Scoring engine ────────────────────────────────────────────────────────────
@@ -137,33 +224,17 @@ export interface CompetitorScore {
   lost: number;
   pending: number;
   avgOdds: number;
-  points: number;  // primary sort key
-  roi: number;     // tie-breaker
+  points: number;
+  roi: number;
   winRate: number;
-  isFake: boolean; // tipster_id >= 1000
+  isFake: boolean;
 }
 
-/**
- * Points formula:
- *   +10 per win
- *   +floor(odds) bonus per win (rewards backing value picks)
- *   -5 per loss
- *   ties broken by ROI
- *
- * Minimum 3 tips to qualify (configurable).
- */
 function calculatePoints(won: number, lost: number, totalOdds: number, wonCount: number): number {
   const winBonus = wonCount > 0 ? Math.floor(totalOdds / wonCount) : 0;
   return won * 10 + won * winBonus - lost * 5;
 }
 
-/**
- * Compute real competition leaderboard from the auto_tips table.
- * Filters by:
- *   - competition time window (startDate → endDate)
- *   - league (if leagueId or leagueName is set)
- *   - sport (if sportFocus is set and not multi-sport)
- */
 export async function computeLeaderboard(params: {
   startDate: string;
   endDate: string;
@@ -172,16 +243,10 @@ export async function computeLeaderboard(params: {
   sportFocus?: string | null;
   minTips?: number;
   limit?: number;
-  /**
-   * When provided, only real users (tipster_id < 1000) who are in this list
-   * are included. Fake tipsters (>= 1000) are always included regardless.
-   * Pass `null` or omit to include all users (backward-compat / admin views).
-   */
   allowedUserIds?: number[] | null;
 }): Promise<CompetitorScore[]> {
   const { startDate, endDate, leagueId, leagueName, sportFocus, minTips = 3, limit = 100, allowedUserIds } = params;
 
-  // Build WHERE clause dynamically
   const conditions: string[] = [
     'at.created_at >= ?',
     'at.created_at <= ?',
@@ -189,32 +254,26 @@ export async function computeLeaderboard(params: {
   ];
   const sqlParams: (string | number)[] = [startDate, endDate];
 
-  // Join-gate: real users (< 1000) must have joined; fake tipsters (>= 1000) always allowed.
   if (allowedUserIds !== null && allowedUserIds !== undefined) {
     if (allowedUserIds.length > 0) {
       const placeholders = allowedUserIds.map(() => '?').join(',');
       conditions.push(`(at.tipster_id >= 1000 OR at.tipster_id IN (${placeholders}))`);
       sqlParams.push(...allowedUserIds);
     } else {
-      // No real users have joined yet — only show fakes
       conditions.push('at.tipster_id >= 1000');
     }
   }
-  // If allowedUserIds is null/undefined → no restriction (backward-compat).
 
-  // League filter: match on league name stored in auto_tips.league column
   if (leagueName) {
     conditions.push('at.league LIKE ?');
     sqlParams.push(`%${leagueName}%`);
   } else if (leagueId) {
-    // Look up league name from KNOWN_LEAGUES
     const ref = KNOWN_LEAGUES.find(l => l.leagueId === leagueId);
     if (ref) {
       conditions.push('at.league LIKE ?');
       sqlParams.push(`%${ref.leagueName}%`);
     }
   } else if (sportFocus && sportFocus !== 'multi-sport') {
-    // Sport-level filter (no specific league)
     const sportMap: Record<string, string> = {
       football: 'Football',
       basketball: 'Basketball',
@@ -305,11 +364,6 @@ export async function computeLeaderboard(params: {
   }
 }
 
-/**
- * Find the end time of a league's current round.
- * Queries the auto_tips table for the last kickoff of the current/upcoming week
- * in the given league, then adds a 2-hour buffer for the match to finish.
- */
 export async function findLeagueRoundEndDate(leagueName: string, afterDate: string, beforeDate: string): Promise<string | null> {
   try {
     const result = await query<{ last_kickoff: string }>(`
@@ -324,7 +378,6 @@ export async function findLeagueRoundEndDate(leagueName: string, afterDate: stri
     const last = result.rows[0]?.last_kickoff;
     if (!last) return null;
 
-    // Add 2 hours for 90-min match + HT + injury time
     const endDate = new Date(last);
     endDate.setHours(endDate.getHours() + 2);
     return endDate.toISOString();
@@ -333,11 +386,6 @@ export async function findLeagueRoundEndDate(leagueName: string, afterDate: stri
   }
 }
 
-/**
- * Run the DB migration to add missing columns to the competitions table.
- * Safe to call multiple times — uses ADD COLUMN IF NOT EXISTS (MySQL 8+)
- * or catches errors on older MySQL.
- */
 export async function migrateCompetitionsTable(): Promise<void> {
   const migrations = [
     `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS type ENUM('daily','weekly','monthly','special') DEFAULT 'weekly'`,
@@ -352,28 +400,14 @@ export async function migrateCompetitionsTable(): Promise<void> {
 
   for (const sql of migrations) {
     await query(sql, []).catch(e => {
-      // Ignore "duplicate column" errors gracefully
       if (!String(e).includes('Duplicate column')) {
         console.warn('[migrateCompetitionsTable]', sql.slice(0, 60), '→', e);
       }
     });
   }
 
-  // Also add score column to competition_entries if missing
-  await query(
-    `ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS points INT DEFAULT 0`,
-    []
-  ).catch(() => {});
-  await query(
-    `ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS won INT DEFAULT 0`,
-    []
-  ).catch(() => {});
-  await query(
-    `ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS lost INT DEFAULT 0`,
-    []
-  ).catch(() => {});
-  await query(
-    `ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS avg_odds DECIMAL(8,2) DEFAULT 0`,
-    []
-  ).catch(() => {});
+  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS points INT DEFAULT 0`, []).catch(() => {});
+  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS won INT DEFAULT 0`, []).catch(() => {});
+  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS lost INT DEFAULT 0`, []).catch(() => {});
+  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS avg_odds DECIMAL(8,2) DEFAULT 0`, []).catch(() => {});
 }

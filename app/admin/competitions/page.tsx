@@ -293,15 +293,15 @@ export default function AdminCompetitionsPage() {
                 {/* League detection result */}
                 {validation && form.name.trim() && (
                   <div className="mt-1">
-                    {!validation.valid ? (
-                      <div className="flex items-start gap-1 rounded-md border border-rose-500/20 bg-rose-500/5 p-1.5 text-[10px] text-rose-400">
-                        <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                        <span>{validation.warning}</span>
-                      </div>
-                    ) : validation.detected ? (
+                    {validation.detected ? (
                       <div className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-[10px] text-emerald-400">
                         <CheckCircle className="h-3 w-3 shrink-0" />
                         <span>Detected league: <strong>{validation.detected.leagueName}</strong> · Only {validation.detected.leagueName} tips will count · Ends with last match of the round</span>
+                      </div>
+                    ) : validation.warning ? (
+                      <div className="flex items-start gap-1 rounded-md border border-amber-500/20 bg-amber-500/5 p-1.5 text-[10px] text-amber-400">
+                        <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{validation.warning}</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5 rounded-md border border-blue-500/20 bg-blue-500/5 px-2 py-1 text-[10px] text-blue-400">

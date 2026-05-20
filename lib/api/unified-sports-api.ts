@@ -4074,8 +4074,29 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
 
   const sportKeys = LEAGUE_TO_ODDS_KEYS[leagueId];
   if (!sportKeys || sportKeys.length === 0) {
-    setCache(cacheKey, sgoOutrights);
-    return sgoOutrights;
+    // No Odds API mapping for this league (e.g. KPL, small/regional leagues).
+    // Try SGO first, then static curated data, then standings-derived synthetic.
+    if (sgoOutrights.length > 0) {
+      setCache(cacheKey, sgoOutrights);
+      return sgoOutrights;
+    }
+    const { getStaticOutrights } = await import('@/lib/api/static-outrights');
+    const staticData = getStaticOutrights(leagueId);
+    if (staticData.length > 0) {
+      setCache(cacheKey, staticData);
+      return staticData;
+    }
+    // Fall through to standings-derived synthetic odds for any league
+    try {
+      const standingsOutright = await buildOutrightFromStandings(leagueId);
+      if (standingsOutright) {
+        const derived = [standingsOutright];
+        setCache(cacheKey, derived);
+        return derived;
+      }
+    } catch { /* standings not available */ }
+    setCache(cacheKey, []);
+    return [];
   }
 
   // Filter to only sport keys actually active right now in The Odds API —
