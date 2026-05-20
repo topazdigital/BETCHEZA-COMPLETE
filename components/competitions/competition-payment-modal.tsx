@@ -36,11 +36,12 @@ export function CompetitionPaymentModal({
   const [reference, setReference] = useState<string | null>(null);
   const [topUpAmount, setTopUpAmount] = useState<number | null>(null);
   const [walletContrib, setWalletContrib] = useState(0);
-  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const canPayFull = walletBalance >= amount;
-  const canPayPartial = walletBalance > 0 && walletBalance < amount;
+  const canPayFull = walletBalance !== null && walletBalance >= amount;
+  const canPayPartial = walletBalance !== null && walletBalance > 0 && walletBalance < amount;
+  const autoAdvancedRef = useRef(false);
 
   // Fetch wallet balance when modal opens
   useEffect(() => {
@@ -51,6 +52,17 @@ export function CompetitionPaymentModal({
       .catch(() => setWalletBalance(0));
   }, [open, isAuthenticated]);
 
+  // Auto-route to topup-form when partial balance loads — never prompt for full amount
+  useEffect(() => {
+    if (!open || walletBalance === null || !isAuthenticated) return;
+    if (canPayPartial && step === 'choose' && !autoAdvancedRef.current) {
+      autoAdvancedRef.current = true;
+      setTopUpAmount(amount - walletBalance);
+      setWalletContrib(walletBalance);
+      setStep('topup-form');
+    }
+  }, [open, walletBalance, canPayPartial, step, isAuthenticated, amount]);
+
   // Reset state when modal closes
   useEffect(() => {
     if (!open) {
@@ -60,6 +72,7 @@ export function CompetitionPaymentModal({
       setTopUpAmount(null);
       setWalletContrib(0);
       setPhone('');
+      autoAdvancedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
     }
   }, [open]);

@@ -210,11 +210,13 @@ function SubscribeModal({
   onClose,
   onUnlocked,
   walletBalance = 0,
+  balanceLoading = false,
 }: {
   open: boolean;
   onClose: () => void;
   onUnlocked: (data: { daysRemaining: number; startDayOffset: number }) => void;
   walletBalance?: number;
+  balanceLoading?: boolean;
 }) {
   const COST = 5000;
   const { isAuthenticated } = useAuth();
@@ -226,6 +228,7 @@ function SubscribeModal({
   const [topUpAmount, setTopUpAmount] = useState<number | null>(null);
   const [walletContrib, setWalletContrib] = useState(0);
   const [step, setStep] = useState<'choose' | 'mpesa-form' | 'topup-form' | 'pending'>('choose');
+  const autoAdvancedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canPayFull = walletBalance >= COST;
@@ -233,14 +236,23 @@ function SubscribeModal({
 
   useEffect(() => {
     if (!open) {
-      setStep(isAuthenticated ? 'choose' : 'choose');
+      setStep('choose');
       setError('');
       setReference(null);
       setTopUpAmount(null);
       setWalletContrib(0);
+      autoAdvancedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
+      return;
     }
-  }, [open, isAuthenticated]);
+    // Auto-route to topup-form as soon as balance is loaded and user has partial balance
+    if (!balanceLoading && isAuthenticated && canPayPartial && !autoAdvancedRef.current) {
+      autoAdvancedRef.current = true;
+      setTopUpAmount(COST - walletBalance);
+      setWalletContrib(walletBalance);
+      setStep('topup-form');
+    }
+  }, [open, balanceLoading, canPayPartial, walletBalance, isAuthenticated]);
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -462,50 +474,45 @@ function SubscribeModal({
             <div className="space-y-3">
               {error && <p className="text-xs text-red-500 text-center">{error}</p>}
 
-              {/* Wallet full payment */}
-              {canPayFull && (
-                <button
-                  onClick={handleWalletPay}
-                  disabled={loading}
-                  className="w-full rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 py-3.5 text-sm font-bold text-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
-                  Pay KES 5,000 from Wallet
-                </button>
-              )}
-
-              {/* Wallet partial + M-Pesa top-up */}
-              {canPayPartial && (
-                <button
-                  onClick={handleTopUpInit}
-                  disabled={loading}
-                  className="w-full rounded-xl border border-primary/40 bg-primary/5 hover:bg-primary/10 py-3 text-sm font-semibold text-primary transition-colors disabled:opacity-60 flex flex-col items-center gap-0.5"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
-                    <>
-                      <span className="flex items-center gap-1.5"><Coins className="h-4 w-4" /> Use KES {walletBalance.toLocaleString()} from Wallet + KES {(COST - walletBalance).toLocaleString()} via M-Pesa</span>
-                      <span className="text-[11px] font-normal text-muted-foreground">Wallet covers part — top up the rest via M-Pesa</span>
-                    </>
-                  )}
-                </button>
-              )}
-
-              {/* Divider */}
-              {(canPayFull || canPayPartial) && (
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-[11px] text-muted-foreground">or pay entirely via</span>
-                  <div className="flex-1 h-px bg-border" />
+              {/* Loading balance */}
+              {balanceLoading ? (
+                <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Checking wallet balance…
                 </div>
-              )}
+              ) : (
+                <>
+                  {/* Wallet full payment */}
+                  {canPayFull && (
+                    <button
+                      onClick={handleWalletPay}
+                      disabled={loading}
+                      className="w-full rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 py-3.5 text-sm font-bold text-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
+                      Pay KES 5,000 from Wallet
+                    </button>
+                  )}
 
-              {/* Full M-Pesa */}
-              <button
-                onClick={() => setStep('mpesa-form')}
-                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-              >
-                <Phone className="h-4 w-4" /> Pay KES 5,000 via M-Pesa
-              </button>
+                  {/* Divider — only when full wallet is an option too */}
+                  {canPayFull && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[11px] text-muted-foreground">or pay via</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                  )}
+
+                  {/* Full M-Pesa — only shown when wallet can't partially cover */}
+                  {!canPayPartial && (
+                    <button
+                      onClick={() => setStep('mpesa-form')}
+                      className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Phone className="h-4 w-4" /> Pay KES 5,000 via M-Pesa
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
           /* ── Full M-Pesa form ── */
@@ -657,6 +664,7 @@ export default function StrategyPage() {
         onClose={() => setShowSubscribeModal(false)}
         onUnlocked={(d) => setAccess({ hasAccess: true, ...d })}
         walletBalance={access?.walletBalance ?? 0}
+        balanceLoading={access === null}
       />
 
       {/* Header */}

@@ -60,7 +60,7 @@ const SPORT_ICON_BY_ID: Record<number, string> = {
 };
 
 export default function CompetitionsPage() {
-  const [activeTab, setActiveTab] = useState('outrights');
+  const [activeTab, setActiveTab] = useState('contests');
 
   const { data: compsData, isLoading: compsLoading } = useSWR<CompetitionsResponse>(
     '/api/competitions',
