@@ -140,6 +140,7 @@ export interface CompetitorScore {
   points: number;  // primary sort key
   roi: number;     // tie-breaker
   winRate: number;
+  isFake: boolean; // tipster_id >= 1000
 }
 
 /**
@@ -175,11 +176,12 @@ export async function computeLeaderboard(params: {
   const { startDate, endDate, leagueId, leagueName, sportFocus, minTips = 3, limit = 100 } = params;
 
   // Build WHERE clause dynamically
+  // NOTE: No tipster_id filter — both real users (< 1000) AND fake tipsters (>= 1000)
+  // are scored from their actual auto_tips rows for honest rankings.
   const conditions: string[] = [
     'at.created_at >= ?',
     'at.created_at <= ?',
     'at.status IN (\'won\', \'lost\', \'pending\')',
-    'at.tipster_id < 1000', // real users only
   ];
   const sqlParams: (string | number)[] = [startDate, endDate];
 
@@ -262,9 +264,10 @@ export async function computeLeaderboard(params: {
       const points = calculatePoints(won, lost, wonOddsSum, won);
       const roi = totalSettled > 0 ? ((won * avgOdds - totalSettled) / totalSettled) * 100 : 0;
       const winRate = totalSettled > 0 ? (won / totalSettled) * 100 : 0;
+      const tipsterId = Number(row.tipster_id);
 
       return {
-        userId: Number(row.tipster_id),
+        userId: tipsterId,
         username: row.username,
         displayName: row.display_name,
         avatar: row.avatar_url,
@@ -276,6 +279,7 @@ export async function computeLeaderboard(params: {
         points,
         roi: Math.round(roi * 10) / 10,
         winRate: Math.round(winRate * 10) / 10,
+        isFake: tipsterId >= 1000,
       };
     });
   } catch (e) {

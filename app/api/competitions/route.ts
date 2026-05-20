@@ -1,19 +1,84 @@
 import { NextResponse } from 'next/server';
 import { getCompetitions, publicCompetitionSummary } from '@/lib/competitions-store';
+import { query } from '@/lib/db';
+import { KNOWN_LEAGUES } from '@/lib/competition-league-utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+/**
+ * Build the WHERE conditions and params for a competition's tip filter
+ * (same logic as computeLeaderboard, duplicated here so we can batch counts).
+ */
+function buildTipFilter(comp: ReturnType<typeof publicCompetitionSummary>) {
+  const conditions: string[] = ['created_at >= ?', 'created_at <= ?'];
+  const params: (string | number)[] = [comp.startDate, comp.endDate];
+
+  const leagueName = (comp as { leagueName?: string | null }).leagueName;
+  const sportFocus = comp.sportFocus;
+
+  if (leagueName) {
+    conditions.push('league LIKE ?');
+    params.push(`%${leagueName}%`);
+  } else if (sportFocus && sportFocus !== 'multi-sport') {
+    const sportMap: Record<string, string> = {
+      football: 'Football', basketball: 'Basketball', tennis: 'Tennis',
+      baseball: 'Baseball', 'ice-hockey': 'Hockey', mma: 'MMA',
+      cricket: 'Cricket', rugby: 'Rugby', golf: 'Golf',
+    };
+    const label = sportMap[sportFocus];
+    if (label) {
+      conditions.push('sport LIKE ?');
+      params.push(`%${label}%`);
+    }
+  }
+
+  return { conditions, params };
+}
+
 export async function GET() {
-  const all = getCompetitions().map(publicCompetitionSummary);
+  const all = getCompetitions();
+  const summaries = all.map(publicCompetitionSummary);
+
+  // ── Real participant counts from auto_tips ────────────────────────
+  // For each active/upcoming competition query the actual number of distinct
+  // tipsters who posted at least one tip in the competition's scope window.
+  // We do this in parallel for speed.
+  const countMap = new Map<number, number>();
+
+  try {
+    await Promise.all(
+      summaries
+        .filter(c => c.status !== 'completed')
+        .map(async comp => {
+          try {
+            const { conditions, params } = buildTipFilter(comp);
+            const res = await query<{ cnt: number }>(
+              `SELECT COUNT(DISTINCT tipster_id) AS cnt FROM auto_tips WHERE ${conditions.join(' AND ')}`,
+              params,
+            );
+            const cnt = Number(res.rows[0]?.cnt ?? 0);
+            countMap.set(comp.id, cnt);
+          } catch { /* DB unavailable — leave countMap empty for this comp */ }
+        })
+    );
+  } catch { /* ignore batch-level errors */ }
+
+  // Merge real counts into summaries
+  const enriched = summaries.map(c => ({
+    ...c,
+    // If we got a real count use it; otherwise fall back to seeded participant count
+    currentParticipants: countMap.has(c.id) ? countMap.get(c.id)! : c.currentParticipants,
+  }));
+
   return NextResponse.json({
     success: true,
-    competitions: all,
+    competitions: enriched,
     stats: {
-      active: all.filter(c => c.status === 'active').length,
-      upcoming: all.filter(c => c.status === 'upcoming').length,
-      totalParticipants: all.reduce((s, c) => s + c.currentParticipants, 0),
-      totalPrizePool: all.reduce((s, c) => s + c.prizePool, 0),
+      active: enriched.filter(c => c.status === 'active').length,
+      upcoming: enriched.filter(c => c.status === 'upcoming').length,
+      totalParticipants: enriched.reduce((s, c) => s + c.currentParticipants, 0),
+      totalPrizePool: enriched.reduce((s, c) => s + c.prizePool, 0),
     },
   });
 }

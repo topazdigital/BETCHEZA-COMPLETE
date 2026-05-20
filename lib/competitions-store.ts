@@ -603,9 +603,14 @@ export function publicCompetitionSummary(c: Competition) {
     currency: c.currency,
     entryFee: c.entryFee,
     maxParticipants: c.maxParticipants,
+    // Real count is computed async in the list route from auto_tips;
+    // seeded length used only as a fallback.
     currentParticipants: c.participants.length,
-    prizes: c.prizes,
+    leagueId: c.leagueId ?? null,
+    leagueName: c.leagueName ?? null,
     sportFocus: c.sportFocus,
+    roundBased: c.roundBased ?? false,
+    prizes: c.prizes,
     topThree: c.participants.slice(0, 3).map(p => ({
       rank: p.rank,
       username: p.username,
