@@ -130,8 +130,15 @@ export async function getSiteSettings(): Promise<SiteSettings> {
   }
   // Layer in any in-memory writes from /api/admin/settings (so non-DB
   // installs still see the latest admin updates).
+  // Only apply non-empty values so an uninitialised key never wipes a good default.
   const mem = (globalThis as { __memorySettings?: Record<string, string> }).__memorySettings;
-  if (mem) Object.assign(merged, mem);
+  if (mem) {
+    for (const [k, v] of Object.entries(mem)) {
+      if (v !== null && v !== undefined && String(v).trim() !== '') {
+        (merged as Record<string, string>)[k] = String(v);
+      }
+    }
+  }
   g.__siteSettingsCache = { value: merged, ts: now };
   return merged;
 }
