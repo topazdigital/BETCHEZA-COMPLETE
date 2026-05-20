@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import useSWR, { mutate as globalMutate } from "swr"
 import Link from "next/link"
-import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X } from "lucide-react"
+import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X, Info, CheckCircle, AlertTriangle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,11 +28,22 @@ interface AdminCompetition {
   maxParticipants: number
   currentParticipants: number
   sportFocus: string
+  leagueId?: number | null
+  leagueName?: string | null
+  roundBased?: boolean
 }
 
 interface CompResponse {
   competitions: AdminCompetition[]
   stats: { active: number; upcoming: number; totalParticipants: number; totalPrizePool: number }
+}
+
+interface LeagueValidation {
+  valid: boolean
+  warning: string | null
+  detected: { leagueId: number; leagueName: string; sportFocus: string; espnKey: string } | null
+  sportFocus: string
+  isGeneral: boolean
 }
 
 function fmtTimeLeft(end: string): string {
@@ -69,7 +80,7 @@ const blankForm = (): NewCompForm => {
     description: '',
     type: 'weekly',
     status: 'upcoming',
-    sportFocus: 'football',
+    sportFocus: 'multi-sport',
     startDate: iso(start),
     endDate: iso(end),
     prizePool: '10000',
@@ -89,10 +100,45 @@ export default function AdminCompetitionsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<number | null>(null)
+  const [validation, setValidation] = useState<LeagueValidation | null>(null)
+  const [validating, setValidating] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Live league detection as admin types the name ──────────────────
+  useEffect(() => {
+    const name = form.name.trim()
+    if (!name) { setValidation(null); return }
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      setValidating(true)
+      try {
+        const r = await fetch('/api/admin/competitions/validate-league', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        })
+        if (r.ok) {
+          const v = await r.json()
+          setValidation(v)
+          // Auto-fill sportFocus from detected league
+          if (v.sportFocus && v.sportFocus !== form.sportFocus) {
+            setForm(f => ({ ...f, sportFocus: v.sportFocus }))
+          }
+        }
+      } catch { /* ignore */ } finally {
+        setValidating(false)
+      }
+    }, 400)
+  }, [form.name]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async () => {
     setError(null)
     if (!form.name.trim()) { setError('Name is required.'); return }
+    if (validation && !validation.valid) {
+      setError(validation.warning || 'Invalid league name.')
+      return
+    }
     setSubmitting(true)
     try {
       const r = await fetch('/api/admin/competitions', {
@@ -103,7 +149,7 @@ export default function AdminCompetitionsPage() {
           description: form.description.trim(),
           type: form.type,
           status: form.status,
-          sportFocus: form.sportFocus,
+          sportFocus: validation?.sportFocus || form.sportFocus,
           startDate: new Date(form.startDate).toISOString(),
           endDate: new Date(form.endDate).toISOString(),
           prizePool: Number(form.prizePool),
@@ -119,6 +165,7 @@ export default function AdminCompetitionsPage() {
       }
       setShowForm(false)
       setForm(blankForm())
+      setValidation(null)
       mutate()
       globalMutate('/api/competitions')
     } catch {
@@ -171,19 +218,67 @@ export default function AdminCompetitionsPage() {
         <Card>
           <CardContent className="p-3 space-y-2.5">
             <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Create competition</h2>
+
+            {/* Scoring info banner */}
+            <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-2 text-[10px] text-blue-400 flex gap-1.5">
+              <Info className="h-3 w-3 mt-0.5 shrink-0" />
+              <span>
+                <strong>League competitions</strong> (e.g. &ldquo;Premier League Weekly&rdquo;) only count tips for that league&rsquo;s matches and end after the last match of the round.{' '}
+                <strong>General competitions</strong> (e.g. &ldquo;Weekly Tipster Challenge&rdquo;) accept all sports.
+              </span>
+            </div>
+
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div>
+              <div className="sm:col-span-2">
                 <Label className="text-[10px] uppercase tracking-wide">Name</Label>
-                <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Weekly Tipster Cup" className="h-8 text-xs" />
+                <div className="relative">
+                  <Input
+                    value={form.name}
+                    onChange={e => setForm({ ...form, name: e.target.value })}
+                    placeholder="Premier League Weekly · Weekly Tipster Challenge · NBA Daily"
+                    className="h-8 text-xs pr-6"
+                  />
+                  {validating && <Loader2 className="absolute right-2 top-2 h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                </div>
+
+                {/* League detection result */}
+                {validation && form.name.trim() && (
+                  <div className="mt-1">
+                    {!validation.valid ? (
+                      <div className="flex items-start gap-1 rounded-md border border-rose-500/20 bg-rose-500/5 p-1.5 text-[10px] text-rose-400">
+                        <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{validation.warning}</span>
+                      </div>
+                    ) : validation.detected ? (
+                      <div className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-[10px] text-emerald-400">
+                        <CheckCircle className="h-3 w-3 shrink-0" />
+                        <span>Detected league: <strong>{validation.detected.leagueName}</strong> · Only {validation.detected.leagueName} tips will count · Ends with last match of the round</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 rounded-md border border-blue-500/20 bg-blue-500/5 px-2 py-1 text-[10px] text-blue-400">
+                        <Info className="h-3 w-3 shrink-0" />
+                        <span>General competition — all sports and leagues accepted</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">Sport focus</Label>
-                <Input value={form.sportFocus} onChange={e => setForm({ ...form, sportFocus: e.target.value })} placeholder="football, multi-sport, tennis…" className="h-8 text-xs" />
+                <Input
+                  value={form.sportFocus}
+                  onChange={e => setForm({ ...form, sportFocus: e.target.value })}
+                  placeholder="football, multi-sport, basketball…"
+                  className="h-8 text-xs"
+                  readOnly={!!validation?.detected}
+                  title={validation?.detected ? `Auto-set from detected league: ${validation.detected.leagueName}` : ''}
+                />
+                {validation?.detected && (
+                  <p className="text-[9px] text-muted-foreground mt-0.5">Auto-detected from league name</p>
+                )}
               </div>
-              <div className="sm:col-span-2">
-                <Label className="text-[10px] uppercase tracking-wide">Description</Label>
-                <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary shown on the public page." className="min-h-[60px] text-xs" />
-              </div>
+
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">Type</Label>
                 <select className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs" value={form.type} onChange={e => setForm({ ...form, type: e.target.value as NewCompForm['type'] })}>
@@ -192,7 +287,16 @@ export default function AdminCompetitionsPage() {
                   <option value="monthly">monthly</option>
                   <option value="special">special</option>
                 </select>
+                {validation?.detected && form.type === 'weekly' && (
+                  <p className="text-[9px] text-emerald-500 mt-0.5">End date will be set to last match of the round</p>
+                )}
               </div>
+
+              <div className="sm:col-span-2">
+                <Label className="text-[10px] uppercase tracking-wide">Description</Label>
+                <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary shown on the public page." className="min-h-[52px] text-xs" />
+              </div>
+
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">Status</Label>
                 <select className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs" value={form.status} onChange={e => setForm({ ...form, status: e.target.value as NewCompForm['status'] })}>
@@ -201,21 +305,32 @@ export default function AdminCompetitionsPage() {
                   <option value="completed">completed</option>
                 </select>
               </div>
+
+              <div>
+                <Label className="text-[10px] uppercase tracking-wide">Currency</Label>
+                <Input value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} className="h-8 text-xs" />
+              </div>
+
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">Start (local)</Label>
                 <Input type="datetime-local" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} className="h-8 text-xs" />
               </div>
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">End (local)</Label>
-                <Input type="datetime-local" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} className="h-8 text-xs" />
+                <Input
+                  type="datetime-local"
+                  value={form.endDate}
+                  onChange={e => setForm({ ...form, endDate: e.target.value })}
+                  className="h-8 text-xs"
+                />
+                {validation?.detected && form.type === 'weekly' && (
+                  <p className="text-[9px] text-muted-foreground mt-0.5">May be overridden by round end detection</p>
+                )}
               </div>
+
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">Prize pool</Label>
                 <Input type="number" value={form.prizePool} onChange={e => setForm({ ...form, prizePool: e.target.value })} className="h-8 text-xs" />
-              </div>
-              <div>
-                <Label className="text-[10px] uppercase tracking-wide">Currency</Label>
-                <Input value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} className="h-8 text-xs" />
               </div>
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">Entry fee</Label>
@@ -226,10 +341,17 @@ export default function AdminCompetitionsPage() {
                 <Input type="number" value={form.maxParticipants} onChange={e => setForm({ ...form, maxParticipants: e.target.value })} className="h-8 text-xs" />
               </div>
             </div>
+
             {error && <p className="text-[11px] text-rose-500">{error}</p>}
+
             <div className="flex justify-end gap-1.5">
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setShowForm(false); setForm(blankForm()); setError(null) }}>Cancel</Button>
-              <Button size="sm" className="h-7 text-xs" onClick={submit} disabled={submitting}>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setShowForm(false); setForm(blankForm()); setError(null); setValidation(null) }}>Cancel</Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={submit}
+                disabled={submitting || (!!validation && !validation.valid)}
+              >
                 {submitting ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Creating…</> : <><Plus className="mr-1 h-3 w-3" />Create</>}
               </Button>
             </div>
@@ -242,7 +364,7 @@ export default function AdminCompetitionsPage() {
         <StatCard label="Active" value={stats?.active ?? 0} icon={Trophy} tone="primary" />
         <StatCard label="Upcoming" value={stats?.upcoming ?? 0} icon={Timer} tone="info" />
         <StatCard label="Tipsters" value={stats?.totalParticipants ?? 0} icon={Users} tone="success" />
-        <StatCard label={`Prizes (K ${(stats?.totalPrizePool ?? 0) >= 1000 ? 'KES' : ''})`} value={`${Math.round((stats?.totalPrizePool ?? 0) / 1000)}K`} icon={Gift} tone="warning" />
+        <StatCard label="Prize Pool" value={`${Math.round((stats?.totalPrizePool ?? 0) / 1000)}K`} icon={Gift} tone="warning" />
       </div>
 
       {isLoading ? (
@@ -262,7 +384,7 @@ export default function AdminCompetitionsPage() {
                 <th className="px-2.5 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Name</th>
                 <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Type</th>
                 <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Status</th>
-                <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground hidden md:table-cell">Sport</th>
+                <th className="px-2 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground hidden md:table-cell">Scope</th>
                 <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Tipsters</th>
                 <th className="px-2 py-1.5 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Prize</th>
                 <th className="px-2 py-1.5 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ends</th>
@@ -272,7 +394,15 @@ export default function AdminCompetitionsPage() {
             <tbody>
               {comps.map(c => (
                 <tr key={c.id} className="border-b border-border hover:bg-muted/30">
-                  <td className="px-2.5 py-1.5 font-medium truncate max-w-[200px]">{c.name}</td>
+                  <td className="px-2.5 py-1.5 max-w-[180px]">
+                    <div className="truncate font-medium">{c.name}</div>
+                    {c.leagueName && (
+                      <div className="text-[9px] text-emerald-500 truncate">{c.leagueName} only</div>
+                    )}
+                    {c.roundBased && (
+                      <div className="text-[9px] text-blue-400">Round-based end</div>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 capitalize text-muted-foreground">{c.type}</td>
                   <td className="px-2 py-1.5">
                     <Badge variant="outline" className={cn(
@@ -282,7 +412,13 @@ export default function AdminCompetitionsPage() {
                       c.status === 'completed' && 'border-muted-foreground/30 text-muted-foreground',
                     )}>{c.status}</Badge>
                   </td>
-                  <td className="px-2 py-1.5 capitalize text-muted-foreground hidden md:table-cell">{c.sportFocus}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground hidden md:table-cell">
+                    {c.leagueName ? (
+                      <span className="text-[10px] text-emerald-500 font-medium">{c.leagueName}</span>
+                    ) : (
+                      <span className="text-[10px] capitalize">{c.sportFocus || 'all sports'}</span>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 text-center">{c.currentParticipants}/{c.maxParticipants}</td>
                   <td className="px-2 py-1.5 text-right font-semibold text-warning">{c.currency} {(c.prizePool / 1000).toFixed(0)}K</td>
                   <td className="px-2 py-1.5 text-right text-muted-foreground">{fmtTimeLeft(c.endDate)}</td>

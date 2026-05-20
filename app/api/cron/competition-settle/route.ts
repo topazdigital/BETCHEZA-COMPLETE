@@ -5,6 +5,7 @@ import {
   addCompetition,
   type Competition,
 } from '@/lib/competitions-store';
+import { computeLeaderboard, findLeagueRoundEndDate } from '@/lib/competition-league-utils';
 import { createPost } from '@/lib/feed-store';
 import { query } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
@@ -99,14 +100,75 @@ export async function GET(req: NextRequest) {
     const endedAt = new Date(comp.endDate).getTime();
     if (endedAt > now) continue; // not finished yet
 
-    // 1. SETTLE the competition
+    // ── 1. Check round-based end for league competitions ───────────────
+    // For weekly league competitions, the cron auto-extends the end date
+    // to match the actual last kickoff of the round.
+    if (comp.roundBased && comp.leagueName) {
+      const weekAhead = new Date(new Date(comp.startDate).getTime() + 8 * 24 * 60 * 60 * 1000).toISOString();
+      const roundEnd = await findLeagueRoundEndDate(comp.leagueName, comp.startDate, weekAhead);
+      if (roundEnd && new Date(roundEnd).getTime() > now) {
+        // Round hasn't finished yet — skip this competition
+        results.push({ id: comp.id, name: comp.name, action: 'round-not-finished' });
+        continue;
+      }
+    }
+
+    // ── 2. Build real leaderboard from auto_tips before settling ──────
+    const realLeaderboard = await computeLeaderboard({
+      startDate: comp.startDate,
+      endDate: comp.endDate,
+      leagueId: comp.leagueId,
+      leagueName: comp.leagueName,
+      sportFocus: comp.sportFocus,
+      minTips: 3,
+      limit: 50,
+    });
+
+    // Inject real scores back into comp.participants so settleCompetition uses them
+    if (realLeaderboard.length > 0) {
+      const realMap = new Map(realLeaderboard.map((r, i) => [r.userId, { ...r, rank: i + 1 }]));
+      for (const p of comp.participants) {
+        const real = realMap.get(p.tipsterId);
+        if (real) {
+          p.points = real.points;
+          p.roi = real.roi;
+          p.winRate = real.winRate;
+          p.won = real.won;
+          p.tips = real.totalTips;
+          p.rank = real.rank;
+        }
+      }
+      // Add real users that aren't in fake participants yet
+      for (const [, real] of realMap) {
+        const exists = comp.participants.some(p => p.tipsterId === real.userId);
+        if (!exists) {
+          comp.participants.push({
+            rank: real.rank,
+            tipsterId: real.userId,
+            username: real.username,
+            displayName: real.displayName || real.username,
+            avatar: real.avatar,
+            countryCode: null,
+            winRate: real.winRate,
+            roi: real.roi,
+            tips: real.totalTips,
+            won: real.won,
+            points: real.points,
+            streak: 0,
+            isVerified: false,
+          });
+        }
+      }
+    }
+
+    // 3. SETTLE the competition
     const settlement = settleCompetition(comp.id);
     if (!settlement.ok || settlement.alreadySettled) continue;
 
     const payouts = settlement.toCredit;
     const winner = payouts[0];
 
-    // 2. CREDIT real winners in the wallet
+    // 4. CREDIT real winners in the wallet
     for (const payout of payouts) {
       try {
         await query(
@@ -199,14 +261,27 @@ export async function GET(req: NextRequest) {
     // 5. RESTART if league is still active and competition type is recurring
     let restarted = false;
     if (comp.type !== 'special' && isLeagueActive(comp.sportFocus)) {
-      const { startDate, endDate } = nextPeriodDates(comp);
+      const { startDate, endDate: baseEndDate } = nextPeriodDates(comp);
+
+      // For round-based league competitions: auto-detect the new round's end date
+      let newEndDate = baseEndDate;
+      let newRoundBased = comp.roundBased;
+      if (comp.roundBased && comp.leagueName) {
+        const weekAhead = new Date(new Date(startDate).getTime() + 8 * 24 * 60 * 60 * 1000).toISOString();
+        const roundEnd = await findLeagueRoundEndDate(comp.leagueName, startDate, weekAhead);
+        if (roundEnd) {
+          newEndDate = roundEnd;
+          newRoundBased = true;
+        }
+      }
+
       addCompetition({
         name: comp.name,
         description: comp.description,
         type: comp.type,
         status: 'active',
         startDate,
-        endDate,
+        endDate: newEndDate,
         prizePool: comp.prizePool,
         currency: comp.currency,
         entryFee: comp.entryFee,
@@ -214,6 +289,9 @@ export async function GET(req: NextRequest) {
         prizes: comp.prizes,
         rules: comp.rules,
         sportFocus: comp.sportFocus,
+        leagueId: comp.leagueId ?? null,
+        leagueName: comp.leagueName ?? null,
+        roundBased: newRoundBased ?? false,
       });
       restarted = true;
     }

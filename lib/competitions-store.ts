@@ -44,6 +44,12 @@ export interface Competition {
   participants: CompetitionParticipant[];
   rules: string[];
   sportFocus: string;
+  /** Specific league ID (e.g. 1 = Premier League). Null = general / all leagues. */
+  leagueId?: number | null;
+  /** Display name of the detected league (e.g. "Premier League"). */
+  leagueName?: string | null;
+  /** Auto-set to true when endDate is derived from round end date */
+  roundBased?: boolean;
 }
 
 const NOW = () => Date.now();
@@ -337,6 +343,12 @@ export interface NewCompetitionInput {
   prizes?: Array<{ place: string; amount: number }>;
   rules?: string[];
   sportFocus: string;
+  /** Detected or overridden league ID (null = general competition) */
+  leagueId?: number | null;
+  /** Display name of the specific league this competition tracks */
+  leagueName?: string | null;
+  /** True when the end date was auto-derived from the last match of the round */
+  roundBased?: boolean;
 }
 
 export function addCompetition(input: NewCompetitionInput): Competition {
@@ -357,6 +369,9 @@ export function addCompetition(input: NewCompetitionInput): Competition {
     status: input.status || 'upcoming',
     startDate: input.startDate,
     endDate: input.endDate,
+    leagueId: input.leagueId ?? null,
+    leagueName: input.leagueName ?? null,
+    roundBased: input.roundBased ?? false,
     prizePool: Number(input.prizePool) || 0,
     currency: input.currency || 'KES',
     entryFee: Number(input.entryFee) || 0,
