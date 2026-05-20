@@ -1675,23 +1675,26 @@ export default function MatchDetailPage({ params }: PageProps) {
 
         {/* ─── TABS — 5 tabs: Tips | Match | Analysis | Table | News ─── */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full h-8 flex gap-0.5 bg-muted/60 p-0.5 rounded-lg mb-2">
-            <TabsTrigger value="tips" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:bg-amber-500 data-[state=active]:text-amber-950 data-[state=active]:shadow">
+          <TabsList className="w-full h-8 flex gap-0.5 bg-muted/60 p-0.5 rounded-lg mb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsTrigger value="tips" className="flex-none min-w-0 flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:bg-amber-500 data-[state=active]:text-amber-950 data-[state=active]:shadow">
               Tips
               {tips.length > 0 && (
                 <span className="ml-0.5 rounded-full bg-white/30 data-[state=active]:bg-amber-950/20 px-1 text-[8px] font-black leading-3">{tips.length}</span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="overview" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:shadow">
+            <TabsTrigger value="overview" className="flex-none min-w-0 flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:shadow">
               Match
               {isLive && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="stats" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:shadow">
+            <TabsTrigger value="odds" className="flex-none min-w-0 flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md data-[state=active]:shadow">
+              Odds
+            </TabsTrigger>
+            <TabsTrigger value="stats" className="flex-none min-w-0 flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md relative data-[state=active]:shadow">
               Analysis
               {hasTeamStats && isLive && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="standings" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md data-[state=active]:shadow">Table</TabsTrigger>
-            <TabsTrigger value="news" className="flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md data-[state=active]:shadow">News</TabsTrigger>
+            <TabsTrigger value="standings" className="flex-none min-w-0 flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md data-[state=active]:shadow">Table</TabsTrigger>
+            <TabsTrigger value="news" className="flex-none min-w-0 flex-1 px-1 py-0 h-full text-[10px] md:text-xs font-bold rounded-md data-[state=active]:shadow">News</TabsTrigger>
           </TabsList>
 
           {/* ══ OVERVIEW ══ */}
@@ -3118,57 +3121,7 @@ function MatchInfoRail({
         </CardContent>
       </Card>
 
-      {/* Odds comparison — only show when we have real bookmaker odds */}
-      {bookmakerOdds.length > 0 && hasRealOdds && (
-        <Card>
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Bookmaker Odds
-              </h3>
-            </div>
-            {/* Column headers */}
-            <div className={cn('grid gap-1 text-[9px] font-bold uppercase text-muted-foreground px-0.5', isTwoWay ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]')}>
-              <span>Book</span>
-              <span className="text-center w-10">1</span>
-              {!isTwoWay && <span className="text-center w-10">X</span>}
-              <span className="text-center w-10">2</span>
-            </div>
-            {/* Up to 6 bookmakers */}
-            {bookmakerOdds.slice(0, 6).map((b, i) => (
-              <div key={i} className={cn(
-                'grid gap-1 items-center rounded-lg px-0.5 py-1',
-                isTwoWay ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]',
-                i === 0 ? 'bg-primary/5' : '',
-              )}>
-                <span className="text-[10px] truncate text-muted-foreground">{b.bookmaker}</span>
-                <span className={cn('w-10 text-center text-xs font-bold tabular-nums', i === 0 ? 'text-primary' : '')}>{b.home.toFixed(2)}</span>
-                {!isTwoWay && <span className={cn('w-10 text-center text-xs font-bold tabular-nums', i === 0 ? 'text-primary' : '')}>{b.draw?.toFixed(2) ?? '—'}</span>}
-                <span className={cn('w-10 text-center text-xs font-bold tabular-nums', i === 0 ? 'text-primary' : '')}>{b.away.toFixed(2)}</span>
-              </div>
-            ))}
-            {bookmakerOdds.length === 0 && consensus && (
-              <div className={cn('grid gap-1.5', isTwoWay ? 'grid-cols-2' : 'grid-cols-3')}>
-                <div className="rounded-lg bg-muted/50 p-2 text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase">{isTwoWay ? 'Home' : '1'}</p>
-                  <p className="font-bold">{consensus.home.toFixed(2)}</p>
-                </div>
-                {!isTwoWay && consensus.draw !== undefined && (
-                  <div className="rounded-lg bg-muted/50 p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">X</p>
-                    <p className="font-bold">{consensus.draw.toFixed(2)}</p>
-                  </div>
-                )}
-                <div className="rounded-lg bg-muted/50 p-2 text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase">{isTwoWay ? 'Away' : '2'}</p>
-                  <p className="font-bold">{consensus.away.toFixed(2)}</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Bookmaker odds comparison lives in the Odds tab — no repeat here */}
 
       {/* Betting markets */}
       {match.markets && match.markets.length > 0 && (
