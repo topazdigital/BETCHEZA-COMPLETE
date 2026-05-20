@@ -3,6 +3,7 @@ import { query } from '@/lib/db';
 import { getFakeTipsters, type FakeTipster } from '@/lib/fake-tipsters';
 import { getCurrentUser } from '@/lib/auth';
 import { getFollowedTipsters } from '@/lib/follows-store';
+import { computeRealTipsterStats, computeRealRoi, computeRealStreak } from '@/lib/auto-tips-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -150,6 +151,23 @@ export async function GET(request: NextRequest) {
         case 'rank':
         default: return b.winRate - a.winRate;
       }
+    });
+    // Layer in REAL settled stats from the auto-tip ledger (fast, in-memory)
+    fake = fake.map(t => {
+      const real = computeRealTipsterStats(t.id);
+      if (real.won + real.lost >= 5) {
+        return {
+          ...t,
+          winRate: real.winRate,
+          wonTips: real.won,
+          lostTips: real.lost,
+          pendingTips: real.pending,
+          totalTips: real.totalSettled + real.pending,
+          roi: computeRealRoi(t.id),
+          streak: computeRealStreak(t.id),
+        };
+      }
+      return t;
     });
     // Always assign rank based on winRate ordering so rank reflects real performance
     const byWinRate = [...fake].sort((a, b) => b.winRate - a.winRate);

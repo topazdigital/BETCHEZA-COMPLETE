@@ -532,6 +532,41 @@ export function computeRealTipsterStats(tipsterId: number): {
 }
 
 /**
+ * Compute real ROI from the settled tip ledger for a tipster.
+ * ROI = (net return / total staked) × 100. Unit-stake assumed where stake = 0.
+ */
+export function computeRealRoi(tipsterId: number): number {
+  const list = stores.byTipster.get(tipsterId) || [];
+  const settled = list.filter(t => t.status === 'won' || t.status === 'lost');
+  if (settled.length === 0) return 0;
+  let totalReturn = 0;
+  let totalStake = 0;
+  for (const t of settled) {
+    const stake = t.stake > 0 ? t.stake : 1;
+    totalReturn += t.status === 'won' ? (t.odds - 1) * stake : -stake;
+    totalStake += stake;
+  }
+  return totalStake > 0 ? Math.round((totalReturn / totalStake) * 1000) / 10 : 0;
+}
+
+/**
+ * Compute real current win/loss streak from the settled tip ledger.
+ * Positive = win streak, negative = loss streak, 0 = no settled tips.
+ */
+export function computeRealStreak(tipsterId: number): number {
+  const list = stores.byTipster.get(tipsterId) || [];
+  const settled = list.filter(t => t.status === 'won' || t.status === 'lost');
+  if (settled.length === 0) return 0;
+  const firstStatus = settled[0].status;
+  let count = 0;
+  for (const t of settled) {
+    if (t.status === firstStatus) count++;
+    else break;
+  }
+  return firstStatus === 'won' ? count : -count;
+}
+
+/**
  * Determine if a tip won or lost based on actual match score.
  * Returns null if the prediction type is unrecognised.
  * Covers: 1X2, Double Chance, Draw No Bet, Over/Under, BTTS,

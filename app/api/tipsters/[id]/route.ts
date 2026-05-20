@@ -7,6 +7,8 @@ import {
   settleStaleAutoTips,
   bulkResettleWithRealData,
   computeRealTipsterStats,
+  computeRealRoi,
+  computeRealStreak,
   type GeneratedTip,
   type TipMatchData,
 } from '@/lib/auto-tips-store';
@@ -441,6 +443,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // floor so brand-new tipsters still look established.
     const real = computeRealTipsterStats(tipsterId);
     if (real.won + real.lost >= 5) {
+      const realRoi = computeRealRoi(tipsterId);
+      const realStreak = computeRealStreak(tipsterId);
       response.tipster = {
         ...response.tipster,
         winRate: real.winRate,
@@ -448,6 +452,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         lostTips: real.lost,
         pendingTips: real.pending,
         totalTips: real.totalSettled + real.pending,
+        roi: realRoi,
+        streak: realStreak,
       };
     }
   }
