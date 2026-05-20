@@ -793,7 +793,7 @@ const CACHE_DURATION = {
   live: 30 * 1000,           // 30 seconds for live data
   upcoming: 5 * 60 * 1000,  // 5 minutes for upcoming
   standings: 30 * 60 * 1000, // 30 minutes for standings
-  outrights: 60 * 60 * 1000, // 60 minutes for outrights
+  outrights: 6 * 60 * 60 * 1000, // 6 hours for outrights (futures change slowly; preserve API quota)
 };
 
 const cache = new Map<string, { data: unknown; timestamp: number }>();
@@ -4172,7 +4172,20 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
       setCache(cacheKey, staticData);
       return staticData;
     }
-    // Do not fall back to computed/standings-derived odds — only show real bookmaker data.
+    // ─── Free standing-derived odds fallback ─────────────────────────────
+    // When no API key or quota is available, compute outright odds from
+    // current league standings (positions → title probability → decimal odds).
+    // This is completely free and uses ESPN's public scoreboard data.
+    try {
+      const standingsOutright = await buildOutrightFromStandings(leagueId);
+      if (standingsOutright) {
+        const derived = [standingsOutright];
+        setCache(cacheKey, derived);
+        return derived;
+      }
+    } catch {
+      // Standings not available — return empty rather than crash
+    }
   }
 
   setCache(cacheKey, outrights);

@@ -7,16 +7,18 @@
 // Daily strategy auto-posts at 9:00 AM EAT (06:00 UTC) every day.
 
 const TICK_MS = 5 * 60_000; // 5 min base tick
-const JACKPOT_SYNC_EVERY_N_TICKS = 12; // 12 × 5min = 60min
+const JACKPOT_SYNC_EVERY_N_TICKS = 12;      // 12 × 5min = 60min
+const COMPETITION_SETTLE_EVERY_N_TICKS = 12; // every 60min
 
 interface CronState {
   started: boolean;
   timer: NodeJS.Timeout | null;
   tickCount: number;
   lastStrategyDate: string;
+  lastWeeklyReportDate: string;
 }
 const g = globalThis as { __betchezaCron?: CronState };
-g.__betchezaCron = g.__betchezaCron || { started: false, timer: null, tickCount: 0, lastStrategyDate: '' };
+g.__betchezaCron = g.__betchezaCron || { started: false, timer: null, tickCount: 0, lastStrategyDate: '', lastWeeklyReportDate: '' };
 const state = g.__betchezaCron;
 
 function getBaseUrl(): string {
@@ -147,6 +149,49 @@ async function runFakeVotes(): Promise<void> {
   }
 }
 
+async function runCompetitionSettle(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/competition-settle`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
+    });
+    if (!r.ok) {
+      console.warn('[cron] competition-settle failed:', r.status);
+    } else {
+      const data = await r.json() as { processed: number; competitions: Array<{ name: string; action: string }> };
+      if (data.processed > 0) {
+        console.log(`[cron] competition-settle: ${data.processed} processed — ${data.competitions.map(c => `${c.name} (${c.action})`).join(', ')}`);
+      }
+    }
+  } catch (e) {
+    console.warn('[cron] competition-settle error', e instanceof Error ? e.message : e);
+  }
+}
+
+async function runWeeklyTipsterReport(): Promise<void> {
+  // Only run on Sundays
+  if (new Date().getDay() !== 0) return;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (state.lastWeeklyReportDate === todayStr) return;
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/weekly-tipster-report`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
+    });
+    if (!r.ok) {
+      console.warn('[cron] weekly-tipster-report failed:', r.status);
+    } else {
+      state.lastWeeklyReportDate = todayStr;
+      const data = await r.json() as { sent?: number; skipped?: boolean; week?: string };
+      if (!data.skipped) {
+        console.log(`[cron] weekly-tipster-report: sent ${data.sent ?? 0} emails for week ${data.week}`);
+      }
+    }
+  } catch (e) {
+    console.warn('[cron] weekly-tipster-report error', e instanceof Error ? e.message : e);
+  }
+}
+
 async function tick(): Promise<void> {
   state.tickCount++;
   void runMatchReminders();
@@ -164,8 +209,17 @@ async function tick(): Promise<void> {
     void runJackpotSync();
   }
 
+  if (state.tickCount % COMPETITION_SETTLE_EVERY_N_TICKS === 0) {
+    void runCompetitionSettle();
+  }
+
   if (isStrategyTime()) {
     void runDailyStrategy();
+  }
+
+  // Weekly tipster report — Sunday morning EAT (06:00 UTC = 9am EAT)
+  if (new Date().getDay() === 0 && isStrategyTime()) {
+    void runWeeklyTipsterReport();
   }
 }
 

@@ -14,6 +14,46 @@ const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 // ── Real odds resolver ────────────────────────────────────────────────────────
 // Use actual bookmaker odds from the match when available, fall back to
 // a realistic randomised value so we never show a made-up "1.45" flat rate.
+
+/**
+ * Returns true only if the match has real bookmaker odds available for this pick.
+ * This guards against ever displaying static fallback prices on the feed.
+ */
+function hasLiveOdds(
+  pick: string,
+  matchOdds?: { home: number; draw?: number; away: number } | null,
+  markets?: Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }> | null,
+): boolean {
+  const p = pick.toLowerCase();
+
+  // Check market selections first
+  if (markets && markets.length > 0) {
+    for (const m of markets) {
+      for (const sel of (m.selections || [])) {
+        const sl = sel.label.toLowerCase();
+        if (
+          (p === 'home win' && (sl === 'home' || sl === '1' || sl === 'home win')) ||
+          (p === 'away win' && (sl === 'away' || sl === '2' || sl === 'away win')) ||
+          (p === 'draw' && (sl === 'draw' || sl === 'x')) ||
+          (p === 'both teams score' && (sl === 'yes' || sl === 'btts yes' || sl.includes('both teams'))) ||
+          (p === 'over 2.5 goals' && (sl === 'over 2.5' || sl === 'over' || sl.includes('over 2.5')))
+        ) {
+          if (sel.odds >= 1.01) return true;
+        }
+      }
+    }
+  }
+
+  // Check 1X2 odds
+  if (matchOdds) {
+    if (p === 'home win' && matchOdds.home >= 1.01) return true;
+    if (p === 'away win' && matchOdds.away >= 1.01) return true;
+    if (p === 'draw' && matchOdds.draw && matchOdds.draw >= 1.01) return true;
+  }
+
+  return false;
+}
+
 function resolveOddsForPick(
   pick: string,
   matchOdds?: { home: number; draw?: number; away: number } | null,
@@ -287,15 +327,38 @@ async function runActivity() {
     if (Math.random() > 0.4 || availablePosters.length === 0) continue;
     const tipster = randPick(availablePosters);
     const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
-    const odds = resolveOddsForPick(pick, match.odds, match.markets);
-    const template = randPick(MATCH_POSTS);
-    const content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
+
+    // Only attach real bookmaker odds — never use the static fallback values.
+    // If the match has no live odds yet, post a generic analysis without the odds badge.
+    type OddsMarkets = Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }>;
+    const marketsForOdds = match.markets as OddsMarkets | undefined;
+    const hasRealOdds = hasLiveOdds(pick, match.odds, marketsForOdds);
+    let postPick: string | null = null;
+    let postOdds: number | null = null;
+    let content: string;
+
+    if (hasRealOdds) {
+      const odds = resolveOddsForPick(pick, match.odds, marketsForOdds);
+      const template = randPick(MATCH_POSTS);
+      content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
+      postPick = pick;
+      postOdds = odds;
+      recordActivityTip(tipster.id, match.id, pick, odds);
+    } else {
+      // Post an analysis comment without odds so no fake price is displayed
+      const genericAnalysis = [
+        `${match.homeTeam.name} vs ${match.awayTeam.name} — ${rationale} Keeping an eye on this one before committing.`,
+        `Watching ${match.homeTeam.name} vs ${match.awayTeam.name} closely. ${rationale}`,
+        `${match.homeTeam.name} vs ${match.awayTeam.name}: ${rationale} Will post my tip once the lines open.`,
+      ];
+      content = randPick(genericAnalysis);
+    }
+
     await createPost({
       userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
       content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-      pick, odds, imageUrl: null,
+      pick: postPick, odds: postOdds, imageUrl: null,
     }).catch(() => {});
-    recordActivityTip(tipster.id, match.id, pick, odds);
     g.__fakeActivityPostedMatches!.add(match.id);
     g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
   }
@@ -357,16 +420,36 @@ export async function GET(req: NextRequest) {
       if (Math.random() > 0.4 || availablePosters.length === 0) continue;
       const tipster = randPick(availablePosters);
       const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
-      const odds = resolveOddsForPick(pick, match.odds, match.markets);
-      const template = randPick(MATCH_POSTS);
-      const content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
+
+      // Only post with real odds — never display static fallback prices on the feed.
+      type OddsMarkets2 = Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }>;
+      const mkts = match.markets as OddsMarkets2 | undefined;
+      let postPick: string | null = null;
+      let postOdds: number | null = null;
+      let content: string;
+
+      if (hasLiveOdds(pick, match.odds, mkts)) {
+        const odds = resolveOddsForPick(pick, match.odds, mkts);
+        const template = randPick(MATCH_POSTS);
+        content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
+        postPick = pick;
+        postOdds = odds;
+      } else {
+        const genericAnalysis = [
+          `${match.homeTeam.name} vs ${match.awayTeam.name} — ${rationale} Waiting for the lines to sharpen before committing.`,
+          `Watching ${match.homeTeam.name} vs ${match.awayTeam.name} closely. ${rationale}`,
+          `${match.homeTeam.name} vs ${match.awayTeam.name}: ${rationale} Will post my tip once odds are confirmed.`,
+        ];
+        content = randPick(genericAnalysis);
+      }
+
       try {
         await createPost({
           userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
           content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-          pick, odds, imageUrl: null,
+          pick: postPick, odds: postOdds, imageUrl: null,
         });
-        recordActivityTip(tipster.id, match.id, pick, odds);
+        if (postPick && postOdds) recordActivityTip(tipster.id, match.id, postPick, postOdds);
         g.__fakeActivityPostedMatches!.add(match.id);
         g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
         results.postsCreated++;
