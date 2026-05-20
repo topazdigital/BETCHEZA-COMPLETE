@@ -874,14 +874,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const sportType = cfg?.sportType || 'soccer';
     const isSoccer = sportType === 'soccer';
 
-    // Extract the point spread and total line from ESPN pickcenter markets so
-    // the sport-specific derive functions can produce accurate alternate lines.
-    const espnSpreadMarket = (summaryMarkets || []).find((m: { key: string; outcomes?: Array<{ point?: number }> }) => m.key === 'spreads');
-    const espnTotalsMarket = (summaryMarkets || []).find((m: { key: string; outcomes?: Array<{ point?: number }> }) => m.key === 'totals');
-    const spreadValue: number | undefined = espnSpreadMarket?.outcomes?.[0]?.point;
-    const totalLine: number | undefined = espnTotalsMarket?.outcomes?.[0]?.point;
-
-    let derivedMarkets: ReturnType<typeof deriveSoccerMarkets>;
+    // For soccer: derive additional markets (BTTS, correct score, etc.) from
+    // the real 1X2 odds using a statistical model — this is the established
+    // feature and the odds are clearly model-derived.
+    // For all other sports: NEVER derive fake computed odds. Only show what
+    // ESPN pickcenter returns as real bookmaker data (moneyline, spread, total).
+    let derivedMarkets: ReturnType<typeof deriveSoccerMarkets> = [];
     if (isSoccer && finalOdds?.home && finalOdds?.draw !== undefined && finalOdds?.away) {
       derivedMarkets = deriveSoccerMarkets(
         finalOdds.home,
@@ -890,42 +888,17 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         match.homeTeam.name,
         match.awayTeam.name,
       );
-    } else if ((sportType === 'basketball') && finalOdds?.home && finalOdds?.away) {
-      const { deriveBasketballMarkets } = await import('@/lib/api/unified-sports-api');
-      derivedMarkets = deriveBasketballMarkets(
-        finalOdds.home, finalOdds.away, spreadValue, totalLine,
-        match.homeTeam.name, match.awayTeam.name,
-      );
-    } else if (sportType === 'baseball' && finalOdds?.home && finalOdds?.away) {
-      const { deriveBaseballMarkets } = await import('@/lib/api/unified-sports-api');
-      derivedMarkets = deriveBaseballMarkets(
-        finalOdds.home, finalOdds.away, totalLine,
-        match.homeTeam.name, match.awayTeam.name,
-      );
-    } else if (sportType === 'hockey' && finalOdds?.home && finalOdds?.away) {
-      const { deriveHockeyMarkets } = await import('@/lib/api/unified-sports-api');
-      derivedMarkets = deriveHockeyMarkets(
-        finalOdds.home, finalOdds.draw, finalOdds.away, totalLine,
-        match.homeTeam.name, match.awayTeam.name,
-      );
-    } else if (sportType === 'football' && finalOdds?.home && finalOdds?.away) {
-      const { deriveAmericanFootballMarkets } = await import('@/lib/api/unified-sports-api');
-      derivedMarkets = deriveAmericanFootballMarkets(
-        finalOdds.home, finalOdds.away, spreadValue, totalLine,
-        match.homeTeam.name, match.awayTeam.name,
-      );
-    } else {
-      derivedMarkets = (match.markets || []) as ReturnType<typeof deriveSoccerMarkets>;
     }
 
     // Merge strategy:
-    // 1. ESPN pickcenter markets (h2h, totals, spreads) — have real provider odds → keep as-is.
-    // 2. Supplement with derived soccer markets only when real odds back them.
+    // 1. ESPN pickcenter markets (h2h, totals, spreads) — real provider odds → always kept.
+    // 2. Derived soccer markets supplement when ESPN doesn't cover a market key.
+    // 3. Non-soccer: only real ESPN markets shown; empty list if none available.
     const espnMarketKeys = new Set((summaryMarkets || []).map((m: { key: string }) => m.key));
     const supplementary = derivedMarkets.filter(m => !espnMarketKeys.has(m.key));
     const finalMarkets = summaryMarkets && summaryMarkets.length > 0
       ? [...summaryMarkets, ...supplementary]
-      : (finalOdds ? derivedMarkets : []);
+      : (isSoccer && finalOdds ? derivedMarkets : []);
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 

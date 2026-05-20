@@ -2823,101 +2823,184 @@ const MARKET_GROUP_ORDER = [
   { key: 'corners_11_5',        label: 'Total Corners O/U 11.5' },
 ]
 
+// ── Soccer market tab categories ────────────────────────────────────────────
+const SOCCER_TABS = [
+  {
+    id: 'main' as const,
+    label: 'Main',
+    keys: new Set(['h2h', 'spreads', 'double_chance', 'draw_no_bet', 'asian_handicap']),
+  },
+  {
+    id: 'goals' as const,
+    label: 'Goals',
+    keys: new Set([
+      'totals', 'btts', 'btts_and_result', 'odd_even_goals', 'exact_goals',
+      'totals_0_5', 'totals_1_5', 'totals_2_5', 'totals_3_5', 'totals_4_5',
+      'first_team_to_score',
+    ]),
+  },
+  {
+    id: 'halves' as const,
+    label: '1st Half',
+    keys: new Set(['ht_result', 'ht_ft', 'goal_first_half']),
+  },
+  {
+    id: 'specials' as const,
+    label: 'Specials',
+    keys: new Set([
+      'correct_score', 'win_to_nil', 'clean_sheet_home', 'clean_sheet_away',
+      'corners_8_5', 'corners_9_5', 'corners_10_5', 'corners_11_5',
+    ]),
+  },
+] as const
+
+type SoccerTabId = (typeof SOCCER_TABS)[number]['id']
+
 function MarketsSection({ match, isFinished, onShareTip }: { match: MatchDetails['match']; isFinished?: boolean; onShareTip?: (marketKey: string, outcome: { name: string; price: number }) => void }) {
   const { addSelection, isSelected } = useBetSlip()
-  const [expanded, setExpanded] = useState(false)
+  const [activeTab, setActiveTab] = useState<SoccerTabId>('main')
 
   if (!match.markets || match.markets.length === 0) return null
 
-  // Order markets according to priority list, then append any remaining ones
   const priorityKeys = MARKET_GROUP_ORDER.map(g => g.key)
   const ordered = [
     ...priorityKeys.map(k => match.markets!.find(m => m.key === k)).filter(Boolean),
     ...match.markets.filter(m => !priorityKeys.includes(m.key) && m.key !== 'h2h'),
   ] as NonNullable<typeof match.markets>
 
-  const INITIAL_SHOW = 8
-  const visibleMarkets = expanded ? ordered : ordered.slice(0, INITIAL_SHOW)
+  // 'football' is the slug for soccer (European football) in this app's database.
+  // Use tabs only for soccer matches with enough markets to warrant grouping.
+  const isSoccer = match.sport.slug === 'football' || match.sport.slug === 'soccer'
+  const useTabs = isSoccer && ordered.length > 5
+
+  // Build per-tab market lists
+  const allTabKeys = new Set(SOCCER_TABS.flatMap(t => [...t.keys]))
+  const tabBuckets = useTabs
+    ? SOCCER_TABS.reduce<Record<SoccerTabId, MatchMarket[]>>(
+        (acc, tab) => {
+          acc[tab.id] = ordered.filter(m => (tab.keys as ReadonlySet<string>).has(m.key))
+          return acc
+        },
+        { main: [], goals: [], halves: [], specials: [] },
+      )
+    : null
+
+  // Unclaimed markets (not in any bucket) go into Specials
+  if (tabBuckets) {
+    const unclaimed = ordered.filter(m => !allTabKeys.has(m.key) && m.key !== 'h2h')
+    if (unclaimed.length) tabBuckets.specials.push(...unclaimed)
+  }
+
+  const availableTabs = useTabs
+    ? SOCCER_TABS.filter(t => (tabBuckets![t.id]?.length ?? 0) > 0)
+    : []
+
+  const safeTab: SoccerTabId = availableTabs.some(t => t.id === activeTab)
+    ? activeTab
+    : (availableTabs[0]?.id ?? 'main')
+
+  const visibleMarkets = useTabs ? (tabBuckets![safeTab] ?? []) : ordered
   const matchName = `${match.homeTeam.name} vs ${match.awayTeam.name}`
 
   return (
     <Card>
-      <CardContent className="p-4 space-y-3">
-        <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-          <TrendingUp className="h-3.5 w-3.5" />
-          Betting Markets
-          {isFinished
-            ? <span className="ml-auto text-[10px] font-semibold normal-case text-rose-500/70">Match finished — betting closed</span>
-            : <span className="ml-auto text-[10px] font-normal normal-case">Tap odds to add to slip</span>
-          }
-        </h3>
+      <CardContent className="p-3 space-y-2.5">
+        {/* Header */}
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 flex-1 min-w-0">
+            <TrendingUp className="h-3.5 w-3.5 flex-none" />
+            Betting Markets
+          </h3>
+          {isFinished ? (
+            <span className="text-[10px] font-semibold text-rose-500/70 flex-none">Closed</span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground flex-none">Tap to add to slip</span>
+          )}
+        </div>
 
-        {visibleMarkets.map((mkt) => {
-          const cols = mkt.outcomes.length === 2 ? 'grid-cols-2'
-            : mkt.outcomes.length === 3 ? 'grid-cols-3'
-            : 'grid-cols-2'
-          const displayOutcomes = mkt.outcomes.slice(0, Math.min(mkt.outcomes.length, 6))
-
-          return (
-            <div key={mkt.key} className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{mkt.name}</p>
-              <div className={cn('grid gap-1', cols)}>
-                {displayOutcomes.map((o, oi) => {
-                  const selected = !isFinished && isSelected(match.id, mkt.key, o.name)
-                  return (
-                    <div key={oi} className="relative group">
-                      <button
-                        disabled={isFinished}
-                        onClick={isFinished ? undefined : () => addSelection({
-                          matchId: match.id,
-                          matchName,
-                          marketKey: mkt.key,
-                          marketName: mkt.name,
-                          outcomeName: o.name,
-                          price: o.price,
-                          matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
-                        })}
-                        className={cn(
-                          'w-full flex flex-col items-center rounded-lg border px-1.5 py-1.5 text-center transition-all',
-                          isFinished ? 'cursor-default opacity-60' : 'active:scale-95',
-                          selected
-                            ? 'bg-primary/10 border-primary text-primary'
-                            : 'bg-muted/40 border-border/50 text-foreground hover:bg-muted/70 hover:border-primary/40',
-                        )}
-                      >
-                        <span className="text-[9px] text-muted-foreground truncate w-full text-center leading-tight">{o.name}</span>
-                        <span className={cn('text-sm font-black tabular-nums mt-0.5', selected ? 'text-primary' : '')}>{o.price.toFixed(2)}</span>
-                      </button>
-                      {!isFinished && onShareTip && (
-                        <button
-                          type="button"
-                          title="Share as tip"
-                          onClick={() => onShareTip(mkt.key, { name: o.name, price: o.price })}
-                          className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-amber-500 text-amber-950 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-amber-400"
-                        >
-                          <Pencil className="h-2 w-2" />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-
-        {ordered.length > INITIAL_SHOW && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="w-full text-xs text-primary hover:underline flex items-center justify-center gap-1 pt-1"
-          >
-            {expanded ? (
-              <><ChevronUp className="h-3.5 w-3.5" /> Show fewer markets</>
-            ) : (
-              <><ChevronDown className="h-3.5 w-3.5" /> Show {ordered.length - INITIAL_SHOW} more markets</>
-            )}
-          </button>
+        {/* Category tabs — soccer only, slides horizontally on mobile */}
+        {useTabs && availableTabs.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {availableTabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'flex-none px-3 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap',
+                  safeTab === tab.id
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-muted/70 text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {tab.label}
+                <span className="ml-1 opacity-50 text-[10px]">{tabBuckets![tab.id].length}</span>
+              </button>
+            ))}
+          </div>
         )}
+
+        {/* Market rows */}
+        <div className="space-y-1.5">
+          {visibleMarkets.map((mkt) => {
+            const displayOutcomes = mkt.outcomes.slice(0, Math.min(mkt.outcomes.length, 6))
+            const cols = displayOutcomes.length === 2 ? 'grid-cols-2'
+              : displayOutcomes.length === 3 ? 'grid-cols-3'
+              : 'grid-cols-2'
+
+            return (
+              <div key={mkt.key} className="space-y-0.5">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/80 leading-none px-0.5">
+                  {mkt.name}
+                </p>
+                <div className={cn('grid gap-1', cols)}>
+                  {displayOutcomes.map((o, oi) => {
+                    const selected = !isFinished && isSelected(match.id, mkt.key, o.name)
+                    return (
+                      <div key={oi} className="relative group">
+                        <button
+                          disabled={isFinished}
+                          onClick={isFinished ? undefined : () => addSelection({
+                            matchId: match.id,
+                            matchName,
+                            marketKey: mkt.key,
+                            marketName: mkt.name,
+                            outcomeName: o.name,
+                            price: o.price,
+                            matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                          })}
+                          className={cn(
+                            'w-full flex items-center justify-between gap-1 rounded-md border px-1.5 py-1.5 transition-all',
+                            isFinished ? 'cursor-default opacity-60' : 'active:scale-95',
+                            selected
+                              ? 'bg-primary/10 border-primary text-primary'
+                              : 'bg-muted/40 border-border/50 text-foreground hover:bg-muted/70 hover:border-primary/40',
+                          )}
+                        >
+                          <span className="text-[9px] text-muted-foreground truncate leading-tight text-left min-w-0 flex-1">
+                            {o.name}
+                          </span>
+                          <span className={cn('text-[13px] font-black tabular-nums flex-none', selected ? 'text-primary' : '')}>
+                            {o.price.toFixed(2)}
+                          </span>
+                        </button>
+                        {!isFinished && onShareTip && (
+                          <button
+                            type="button"
+                            title="Share as tip"
+                            onClick={() => onShareTip(mkt.key, { name: o.name, price: o.price })}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-amber-500 text-amber-950 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-amber-400"
+                          >
+                            <Pencil className="h-2 w-2" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </CardContent>
     </Card>
   )
