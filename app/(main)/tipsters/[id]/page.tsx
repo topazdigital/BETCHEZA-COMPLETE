@@ -260,6 +260,12 @@ export default function TipsterProfilePage({ params }: PageProps) {
                       PRO
                     </Badge>
                   )}
+                  {tipster.performanceVerified && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-600">
+                      <ShieldCheck className="h-3 w-3" />
+                      Performance Verified
+                    </span>
+                  )}
                 </div>
                 
                 <p className="text-xs text-muted-foreground mb-1.5">@{tipster.username}</p>

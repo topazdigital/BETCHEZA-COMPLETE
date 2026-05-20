@@ -5,7 +5,7 @@ import Link from 'next/link';
 import useSWR from 'swr';
 import {
   Search, Filter, Trophy, TrendingUp, Flame, Users, Star, Check,
-  GitCompare, ChevronLeft, ChevronRight,
+  GitCompare, ChevronLeft, ChevronRight, ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +37,7 @@ interface Tipster {
   subscriptionPrice: number | null;
   verified: boolean;
   countryCode: string | null;
+  performanceVerified?: boolean;
 }
 
 function TipsterSparkline({ wonTips, totalTips, streak, id }: { wonTips: number; totalTips: number; streak: number; id: number }) {
@@ -275,6 +276,9 @@ export default function TipstersPage() {
                             </span>
                             {tipster.verified && (
                               <Check className="h-3 w-3 shrink-0 rounded-full bg-primary p-0.5 text-primary-foreground" />
+                            )}
+                            {tipster.performanceVerified && (
+                              <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-500" title="Performance Verified — 10+ real settled tips" />
                             )}
                             {tipster.isPro && (
                               <Badge className="ml-auto h-3.5 bg-gradient-to-r from-primary to-primary/80 px-1 text-[8px]">

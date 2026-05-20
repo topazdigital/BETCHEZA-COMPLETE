@@ -16,6 +16,8 @@ import {
   Zap,
   Shield,
   Sparkles,
+  ShieldCheck,
+  Medal,
 } from 'lucide-react';
 import { BetchezaBackBanner } from '@/components/home/betcheza-back-banner';
 import { SportsFilter } from '@/components/sports/sports-filter';
@@ -47,10 +49,38 @@ interface ApiTipster {
   avatar?: string | null;
 }
 
+interface TipsterOfWeekData {
+  tipster: {
+    id: number;
+    username: string;
+    displayName: string;
+    avatar: string | null;
+    bio: string | null;
+    winRate: number;
+    roi: number;
+    streak: number;
+    wonTips: number;
+    lostTips: number;
+    totalTips: number;
+    isPro: boolean;
+    verified: boolean;
+    countryCode: string | null;
+    href: string;
+  } | null;
+  weeklyWon: number;
+  weeklyLost: number;
+  weeklyTotal: number;
+  weeklyWinRate: number;
+  isWeekly: boolean;
+  performanceVerified: boolean;
+}
+
 const tipstersFetcher = (url: string) =>
   fetch(url)
     .then((r) => r.json())
     .then((d) => (Array.isArray(d?.tipsters) ? (d.tipsters as ApiTipster[]) : []));
+
+const genericFetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function HomePage() {
   const [selectedSportId, setSelectedSportId] = useState<number | null>(null);
@@ -63,6 +93,13 @@ export default function HomePage() {
     { refreshInterval: 10 * 60 * 1000, revalidateOnFocus: false, dedupingInterval: 10 * 60 * 1000 },
   );
   const topTipsters = topTipstersData ?? [];
+
+  // Tipster of the week spotlight
+  const { data: totwData } = useSWR<TipsterOfWeekData>(
+    '/api/tipsters/tipster-of-the-week',
+    genericFetcher,
+    { refreshInterval: 15 * 60 * 1000, revalidateOnFocus: false, dedupingInterval: 15 * 60 * 1000 },
+  );
 
   const { matches, isLoading } = useMatches(
     selectedSportId ? { sportId: selectedSportId } : undefined
@@ -378,6 +415,98 @@ export default function HomePage() {
                 <MyTipsPanel />
                 <FavoritedTipsPanel />
               </div>
+
+              {/* Tipster of the Week spotlight */}
+              {totwData?.tipster && (
+                <section className="mb-4">
+                  <Link
+                    href={tipsterHref(totwData.tipster.username, totwData.tipster.username)}
+                    className="group block rounded-xl border border-amber-400/30 bg-gradient-to-r from-amber-500/10 via-yellow-400/5 to-transparent p-3 transition-all hover:border-amber-400/60 hover:shadow-md"
+                  >
+                    {/* Header row */}
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <Medal className="h-4 w-4 text-amber-500" />
+                        <span className="text-xs font-bold uppercase tracking-wide text-amber-600">
+                          {totwData.isWeekly ? 'Tipster of the Week' : 'Top Performer'}
+                        </span>
+                        {totwData.performanceVerified && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 text-[9px] font-bold text-emerald-600">
+                            <ShieldCheck className="h-2.5 w-2.5" />
+                            Verified
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground group-hover:text-primary">
+                        View profile →
+                      </span>
+                    </div>
+
+                    {/* Tipster row */}
+                    <div className="flex items-center gap-3">
+                      {/* Avatar */}
+                      <div className="relative shrink-0">
+                        <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-amber-400/40 bg-amber-500 text-lg font-bold text-white shadow-sm">
+                          {totwData.tipster.avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={totwData.tipster.avatar} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            (totwData.tipster.displayName || totwData.tipster.username).charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 shadow">
+                          <Trophy className="h-3 w-3 text-white" />
+                        </div>
+                      </div>
+
+                      {/* Info + stats */}
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-1">
+                          <span className="truncate text-sm font-bold text-foreground group-hover:text-amber-600">
+                            {totwData.tipster.displayName}
+                          </span>
+                          {totwData.tipster.isPro && (
+                            <span className="shrink-0 rounded bg-amber-500 px-1 py-0 text-[8px] font-bold text-white">PRO</span>
+                          )}
+                        </div>
+
+                        {/* Stats pills */}
+                        <div className="flex flex-wrap gap-1.5">
+                          <div className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-center">
+                            <span className="text-xs font-bold text-emerald-600">
+                              {totwData.isWeekly ? totwData.weeklyWinRate : totwData.tipster.winRate}%
+                            </span>
+                            <span className="ml-1 text-[9px] text-muted-foreground uppercase">Win</span>
+                          </div>
+                          <div className="rounded-md bg-primary/10 px-2 py-0.5">
+                            <span className="text-xs font-bold text-primary">
+                              {totwData.tipster.roi >= 0 ? '+' : ''}{totwData.tipster.roi}%
+                            </span>
+                            <span className="ml-1 text-[9px] text-muted-foreground uppercase">ROI</span>
+                          </div>
+                          <div className="rounded-md bg-muted px-2 py-0.5">
+                            <span className="text-xs font-bold text-foreground">
+                              {totwData.isWeekly
+                                ? `${totwData.weeklyWon}W / ${totwData.weeklyLost}L`
+                                : `${totwData.tipster.wonTips}W / ${totwData.tipster.lostTips}L`}
+                            </span>
+                            <span className="ml-1 text-[9px] text-muted-foreground uppercase">
+                              {totwData.isWeekly ? 'This week' : 'Record'}
+                            </span>
+                          </div>
+                          {totwData.tipster.streak > 1 && (
+                            <div className="flex items-center gap-0.5 rounded-md bg-warning/10 px-2 py-0.5">
+                              <Flame className="h-3 w-3 text-warning" />
+                              <span className="text-xs font-bold text-warning">{totwData.tipster.streak}</span>
+                              <span className="ml-0.5 text-[9px] text-muted-foreground uppercase">Streak</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </section>
+              )}
 
               {/* Top Tipsters */}
               <section className="mb-4">

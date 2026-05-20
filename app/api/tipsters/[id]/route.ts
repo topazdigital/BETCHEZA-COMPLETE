@@ -47,6 +47,7 @@ interface TipsterShape {
   joinedAt: string;
   lastActive: string;
   socials: Record<string, string>;
+  performanceVerified: boolean;
 }
 
 // Country code → human label.
@@ -85,6 +86,7 @@ function fakeToShape(fake: FakeTipster): TipsterShape {
     joinedAt: fake.joinedAt,
     lastActive: new Date().toISOString(),
     socials: {},
+    performanceVerified: false,
   };
 }
 
@@ -448,6 +450,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       ...response.tipster,
       roi: realRoi,
       streak: realStreak,
+      performanceVerified: real.won + real.lost >= 10,
       ...(hasSettled && {
         winRate: real.winRate,
         wonTips: real.won,

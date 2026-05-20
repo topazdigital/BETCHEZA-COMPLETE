@@ -37,7 +37,7 @@ interface PublicTipster {
   wonTips: number; lostTips: number; pendingTips: number; avgOdds: number;
   streak: number; rank: number; followers: number; isPro: boolean;
   subscriptionPrice: number | null; verified: boolean; countryCode: string | null;
-  joinedAt: string | null;
+  joinedAt: string | null; performanceVerified: boolean;
 }
 
 function shape(row: DbTipster): PublicTipster {
@@ -52,6 +52,7 @@ function shape(row: DbTipster): PublicTipster {
     isPro: !!row.is_pro, subscriptionPrice: row.subscription_price !== null ? Number(row.subscription_price) : null,
     verified: !!row.is_verified, countryCode: row.country_code,
     joinedAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    performanceVerified: false,
   };
 }
 
@@ -161,6 +162,7 @@ export async function GET(request: NextRequest) {
         ...t,
         roi: computeRealRoi(t.id),
         streak: computeRealStreak(t.id),
+        performanceVerified: real.won + real.lost >= 10,
         ...(hasSettled && {
           winRate: real.winRate,
           wonTips: real.won,

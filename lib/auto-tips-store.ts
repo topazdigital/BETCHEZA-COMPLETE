@@ -532,6 +532,60 @@ export function computeRealTipsterStats(tipsterId: number): {
 }
 
 /**
+ * Find the best-performing tipster for the current week (last 7 days).
+ * Falls back to all-time if fewer than 3 tipsters have 3+ settled tips this week.
+ * Returns null when there are no settled tips in the system at all.
+ */
+export function getTopTipsterThisWeek(): {
+  tipsterId: number;
+  won: number;
+  lost: number;
+  total: number;
+  winRate: number;
+  roi: number;
+  streak: number;
+  isWeekly: boolean;
+} | null {
+  const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  type Result = { tipsterId: number; won: number; lost: number; winRate: number; roi: number };
+
+  function calcResults(filterSince?: number): Result[] {
+    const out: Result[] = [];
+    for (const [tid, tips] of stores.byTipster.entries()) {
+      const pool = filterSince
+        ? tips.filter(t => new Date(t.createdAt).getTime() >= filterSince)
+        : tips;
+      const settled = pool.filter(t => t.status === 'won' || t.status === 'lost');
+      if (settled.length < 3) continue;
+      const won = settled.filter(t => t.status === 'won').length;
+      const lost = settled.length - won;
+      const winRate = Math.round((won / settled.length) * 1000) / 10;
+      let totalReturn = 0; let totalStake = 0;
+      for (const t of settled) {
+        const stake = t.stake > 0 ? t.stake : 1;
+        totalReturn += t.status === 'won' ? (t.odds - 1) * stake : -stake;
+        totalStake += stake;
+      }
+      const roi = totalStake > 0 ? Math.round((totalReturn / totalStake) * 1000) / 10 : 0;
+      out.push({ tipsterId: tid, won, lost, winRate, roi });
+    }
+    out.sort((a, b) => b.winRate - a.winRate || b.roi - a.roi || (b.won + b.lost) - (a.won + a.lost));
+    return out;
+  }
+
+  const weekly = calcResults(since);
+  if (weekly.length > 0) {
+    const top = weekly[0];
+    return { ...top, total: top.won + top.lost, streak: computeRealStreak(top.tipsterId), isWeekly: true };
+  }
+  const allTime = calcResults();
+  if (allTime.length === 0) return null;
+  const top = allTime[0];
+  return { ...top, total: top.won + top.lost, streak: computeRealStreak(top.tipsterId), isWeekly: false };
+}
+
+/**
  * Compute real ROI from the settled tip ledger for a tipster.
  * ROI = (net return / total staked) × 100. Unit-stake assumed where stake = 0.
  */
