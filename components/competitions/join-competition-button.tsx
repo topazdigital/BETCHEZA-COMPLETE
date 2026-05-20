@@ -122,6 +122,7 @@ export function JoinCompetitionButton({ slug, isFull, isCompleted, entryFee = 0,
           open={showPayment}
           onClose={() => setShowPayment(false)}
           competitionName={competitionName || slug}
+          competitionSlug={slug}
           amount={entryFee}
           currency={currency}
           onSuccess={async (ref) => {
