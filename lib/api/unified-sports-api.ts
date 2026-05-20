@@ -850,8 +850,25 @@ interface ESPNEvent {
     displayClock?: string;
     clock?: number;
   };
+  season?: {
+    year?: number;
+    type?: number;
+    slug?: string;
+    displayName?: string;
+  };
   competitions: Array<{
     id: string;
+    notes?: Array<{ type?: string; headline?: string }>;
+    season?: {
+      year?: number;
+      type?: number;
+      slug?: string;
+      displayName?: string;
+    };
+    type?: {
+      id?: string;
+      abbreviation?: string;
+    };
     competitors: Array<{
       id: string;
       team?: {
@@ -1285,7 +1302,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       tipsCount: 0,
       venue,
       legInfo: extractLegInfo(competition?.notes),
-      roundName: extractRoundName(competition?.notes, event),
+      roundName: extractRoundName(competition?.notes, event, { season: event.season, competition }),
       ...(sportSpecificDataG ? { sportSpecificData: sportSpecificDataG } : {}),
     });
   }
@@ -1888,12 +1905,21 @@ function extractLegInfo(notes?: Array<{ type?: string; headline?: string }> | nu
   return null;
 }
 
-function extractRoundName(notes?: Array<{ type?: string; headline?: string }> | null, event?: { season?: { slug?: string } }): string | null {
-  const seasonSlug = (event as { season?: { slug?: string } } | undefined)?.season?.slug || '';
+interface RoundContext {
+  season?: { slug?: string; displayName?: string; type?: number };
+  competition?: { season?: { slug?: string; displayName?: string; type?: number }; type?: { id?: string; abbreviation?: string }; notes?: Array<{ type?: string; headline?: string }> };
+}
+
+function extractRoundName(
+  notes?: Array<{ type?: string; headline?: string }> | null,
+  event?: { season?: { slug?: string; displayName?: string; type?: number } },
+  ctx?: RoundContext,
+): string | null {
   const ROUND_MAP: Array<[RegExp, string]> = [
-    [/\bfinal\b(?!.*\bsemi|\bquarter)/i, 'Final'],
-    [/\bsemi.final\b|\bsemifinals?\b|\bsemifinale\b|\bsemi\b.*\bfinal\b/i, 'Semi-Final'],
+    // Must check semi/quarter BEFORE plain "final" to avoid false matches
+    [/\bsemi.final\b|\bsemifinale?\b|\bsemi\b.*\bfinal\b/i, 'Semi-Final'],
     [/\bquarter.final\b|\bquarterfinals?\b/i, 'Quarter-Final'],
+    [/\bfinal\b/i, 'Final'],
     [/\bround.of.16\b|\br16\b|\blast.16\b/i, 'Round of 16'],
     [/\bround.of.32\b|\br32\b/i, 'Round of 32'],
     [/\bround.of.64\b/i, 'Round of 64'],
@@ -1904,24 +1930,39 @@ function extractRoundName(notes?: Array<{ type?: string; headline?: string }> | 
   ];
 
   function matchRound(text: string): string | null {
-    const t = text.toLowerCase();
     for (const [re, label] of ROUND_MAP) {
-      if (re.test(t)) return label;
+      if (re.test(text)) return label;
     }
     return null;
   }
 
-  if (seasonSlug) {
-    const found = matchRound(seasonSlug);
-    if (found) return found;
+  // Collect all text sources to try, in priority order
+  const sources: string[] = [];
+
+  // 1. Competition-level notes (most specific)
+  const allNotes = [...(notes || []), ...(ctx?.competition?.notes || [])];
+  for (const n of allNotes) {
+    const h = (n.headline || '').trim();
+    if (h) sources.push(h);
   }
-  if (notes) {
-    for (const n of notes) {
-      const h = (n.headline || '').trim();
-      if (!h) continue;
-      const found = matchRound(h);
-      if (found) return found;
-    }
+
+  // 2. Competition season displayName / slug
+  const compSeason = ctx?.competition?.season;
+  if (compSeason?.displayName) sources.push(compSeason.displayName);
+  if (compSeason?.slug) sources.push(compSeason.slug);
+
+  // 3. Event season slug / displayName
+  const evSeason = event?.season || ctx?.season;
+  if (evSeason?.displayName) sources.push(evSeason.displayName);
+  if (evSeason?.slug) sources.push(evSeason.slug);
+
+  // 4. Competition type abbreviation (e.g. "PO" = playoff)
+  const abbr = ctx?.competition?.type?.abbreviation || '';
+  if (abbr) sources.push(abbr);
+
+  for (const src of sources) {
+    const found = matchRound(src);
+    if (found) return found;
   }
   return null;
 }
@@ -2873,7 +2914,7 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
       tipsCount: 0,
       venue,
       legInfo: extractLegInfo(competition?.notes),
-      roundName: extractRoundName(competition?.notes, event as { season?: { slug?: string } }),
+      roundName: extractRoundName(competition?.notes, event as { season?: { slug?: string; displayName?: string; type?: number } }, { season: (event as ESPNEvent).season, competition }),
       ...(sportSpecificData ? { sportSpecificData } : {}),
     };
   });

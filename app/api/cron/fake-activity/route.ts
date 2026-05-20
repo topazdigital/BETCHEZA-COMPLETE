@@ -24,7 +24,7 @@ function resolveOddsForPick(
   // 1. Try to match pick against market selections first (most accurate)
   if (markets && markets.length > 0) {
     for (const m of markets) {
-      for (const sel of m.selections) {
+      for (const sel of (m.selections || [])) {
         const sl = sel.label.toLowerCase();
         if (
           (p === 'home win' && (sl === 'home' || sl === '1' || sl === 'home win')) ||

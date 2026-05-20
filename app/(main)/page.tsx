@@ -430,6 +430,10 @@ export default function HomePage() {
                         <span className="text-xs font-bold uppercase tracking-wide text-amber-600">
                           {totwData.isWeekly ? 'Tipster of the Week' : 'Top Performer'}
                         </span>
+                        {/* Always show "This Week" chip so users know these stats are weekly */}
+                        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0 text-[9px] font-bold text-amber-600 border border-amber-400/30">
+                          This Week
+                        </span>
                         {totwData.performanceVerified && (
                           <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 text-[9px] font-bold text-emerald-600">
                             <ShieldCheck className="h-2.5 w-2.5" />
@@ -470,28 +474,26 @@ export default function HomePage() {
                           )}
                         </div>
 
-                        {/* Stats pills */}
+                        {/* This-week stats pills — clearly labelled */}
                         <div className="flex flex-wrap gap-1.5">
                           <div className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-center">
                             <span className="text-xs font-bold text-emerald-600">
-                              {totwData.isWeekly ? totwData.weeklyWinRate : totwData.tipster.winRate}%
+                              {totwData.weeklyWinRate ?? totwData.tipster.winRate}%
                             </span>
                             <span className="ml-1 text-[9px] text-muted-foreground uppercase">Win</span>
                           </div>
                           <div className="rounded-md bg-primary/10 px-2 py-0.5">
                             <span className="text-xs font-bold text-primary">
-                              {totwData.tipster.roi >= 0 ? '+' : ''}{totwData.tipster.roi}%
+                              {(totwData.tipster.roi ?? 0) >= 0 ? '+' : ''}{totwData.tipster.roi ?? 0}%
                             </span>
                             <span className="ml-1 text-[9px] text-muted-foreground uppercase">ROI</span>
                           </div>
                           <div className="rounded-md bg-muted px-2 py-0.5">
                             <span className="text-xs font-bold text-foreground">
-                              {totwData.isWeekly
-                                ? `${totwData.weeklyWon}W / ${totwData.weeklyLost}L`
-                                : `${totwData.tipster.wonTips}W / ${totwData.tipster.lostTips}L`}
+                              {totwData.weeklyWon}W / {totwData.weeklyLost}L
                             </span>
-                            <span className="ml-1 text-[9px] text-muted-foreground uppercase">
-                              {totwData.isWeekly ? 'This week' : 'Record'}
+                            <span className="ml-1 text-[9px] text-amber-600 font-semibold uppercase">
+                              This week
                             </span>
                           </div>
                           {totwData.tipster.streak > 1 && (
@@ -502,6 +504,14 @@ export default function HomePage() {
                             </div>
                           )}
                         </div>
+                        {/* Subtle all-time context so users know profile page has different (all-time) numbers */}
+                        {(totwData.tipster as { allTimeWinRate?: number }).allTimeWinRate != null && (
+                          <p className="mt-1.5 text-[9px] text-muted-foreground">
+                            All-time: {(totwData.tipster as { allTimeWinRate?: number }).allTimeWinRate}% win ·{' '}
+                            {((totwData.tipster as { allTimeRoi?: number }).allTimeRoi ?? 0) >= 0 ? '+' : ''}
+                            {(totwData.tipster as { allTimeRoi?: number }).allTimeRoi}% ROI
+                          </p>
+                        )}
                       </div>
                     </div>
                   </Link>

@@ -154,10 +154,11 @@ export async function GET(request: NextRequest) {
       }
     });
     // Always layer in REAL stats — ROI and streak are never faked.
-    // Win rate / tip counts update as soon as 1 settled tip exists.
+    // Win rate / tip counts update as soon as any tips exist.
     fake = fake.map(t => {
       const real = computeRealTipsterStats(t.id);
       const hasSettled = real.won + real.lost >= 1;
+      const hasTips = real.won + real.lost + real.pending >= 1;
       return {
         ...t,
         roi: computeRealRoi(t.id),
@@ -170,12 +171,29 @@ export async function GET(request: NextRequest) {
           pendingTips: real.pending,
           totalTips: real.totalSettled + real.pending,
         }),
+        // Tipsters with only pending tips: show 0 win rate (not fake catalog value)
+        ...(!hasSettled && hasTips && {
+          winRate: 0,
+          pendingTips: real.pending,
+          totalTips: real.pending,
+        }),
       };
     });
-    // Always assign rank based on winRate ordering so rank reflects real performance
-    const byWinRate = [...fake].sort((a, b) => b.winRate - a.winRate);
-    const rankMap = new Map(byWinRate.map((t, i) => [t.id, i + 1]));
-    fake = fake.map(t => ({ ...t, rank: rankMap.get(t.id) ?? 0 }));
+    // Re-sort by the requested field AFTER overlaying real stats so the
+    // ordering reflects actual real-data values, not fake-catalogue values.
+    fake.sort((a, b) => {
+      switch (sortBy) {
+        case 'roi': return b.roi - a.roi;
+        case 'followers': return b.followers - a.followers;
+        case 'streak': return b.streak - a.streak;
+        case 'totalTips': return b.totalTips - a.totalTips;
+        case 'winRate':
+        case 'rank':
+        default: return b.winRate - a.winRate || b.roi - a.roi || b.totalTips - a.totalTips;
+      }
+    });
+    // Assign rank based on sorted position (reflects real data)
+    fake = fake.map((t, i) => ({ ...t, rank: i + 1 }));
     total = fake.length;
     tipsters = fake.slice(offset, offset + limit);
   }
