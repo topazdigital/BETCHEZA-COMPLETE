@@ -7,7 +7,7 @@ import { format } from "date-fns"
 import { 
   ArrowLeft, Check, Star, Users, TrendingUp, Target, Flame, 
   Calendar, MapPin, Trophy, ChevronRight, ExternalLink,
-  BarChart3, Activity, Clock, BadgeCheck, MinusCircle, Zap, Award
+  BarChart3, Activity, Clock, BadgeCheck, MinusCircle, Zap, Award, ShieldCheck
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"

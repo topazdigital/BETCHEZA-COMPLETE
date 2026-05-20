@@ -17,25 +17,44 @@ const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 function resolveOddsForPick(
   pick: string,
   matchOdds?: { home: number; draw?: number; away: number } | null,
+  markets?: Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }> | null,
 ): number {
-  if (matchOdds) {
-    const p = pick.toLowerCase();
-    if (p === 'home win') return matchOdds.home;
-    if (p === 'away win') return matchOdds.away;
-    if (p === 'draw' && matchOdds.draw) return matchOdds.draw;
-    if (p === 'over 2.5 goals') return parseFloat((1.55 + Math.random() * 0.6).toFixed(2));
-    if (p === 'both teams score') return parseFloat((1.65 + Math.random() * 0.5).toFixed(2));
+  const p = pick.toLowerCase();
+
+  // 1. Try to match pick against market selections first (most accurate)
+  if (markets && markets.length > 0) {
+    for (const m of markets) {
+      for (const sel of m.selections) {
+        const sl = sel.label.toLowerCase();
+        if (
+          (p === 'home win' && (sl === 'home' || sl === '1' || sl === 'home win')) ||
+          (p === 'away win' && (sl === 'away' || sl === '2' || sl === 'away win')) ||
+          (p === 'draw' && (sl === 'draw' || sl === 'x')) ||
+          (p === 'both teams score' && (sl === 'yes' || sl === 'btts yes' || sl.includes('both teams'))) ||
+          (p === 'over 2.5 goals' && (sl === 'over 2.5' || sl === 'over' || sl.includes('over 2.5')))
+        ) {
+          if (sel.odds >= 1.01) return sel.odds;
+        }
+      }
+    }
   }
-  // Fallback: realistic range per pick type
-  const base: Record<string, [number, number]> = {
-    'home win': [1.35, 2.50],
-    'away win': [1.90, 4.20],
-    'draw':     [2.80, 3.80],
-    'over 2.5 goals': [1.55, 2.10],
-    'both teams score': [1.60, 2.00],
+
+  // 2. Use 1X2 odds for home/draw/away picks
+  if (matchOdds) {
+    if (p === 'home win' && matchOdds.home >= 1.01) return matchOdds.home;
+    if (p === 'away win' && matchOdds.away >= 1.01) return matchOdds.away;
+    if (p === 'draw' && matchOdds.draw && matchOdds.draw >= 1.01) return matchOdds.draw;
+  }
+
+  // 3. Fallback: realistic static range per pick type (no Math.random — deterministic per pick)
+  const base: Record<string, number> = {
+    'home win': 1.85,
+    'away win': 2.60,
+    'draw': 3.20,
+    'over 2.5 goals': 1.75,
+    'both teams score': 1.85,
   };
-  const range = base[pick.toLowerCase()] ?? [1.45, 3.75];
-  return parseFloat((range[0] + Math.random() * (range[1] - range[0])).toFixed(2));
+  return base[p] ?? 2.00;
 }
 
 // ── Tip pick logic ────────────────────────────────────────────────────────────
@@ -268,7 +287,7 @@ async function runActivity() {
     if (Math.random() > 0.4 || availablePosters.length === 0) continue;
     const tipster = randPick(availablePosters);
     const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
-    const odds = resolveOddsForPick(pick, match.odds);
+    const odds = resolveOddsForPick(pick, match.odds, match.markets);
     const template = randPick(MATCH_POSTS);
     const content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
     await createPost({
@@ -338,7 +357,7 @@ export async function GET(req: NextRequest) {
       if (Math.random() > 0.4 || availablePosters.length === 0) continue;
       const tipster = randPick(availablePosters);
       const { pick, rationale } = smartPick(match.id, match.homeTeam.name, match.awayTeam.name, match.sport?.slug);
-      const odds = resolveOddsForPick(pick, match.odds);
+      const odds = resolveOddsForPick(pick, match.odds, match.markets);
       const template = randPick(MATCH_POSTS);
       const content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
       try {

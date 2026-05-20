@@ -65,6 +65,8 @@ export interface UnifiedMatch {
   markets?: Market[];
   tipsCount: number;
   venue?: string;
+  legInfo?: string | null;
+  roundName?: string | null;
   // Sport-specific statistics
   sportSpecificData?: SportSpecificData;
 }
@@ -1282,6 +1284,8 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       markets,
       tipsCount: 0,
       venue,
+      legInfo: extractLegInfo(competition?.notes),
+      roundName: extractRoundName(competition?.notes, event),
       ...(sportSpecificDataG ? { sportSpecificData: sportSpecificDataG } : {}),
     });
   }
@@ -1870,6 +1874,58 @@ export async function fetchESPNSummary(sport: string, league: string, eventId: s
     console.error('[ESPN summary] fetch failed', e);
     return null;
   }
+}
+
+function extractLegInfo(notes?: Array<{ type?: string; headline?: string }> | null): string | null {
+  if (!notes || notes.length === 0) return null;
+  for (const n of notes) {
+    const h = (n.headline || '').trim();
+    if (!h) continue;
+    if (/\b1st leg\b|\bleg 1\b|\bfirst leg\b/i.test(h)) return '1st Leg';
+    if (/\b2nd leg\b|\bleg 2\b|\bsecond leg\b/i.test(h)) return '2nd Leg';
+    if (/\bleg\s+\d/i.test(h)) return h;
+  }
+  return null;
+}
+
+function extractRoundName(notes?: Array<{ type?: string; headline?: string }> | null, event?: { season?: { slug?: string } }): string | null {
+  const seasonSlug = (event as { season?: { slug?: string } } | undefined)?.season?.slug || '';
+  const ROUND_MAP: Record<string, string> = {
+    'final': 'Final',
+    'semi-final': 'Semi-Final',
+    'semi_final': 'Semi-Final',
+    'semifinals': 'Semi-Final',
+    'quarterfinal': 'Quarter-Final',
+    'quarterfinals': 'Quarter-Final',
+    'quarter-final': 'Quarter-Final',
+    'round-of-16': 'Round of 16',
+    'round-of-32': 'Round of 32',
+    'third-place': 'Third Place',
+    'third_place': 'Third Place',
+    'playoff': 'Playoff',
+    'playoffs': 'Playoff',
+    'promotion-playoff': 'Promotion Playoff',
+    'relegation-playoff': 'Relegation Playoff',
+  };
+  if (seasonSlug) {
+    const slug = seasonSlug.toLowerCase();
+    for (const [key, label] of Object.entries(ROUND_MAP)) {
+      if (slug.includes(key)) return label;
+    }
+  }
+  if (notes) {
+    for (const n of notes) {
+      const h = (n.headline || '').toLowerCase().trim();
+      if (!h) continue;
+      for (const [key, label] of Object.entries(ROUND_MAP)) {
+        if (h.includes(key)) return label;
+      }
+      if (/\bfinal\b/i.test(h) && !/semi|quarter/i.test(h)) return 'Final';
+      if (/\bsemi.final\b/i.test(h)) return 'Semi-Final';
+      if (/\bquarter.final\b/i.test(h)) return 'Quarter-Final';
+    }
+  }
+  return null;
 }
 
 function mapESPNStatus(status: ESPNEvent['status']): UnifiedMatch['status'] {
@@ -2818,6 +2874,8 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
       markets,
       tipsCount: 0,
       venue,
+      legInfo: extractLegInfo(competition?.notes),
+      roundName: extractRoundName(competition?.notes, event as { season?: { slug?: string } }),
       ...(sportSpecificData ? { sportSpecificData } : {}),
     };
   });

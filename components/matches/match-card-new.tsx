@@ -121,6 +121,8 @@ interface Match {
   };
   markets?: MatchMarket[];
   tipsCount: number;
+  legInfo?: string | null;
+  roundName?: string | null;
 }
 
 interface MatchCardNewProps {
@@ -391,6 +393,13 @@ export function MatchCardNew({
                 {match.league.name}
               </span>
             </Link>
+          )}
+          {(match.roundName || match.legInfo) && (
+            <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+              {match.roundName && match.legInfo
+                ? `${match.roundName} · ${match.legInfo}`
+                : match.roundName || match.legInfo}
+            </span>
           )}
         </div>
         <div className="shrink-0">
