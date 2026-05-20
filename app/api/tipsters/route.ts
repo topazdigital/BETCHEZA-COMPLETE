@@ -152,22 +152,23 @@ export async function GET(request: NextRequest) {
         default: return b.winRate - a.winRate;
       }
     });
-    // Layer in REAL settled stats from the auto-tip ledger (fast, in-memory)
+    // Always layer in REAL stats — ROI and streak are never faked.
+    // Win rate / tip counts update as soon as 1 settled tip exists.
     fake = fake.map(t => {
       const real = computeRealTipsterStats(t.id);
-      if (real.won + real.lost >= 5) {
-        return {
-          ...t,
+      const hasSettled = real.won + real.lost >= 1;
+      return {
+        ...t,
+        roi: computeRealRoi(t.id),
+        streak: computeRealStreak(t.id),
+        ...(hasSettled && {
           winRate: real.winRate,
           wonTips: real.won,
           lostTips: real.lost,
           pendingTips: real.pending,
           totalTips: real.totalSettled + real.pending,
-          roi: computeRealRoi(t.id),
-          streak: computeRealStreak(t.id),
-        };
-      }
-      return t;
+        }),
+      };
     });
     // Always assign rank based on winRate ordering so rank reflects real performance
     const byWinRate = [...fake].sort((a, b) => b.winRate - a.winRate);

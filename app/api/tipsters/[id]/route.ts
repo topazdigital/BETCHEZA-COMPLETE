@@ -437,25 +437,25 @@ export async function GET(request: NextRequest, context: RouteContext) {
     );
     response.recentTips = tips;
 
-    // Layer in REAL settled stats — once a tipster has actual settled tips on
-    // real matches, the profile header should reflect those numbers (not the
-    // deterministic catalogue defaults). We keep the catalogue numbers as a
-    // floor so brand-new tipsters still look established.
+    // Always layer in REAL stats from the settled tip ledger.
+    // ROI and streak are never faked — they are 0 when no tips are settled yet.
+    // Win rate / tip counts are updated as soon as there is at least 1 settled tip.
     const real = computeRealTipsterStats(tipsterId);
-    if (real.won + real.lost >= 5) {
-      const realRoi = computeRealRoi(tipsterId);
-      const realStreak = computeRealStreak(tipsterId);
-      response.tipster = {
-        ...response.tipster,
+    const realRoi = computeRealRoi(tipsterId);
+    const realStreak = computeRealStreak(tipsterId);
+    const hasSettled = real.won + real.lost >= 1;
+    response.tipster = {
+      ...response.tipster,
+      roi: realRoi,
+      streak: realStreak,
+      ...(hasSettled && {
         winRate: real.winRate,
         wonTips: real.won,
         lostTips: real.lost,
         pendingTips: real.pending,
         totalTips: real.totalSettled + real.pending,
-        roi: realRoi,
-        streak: realStreak,
-      };
-    }
+      }),
+    };
   }
 
   if (includeStats) {
