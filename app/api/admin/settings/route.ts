@@ -3,6 +3,8 @@ import { query, execute, getPool } from '@/lib/db';
 import { invalidateSiteSettingsCache } from '@/lib/site-settings';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { requireAdmin } from '@/lib/admin-auth';
+import { existsSync } from 'fs';
+import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +61,27 @@ const ENV_BACKED_SETTINGS: Record<string, string> = {
   recaptcha_secret_key: 'RECAPTCHA_SECRET_KEY',
 };
 
+const LOCAL_UPLOAD_KEYS: Record<string, string> = {
+  logo_url: '/uploads/branding/logo-light.png',
+  logo_dark_url: '/uploads/branding/logo-dark.png',
+  favicon_url: '/uploads/branding/logo-icon.png',
+};
+
+function resolveLocalUploads(settings: Record<string, string>): void {
+  for (const [key, fallback] of Object.entries(LOCAL_UPLOAD_KEYS)) {
+    const stored = settings[key];
+    if (stored && stored.startsWith('/uploads/')) {
+      const diskPath = path.join(process.cwd(), 'public', stored);
+      if (!existsSync(diskPath)) {
+        const fallbackDisk = path.join(process.cwd(), 'public', fallback);
+        if (existsSync(fallbackDisk)) {
+          settings[key] = fallback;
+        }
+      }
+    }
+  }
+}
+
 function fillFromEnv(settings: Record<string, string>): Record<string, string> {
   let didFill = false;
   for (const [key, envName] of Object.entries(ENV_BACKED_SETTINGS)) {
@@ -103,6 +126,7 @@ export async function GET() {
     result.rows.forEach(row => {
       settings[row.setting_key] = row.setting_value;
     });
+    resolveLocalUploads(settings);
     fillFromEnv(settings);
 
     return NextResponse.json({ settings, source: 'database' });
