@@ -234,7 +234,7 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords,
     authors: [{ name: settings.site_name }],
     creator: settings.site_name,
-    metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://betcheza.co.ke'),
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'),
     robots: seoEntry?.noIndex ? { index: false, follow: false } : undefined,
     verification: process.env.GOOGLE_SITE_VERIFICATION
       ? { google: process.env.GOOGLE_SITE_VERIFICATION }
@@ -242,6 +242,7 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       type: 'website',
       locale: 'en_US',
+      url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'}${pathname === '/' ? '' : pathname}`,
       siteName: settings.site_name,
       title,
       description,
@@ -274,13 +275,19 @@ export const viewport: Viewport = {
 const websiteJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
+  '@id': 'https://betcheza.co.ke/#website',
   name: 'Betcheza',
+  alternateName: ['Betcheza Kenya', 'Betcheza Tips', 'betcheza.co.ke'],
   url: 'https://betcheza.co.ke',
   description: "Kenya's #1 sports betting tips community. AI-powered predictions, SportPesa jackpot tips, tipster leaderboard and community.",
   inLanguage: 'en',
+  publisher: { '@id': 'https://betcheza.co.ke/#organization' },
   potentialAction: {
     '@type': 'SearchAction',
-    target: 'https://betcheza.co.ke/search?q={search_term_string}',
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: 'https://betcheza.co.ke/search?q={search_term_string}',
+    },
     'query-input': 'required name=search_term_string',
   },
 };
@@ -288,16 +295,33 @@ const websiteJsonLd = {
 const organizationJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
+  '@id': 'https://betcheza.co.ke/#organization',
   name: 'Betcheza',
+  legalName: 'Betcheza',
+  alternateName: 'Betcheza Kenya',
   url: 'https://betcheza.co.ke',
-  logo: 'https://betcheza.co.ke/icon.svg',
-  description: "Kenya's leading sports betting tipster community platform with AI predictions.",
+  logo: {
+    '@type': 'ImageObject',
+    url: 'https://betcheza.co.ke/icon-512.png',
+    width: 512,
+    height: 512,
+  },
+  image: 'https://betcheza.co.ke/og-image.png',
+  description: "Kenya's #1 sports betting tipster community — free AI-powered predictions, jackpot tips, and expert tipster leaderboard.",
+  foundingDate: '2024',
+  areaServed: { '@type': 'Country', name: 'Kenya' },
   contactPoint: {
     '@type': 'ContactPoint',
     contactType: 'customer service',
     url: 'https://betcheza.co.ke/contact',
+    areaServed: 'KE',
+    availableLanguage: 'English',
   },
-  sameAs: [],
+  sameAs: [
+    'https://www.facebook.com/betcheza',
+    'https://twitter.com/betcheza',
+    'https://www.instagram.com/betcheza',
+  ],
 };
 
 const faqJsonLd = {
