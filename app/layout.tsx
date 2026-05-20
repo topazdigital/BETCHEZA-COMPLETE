@@ -15,6 +15,7 @@ import { BetSlipPanel } from '@/components/bet-slip/bet-slip-panel'
 import { getSiteSettings, parseSeoPages, findSeoForPath } from '@/lib/site-settings'
 import { Toaster } from 'sonner'
 import { NavigationProgress } from '@/components/layout/navigation-progress'
+import { ServiceWorkerRegister } from '@/components/layout/service-worker-register'
 import './globals.css'
 
 const geist = Geist({ 
@@ -406,6 +407,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <NavigationProgress />
+        <ServiceWorkerRegister />
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
