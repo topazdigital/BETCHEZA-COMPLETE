@@ -31,13 +31,24 @@ export function slugify(input: string | undefined | null): string {
 // Build the SEO URL for a team page.
 // `id` may be the bare ESPN team id (e.g. "160") OR the legacy
 // `espn_<league>_<id>` shape — both work.
-export function teamHref(name: string | undefined | null, id: string | number | undefined | null): string {
+// Pass `sportTag` (e.g. "nba", "mlb", "nfl") for non-soccer sports to prevent
+// cross-sport ID collisions — ESPN reuses numeric team IDs across sports.
+export function teamHref(
+  name: string | undefined | null,
+  id: string | number | undefined | null,
+  sportTag?: string | null,
+): string {
   if (id === undefined || id === null || id === '') return '#';
   const numeric = extractNumericTeamId(String(id));
   const slug = slugify(name);
   if (!numeric) {
     // Fall back to whatever id we have so links still work for legacy data.
     return `/teams/${encodeURIComponent(String(id))}`;
+  }
+  if (sportTag) {
+    return slug
+      ? `/teams/${slug}-${sportTag}-${numeric}`
+      : `/teams/${sportTag}-${numeric}`;
   }
   return slug ? `/teams/${slug}-${numeric}` : `/teams/${numeric}`;
 }

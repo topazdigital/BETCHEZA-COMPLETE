@@ -853,6 +853,20 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const noDrawSports = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
     const hasDraw = !noDrawSports.includes(cfg?.sportType || 'soccer');
 
+    // Sport tag for collision-proof team URLs — ESPN reuses numeric IDs across sports.
+    // Maps ESPN league slug → short tag that the team-page route understands.
+    const LEAGUE_TO_SPORT_TAG: Record<string, string> = {
+      nba: 'nba', wnba: 'wnba', 'mens-college-basketball': 'ncaab',
+      mlb: 'mlb', nhl: 'nhl', nfl: 'nfl', 'college-football': 'ncaaf',
+      rugbyunion: 'rugby', rugbyleague: 'rugby',
+      ufc: 'mma', boxing: 'boxing',
+      atp: 'tennis', wta: 'tennis',
+      cricket: 'cricket', pga: 'golf',
+    };
+    const teamSportTag: string | null =
+      (cfg?.league && LEAGUE_TO_SPORT_TAG[cfg.league]) ||
+      (cfg?.sportType && cfg.sportType !== 'soccer' ? cfg.sportType : null);
+
     const sgoPromise: Promise<Array<{
       bookmaker: string; display: string;
       home: number; draw?: number; away: number;
@@ -1019,6 +1033,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           // espnId used to build team profile URL
           espnTeamId: match.homeTeam.id,
           leagueSlug: cfg?.league?.replace(/[^a-z0-9]/gi, '') || '',
+          // sport tag prevents cross-sport ESPN ID collisions in team URLs
+          sportTag: teamSportTag,
         },
         awayTeam: {
           ...match.awayTeam,
@@ -1026,6 +1042,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           record: header?.away?.record,
           espnTeamId: match.awayTeam.id,
           leagueSlug: cfg?.league?.replace(/[^a-z0-9]/gi, '') || '',
+          sportTag: teamSportTag,
         },
         kickoffTime: new Date(match.kickoffTime).toISOString(),
         status: match.status,

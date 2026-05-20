@@ -1051,7 +1051,14 @@ export default function MatchDetailPage({ params }: PageProps) {
   const { data, error, isLoading } = useSWR<MatchDetails>(
     `/api/matches/${encodeURIComponent(id)}/details`,
     fetcher,
-    { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60_000 }
+    {
+      refreshInterval: (latestData: MatchDetails | undefined) => {
+        const s = latestData?.match?.status
+        return (s === 'live' || s === 'in_progress') ? 30_000 : 60_000
+      },
+      revalidateOnFocus: false,
+      dedupingInterval: 30_000,
+    }
   )
 
   const match0 = data?.match
@@ -1256,7 +1263,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                 </div>
                 {match.homeTeam.espnTeamId ? (
                   <Link
-                    href={teamHref(match.homeTeam.name, match.homeTeam.espnTeamId)}
+                    href={teamHref(match.homeTeam.name, match.homeTeam.espnTeamId, (match.homeTeam as { sportTag?: string }).sportTag)}
                     className="text-xs md:text-sm font-bold text-white line-clamp-2 hover:text-white/80 hover:underline"
                     onClick={e => e.stopPropagation()}
                   >
@@ -1340,7 +1347,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                 </div>
                 {match.awayTeam.espnTeamId ? (
                   <Link
-                    href={teamHref(match.awayTeam.name, match.awayTeam.espnTeamId)}
+                    href={teamHref(match.awayTeam.name, match.awayTeam.espnTeamId, (match.awayTeam as { sportTag?: string }).sportTag)}
                     className="text-xs md:text-sm font-bold text-white line-clamp-2 hover:text-white/80 hover:underline"
                     onClick={e => e.stopPropagation()}
                   >
@@ -1861,7 +1868,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                     { team: match.homeTeam, label: 'Home' },
                     { team: match.awayTeam, label: 'Away' },
                   ].map(({ team, label }) => {
-                    const teamLink = team.espnTeamId ? teamHref(team.name, team.espnTeamId) : null
+                    const teamLink = team.espnTeamId ? teamHref(team.name, team.espnTeamId, (team as { sportTag?: string }).sportTag) : null
                     const TeamWrapper: React.ElementType = teamLink ? Link : 'div'
                     const wrapperProps = teamLink ? { href: teamLink } : {}
                     return (
@@ -2053,6 +2060,7 @@ export default function MatchDetailPage({ params }: PageProps) {
               awayLogo={match.awayTeam.logo}
               homeTeamId={match.homeTeam.espnTeamId}
               awayTeamId={match.awayTeam.espnTeamId}
+              sportTag={(match.homeTeam as { sportTag?: string }).sportTag}
               isLive={isLive}
               isFinished={isFinished}
             />
@@ -2282,7 +2290,7 @@ export default function MatchDetailPage({ params }: PageProps) {
 
             {/* All other markets — BTTS, Totals, Double Chance, Half-time, etc. */}
             {match.markets && match.markets.length > 0 && (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:grid md:gap-4 md:grid-cols-2 flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory [&>*]:snap-start [&>*]:shrink-0 [&>*]:w-[85vw] md:[&>*]:w-auto">
                 {match.markets
                   .filter((m) => m.key !== 'h2h' && m.outcomes && m.outcomes.length > 0)
                   .map((mkt) => (
@@ -3885,7 +3893,7 @@ function NewsRow({ item }: { item: NewsItem }) {
 // ===== TipCard Component =====
 // ─── Team Stats tab (live + finished) ───────────────────────────────────────
 function TeamStatsTab({
-  teamStats, homeName, awayName, homeLogo, awayLogo, homeTeamId, awayTeamId, isLive, isFinished,
+  teamStats, homeName, awayName, homeLogo, awayLogo, homeTeamId, awayTeamId, sportTag, isLive, isFinished,
 }: {
   teamStats: TeamStatsBlock | null
   homeName: string
@@ -3894,6 +3902,7 @@ function TeamStatsTab({
   awayLogo?: string
   homeTeamId?: string
   awayTeamId?: string
+  sportTag?: string | null
   isLive: boolean
   isFinished: boolean
 }) {
@@ -3945,7 +3954,7 @@ function TeamStatsTab({
         <div className="mb-4 grid grid-cols-3 items-center gap-2 text-xs font-semibold">
           {homeTeamId ? (
             <Link
-              href={teamHref(homeName, homeTeamId)}
+              href={teamHref(homeName, homeTeamId, sportTag)}
               className="group flex items-center gap-2 justify-end text-right hover:text-primary"
             >
               <span className="truncate group-hover:underline">{homeName}</span>
@@ -3960,7 +3969,7 @@ function TeamStatsTab({
           <div className="text-center text-[10px] uppercase tracking-wider text-muted-foreground">vs</div>
           {awayTeamId ? (
             <Link
-              href={teamHref(awayName, awayTeamId)}
+              href={teamHref(awayName, awayTeamId, sportTag)}
               className="group flex items-center gap-2 hover:text-primary"
             >
               <TeamLogo teamName={awayName} logoUrl={awayLogo} size="xs" />
