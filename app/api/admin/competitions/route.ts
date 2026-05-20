@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
     maxParticipants: Number(body.maxParticipants || 100),
     prizes: body.prizes,
     rules: (body.rules && body.rules.length > 0) ? body.rules : defaultRules,
+    ruleConfig: Array.isArray(body.ruleConfig) ? body.ruleConfig : undefined,
     sportFocus,
     leagueId: detected?.leagueId ?? null,
     leagueName: detected?.leagueName ?? null,

@@ -27,6 +27,18 @@ export interface CompetitionParticipant {
   isVerified: boolean;
 }
 
+/**
+ * Structured rule configuration for auto-enforcement.
+ * Each rule has a type + optional numeric value + display label.
+ * enforceable = true rules trigger violation checks (kick + email).
+ */
+export interface RuleConfig {
+  type: 'min_tips' | 'min_avg_odds' | 'max_losses' | 'kickoff_only' | 'league_only' | 'sport_only' | 'score_formula' | 'tiebreaker' | 'custom';
+  value?: number | string;
+  label: string;
+  enforceable: boolean;
+}
+
 export interface Competition {
   id: number;
   slug: string;
@@ -43,6 +55,8 @@ export interface Competition {
   prizes: Array<{ place: string; amount: number }>;
   participants: CompetitionParticipant[];
   rules: string[];
+  /** Structured rule configs used for auto-enforcement (kick + email on violation). */
+  ruleConfig?: RuleConfig[];
   sportFocus: string;
   /** Specific league ID (e.g. 1 = Premier League). Null = general / all leagues. */
   leagueId?: number | null;
@@ -50,6 +64,8 @@ export interface Competition {
   leagueName?: string | null;
   /** Auto-set to true when endDate is derived from round end date */
   roundBased?: boolean;
+  /** User IDs kicked for rule violations */
+  kickedUsers?: number[];
 }
 
 const NOW = () => Date.now();
@@ -342,6 +358,8 @@ export interface NewCompetitionInput {
   maxParticipants: number;
   prizes?: Array<{ place: string; amount: number }>;
   rules?: string[];
+  /** Structured rule configs for auto-enforcement (kick + email on violation). */
+  ruleConfig?: RuleConfig[];
   sportFocus: string;
   /** Detected or overridden league ID (null = general competition) */
   leagueId?: number | null;
@@ -386,6 +404,7 @@ export function addCompetition(input: NewCompetitionInput): Competition {
       'Tips must be placed before kickoff.',
       'Tie-breaker is total ROI.',
     ],
+    ruleConfig: input.ruleConfig && input.ruleConfig.length > 0 ? input.ruleConfig : undefined,
     sportFocus: input.sportFocus || 'multi-sport',
     // Seed with a small set of fake-tipster participants so the leaderboard
     // is never empty when admins create a brand-new competition.
@@ -469,6 +488,38 @@ export function joinCompetition(competitionId: number, userId: number, userName:
 
 export function hasUserJoined(competitionId: number, userId: number): boolean {
   return (state.joinedByCompetition[competitionId] || []).includes(userId);
+}
+
+/** Returns all real user IDs that have joined a competition. */
+export function getJoinedUserIds(competitionId: number): number[] {
+  return [...(state.joinedByCompetition[competitionId] || [])];
+}
+
+/**
+ * Kick a user from a competition for a rule violation.
+ * Removes them from the joined list and adds to kickedUsers array.
+ */
+export function kickUserFromCompetition(
+  competitionId: number,
+  userId: number,
+): boolean {
+  const comp = getCompetitionById(competitionId);
+  if (!comp) return false;
+
+  // Remove from join list
+  const joinList = state.joinedByCompetition[competitionId] || [];
+  state.joinedByCompetition[competitionId] = joinList.filter(id => id !== userId);
+
+  // Track kicked users
+  if (!comp.kickedUsers) comp.kickedUsers = [];
+  if (!comp.kickedUsers.includes(userId)) comp.kickedUsers.push(userId);
+
+  // Also remove from participant list if present
+  const idx = comp.participants.findIndex(p => p.tipsterId === userId);
+  if (idx >= 0) comp.participants.splice(idx, 1);
+
+  persistState();
+  return true;
 }
 
 // ─── Settlement / prize payout ────────────────────────────────────────

@@ -172,18 +172,35 @@ export async function computeLeaderboard(params: {
   sportFocus?: string | null;
   minTips?: number;
   limit?: number;
+  /**
+   * When provided, only real users (tipster_id < 1000) who are in this list
+   * are included. Fake tipsters (>= 1000) are always included regardless.
+   * Pass `null` or omit to include all users (backward-compat / admin views).
+   */
+  allowedUserIds?: number[] | null;
 }): Promise<CompetitorScore[]> {
-  const { startDate, endDate, leagueId, leagueName, sportFocus, minTips = 3, limit = 100 } = params;
+  const { startDate, endDate, leagueId, leagueName, sportFocus, minTips = 3, limit = 100, allowedUserIds } = params;
 
   // Build WHERE clause dynamically
-  // NOTE: No tipster_id filter — both real users (< 1000) AND fake tipsters (>= 1000)
-  // are scored from their actual auto_tips rows for honest rankings.
   const conditions: string[] = [
     'at.created_at >= ?',
     'at.created_at <= ?',
     'at.status IN (\'won\', \'lost\', \'pending\')',
   ];
   const sqlParams: (string | number)[] = [startDate, endDate];
+
+  // Join-gate: real users (< 1000) must have joined; fake tipsters (>= 1000) always allowed.
+  if (allowedUserIds !== null && allowedUserIds !== undefined) {
+    if (allowedUserIds.length > 0) {
+      const placeholders = allowedUserIds.map(() => '?').join(',');
+      conditions.push(`(at.tipster_id >= 1000 OR at.tipster_id IN (${placeholders}))`);
+      sqlParams.push(...allowedUserIds);
+    } else {
+      // No real users have joined yet — only show fakes
+      conditions.push('at.tipster_id >= 1000');
+    }
+  }
+  // If allowedUserIds is null/undefined → no restriction (backward-compat).
 
   // League filter: match on league name stored in auto_tips.league column
   if (leagueName) {

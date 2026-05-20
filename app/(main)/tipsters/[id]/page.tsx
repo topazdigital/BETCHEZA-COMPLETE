@@ -7,7 +7,7 @@ import { format } from "date-fns"
 import { 
   ArrowLeft, Check, Star, Users, TrendingUp, Target, Flame, 
   Calendar, MapPin, Trophy, ChevronRight, ExternalLink,
-  BarChart3, Activity, Clock, BadgeCheck, MinusCircle, Zap, Award, ShieldCheck
+  BarChart3, Activity, Clock, BadgeCheck, MinusCircle, Zap, Award, ShieldCheck, Medal
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -174,6 +174,29 @@ export default function TipsterProfilePage({ params }: PageProps) {
   const { data, error, isLoading, mutate } = useSWR(
     `/api/tipsters/${id}`,
     fetcher
+  )
+
+  const { data: compsData } = useSWR<{
+    competitions: Array<{
+      id: number
+      slug: string
+      name: string
+      type: string
+      status: string
+      startDate: string
+      endDate: string
+      rank: number | null
+      points: number | null
+      tips: number | null
+      winRate: number | null
+      prizePool: number
+      currency: string
+      prizes: Array<{ place: string; amount: number }>
+      entryFee: number
+    }>
+  }>(
+    activeTab === "competitions" ? `/api/tipsters/${id}/competitions` : null,
+    fetcher,
   )
   
   if (isLoading) {
@@ -505,10 +528,11 @@ export default function TipsterProfilePage({ params }: PageProps) {
         
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 h-8">
-            <TabsTrigger value="tips" className="text-xs px-2">Recent Tips</TabsTrigger>
-            <TabsTrigger value="stats" className="text-xs px-2">Statistics</TabsTrigger>
-            <TabsTrigger value="performance" className="text-xs px-2">Performance</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4 h-8">
+            <TabsTrigger value="tips" className="text-xs px-1">Recent Tips</TabsTrigger>
+            <TabsTrigger value="stats" className="text-xs px-1">Statistics</TabsTrigger>
+            <TabsTrigger value="performance" className="text-xs px-1">Performance</TabsTrigger>
+            <TabsTrigger value="competitions" className="text-xs px-1">Competitions</TabsTrigger>
           </TabsList>
           
           {/* Tips Tab */}
@@ -899,6 +923,92 @@ export default function TipsterProfilePage({ params }: PageProps) {
                 </Card>
               )
             })()}
+          </TabsContent>
+
+          {/* Competitions Tab */}
+          <TabsContent value="competitions" className="space-y-3">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Trophy className="h-4 w-4 text-warning" />
+                  Competition History
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {!compsData ? (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground text-xs gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading competition history…
+                  </div>
+                ) : compsData.competitions.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 gap-2">
+                    <Trophy className="h-8 w-8 text-muted-foreground/30" />
+                    <p className="text-xs text-muted-foreground">No competition history yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {compsData.competitions.map(comp => {
+                      const isActive = comp.status === 'active'
+                      const isCompleted = comp.status === 'completed'
+                      const topPrize = comp.prizes[0]
+                      return (
+                        <Link key={comp.id} href={`/competitions/${comp.slug}`} className="block rounded-lg border px-3 py-2 hover:border-primary/40 hover:shadow-sm transition-colors">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="font-semibold text-xs truncate">{comp.name}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Badge
+                                variant={isActive ? 'default' : isCompleted ? 'secondary' : 'outline'}
+                                className={cn(
+                                  "text-[9px] px-1.5 py-0 h-4",
+                                  isActive && "bg-success text-success-foreground",
+                                )}
+                              >
+                                {comp.status.toUpperCase()}
+                              </Badge>
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 capitalize">
+                                {comp.type}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-1">
+                            <span>{format(new Date(comp.startDate), "dd MMM")} – {format(new Date(comp.endDate), "dd MMM yyyy")}</span>
+                            <span>Pool: <span className="font-semibold text-foreground">{comp.currency} {comp.prizePool.toLocaleString()}</span></span>
+                            {topPrize && <span>1st: <span className="text-warning font-semibold">{comp.currency} {topPrize.amount.toLocaleString()}</span></span>}
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px]">
+                            {comp.rank !== null && (
+                              <span className={cn(
+                                "inline-flex items-center gap-1 font-bold",
+                                comp.rank === 1 && "text-yellow-500",
+                                comp.rank === 2 && "text-gray-400",
+                                comp.rank === 3 && "text-amber-700",
+                                comp.rank > 3 && "text-muted-foreground",
+                              )}>
+                                <Medal className="h-3 w-3" />
+                                #{comp.rank}
+                              </span>
+                            )}
+                            {comp.points !== null && (
+                              <span className="text-primary font-semibold">{comp.points} pts</span>
+                            )}
+                            {comp.tips !== null && (
+                              <span className="text-muted-foreground">{comp.tips} tips</span>
+                            )}
+                            {comp.winRate !== null && (
+                              <span className={cn(
+                                "font-semibold",
+                                comp.winRate >= 60 ? "text-success" : "text-muted-foreground"
+                              )}>{comp.winRate}% win</span>
+                            )}
+                            <ChevronRight className="ml-auto h-3 w-3 text-muted-foreground" />
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

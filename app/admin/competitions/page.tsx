@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import useSWR, { mutate as globalMutate } from "swr"
 import Link from "next/link"
-import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X, Info, CheckCircle, AlertTriangle } from "lucide-react"
+import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X, Info, CheckCircle, AlertTriangle, ShieldAlert } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -70,6 +70,31 @@ interface NewCompForm {
   maxParticipants: string
 }
 
+interface RuleItem {
+  type: string
+  label: string
+  value?: number
+  enforceable: boolean
+}
+
+interface RuleTemplate {
+  type: string
+  label: string
+  hasValue: boolean
+  defaultValue?: number
+  unit?: string
+  enforceable: boolean
+}
+
+const RULE_TEMPLATES: RuleTemplate[] = [
+  { type: 'min_tips',    label: 'Minimum tips required',              hasValue: true,  defaultValue: 3,    unit: 'tips',   enforceable: true },
+  { type: 'min_avg_odds',label: 'Minimum average odds',               hasValue: true,  defaultValue: 1.5,  unit: '',       enforceable: true },
+  { type: 'max_losses',  label: 'Maximum losses allowed',             hasValue: true,  defaultValue: 10,   unit: 'losses', enforceable: true },
+  { type: 'kickoff_only',label: 'Tips must be placed before kickoff', hasValue: false,                                     enforceable: false },
+  { type: 'score_formula',label: 'Score = wins × 10 + odds bonus − losses × 5', hasValue: false,          enforceable: false },
+  { type: 'tiebreaker',  label: 'Tie-breaker: win rate then ROI',     hasValue: false,                                     enforceable: false },
+]
+
 const blankForm = (): NewCompForm => {
   const now = new Date()
   const start = new Date(now.getTime() + 60 * 60 * 1000)
@@ -103,6 +128,27 @@ export default function AdminCompetitionsPage() {
   const [validation, setValidation] = useState<LeagueValidation | null>(null)
   const [validating, setValidating] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Rule builder state ─────────────────────────────────────────────
+  const [ruleConfig, setRuleConfig] = useState<RuleItem[]>([])
+  const [selectedRuleType, setSelectedRuleType] = useState('min_tips')
+  const [ruleValue, setRuleValue] = useState('3')
+
+  const addRule = () => {
+    const tpl = RULE_TEMPLATES.find(t => t.type === selectedRuleType)
+    if (!tpl) return
+    if (ruleConfig.some(r => r.type === selectedRuleType)) return // no duplicates
+    const val = tpl.hasValue ? Number(ruleValue) : undefined
+    const labelSuffix = tpl.hasValue ? `: ${ruleValue}${tpl.unit ? ' ' + tpl.unit : ''}` : ''
+    setRuleConfig(prev => [...prev, {
+      type: selectedRuleType,
+      label: tpl.label + labelSuffix,
+      value: val,
+      enforceable: tpl.enforceable,
+    }])
+  }
+
+  const removeRule = (type: string) => setRuleConfig(prev => prev.filter(r => r.type !== type))
 
   // ── Live league detection as admin types the name ──────────────────
   useEffect(() => {
@@ -156,6 +202,8 @@ export default function AdminCompetitionsPage() {
           currency: form.currency,
           entryFee: Number(form.entryFee),
           maxParticipants: Number(form.maxParticipants),
+          ruleConfig: ruleConfig.length > 0 ? ruleConfig : undefined,
+          rules: ruleConfig.length > 0 ? ruleConfig.map(r => r.label) : undefined,
         }),
       })
       const data = await r.json().catch(() => ({}))
@@ -165,6 +213,7 @@ export default function AdminCompetitionsPage() {
       }
       setShowForm(false)
       setForm(blankForm())
+      setRuleConfig([])
       setValidation(null)
       mutate()
       globalMutate('/api/competitions')
@@ -342,10 +391,82 @@ export default function AdminCompetitionsPage() {
               </div>
             </div>
 
+            {/* ── Rules Builder ────────────────────────────────────── */}
+            <div className="space-y-1.5 pt-1 border-t border-border/50">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ShieldAlert className="h-3 w-3 text-muted-foreground" />
+                <Label className="text-[10px] uppercase tracking-wide">Competition Rules</Label>
+                <span className="text-[9px] text-muted-foreground">(optional — auto-enforced hourly)</span>
+              </div>
+              <div className="flex gap-1.5 items-center">
+                <select
+                  className="h-8 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+                  value={selectedRuleType}
+                  onChange={e => {
+                    setSelectedRuleType(e.target.value)
+                    const tpl = RULE_TEMPLATES.find(t => t.type === e.target.value)
+                    if (tpl?.hasValue) setRuleValue(String(tpl.defaultValue ?? ''))
+                  }}
+                >
+                  {RULE_TEMPLATES.map(t => (
+                    <option key={t.type} value={t.type}>{t.label}</option>
+                  ))}
+                </select>
+                {RULE_TEMPLATES.find(t => t.type === selectedRuleType)?.hasValue && (
+                  <Input
+                    type="number"
+                    value={ruleValue}
+                    onChange={e => setRuleValue(e.target.value)}
+                    className="h-8 w-20 text-xs"
+                    step="0.1"
+                    min="0"
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs shrink-0"
+                  onClick={addRule}
+                  disabled={ruleConfig.some(r => r.type === selectedRuleType)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />Add
+                </Button>
+              </div>
+              {ruleConfig.length > 0 && (
+                <div className="space-y-1 mt-1">
+                  {ruleConfig.map(r => (
+                    <div key={r.type} className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 px-2 py-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("inline-block w-1.5 h-1.5 rounded-full shrink-0", r.enforceable ? "bg-rose-500" : "bg-muted-foreground/50")} />
+                        <span className="text-[10px]">{r.label}</span>
+                        {r.enforceable && (
+                          <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-rose-500/40 text-rose-500 shrink-0">enforce</Badge>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                        onClick={() => removeRule(r.type)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500" />
+                    enforce = users kicked &amp; emailed on violation (checked hourly)
+                  </p>
+                </div>
+              )}
+            </div>
+
             {error && <p className="text-[11px] text-rose-500">{error}</p>}
 
             <div className="flex justify-end gap-1.5">
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setShowForm(false); setForm(blankForm()); setError(null); setValidation(null) }}>Cancel</Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setShowForm(false); setForm(blankForm()); setRuleConfig([]); setError(null); setValidation(null) }}>Cancel</Button>
               <Button
                 size="sm"
                 className="h-7 text-xs"

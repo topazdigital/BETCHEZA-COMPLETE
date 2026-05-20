@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { FlagIcon } from '@/components/ui/flag-icon';
 import { JoinCompetitionButton } from '@/components/competitions/join-competition-button';
-import { getCompetitionBySlug } from '@/lib/competitions-store';
+import { getCompetitionBySlug, getJoinedUserIds } from '@/lib/competitions-store';
 import { computeLeaderboard } from '@/lib/competition-league-utils';
 import { getCurrentUser } from '@/lib/auth';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -51,6 +51,8 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
 
   const started = new Date(comp.startDate) <= new Date();
 
+  const joinedUserIds = getJoinedUserIds(comp.id);
+
   const [currentUser, leaderboard] = await Promise.all([
     getCurrentUser(),
     started
@@ -62,6 +64,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           sportFocus: comp.sportFocus,
           minTips: 1,
           limit: 500,
+          allowedUserIds: joinedUserIds,
         })
       : Promise.resolve([]),
   ]);
@@ -98,7 +101,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
   const fillPct = Math.min(100, Math.round((totalParticipants / comp.maxParticipants) * 100));
 
   const myStanding = currentUser
-    ? participants.find(p => p.tipsterId === currentUser.id) ?? null
+    ? participants.find(p => p.tipsterId === currentUser.userId) ?? null
     : null;
 
   const personAbove = myStanding && myStanding.rank > 1
@@ -347,7 +350,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
                   p.rank === 1 && 'bg-yellow-500/5',
                   p.rank === 2 && 'bg-gray-300/5',
                   p.rank === 3 && 'bg-amber-700/5',
-                  currentUser && p.tipsterId === currentUser.id && 'bg-primary/5 ring-1 ring-inset ring-primary/20',
+                  currentUser && p.tipsterId === currentUser.userId && 'bg-primary/5 ring-1 ring-inset ring-primary/20',
                 )}>
                   <td className="px-3 py-1.5">
                     <div className={cn(
@@ -371,7 +374,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
                       <div className="min-w-0">
                         <div className="text-xs font-medium truncate flex items-center gap-1">
                           {p.displayName}
-                          {currentUser && p.tipsterId === currentUser.id && (
+                          {currentUser && p.tipsterId === currentUser.userId && (
                             <Badge variant="outline" className="h-3.5 text-[8px] px-1 border-primary text-primary leading-none">You</Badge>
                           )}
                           {p.isVerified && <Star className="h-2.5 w-2.5 fill-primary text-primary shrink-0" />}

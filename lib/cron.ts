@@ -7,8 +7,9 @@
 // Daily strategy auto-posts at 9:00 AM EAT (06:00 UTC) every day.
 
 const TICK_MS = 5 * 60_000; // 5 min base tick
-const JACKPOT_SYNC_EVERY_N_TICKS = 12;      // 12 × 5min = 60min
-const COMPETITION_SETTLE_EVERY_N_TICKS = 12; // every 60min
+const JACKPOT_SYNC_EVERY_N_TICKS = 12;           // 12 × 5min = 60min
+const COMPETITION_SETTLE_EVERY_N_TICKS = 12;      // every 60min
+const COMPETITION_RULE_CHECK_EVERY_N_TICKS = 12;  // every 60min
 
 interface CronState {
   started: boolean;
@@ -149,6 +150,25 @@ async function runFakeVotes(): Promise<void> {
   }
 }
 
+async function runCompetitionRuleCheck(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/competition-rule-check`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
+    });
+    if (!r.ok) {
+      console.warn('[cron] competition-rule-check failed:', r.status);
+    } else {
+      const data = await r.json() as { checked?: number; kicked?: number };
+      if ((data.kicked ?? 0) > 0) {
+        console.log(`[cron] competition-rule-check: checked ${data.checked} comps, kicked ${data.kicked} violators`);
+      }
+    }
+  } catch (e) {
+    console.warn('[cron] competition-rule-check error', e instanceof Error ? e.message : e);
+  }
+}
+
 async function runCompetitionSettle(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/competition-settle`, {
@@ -211,6 +231,10 @@ async function tick(): Promise<void> {
 
   if (state.tickCount % COMPETITION_SETTLE_EVERY_N_TICKS === 0) {
     void runCompetitionSettle();
+  }
+
+  if (state.tickCount % COMPETITION_RULE_CHECK_EVERY_N_TICKS === 0) {
+    void runCompetitionRuleCheck();
   }
 
   if (isStrategyTime()) {
