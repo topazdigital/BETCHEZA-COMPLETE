@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import useSWR from 'swr';
 import {
   Flame,
@@ -30,13 +31,24 @@ import { useMatches, useLiveMatches, useMatchStats, type Match } from '@/lib/hoo
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { ALL_SPORTS, getSportIcon } from '@/lib/sports-data';
-import { BestBetsPanel } from '@/components/home/best-bets-panel';
-import { FavoritedTipsPanel, FavoritedTipMarqueeCard, MyTipsPanel, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
+import { FavoritedTipMarqueeCard, MyTipsPanel, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { liveStatusLabel } from '@/lib/utils/live-status';
 import { tipsterHref } from '@/lib/utils/slug';
-import { NewsletterSection } from '@/components/sections/newsletter';
+
+const BestBetsPanel = dynamic(
+  () => import('@/components/home/best-bets-panel').then(m => ({ default: m.BestBetsPanel })),
+  { ssr: false }
+);
+const FavoritedTipsPanel = dynamic(
+  () => import('@/components/home/favorited-tips-panel').then(m => ({ default: m.FavoritedTipsPanel })),
+  { ssr: false }
+);
+const NewsletterSection = dynamic(
+  () => import('@/components/sections/newsletter').then(m => ({ default: m.NewsletterSection })),
+  { ssr: false }
+);
 
 interface ApiTipster {
   id: number;

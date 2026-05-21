@@ -310,6 +310,9 @@ export function TeamLogo({
   const effectiveVariant = variant ?? (isIndividualSport(sportSlug) ? 'athlete' : 'team')
   const isAthlete = effectiveVariant === 'athlete'
 
+  // Pixel sizes matching the Tailwind size classes
+  const pixelSize = { xs: 24, sm: 32, md: 40, lg: 48, xl: 64 }[size]
+
   // Use image if available and no error
   if (logoUrl && !hasError) {
     return (
@@ -322,10 +325,12 @@ export function TeamLogo({
         <Image
           src={logoUrl}
           alt={teamName}
-          fill
-          className={isAthlete ? "object-cover" : "object-contain p-0.5"}
+          width={pixelSize}
+          height={pixelSize}
+          className={cn("h-full w-full", isAthlete ? "object-cover" : "object-contain p-0.5")}
           onError={() => setHasError(true)}
-          unoptimized
+          loading="lazy"
+          sizes={`${pixelSize}px`}
         />
       </div>
     )

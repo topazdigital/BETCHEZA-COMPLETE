@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { 
@@ -21,16 +22,35 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { useAuthModal } from "@/contexts/auth-modal-context"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { NotificationBell } from "@/components/notifications/notification-bell"
 import { BottomNav } from "@/components/layout/bottom-nav"
-import { Footer } from "@/components/layout/footer"
-import { CookieBanner } from "@/components/layout/cookie-banner"
-import { LiveScoreboardWidget } from "@/components/live/live-scoreboard-widget"
-import { SocialOnboardingModal } from "@/components/auth/social-onboarding-modal"
-import { WelcomeModal } from "@/components/auth/welcome-modal"
 import { useMatchStats } from "@/lib/hooks/use-matches"
 import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
 import { FlagIcon } from "@/components/ui/flag-icon"
+
+const NotificationBell = dynamic(
+  () => import("@/components/notifications/notification-bell").then(m => ({ default: m.NotificationBell })),
+  { ssr: false, loading: () => <div className="h-8 w-8" /> }
+)
+const Footer = dynamic(
+  () => import("@/components/layout/footer").then(m => ({ default: m.Footer })),
+  { ssr: false }
+)
+const CookieBanner = dynamic(
+  () => import("@/components/layout/cookie-banner").then(m => ({ default: m.CookieBanner })),
+  { ssr: false }
+)
+const LiveScoreboardWidget = dynamic(
+  () => import("@/components/live/live-scoreboard-widget").then(m => ({ default: m.LiveScoreboardWidget })),
+  { ssr: false }
+)
+const SocialOnboardingModal = dynamic(
+  () => import("@/components/auth/social-onboarding-modal").then(m => ({ default: m.SocialOnboardingModal })),
+  { ssr: false }
+)
+const WelcomeModal = dynamic(
+  () => import("@/components/auth/welcome-modal").then(m => ({ default: m.WelcomeModal })),
+  { ssr: false }
+)
 
 const POPULAR_LEAGUE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const INTERNATIONAL_LEAGUE_IDS = [9, 10, 26, 102, 24, 29, 30, 31];
@@ -214,30 +234,37 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       )}>
         {/* Logo */}
         <div className="flex h-12 items-center justify-between border-b border-border px-3">
-          <Link href="/" className="flex items-center gap-2">
-            {branding.logoUrl ? (
-              <>
-                <img
-                  src={branding.logoUrl}
-                  alt={branding.siteName}
-                  className={`h-7 w-auto object-contain ${branding.logoDarkUrl ? 'block dark:hidden' : ''}`}
-                />
-                {branding.logoDarkUrl && (
+          <Link href="/" className="flex items-center gap-2 min-w-0">
+            {/* Fixed-size container prevents CLS while branding loads */}
+            <div className="flex h-7 shrink-0 items-center">
+              {branding.logoUrl ? (
+                <>
                   <img
-                    src={branding.logoDarkUrl}
+                    src={branding.logoUrl}
                     alt={branding.siteName}
-                    className="hidden h-7 w-auto object-contain dark:block"
+                    width={28}
+                    height={28}
+                    className={`h-7 w-auto max-w-[120px] object-contain ${branding.logoDarkUrl ? 'block dark:hidden' : ''}`}
                   />
-                )}
-              </>
-            ) : (
-              <>
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
-                  {branding.siteName.split(" ").filter(Boolean).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join("").slice(0, 2) || "BZ"}
-                </div>
-                <span className="text-sm font-bold">{branding.siteName}</span>
-              </>
-            )}
+                  {branding.logoDarkUrl && (
+                    <img
+                      src={branding.logoDarkUrl}
+                      alt={branding.siteName}
+                      width={28}
+                      height={28}
+                      className="hidden h-7 w-auto max-w-[120px] object-contain dark:block"
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
+                    {branding.siteName.split(" ").filter(Boolean).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join("").slice(0, 2) || "BZ"}
+                  </div>
+                  <span className="ml-2 text-sm font-bold">{branding.siteName}</span>
+                </>
+              )}
+            </div>
           </Link>
           <Button variant="ghost" size="icon" className="h-7 w-7 lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X className="h-4 w-4" />

@@ -237,6 +237,11 @@ export async function generateMetadata(): Promise<Metadata> {
     verification: process.env.GOOGLE_SITE_VERIFICATION
       ? { google: process.env.GOOGLE_SITE_VERIFICATION }
       : undefined,
+    other: {
+      'script:ld+json:website': JSON.stringify(websiteJsonLd),
+      'script:ld+json:organization': JSON.stringify(organizationJsonLd),
+      'script:ld+json:faq': JSON.stringify(faqJsonLd),
+    },
     openGraph: {
       type: 'website',
       locale: 'en_US',
@@ -384,23 +389,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
-      <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
-          suppressHydrationWarning
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
-          suppressHydrationWarning
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
-          suppressHydrationWarning
-        />
-      </head>
+      <head />
       <body className="min-h-screen bg-background font-sans antialiased">
         <NavigationProgress />
         <ServiceWorkerRegister />
