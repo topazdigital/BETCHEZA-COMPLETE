@@ -2107,8 +2107,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                     <Badge variant="outline" className="text-[9px] ml-auto">Estimated</Badge>
                   )}
                 </div>
-                <CardContent className="p-3 space-y-2.5">
-                  <div className={cn('grid gap-2', match.odds.draw !== undefined ? 'grid-cols-3' : 'grid-cols-2')}>
+                <CardContent className="p-2.5 space-y-2">
+                  <div className={cn('grid gap-1.5', match.odds.draw !== undefined ? 'grid-cols-3' : 'grid-cols-2')}>
                     <OddsCardLarge label="1 Home" sublabel={match.homeTeam.name} value={match.odds.home} />
                     {match.odds.draw !== undefined
                       ? <OddsCardLarge label="X Draw" sublabel="Draw" value={match.odds.draw} highlight />
@@ -2117,7 +2117,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                   </div>
                   <div>
                     <OddsProbBar home={match.odds.home} draw={match.odds.draw} away={match.odds.away} />
-                    <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
+                    <div className="flex justify-between mt-1 text-[9px] text-muted-foreground">
                       <span className="truncate max-w-[35%]">{match.homeTeam.name}</span>
                       {match.odds.draw !== undefined && <span>Draw</span>}
                       <span className="truncate max-w-[35%] text-right">{match.awayTeam.name}</span>
@@ -2251,19 +2251,19 @@ export default function MatchDetailPage({ params }: PageProps) {
 
             {/* Spreads / Totals */}
             {bookmakerOdds.some(o => o.spread || o.total) && (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {bookmakerOdds.some(o => o.spread) && (
                   <Card>
-                    <CardContent className="p-4">
-                      <h4 className="mb-3 text-sm font-bold flex items-center gap-2">
-                        <Target className="h-4 w-4 text-primary" />Handicap / Spread
-                      </h4>
-                      <div className="space-y-2">
+                    <CardContent className="p-2.5 space-y-1.5">
+                      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/80 flex items-center gap-1">
+                        <Target className="h-3 w-3" />Handicap / Spread
+                      </p>
+                      <div className="space-y-1">
                         {bookmakerOdds.filter(o => o.spread).map((o, i) => (
-                          <div key={i} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5 text-sm">
-                            <span className="font-medium text-muted-foreground">{o.bookmaker}</span>
-                            <div className="flex gap-3 font-mono text-sm">
-                              <span>{o.spread!.value > 0 ? '+' : ''}{o.spread!.value}</span>
+                          <div key={i} className="flex items-center justify-between rounded-md bg-muted/40 border border-border/50 px-2 py-1.5">
+                            <span className="text-[10px] text-muted-foreground truncate">{o.bookmaker}</span>
+                            <div className="flex gap-2 font-mono text-xs flex-none">
+                              <span className="text-muted-foreground">{o.spread!.value > 0 ? '+' : ''}{o.spread!.value}</span>
                               <span className="font-bold text-primary">{o.spread!.homePrice.toFixed(2)}</span>
                               <span className="text-muted-foreground">/</span>
                               <span className="font-bold text-primary">{o.spread!.awayPrice.toFixed(2)}</span>
@@ -2276,15 +2276,15 @@ export default function MatchDetailPage({ params }: PageProps) {
                 )}
                 {bookmakerOdds.some(o => o.total) && (
                   <Card>
-                    <CardContent className="p-4">
-                      <h4 className="mb-3 text-sm font-bold flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-primary" />Over / Under
-                      </h4>
-                      <div className="space-y-2">
+                    <CardContent className="p-2.5 space-y-1.5">
+                      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/80 flex items-center gap-1">
+                        <BarChart3 className="h-3 w-3" />Over / Under
+                      </p>
+                      <div className="space-y-1">
                         {bookmakerOdds.filter(o => o.total).map((o, i) => (
-                          <div key={i} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5 text-sm">
-                            <span className="font-medium text-muted-foreground">{o.bookmaker} ({o.total!.value})</span>
-                            <div className="flex gap-3 font-mono text-sm">
+                          <div key={i} className="flex items-center justify-between rounded-md bg-muted/40 border border-border/50 px-2 py-1.5">
+                            <span className="text-[10px] text-muted-foreground truncate">{o.bookmaker} ({o.total!.value})</span>
+                            <div className="flex gap-2 font-mono text-xs flex-none">
                               <span>O <span className="font-bold text-emerald-500">{o.total!.overPrice.toFixed(2)}</span></span>
                               <span>U <span className="font-bold text-rose-500">{o.total!.underPrice.toFixed(2)}</span></span>
                             </div>
@@ -2299,68 +2299,69 @@ export default function MatchDetailPage({ params }: PageProps) {
 
             {/* All other markets — BTTS, Totals, Double Chance, Half-time, etc. */}
             {match.markets && match.markets.length > 0 && (
-              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+              <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
                 {match.markets
                   .filter((m) => m.key !== 'h2h' && m.outcomes && m.outcomes.length > 0)
-                  .map((mkt) => (
-                    <Card key={mkt.key}>
-                      <CardContent className="p-4">
-                        <h4 className="mb-3 text-sm font-bold flex items-center gap-2">
-                          <BarChart3 className="h-4 w-4 text-primary" />
-                          {mkt.name}
-                        </h4>
-                        <div className="grid gap-2" style={{
-                          gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))`,
-                        }}>
-                          {mkt.outcomes.map((o, i) => {
-                            const sel = !isFinished && isSelected(match.id, mkt.key, o.name)
-                            return (
-                              <div key={i} className="relative group">
-                                <button
-                                  type="button"
-                                  disabled={isFinished}
-                                  onClick={isFinished ? undefined : () => addSelection({
-                                    matchId: match.id,
-                                    matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-                                    marketKey: mkt.key,
-                                    marketName: mkt.name,
-                                    outcomeName: o.name,
-                                    price: o.price,
-                                    matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
-                                  })}
-                                  className={cn(
-                                    "w-full rounded-lg border px-3 py-2.5 text-center transition-all",
-                                    isFinished ? "cursor-default opacity-60" : "active:scale-95",
-                                    sel
-                                      ? "border-primary bg-primary/10 text-primary"
-                                      : "border-border/50 bg-muted/40 hover:bg-muted/60 hover:border-primary/40"
-                                  )}
-                                >
-                                  <p className={cn("text-[10px] uppercase tracking-wider truncate", sel ? "text-primary/70" : "text-muted-foreground")}>
-                                    {o.name}
-                                    {o.point !== undefined ? ` ${o.point}` : ''}
-                                  </p>
-                                  <p className={cn("text-base font-black mt-0.5 font-mono tabular-nums", sel ? "text-primary" : "text-foreground")}>
-                                    {o.price.toFixed(2)}
-                                  </p>
-                                </button>
-                                {!isFinished && (
+                  .map((mkt) => {
+                    const cols = mkt.outcomes.length === 2 ? 'grid-cols-2'
+                      : mkt.outcomes.length === 3 ? 'grid-cols-3'
+                      : 'grid-cols-2'
+                    return (
+                      <Card key={mkt.key}>
+                        <CardContent className="p-2.5 space-y-1.5">
+                          <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/80 leading-none">
+                            {mkt.name}
+                          </p>
+                          <div className={cn('grid gap-1', cols)}>
+                            {mkt.outcomes.slice(0, Math.min(mkt.outcomes.length, 6)).map((o, i) => {
+                              const sel = !isFinished && isSelected(match.id, mkt.key, o.name)
+                              return (
+                                <div key={i} className="relative group">
                                   <button
                                     type="button"
-                                    title="Share as tip"
-                                    onClick={() => openTipWithPrefill(mkt.key, { name: o.name, price: o.price })}
-                                    className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-amber-500 text-amber-950 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-amber-400"
+                                    disabled={isFinished}
+                                    onClick={isFinished ? undefined : () => addSelection({
+                                      matchId: match.id,
+                                      matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                                      marketKey: mkt.key,
+                                      marketName: mkt.name,
+                                      outcomeName: o.name,
+                                      price: o.price,
+                                      matchSlug: matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name),
+                                    })}
+                                    className={cn(
+                                      'w-full flex items-center justify-between gap-1 rounded-md border px-1.5 py-1.5 transition-all',
+                                      isFinished ? 'cursor-default opacity-60' : 'active:scale-95',
+                                      sel
+                                        ? 'bg-primary/10 border-primary text-primary'
+                                        : 'bg-muted/40 border-border/50 hover:bg-muted/70 hover:border-primary/40'
+                                    )}
                                   >
-                                    <Pencil className="h-2.5 w-2.5" />
+                                    <span className={cn('text-[9px] truncate leading-tight text-left min-w-0 flex-1', sel ? 'text-primary/70' : 'text-muted-foreground')}>
+                                      {o.name}{o.point !== undefined ? ` ${o.point}` : ''}
+                                    </span>
+                                    <span className={cn('text-[13px] font-black tabular-nums flex-none', sel ? 'text-primary' : 'text-foreground')}>
+                                      {o.price.toFixed(2)}
+                                    </span>
                                   </button>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                                  {!isFinished && (
+                                    <button
+                                      type="button"
+                                      title="Share as tip"
+                                      onClick={() => openTipWithPrefill(mkt.key, { name: o.name, price: o.price })}
+                                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-amber-500 text-amber-950 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-amber-400"
+                                    >
+                                      <Pencil className="h-2 w-2" />
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
               </div>
             )}
 
@@ -3243,12 +3244,14 @@ function OddsButton({ label, sublabel, value, onClick, selected, disabled }: { l
 function OddsCardLarge({ label, sublabel, value, highlight }: { label: string; sublabel: string; value: number; highlight?: boolean }) {
   return (
     <div className={cn(
-      "rounded-lg border px-2 py-2 text-center transition-all hover:shadow-sm cursor-pointer",
-      highlight ? "border-primary/30 bg-primary/8" : "border-border/50 bg-muted/40 hover:bg-muted/60"
+      "rounded-md border px-1.5 py-1.5 flex items-center justify-between gap-1 transition-all hover:bg-muted/70",
+      highlight ? "border-primary/30 bg-primary/8" : "border-border/50 bg-muted/40"
     )}>
-      <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
-      <p className={cn("text-xl font-black leading-none mt-0.5", highlight ? "text-primary" : "text-foreground")}>{value.toFixed(2)}</p>
-      <p className="text-[9px] text-muted-foreground truncate mt-0.5">{sublabel}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[9px] uppercase tracking-wide text-muted-foreground font-medium leading-tight">{label}</p>
+        <p className="text-[10px] text-muted-foreground truncate leading-tight">{sublabel}</p>
+      </div>
+      <p className={cn("text-sm font-black tabular-nums flex-none", highlight ? "text-primary" : "text-foreground")}>{value.toFixed(2)}</p>
     </div>
   )
 }
