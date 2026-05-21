@@ -102,7 +102,7 @@ export function getPool(): mysql.Pool | null {
       connectionLimit: 5,
       queueLimit: 0,
       charset: 'utf8mb4',
-      connectTimeout: 8000,
+      connectTimeout: 3000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
     });

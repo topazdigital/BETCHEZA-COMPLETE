@@ -119,26 +119,23 @@ function resolveUploadPaths(settings: SiteSettings): void {
   }
 }
 
-const g = globalThis as { __siteSettingsCache?: { value: SiteSettings; ts: number } };
-const CACHE_TTL_MS = 5 * 60_000; // 5 minutes — reduces DB hits significantly on busy pages
+const g = globalThis as {
+  __siteSettingsCache?: { value: SiteSettings; ts: number };
+  __siteSettingsRefreshing?: boolean;
+};
+const CACHE_TTL_MS = 5 * 60_000; // 5 minutes — served from memory; DB refreshes in background
 
-export async function getSiteSettings(): Promise<SiteSettings> {
-  const now = Date.now();
-  if (g.__siteSettingsCache && now - g.__siteSettingsCache.ts < CACHE_TTL_MS) {
-    return g.__siteSettingsCache.value;
-  }
+async function fetchAndCacheSettings(): Promise<SiteSettings> {
   const merged: SiteSettings = { ...DEFAULTS };
   const pool = getPool();
   if (pool) {
     try {
-      // Race against a 2-second timeout so a slow/unreachable DB never blocks
-      // the root layout (which is called for every request including API routes).
       const dbResult = await Promise.race([
         query<{ setting_key: string; setting_value: string }>(
           'SELECT setting_key, setting_value FROM site_settings'
         ),
         new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error('site_settings query timeout')), 2000)
+          setTimeout(() => reject(new Error('site_settings query timeout')), 1000)
         ),
       ]);
       if (dbResult) {
@@ -150,9 +147,6 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       // DB unreachable or table missing — keep defaults / memory settings.
     }
   }
-  // Layer in any in-memory writes from /api/admin/settings (so non-DB
-  // installs still see the latest admin updates).
-  // Only apply non-empty values so an uninitialised key never wipes a good default.
   const mem = (globalThis as { __memorySettings?: Record<string, string> }).__memorySettings;
   if (mem) {
     for (const [k, v] of Object.entries(mem)) {
@@ -162,8 +156,28 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     }
   }
   resolveUploadPaths(merged);
-  g.__siteSettingsCache = { value: merged, ts: now };
+  g.__siteSettingsCache = { value: merged, ts: Date.now() };
+  g.__siteSettingsRefreshing = false;
   return merged;
+}
+
+export async function getSiteSettings(): Promise<SiteSettings> {
+  const now = Date.now();
+
+  // Fresh cache — return immediately
+  if (g.__siteSettingsCache && now - g.__siteSettingsCache.ts < CACHE_TTL_MS) {
+    return g.__siteSettingsCache.value;
+  }
+
+  // Stale cache — return stale value instantly, refresh in background
+  if (g.__siteSettingsCache && !g.__siteSettingsRefreshing) {
+    g.__siteSettingsRefreshing = true;
+    fetchAndCacheSettings().catch(() => { g.__siteSettingsRefreshing = false; });
+    return g.__siteSettingsCache.value;
+  }
+
+  // No cache at all (true cold start) — must wait, but only up to 1s
+  return fetchAndCacheSettings();
 }
 
 export function invalidateSiteSettingsCache(): void {
