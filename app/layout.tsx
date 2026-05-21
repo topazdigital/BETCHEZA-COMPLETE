@@ -400,6 +400,7 @@ export default function RootLayout({
         <link rel="preload" href="/icon.svg" as="image" type="image/svg+xml" />
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
+        <ClarityAnalytics />
         <NavigationProgress />
         <ServiceWorkerRegister />
         <ThemeProvider
