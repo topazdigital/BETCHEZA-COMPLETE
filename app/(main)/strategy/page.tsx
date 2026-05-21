@@ -625,6 +625,139 @@ function SubscribeModal({
   );
 }
 
+function PastWeekCard({ week, wins, losses, pending }: {
+  week: WeeklyStrategy;
+  wins: number;
+  losses: number;
+  pending: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between p-3 hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="text-left">
+            <p className="font-semibold text-sm">
+              Week of {new Date(week.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {wins} wins · {losses} losses{pending > 0 ? ` · ${pending} pending` : ''}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            {week.days.map((d) => (
+              <div
+                key={d.day}
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  d.result === 'win' ? 'bg-green-500' : d.result === 'loss' ? 'bg-red-500' : 'bg-muted'
+                )}
+                title={`Day ${d.day}: ${d.result || 'pending'}`}
+              />
+            ))}
+          </div>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-border px-3 pb-3 pt-2 space-y-2">
+          {week.days.map((day, i) => {
+            const planItem = WEEK_PLAN[i] || WEEK_PLAN[0];
+            return (
+              <div
+                key={day.day}
+                className={cn(
+                  'rounded-lg border p-2.5',
+                  day.result === 'win' ? 'border-green-500/30 bg-green-500/5' :
+                  day.result === 'loss' ? 'border-red-500/30 bg-red-500/5' :
+                  'border-border bg-muted/20'
+                )}
+              >
+                {/* Day header */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                      day.result === 'win' ? 'bg-green-500 text-white' :
+                      day.result === 'loss' ? 'bg-red-500 text-white' :
+                      'bg-muted text-muted-foreground'
+                    )}>
+                      {day.result === 'win' ? '✓' : day.result === 'loss' ? '✗' : `D${day.day}`}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold">Day {day.day}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(day.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-right text-[11px]">
+                    <span className="text-muted-foreground">Stake: <span className="font-mono font-bold text-foreground">{formatKES(planItem.stake)}</span></span>
+                    <span className="text-muted-foreground">Win: <span className="font-mono font-bold text-green-500">{formatKES(planItem.targetWin)}</span></span>
+                  </div>
+                </div>
+
+                {/* Picks */}
+                {day.picks.length > 0 ? (
+                  <div className="space-y-1.5 mt-1">
+                    {day.picks.map((pick) => (
+                      <div
+                        key={pick.id}
+                        className={cn(
+                          'rounded-md border px-2.5 py-2 text-xs',
+                          pick.result === 'win' ? 'border-green-500/20 bg-green-500/5' :
+                          pick.result === 'loss' ? 'border-red-500/20 bg-red-500/5' :
+                          'border-border bg-card'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <PickResultIcon result={pick.result} />
+                            <div className="min-w-0">
+                              <p className="font-semibold truncate">{pick.homeTeam} vs {pick.awayTeam}</p>
+                              <p className="text-[10px] text-muted-foreground">{pick.league}</p>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="font-mono font-bold text-primary">@{pick.odds.toFixed(2)}</span>
+                            {pick.actualScore && (
+                              <p className="text-[10px] text-muted-foreground">{pick.actualScore}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{pick.market}</span>
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{pick.pick}</span>
+                          {pick.result === 'win' && <span className="rounded-full bg-green-500/20 px-1.5 py-0.5 text-[10px] font-bold text-green-600">WON ✓</span>}
+                          {pick.result === 'loss' && <span className="rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-bold text-red-600">LOST ✗</span>}
+                        </div>
+                      </div>
+                    ))}
+                    {day.combinedOdds > 0 && (
+                      <p className="text-[11px] text-right text-muted-foreground pt-0.5">
+                        Combined: <span className="font-mono font-bold text-primary">{day.combinedOdds.toFixed(2)}x</span>
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground text-center py-2">No picks recorded for this day.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AccessInfo {
   hasAccess: boolean;
   expiresAt?: string;
@@ -826,25 +959,9 @@ export default function StrategyPage() {
             {past.map((week) => {
               const wins = week.days.filter((d) => d.result === 'win').length;
               const losses = week.days.filter((d) => d.result === 'loss').length;
+              const pending = week.days.filter((d) => !d.result).length;
               return (
-                <div key={week.weekId} className="rounded-lg border border-border bg-card p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm">
-                        Week of {new Date(week.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{wins} wins · {losses} losses · {7 - wins - losses} pending</p>
-                    </div>
-                    <div className="flex gap-1">
-                      {week.days.map((d) => (
-                        <div key={d.day} className={cn(
-                          'h-2 w-2 rounded-full',
-                          d.result === 'win' ? 'bg-green-500' : d.result === 'loss' ? 'bg-red-500' : 'bg-muted'
-                        )} title={`Day ${d.day}: ${d.result || 'pending'}`} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <PastWeekCard key={week.weekId} week={week} wins={wins} losses={losses} pending={pending} />
               );
             })}
           </div>

@@ -76,9 +76,9 @@ export function Header() {
           ) : (
             <>
               <img
-                src="/icon.svg"
+                src="/app-icon.png"
                 alt={branding.siteName}
-                className="h-8 w-8 rounded-lg"
+                className="h-8 w-8 rounded-full object-cover"
               />
               <span className="font-bold text-foreground text-base tracking-tight">
                 <span className="text-primary">B</span>etcheza

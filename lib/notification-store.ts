@@ -347,14 +347,18 @@ export async function saveEmailSubscriber(input: Omit<EmailSubscriberRow, 'id'>)
   const row: EmailSubscriberRow = { id, active: true, ...input };
   if (hasDb()) {
     try {
+      // Pass topics as a JS array — pg serialises it correctly for jsonb columns.
+      // Do NOT JSON.stringify here; passing a string to a jsonb column fails silently.
       await query(
         `INSERT INTO email_subscribers
           (id, email, topics, country_code, unsubscribe_token, active, created_at)
          VALUES (?, ?, ?, ?, ?, TRUE, NOW())
          ON CONFLICT (email) DO UPDATE SET topics = EXCLUDED.topics, active = TRUE, country_code = EXCLUDED.country_code`,
-        [id, row.email, JSON.stringify(row.topics), row.countryCode || null, row.unsubscribeToken]
+        [id, row.email, row.topics, row.countryCode || null, row.unsubscribeToken]
       );
-    } catch {}
+    } catch (err) {
+      console.error('[notification-store] saveEmailSubscriber DB error:', err);
+    }
   }
   for (const [k, v] of stores.emailSubs) {
     if (v.email === row.email) { stores.emailSubs.delete(k); break; }
