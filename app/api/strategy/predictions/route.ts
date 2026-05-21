@@ -136,6 +136,15 @@ const MANUAL_WIN_WEEKS: Record<string, 'all'> = {
   '2026-05-11': 'all',
 };
 
+// Manual overrides for individual days where API corner/stat data was wrong.
+// Key = YYYY-MM-DD date string. picks = per-pick results by index (0-based).
+const MANUAL_DAY_OVERRIDES: Record<string, { result: 'win' | 'loss'; picksResult: 'win' | 'loss' }> = {
+  // Day 4 (Thu 21 May): Both corners picks confirmed WIN via Google match stats:
+  //   Inter Kashi 4 + East Bengal 10 = 14 corners → Over 9.5 ✅
+  //   Jamshedpur 11 + Odisha 1 = 12 corners → Over 9.5 ✅
+  '2026-05-21': { result: 'win', picksResult: 'win' },
+};
+
 function buildManualAllWinsWeek(weekId: string): WeeklyStrategy {
   const weekStart = new Date(weekId);
   const weekEnd = new Date(weekId);
@@ -195,20 +204,25 @@ async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
       const weekStart = new Date(wid);
       const weekEnd = new Date(wid);
       weekEnd.setDate(weekEnd.getDate() + 6);
-      const days: DayPrediction[] = rows.map((row) => ({
-        day: row.day_number,
-        date: typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0, 10),
-        stake: row.stake,
-        save: row.save_amount,
-        targetWin: row.target_win,
-        picks: row.picks ? JSON.parse(row.picks) as StrategyPick[] : [],
-        combinedOdds: parseFloat(String(row.combined_odds)) || 0,
-        status: row.status,
-        result: row.result || undefined,
-        actualReturn: row.actual_return || undefined,
-        isManual: row.is_manual === 1,
-        scheduledFor: row.scheduled_for || null,
-      }));
+      const days: DayPrediction[] = rows.map((row) => {
+        const dateStr = typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0, 10);
+        const override = MANUAL_DAY_OVERRIDES[dateStr];
+        const picks: StrategyPick[] = row.picks ? JSON.parse(row.picks) as StrategyPick[] : [];
+        return {
+          day: row.day_number,
+          date: dateStr,
+          stake: row.stake,
+          save: row.save_amount,
+          targetWin: row.target_win,
+          picks: override ? picks.map(p => ({ ...p, result: override.picksResult })) : picks,
+          combinedOdds: parseFloat(String(row.combined_odds)) || 0,
+          status: override ? 'completed' as const : row.status,
+          result: override ? override.result : (row.result || undefined),
+          actualReturn: row.actual_return || undefined,
+          isManual: row.is_manual === 1,
+          scheduledFor: row.scheduled_for || null,
+        };
+      });
       weeks.push({
         weekId: wid,
         weekStart: weekStart.toISOString().slice(0, 10),
@@ -460,7 +474,22 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
       // Always use the template's day number — DB day_number can be wrong due to
       // timezone differences at the time of insertion (e.g. UTC vs EAT).
       // The correct day number is always the positional index in the week (1=Mon … 7=Sun).
-      return { ...base, status, day: d.day, stake: d.stake, save: d.save, targetWin: d.targetWin };
+      // Apply manual day overrides (e.g. when API corner stats were wrong)
+    const override = MANUAL_DAY_OVERRIDES[base.date];
+    if (override) {
+      return {
+        ...base,
+        status: 'completed' as const,
+        day: d.day,
+        stake: d.stake,
+        save: d.save,
+        targetWin: d.targetWin,
+        result: override.result,
+        picks: base.picks.map(p => ({ ...p, result: override.picksResult })),
+      };
+    }
+
+    return { ...base, status, day: d.day, stake: d.stake, save: d.save, targetWin: d.targetWin };
     });
 
     // Auto-generate today's picks if today is active but has no picks AND not manually posted
@@ -760,6 +789,8 @@ async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPredi
   const updated = days.map(day => {
     // Skip future days (but allow today and past)
     if (day.date > todayStr) return day;
+    // Skip days with a manual override — they are already correct
+    if (MANUAL_DAY_OVERRIDES[day.date]) return day;
     if (!day.picks.some(p => p.result === 'pending')) return day;
 
     let changed = false;

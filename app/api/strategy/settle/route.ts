@@ -48,10 +48,12 @@ function checkPickResult(
     return homeScore !== awayScore ? 'win' : 'loss';
   }
 
-  if (market === 'over/under' || market === 'total goals') {
+  if (market.includes('over') || market.includes('under') || market.includes('total') || market.includes('o/u') || market.includes('ou') || market === 'over/under' || market === 'total goals') {
     const totalGoals = homeScore + awayScore;
     const overMatch = pickValue.match(/over\s*([\d.]+)/i);
     const underMatch = pickValue.match(/under\s*([\d.]+)/i);
+    // Corners market — requires corner data; without it keep pending (return null)
+    if (market.includes('corner') || pickValue.includes('corner')) return null;
     if (overMatch) return totalGoals > parseFloat(overMatch[1]) ? 'win' : 'loss';
     if (underMatch) return totalGoals < parseFloat(underMatch[1]) ? 'win' : 'loss';
     if (pickValue.includes('over 2.5')) return totalGoals > 2.5 ? 'win' : 'loss';
