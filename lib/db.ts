@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 
 let pool: mysql.Pool | null = null;
+let poolHost: string | null = null;
+let poolUser: string | null = null;
+let poolDatabase: string | null = null;
 
 interface FileDbConfig {
   host?: string;
@@ -12,13 +15,14 @@ interface FileDbConfig {
   database?: string;
 }
 
-// Circuit breaker: after a connection failure, stop attempting for COOLDOWN_MS.
-// This prevents every API route from hanging for 3s on every request when the
-// remote DB is unreachable (e.g. firewall blocks Replit → VPS MySQL port).
 const COOLDOWN_MS = 30_000;
 const g = globalThis as {
   __dbCircuitOpen?: boolean;
   __dbCircuitOpenAt?: number;
+  __dbPool?: mysql.Pool | null;
+  __dbPoolHost?: string | null;
+  __dbPoolUser?: string | null;
+  __dbPoolDatabase?: string | null;
 };
 
 function isCircuitOpen(): boolean {
@@ -33,10 +37,17 @@ function isCircuitOpen(): boolean {
 function openCircuit(): void {
   g.__dbCircuitOpen = true;
   g.__dbCircuitOpenAt = Date.now();
-  if (pool) {
-    pool.end().catch(() => { });
-    pool = null;
+  if (g.__dbPool) {
+    g.__dbPool.end().catch(() => { });
+    g.__dbPool = null;
+    g.__dbPoolHost = null;
+    g.__dbPoolUser = null;
+    g.__dbPoolDatabase = null;
   }
+  pool = null;
+  poolHost = null;
+  poolUser = null;
+  poolDatabase = null;
 }
 
 function getFileConfig(): FileDbConfig | null {
@@ -66,8 +77,22 @@ export function getPool(): mysql.Pool | null {
 
   if (!host || !user || !database) return null;
 
-  if (!pool) {
-    pool = mysql.createPool({
+  // Use global to survive Next.js hot-reloads in dev
+  const currentHost = g.__dbPoolHost;
+  const currentUser = g.__dbPoolUser;
+  const currentDb   = g.__dbPoolDatabase;
+
+  // Recreate pool if credentials changed (e.g. env var update)
+  if (g.__dbPool && (currentHost !== host || currentUser !== user || currentDb !== database)) {
+    g.__dbPool.end().catch(() => { });
+    g.__dbPool = null;
+    g.__dbPoolHost = null;
+    g.__dbPoolUser = null;
+    g.__dbPoolDatabase = null;
+  }
+
+  if (!g.__dbPool) {
+    g.__dbPool = mysql.createPool({
       host,
       port: fileCfg?.port || parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306'),
       user,
@@ -81,16 +106,31 @@ export function getPool(): mysql.Pool | null {
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
     });
+    g.__dbPoolHost     = host;
+    g.__dbPoolUser     = user;
+    g.__dbPoolDatabase = database;
   }
+
+  pool = g.__dbPool;
+  poolHost = host;
+  poolUser = user;
+  poolDatabase = database;
 
   return pool;
 }
 
 export function resetPool(): void {
-  if (pool) {
-    pool.end().catch(() => { });
-    pool = null;
+  if (g.__dbPool) {
+    g.__dbPool.end().catch(() => { });
+    g.__dbPool = null;
+    g.__dbPoolHost = null;
+    g.__dbPoolUser = null;
+    g.__dbPoolDatabase = null;
   }
+  pool = null;
+  poolHost = null;
+  poolUser = null;
+  poolDatabase = null;
   g.__dbCircuitOpen = false;
 }
 
@@ -165,8 +205,12 @@ export async function withTransaction<T>(
 }
 
 export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
+  if (g.__dbPool) {
+    await g.__dbPool.end();
+    g.__dbPool = null;
+    g.__dbPoolHost = null;
+    g.__dbPoolUser = null;
+    g.__dbPoolDatabase = null;
   }
+  pool = null;
 }

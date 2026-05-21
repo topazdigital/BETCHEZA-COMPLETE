@@ -6,12 +6,8 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { UserSettingsProvider } from '@/contexts/user-settings-context'
 import { AuthProvider } from '@/contexts/auth-context'
 import { AuthModalProvider } from '@/contexts/auth-modal-context'
-import { AuthModal } from '@/components/auth/auth-modal'
-import { GoogleOneTap } from '@/components/auth/google-one-tap'
-import { AIChatButton } from '@/components/ai/ai-chat-button'
-import { InstallPrompt } from '@/components/install-prompt'
 import { BetSlipProvider } from '@/contexts/bet-slip-context'
-import { BetSlipPanel } from '@/components/bet-slip/bet-slip-panel'
+import { ClientModals } from '@/components/layout/client-modals'
 import { getSiteSettings, parseSeoPages, findSeoForPath } from '@/lib/site-settings'
 import { Toaster } from 'sonner'
 import { NavigationProgress } from '@/components/layout/navigation-progress'
@@ -419,11 +415,7 @@ export default function RootLayout({
               <BetSlipProvider>
               <UserSettingsProvider>
                 {children}
-                <AuthModal />
-                <GoogleOneTap />
-                <AIChatButton />
-                <InstallPrompt />
-                <BetSlipPanel />
+                <ClientModals />
                 <Toaster position="top-right" richColors closeButton />
               </UserSettingsProvider>
             </BetSlipProvider>

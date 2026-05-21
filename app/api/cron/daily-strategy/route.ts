@@ -296,8 +296,14 @@ Return ONLY valid JSON (1 to 5 picks). All odds multiplied MUST equal 3.00–4.0
         }));
       }
     }
-  } catch (e) {
-    console.error('[daily-strategy] generate error:', e);
+  } catch (e: unknown) {
+    const err = e as { status?: number; code?: string; message?: string };
+    const isQuota = err?.status === 429 || err?.code === 'insufficient_quota';
+    if (isQuota) {
+      console.warn('[daily-strategy] OpenAI quota exhausted — using odds-based fallback picks');
+    } else {
+      console.error('[daily-strategy] generate error:', err?.message ?? e);
+    }
   }
 
   if (picks.length === 0) {
@@ -362,8 +368,9 @@ export async function GET(req: NextRequest) {
 
     console.log(`[daily-strategy] Posted ${picks.length} picks for ${todayStr} (combined odds: ${combinedOdds.toFixed(2)})`);
     return NextResponse.json({ success: true, date: todayStr, picks, combinedOdds: parseFloat(combinedOdds.toFixed(2)) });
-  } catch (e) {
-    console.error('[daily-strategy] cron error:', e);
+  } catch (e: unknown) {
+    const err = e as { message?: string };
+    console.error('[daily-strategy] cron error:', err?.message ?? e);
     const picks = await generatePicksForDate(now, plan, dayNumber);
     const combinedOdds = picks.reduce((acc, p) => acc * p.odds, 1);
 

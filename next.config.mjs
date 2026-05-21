@@ -4,10 +4,47 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    unoptimized: true,
+    formats: ['image/webp', 'image/avif'],
+    minimumCacheTTL: 86400,
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    remotePatterns: [
+      { protocol: 'https', hostname: '**' },
+    ],
   },
   compress: true,
   poweredByHeader: false,
+  productionBrowserSourceMaps: false,
+  experimental: {
+    optimizeCss: false,
+    optimizePackageImports: [
+      'lucide-react',
+      '@radix-ui/react-accordion',
+      '@radix-ui/react-alert-dialog',
+      '@radix-ui/react-avatar',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-collapsible',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-hover-card',
+      '@radix-ui/react-label',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-progress',
+      '@radix-ui/react-radio-group',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-select',
+      '@radix-ui/react-separator',
+      '@radix-ui/react-slider',
+      '@radix-ui/react-slot',
+      '@radix-ui/react-switch',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+      '@radix-ui/react-toggle',
+      '@radix-ui/react-tooltip',
+      'recharts',
+      'date-fns',
+    ],
+  },
   allowedDevOrigins: [
     '*.replit.dev',
     '*.replit.app',
@@ -17,6 +54,7 @@ const nextConfig = {
     '*.janeway.replit.dev',
     '*.spock.replit.dev',
     '*.sisko.replit.dev',
+    '*.worf.replit.dev',
     '*.worf.replit.dev',
   ],
   async redirects() {
@@ -35,11 +73,31 @@ const nextConfig = {
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {
+        source: '/:path*.jpg',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/:path*.webp',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/:path*.avif',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
         source: '/:path*.svg',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {
         source: '/:path*.ico',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/:path*.woff2',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/:path*.woff',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
       {
@@ -57,6 +115,27 @@ const nextConfig = {
       {
         source: '/api/bookmakers',
         headers: [{ key: 'Cache-Control', value: 's-maxage=300, stale-while-revalidate=600' }],
+      },
+      {
+        source: '/api/matches',
+        headers: [{ key: 'Cache-Control', value: 's-maxage=30, stale-while-revalidate=60' }],
+      },
+      {
+        source: '/api/tipsters',
+        headers: [{ key: 'Cache-Control', value: 's-maxage=120, stale-while-revalidate=300' }],
+      },
+      {
+        source: '/api/featured',
+        headers: [{ key: 'Cache-Control', value: 's-maxage=60, stale-while-revalidate=120' }],
+      },
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
       },
     ]
   },
