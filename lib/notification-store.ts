@@ -68,12 +68,17 @@ interface NotifStores {
 const gstore = globalThis as { __notifStores?: NotifStores };
 if (!gstore.__notifStores) {
   const savedPrefs = fileStoreGet<Record<number, NotificationPreferences>>('notif-prefs', {});
+  const savedEmailSubs = fileStoreGet<Record<string, EmailSubscriberRow>>('email-subs', {});
   gstore.__notifStores = {
     preferences: new Map(Object.entries(savedPrefs).map(([k, v]) => [Number(k), v])),
     notifications: [],
     pushSubs: new Map(),
-    emailSubs: new Map(),
+    emailSubs: new Map(Object.entries(savedEmailSubs)),
   };
+}
+
+function saveEmailSubsToFile(subs: Map<string, EmailSubscriberRow>) {
+  try { fileStoreSet('email-subs', Object.fromEntries(subs)); } catch {}
 }
 const stores = gstore.__notifStores;
 
@@ -98,7 +103,7 @@ export async function getPreferences(userId: number): Promise<NotificationPrefer
         `SELECT inapp_team_updates, inapp_tipster_updates,
                 email_team_updates, email_tipster_updates, email_daily_digest,
                 push_team_updates, push_tipster_updates, push_odds_alerts,
-                COALESCE(push_live_scores, 0) AS push_live_scores
+                IFNULL(push_live_scores, 0) AS push_live_scores
          FROM notification_preferences WHERE user_id = ? LIMIT 1`,
         [userId]
       );
@@ -132,16 +137,16 @@ export async function setPreferences(userId: number, prefs: Partial<Notification
            email_team_updates, email_tipster_updates, email_daily_digest,
            push_team_updates, push_tipster_updates, push_odds_alerts, push_live_scores)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_id) DO UPDATE SET
-           inapp_team_updates = EXCLUDED.inapp_team_updates,
-           inapp_tipster_updates = EXCLUDED.inapp_tipster_updates,
-           email_team_updates = EXCLUDED.email_team_updates,
-           email_tipster_updates = EXCLUDED.email_tipster_updates,
-           email_daily_digest = EXCLUDED.email_daily_digest,
-           push_team_updates = EXCLUDED.push_team_updates,
-           push_tipster_updates = EXCLUDED.push_tipster_updates,
-           push_odds_alerts = EXCLUDED.push_odds_alerts,
-           push_live_scores = EXCLUDED.push_live_scores`,
+         ON DUPLICATE KEY UPDATE
+           inapp_team_updates = VALUES(inapp_team_updates),
+           inapp_tipster_updates = VALUES(inapp_tipster_updates),
+           email_team_updates = VALUES(email_team_updates),
+           email_tipster_updates = VALUES(email_tipster_updates),
+           email_daily_digest = VALUES(email_daily_digest),
+           push_team_updates = VALUES(push_team_updates),
+           push_tipster_updates = VALUES(push_tipster_updates),
+           push_odds_alerts = VALUES(push_odds_alerts),
+           push_live_scores = VALUES(push_live_scores)`,
         [
           userId,
           merged.inappTeamUpdates ? 1 : 0,
@@ -167,7 +172,7 @@ export async function listNotifications(userId: number, opts: { limit?: number; 
   const { limit = 50, unreadOnly = false } = opts;
   if (hasDb()) {
     try {
-      const where = unreadOnly ? 'AND is_read = FALSE' : '';
+      const where = unreadOnly ? 'AND is_read = 0' : '';
       const r = await query<{
         id: number; user_id: number; type: string; title: string; content: string;
         link: string | null; channel: string; is_read: number; created_at: string;
@@ -227,13 +232,13 @@ export async function markNotificationsRead(userId: number, ids?: number[]): Pro
       if (ids && ids.length > 0) {
         const placeholders = ids.map(() => '?').join(',');
         const r = await query(
-          `UPDATE notifications SET is_read = TRUE WHERE user_id = ? AND id IN (${placeholders})`,
+          `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND id IN (${placeholders})`,
           [userId, ...ids]
         );
         count = r.affectedRows ?? 0;
       } else {
         const r = await query(
-          `UPDATE notifications SET is_read = TRUE WHERE user_id = ? AND is_read = FALSE`,
+          `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0`,
           [userId]
         );
         count = r.affectedRows ?? 0;
@@ -252,7 +257,7 @@ export async function getUnreadCount(userId: number): Promise<number> {
   if (hasDb()) {
     try {
       const r = await query<{ c: string }>(
-        `SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = FALSE`,
+        `SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0`,
         [userId]
       );
       return Number(r.rows[0]?.c ?? 0);
@@ -271,7 +276,7 @@ export async function savePushSubscription(input: Omit<PushSubscriptionRow, 'id'
         `INSERT INTO push_subscriptions
           (id, user_id, endpoint, p256dh, auth, topics, country_code, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-         ON CONFLICT (endpoint) DO UPDATE SET topics = EXCLUDED.topics`,
+         ON DUPLICATE KEY UPDATE topics = VALUES(topics)`,
         [id, row.userId, row.endpoint, row.p256dh, row.auth, JSON.stringify(row.topics), row.countryCode || null]
       );
     } catch {}
@@ -347,14 +352,12 @@ export async function saveEmailSubscriber(input: Omit<EmailSubscriberRow, 'id'>)
   const row: EmailSubscriberRow = { id, active: true, ...input };
   if (hasDb()) {
     try {
-      // Pass topics as a JS array — pg serialises it correctly for jsonb columns.
-      // Do NOT JSON.stringify here; passing a string to a jsonb column fails silently.
       await query(
         `INSERT INTO email_subscribers
           (id, email, topics, country_code, unsubscribe_token, active, created_at)
          VALUES (?, ?, ?, ?, ?, TRUE, NOW())
-         ON CONFLICT (email) DO UPDATE SET topics = EXCLUDED.topics, active = TRUE, country_code = EXCLUDED.country_code`,
-        [id, row.email, row.topics, row.countryCode || null, row.unsubscribeToken]
+         ON DUPLICATE KEY UPDATE topics = VALUES(topics), active = TRUE, country_code = VALUES(country_code)`,
+        [id, row.email, JSON.stringify(row.topics), row.countryCode || null, row.unsubscribeToken]
       );
     } catch (err) {
       console.error('[notification-store] saveEmailSubscriber DB error:', err);
@@ -364,6 +367,7 @@ export async function saveEmailSubscriber(input: Omit<EmailSubscriberRow, 'id'>)
     if (v.email === row.email) { stores.emailSubs.delete(k); break; }
   }
   stores.emailSubs.set(row.email, row);
+  saveEmailSubsToFile(stores.emailSubs);
   return row;
 }
 
@@ -371,8 +375,8 @@ export async function listEmailSubscribers(topic?: string): Promise<EmailSubscri
   if (hasDb()) {
     try {
       const sql = topic
-        ? `SELECT * FROM email_subscribers WHERE active = TRUE AND topics LIKE ?`
-        : `SELECT * FROM email_subscribers WHERE active = TRUE`;
+        ? `SELECT * FROM email_subscribers WHERE active = 1 AND topics LIKE ?`
+        : `SELECT * FROM email_subscribers WHERE active = 1`;
       const params = topic ? [`%${topic}%`] : [];
       const r = await query<{ id: string; email: string; topics: string; country_code: string | null; unsubscribe_token: string; active: number }>(sql, params);
       if (r.rows.length > 0) {
@@ -395,14 +399,18 @@ export async function unsubscribeEmail(token: string): Promise<boolean> {
   if (hasDb()) {
     try {
       const r = await query(
-        `UPDATE email_subscribers SET active = FALSE WHERE unsubscribe_token = ?`,
+        `UPDATE email_subscribers SET active = 0 WHERE unsubscribe_token = ?`,
         [token]
       );
       return (r.affectedRows ?? 0) > 0;
     } catch {}
   }
   for (const sub of stores.emailSubs.values()) {
-    if (sub.unsubscribeToken === token) { sub.active = false; return true; }
+    if (sub.unsubscribeToken === token) {
+      sub.active = false;
+      saveEmailSubsToFile(stores.emailSubs);
+      return true;
+    }
   }
   return false;
 }

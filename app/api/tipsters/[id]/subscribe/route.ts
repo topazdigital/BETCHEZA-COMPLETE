@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       await query(
         `INSERT INTO tipster_subscriptions (user_id, tipster_id, price, currency, status, created_at)
          VALUES (?, ?, ?, ?, 'active', NOW())
-         ON CONFLICT (user_id, tipster_id) DO UPDATE SET status='active', updated_at=NOW()`,
+         ON DUPLICATE KEY UPDATE status='active', updated_at=NOW()`,
         [user.userId, tipsterId, body.price ?? 0, body.currency ?? 'KES']
       );
     } catch {

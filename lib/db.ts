@@ -1,7 +1,20 @@
-import { Pool, PoolClient } from 'pg';
+import mysql from 'mysql2/promise';
+import fs from 'fs';
+import path from 'path';
 
-let pool: Pool | null = null;
+let pool: mysql.Pool | null = null;
 
+interface FileDbConfig {
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  database?: string;
+}
+
+// Circuit breaker: after a connection failure, stop attempting for COOLDOWN_MS.
+// This prevents every API route from hanging for 3s on every request when the
+// remote DB is unreachable (e.g. firewall blocks Replit → VPS MySQL port).
 const COOLDOWN_MS = 30_000;
 const g = globalThis as {
   __dbCircuitOpen?: boolean;
@@ -21,39 +34,52 @@ function openCircuit(): void {
   g.__dbCircuitOpen = true;
   g.__dbCircuitOpenAt = Date.now();
   if (pool) {
-    pool.end().catch(() => {});
+    pool.end().catch(() => { });
     pool = null;
   }
 }
 
-export function getPool(): Pool | null {
+function getFileConfig(): FileDbConfig | null {
+  try {
+    const configFile = path.join(process.cwd(), '.local', 'state', 'admin', 'db-config.json');
+    if (fs.existsSync(configFile)) {
+      return JSON.parse(fs.readFileSync(configFile, 'utf8')) as FileDbConfig;
+    }
+  } catch { }
+  return null;
+}
+
+export function getPool(): mysql.Pool | null {
   if (isCircuitOpen()) return null;
 
-  const connectionString = process.env.DATABASE_URL;
-  const host = process.env.PGHOST;
-  const user = process.env.PGUSER;
-  const database = process.env.PGDATABASE;
+  const envHost     = process.env.DB_HOST     || process.env.MYSQL_HOST;
+  const envUser     = process.env.DB_USER     || process.env.MYSQL_USER;
+  const envPassword = process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD;
+  const envDatabase = process.env.DB_NAME     || process.env.MYSQL_DATABASE;
 
-  if (!connectionString && (!host || !user || !database)) return null;
+  const fileCfg = (!envHost || !envUser || !envDatabase) ? getFileConfig() : null;
+
+  const host     = envHost     || fileCfg?.host;
+  const user     = envUser     || fileCfg?.user;
+  const password = envPassword || fileCfg?.password;
+  const database = envDatabase || fileCfg?.database;
+
+  if (!host || !user || !database) return null;
 
   if (!pool) {
-    pool = new Pool(
-      connectionString
-        ? { connectionString, ssl: { rejectUnauthorized: false }, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 8000 }
-        : {
-            host,
-            port: parseInt(process.env.PGPORT || '5432'),
-            user,
-            password: process.env.PGPASSWORD || '',
-            database,
-            ssl: { rejectUnauthorized: false },
-            max: 5,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 8000,
-          }
-    );
-    pool.on('error', (err) => {
-      console.warn('[db] pool error:', err.message);
+    pool = mysql.createPool({
+      host,
+      port: fileCfg?.port || parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306'),
+      user,
+      password: password || '',
+      database,
+      waitForConnections: true,
+      connectionLimit: 5,
+      queueLimit: 0,
+      charset: 'utf8mb4',
+      connectTimeout: 8000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
     });
   }
 
@@ -62,7 +88,7 @@ export function getPool(): Pool | null {
 
 export function resetPool(): void {
   if (pool) {
-    pool.end().catch(() => {});
+    pool.end().catch(() => { });
     pool = null;
   }
   g.__dbCircuitOpen = false;
@@ -74,8 +100,8 @@ export interface QueryResult<T> {
 }
 
 function isRecoverableDbError(err: unknown): boolean {
-  const e = err as { code?: string; message?: string };
-  if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') return true;
+  const e = err as { code?: string; errno?: string; message?: string };
+  if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND' || e?.errno === 'ETIMEDOUT') return true;
   if (typeof e?.message === 'string' && (
     e.message.toLowerCase().includes('pool is closed') ||
     e.message.toLowerCase().includes('connection lost') ||
@@ -84,17 +110,12 @@ function isRecoverableDbError(err: unknown): boolean {
   return false;
 }
 
-export function toPositionalParams(sql: string): string {
-  let i = 0;
-  return sql.replace(/\?/g, () => `$${++i}`);
-}
-
 export async function query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
   const p = getPool();
   if (!p) return { rows: [] };
   try {
-    const result = await p.query(toPositionalParams(sql), params);
-    return { rows: result.rows as T[], affectedRows: result.rowCount ?? undefined };
+    const [rows] = await p.execute(sql, params);
+    return { rows: rows as T[], affectedRows: undefined };
   } catch (err: unknown) {
     if (isRecoverableDbError(err)) openCircuit();
     throw err;
@@ -113,11 +134,11 @@ export interface ExecuteResult {
 
 export async function execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
   const p = getPool();
-  if (!p) throw new Error('No PostgreSQL database connection available');
+  if (!p) throw new Error('No MySQL database connection available');
   try {
-    const result = await p.query(toPositionalParams(sql), params);
-    const insertId = result.rows?.[0]?.id ?? 0;
-    return { insertId, affectedRows: result.rowCount ?? 0 };
+    const [result] = await p.execute(sql, params);
+    const r = result as mysql.ResultSetHeader;
+    return { insertId: r.insertId, affectedRows: r.affectedRows };
   } catch (err: unknown) {
     if (isRecoverableDbError(err)) openCircuit();
     throw err;
@@ -125,18 +146,18 @@ export async function execute(sql: string, params?: unknown[]): Promise<ExecuteR
 }
 
 export async function withTransaction<T>(
-  callback: (conn: PoolClient) => Promise<T>
+  callback: (conn: mysql.PoolConnection) => Promise<T>
 ): Promise<T> {
   const p = getPool();
-  if (!p) throw new Error('No PostgreSQL database connection available');
-  const conn = await p.connect();
+  if (!p) throw new Error('No MySQL database connection available');
+  const conn = await p.getConnection();
   try {
-    await conn.query('BEGIN');
+    await conn.beginTransaction();
     const result = await callback(conn);
-    await conn.query('COMMIT');
+    await conn.commit();
     return result;
   } catch (error) {
-    await conn.query('ROLLBACK');
+    await conn.rollback();
     throw error;
   } finally {
     conn.release();

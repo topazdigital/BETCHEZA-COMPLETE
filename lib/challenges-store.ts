@@ -443,7 +443,7 @@ export async function voteCommunity(
       `);
       await query(
         `INSERT INTO challenge_votes (challenge_id, user_id, side) VALUES (?, ?, ?)
-         ON CONFLICT (challenge_id, user_id) DO UPDATE SET side = EXCLUDED.side`,
+         ON DUPLICATE KEY UPDATE side = VALUES(side)`,
         [challengeId, userId, side],
       );
       const rows = await query<{ side: string; cnt: number }>(

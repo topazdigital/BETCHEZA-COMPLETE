@@ -175,7 +175,7 @@ export async function getReferralCode(userId: number, username: string): Promise
   if (getPool()) {
     try {
       await execute(
-        `INSERT INTO referral_codes (user_id, code) VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING`,
+        `INSERT IGNORE INTO referral_codes (user_id, code) VALUES (?, ?)`,
         [userId, code]
       );
       const r = await query<{ code: string }>(
@@ -228,10 +228,9 @@ export async function recordReferral(opts: {
   if (getPool()) {
     try {
       await execute(
-        `INSERT INTO referrals
+        `INSERT IGNORE INTO referrals
          (id, referrer_id, referred_user_id, referred_email, referred_username, created_at)
-         VALUES (?, ?, ?, ?, ?, NOW())
-         ON CONFLICT (referred_user_id) DO NOTHING`,
+         VALUES (?, ?, ?, ?, ?, NOW())`,
         [id, referrerId, referredUserId, referredEmail, referredUsername]
       );
       return;

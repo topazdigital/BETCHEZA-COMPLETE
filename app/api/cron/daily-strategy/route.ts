@@ -112,25 +112,28 @@ async function ensureTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS daily_strategy (
-        id SERIAL,
-        date date NOT NULL UNIQUE,
+        id int(11) NOT NULL AUTO_INCREMENT,
+        date date NOT NULL,
         week_id varchar(10) NOT NULL,
-        day_number smallint NOT NULL,
-        stake int NOT NULL DEFAULT 1000,
-        save_amount int NOT NULL DEFAULT 0,
-        target_win int NOT NULL DEFAULT 3000,
+        day_number tinyint(4) NOT NULL,
+        stake int(11) NOT NULL DEFAULT 1000,
+        save_amount int(11) NOT NULL DEFAULT 0,
+        target_win int(11) NOT NULL DEFAULT 3000,
         combined_odds decimal(8,2) NOT NULL DEFAULT 0.00,
-        status VARCHAR(20) NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming','active','completed')),
-        result VARCHAR(10) DEFAULT NULL CHECK (result IN ('win','loss')),
+        status enum('upcoming','active','completed') NOT NULL DEFAULT 'upcoming',
+        result enum('win','loss') DEFAULT NULL,
         actual_return decimal(12,2) DEFAULT NULL,
-        picks TEXT DEFAULT NULL,
+        picks longtext DEFAULT NULL,
         generated_at timestamp NULL DEFAULT NULL,
         posted_at timestamp NULL DEFAULT NULL,
         settled_at timestamp NULL DEFAULT NULL,
-        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id)
-      )
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (id),
+        UNIQUE KEY uq_date (date),
+        KEY idx_week_id (week_id),
+        KEY idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
   } catch { }
 }

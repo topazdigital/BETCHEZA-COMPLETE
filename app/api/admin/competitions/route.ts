@@ -121,12 +121,11 @@ export async function POST(req: NextRequest) {
 
   // ── Persist to MySQL if DB is available ────────────────────────────
   await query(
-    `INSERT INTO competitions
+    `INSERT IGNORE INTO competitions
        (id, name, description, type, status, sport_focus, league_id, league_name,
         prize_pool, entry_fee, max_participants, currency, prize_breakdown, slug,
         rules, start_date, end_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (id) DO NOTHING`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       comp.id,
       comp.name,

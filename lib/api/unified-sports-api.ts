@@ -3720,7 +3720,7 @@ async function _writeDbCache(data: UnifiedMatch[]): Promise<void> {
     await query(
       `INSERT INTO match_cache (cache_key, cached_at, payload)
        VALUES ('all_matches', ?, ?)
-       ON CONFLICT (cache_key) DO UPDATE SET cached_at = EXCLUDED.cached_at, payload = EXCLUDED.payload`,
+       ON DUPLICATE KEY UPDATE cached_at = VALUES(cached_at), payload = VALUES(payload)`,
       [now, payload]
     );
   } catch { /* non-fatal */ }

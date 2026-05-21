@@ -1,4 +1,4 @@
-// Community feed store — PostgreSQL-backed with in-memory fallback when DB is unavailable.
+// Community feed store — MySQL-backed with in-memory fallback when DB is unavailable.
 
 import { query, getPool } from './db';
 import { dispatchNotification, dispatchToMany } from './notification-dispatcher';
@@ -35,7 +35,7 @@ async function storeHashtags(postId: string, content: string): Promise<void> {
   const tags = extractHashtags(content);
   for (const tag of tags) {
     await query(
-      `INSERT INTO feed_hashtags (tag, post_id, created_at) VALUES (?, ?, NOW()) ON CONFLICT DO NOTHING`,
+      `INSERT IGNORE INTO feed_hashtags (tag, post_id, created_at) VALUES (?, ?, NOW())`,
       [tag, postId]
     ).catch(() => {});
   }
@@ -47,7 +47,7 @@ export async function getTrendingHashtags(limit = 20): Promise<Array<{ tag: stri
     const r = await query<{ tag: string; count: number }>(
       `SELECT tag, COUNT(*) AS count
        FROM feed_hashtags
-       WHERE created_at >= NOW() - INTERVAL '7 days'
+       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
        GROUP BY tag
        ORDER BY count DESC
        LIMIT ?`,
@@ -71,14 +71,12 @@ export async function listPostsByHashtag(tag: string, limit = 50, viewerId?: num
               fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
               fp.likes, fp.comment_count, fp.created_at,
               u.role AS author_role, u.username AS author_username,
-              STRING_AGG(fh2.tag, ',' ORDER BY fh2.id) AS hashtags
+              GROUP_CONCAT(fh2.tag ORDER BY fh2.id SEPARATOR ',') AS hashtags
        FROM feed_posts fp
        JOIN feed_hashtags fh ON fh.post_id = fp.id AND fh.tag = ?
        LEFT JOIN feed_hashtags fh2 ON fh2.post_id = fp.id
        LEFT JOIN users u ON u.id = fp.user_id
-       GROUP BY fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
-                fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
-                fp.likes, fp.comment_count, fp.created_at, u.role, u.username
+       GROUP BY fp.id
        ORDER BY fp.created_at DESC
        LIMIT ?`,
       [tag.toLowerCase(), limit]
@@ -145,18 +143,20 @@ function sanitise(str: string | null | undefined): string | null {
 }
 
 // ─── TABLE INIT ───────────────────────────────────────────────────────────────
+// Auto-creates feed_hashtags if absent so the app works even when the DB
+// schema was set up before this table was introduced.
 async function ensureFeedHashtagsTable(): Promise<void> {
   await query(
     `CREATE TABLE IF NOT EXISTS feed_hashtags (
-      id         BIGSERIAL PRIMARY KEY,
+      id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       tag        VARCHAR(50)  NOT NULL,
       post_id    VARCHAR(64)  NOT NULL,
-      created_at TIMESTAMP    NOT NULL DEFAULT NOW()
-    )`,
+      created_at DATETIME     NOT NULL DEFAULT NOW(),
+      INDEX idx_fh_tag     (tag),
+      INDEX idx_fh_post_id (post_id)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
     [],
   );
-  await query(`CREATE INDEX IF NOT EXISTS idx_fh_tag ON feed_hashtags(tag)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_fh_post_id ON feed_hashtags(post_id)`);
 }
 
 // ─── POSTS ───────────────────────────────────────
@@ -183,22 +183,22 @@ function mapPostRows(rows: PostRow[], likedSet: Set<string>): FeedPost[] {
 export async function listPosts(limit = 50, viewerId?: number | null): Promise<FeedPost[]> {
   if (hasDb()) {
     try {
+      // First try the full query with hashtag join
       let r = await query<PostRow>(
         `SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
                  fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
                  fp.likes, fp.comment_count, fp.created_at,
                  u.role AS author_role, u.username AS author_username,
-                 STRING_AGG(fh.tag, ',' ORDER BY fh.id) AS hashtags
+                 GROUP_CONCAT(fh.tag ORDER BY fh.id SEPARATOR ',') AS hashtags
           FROM feed_posts fp
           LEFT JOIN users u ON u.id = fp.user_id
           LEFT JOIN feed_hashtags fh ON fh.post_id = fp.id
-          GROUP BY fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
-                   fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
-                   fp.likes, fp.comment_count, fp.created_at, u.role, u.username
+          GROUP BY fp.id
           ORDER BY fp.created_at DESC LIMIT ?`,
         [limit],
       ).catch(async (e: { code?: string }) => {
-        if (e?.code === '42P01') {
+        if (e?.code === 'ER_NO_SUCH_TABLE') {
+          // Table missing — create it then fall back to simpler query (no hashtag JOIN)
           console.log('[feed] feed_hashtags table missing — creating it now');
           await ensureFeedHashtagsTable().catch(() => {});
           return query<PostRow>(
@@ -233,6 +233,7 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
       console.error('[feed] listPosts DB error:', e);
     }
   }
+  // In-memory fallback
   const posts = mem.posts.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, limit);
   if (viewerId != null) {
     return posts.map(p => ({ ...p, liked: mem.likes.get(p.id)?.has(viewerId) ?? false }));
@@ -255,13 +256,18 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
          post.matchId || null, sanitise(post.matchTitle), sanitise(post.pick),
          post.odds || null, post.imageUrl || null],
       );
+      // Store hashtags extracted from content (non-blocking)
       void storeHashtags(post.id, post.content ?? '');
+      // DB succeeded — don't duplicate in memory
     } catch (e) {
+      // DB write failed — log loudly and propagate rather than silently
+      // falling back to memory (which would lose data on next server restart).
       console.error('[feed] createPost DB write failed:', (e as Error).message);
       throw e;
     }
   } else {
     mem.posts.unshift(post);
+    // Cap memory store at 200 posts
     if (mem.posts.length > 200) mem.posts.length = 200;
   }
 
@@ -299,7 +305,7 @@ export async function toggleLike(postId: string, userId: number, likerName?: str
         await query(`UPDATE feed_posts SET likes = GREATEST(likes - 1, 0) WHERE id = ?`, [postId]);
         liked = false;
       } else {
-        await query(`INSERT INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW()) ON CONFLICT DO NOTHING`, [postId, userId]);
+        await query(`INSERT IGNORE INTO feed_post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())`, [postId, userId]);
         await query(`UPDATE feed_posts SET likes = likes + 1 WHERE id = ?`, [postId]);
         liked = true;
       }
@@ -313,6 +319,7 @@ export async function toggleLike(postId: string, userId: number, likerName?: str
       return { liked, likes };
     } catch {}
   }
+  // Memory fallback
   const likers = mem.likes.get(postId) ?? new Set<number>();
   let liked: boolean;
   if (likers.has(userId)) { likers.delete(userId); liked = false; }

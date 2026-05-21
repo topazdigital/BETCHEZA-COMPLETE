@@ -434,9 +434,9 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
         await execute(
           `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, posted_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), NOW())
-           ON CONFLICT (date) DO UPDATE SET picks = EXCLUDED.picks, combined_odds = EXCLUDED.combined_odds, status = 'active',
-             day_number = EXCLUDED.day_number, stake = EXCLUDED.stake, save_amount = EXCLUDED.save_amount,
-             target_win = EXCLUDED.target_win, generated_at = NOW()`,
+           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active',
+             day_number = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
+             target_win = VALUES(target_win), generated_at = NOW()`,
           [todayStr, weekId, dayNumber, merged[todayIdx].stake, merged[todayIdx].save, merged[todayIdx].targetWin, merged[todayIdx].combinedOdds, JSON.stringify(autoPicks)]
         ).catch(() => undefined);
       } catch { /* non-fatal */ }
@@ -478,9 +478,9 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
       await execute(
         `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
-         ON CONFLICT (date) DO UPDATE SET picks = EXCLUDED.picks, combined_odds = EXCLUDED.combined_odds, status = 'active',
-           day_number = EXCLUDED.day_number, stake = EXCLUDED.stake, save_amount = EXCLUDED.save_amount,
-           target_win = EXCLUDED.target_win, generated_at = NOW()`,
+         ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active',
+           day_number = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
+           target_win = VALUES(target_win), generated_at = NOW()`,
         [todayStr, weekId, dayNumber, empty.days[todayIdx].stake, empty.days[todayIdx].save, empty.days[todayIdx].targetWin, empty.days[todayIdx].combinedOdds, JSON.stringify(autoPicks)]
       ).catch(() => undefined);
       fileStoreSet(`strategy-week-${weekId}`, empty);
@@ -493,32 +493,33 @@ async function ensureTableExists(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS daily_strategy (
-        id SERIAL,
-        date date NOT NULL UNIQUE,
+        id int(11) NOT NULL AUTO_INCREMENT,
+        date date NOT NULL,
         week_id varchar(10) NOT NULL,
-        day_number smallint NOT NULL,
-        stake int NOT NULL DEFAULT 1000,
-        save_amount int NOT NULL DEFAULT 0,
-        target_win int NOT NULL DEFAULT 3000,
+        day_number tinyint(4) NOT NULL,
+        stake int(11) NOT NULL DEFAULT 1000,
+        save_amount int(11) NOT NULL DEFAULT 0,
+        target_win int(11) NOT NULL DEFAULT 3000,
         combined_odds decimal(8,2) NOT NULL DEFAULT 0.00,
-        status VARCHAR(20) NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming','active','completed')),
-        result VARCHAR(10) DEFAULT NULL CHECK (result IN ('win','loss')),
+        status enum('upcoming','active','completed') NOT NULL DEFAULT 'upcoming',
+        result enum('win','loss') DEFAULT NULL,
         actual_return decimal(12,2) DEFAULT NULL,
-        picks TEXT DEFAULT NULL,
-        is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+        picks longtext DEFAULT NULL,
+        is_manual tinyint(1) NOT NULL DEFAULT 0,
         scheduled_for date DEFAULT NULL,
         generated_at timestamp NULL DEFAULT NULL,
         posted_at timestamp NULL DEFAULT NULL,
         settled_at timestamp NULL DEFAULT NULL,
-        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id)
-      )
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (id),
+        UNIQUE KEY uq_date (date),
+        KEY idx_week_id (week_id),
+        KEY idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    await query(`CREATE INDEX IF NOT EXISTS idx_daily_strategy_week_id ON daily_strategy(week_id)`).catch(() => {});
-    await query(`CREATE INDEX IF NOT EXISTS idx_daily_strategy_status ON daily_strategy(status)`).catch(() => {});
     // Add columns if they don't exist (for existing tables)
-    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT FALSE`).catch(() => {});
+    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS is_manual tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
     await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS scheduled_for date DEFAULT NULL`).catch(() => {});
   } catch { }
 }
@@ -786,7 +787,7 @@ export async function POST(req: NextRequest) {
         await execute(
           `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, scheduled_for, generated_at, posted_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-           ON CONFLICT (date) DO UPDATE SET picks = EXCLUDED.picks, combined_odds = EXCLUDED.combined_odds, is_manual = EXCLUDED.is_manual, scheduled_for = EXCLUDED.scheduled_for, generated_at = NOW(), posted_at = NOW(), status = EXCLUDED.status`,
+           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), is_manual = VALUES(is_manual), scheduled_for = VALUES(scheduled_for), generated_at = NOW(), posted_at = NOW(), status = VALUES(status)`,
           [targetDate, weekId, dayData.day, dayData.stake, dayData.save, dayData.targetWin, dayData.combinedOdds, targetStatus, JSON.stringify(body.picks), isManual ? 1 : 0, scheduledFor]
         );
       } catch { }
