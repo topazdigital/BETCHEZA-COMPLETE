@@ -31,9 +31,8 @@ export function NewsletterSection() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 409 || data.alreadySubscribed) {
-        try { localStorage.setItem(LS_KEY, '1'); } catch { /* ignore */ }
-        setDone(true);
-        setEmail('');
+        setError('This email is already subscribed to our newsletter.');
+        setBusy(false);
         return;
       }
       if (!res.ok) throw new Error(data.error || 'Subscription failed');

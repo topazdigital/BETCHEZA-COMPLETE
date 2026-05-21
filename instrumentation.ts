@@ -32,6 +32,12 @@ export async function register() {
         if (val) { g.__memorySettings[key] = val; didFill = true; }
       }
     }
+    // Always inject the new logo — overrides any stale DB/file value so the
+    // Betcheza crown-B logo is shown in header, dark mode and footer.
+    g.__memorySettings['logo_url'] = '/betcheza-logo.png';
+    g.__memorySettings['logo_dark_url'] = '/betcheza-logo.png';
+    g.__memorySettings['footer_logo_url'] = '/betcheza-logo.png';
+    didFill = true;
     if (didFill) fileStoreSet('site-settings', g.__memorySettings);
   } catch (e) {
     console.warn('[instrumentation] env seed failed:', e);

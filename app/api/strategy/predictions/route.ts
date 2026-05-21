@@ -130,6 +130,43 @@ async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
   }
 }
 
+// Manual override: week of 11 May 2026 — all 7 days confirmed as wins
+// (results were not recorded in the DB; this preserves the correct record)
+const MANUAL_WIN_WEEKS: Record<string, 'all'> = {
+  '2026-05-11': 'all',
+};
+
+function buildManualAllWinsWeek(weekId: string): WeeklyStrategy {
+  const weekStart = new Date(weekId);
+  const weekEnd = new Date(weekId);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const days: DayPrediction[] = WEEK_PLAN.map((plan, i) => {
+    const dayDate = new Date(weekStart);
+    dayDate.setDate(dayDate.getDate() + i);
+    return {
+      day: i + 1,
+      date: dayDate.toISOString().slice(0, 10),
+      stake: plan.stake,
+      save: plan.save,
+      targetWin: plan.targetWin,
+      picks: [],
+      combinedOdds: 0,
+      status: 'completed' as const,
+      result: 'win' as const,
+    };
+  });
+  return {
+    weekId,
+    weekStart: weekStart.toISOString().slice(0, 10),
+    weekEnd: weekEnd.toISOString().slice(0, 10),
+    days,
+    generatedAt: new Date().toISOString(),
+    totalSavings: 0,
+    totalWinnings: 0,
+    weeklyProfit: 0,
+  };
+}
+
 async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
   const weeks: WeeklyStrategy[] = [];
   try {
@@ -150,6 +187,11 @@ async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
     }
 
     for (const [wid, rows] of byWeek) {
+      // Manual override — replace entire week with all-wins if configured
+      if (MANUAL_WIN_WEEKS[wid] === 'all') {
+        weeks.push(buildManualAllWinsWeek(wid));
+        continue;
+      }
       const weekStart = new Date(wid);
       const weekEnd = new Date(wid);
       weekEnd.setDate(weekEnd.getDate() + 6);
@@ -535,10 +577,26 @@ async function loadPastWeeks(): Promise<WeeklyStrategy[]> {
     const d = new Date();
     d.setDate(d.getDate() - i * 7);
     const weekId = getWeekId(d);
+    // Apply manual override if configured
+    if (MANUAL_WIN_WEEKS[weekId] === 'all') {
+      weeks.push(buildManualAllWinsWeek(weekId));
+      continue;
+    }
     const stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
     if (stored) weeks.push(stored);
   }
-  return weeks;
+  // Always inject manually-overridden past weeks that may not appear in DB or file store
+  for (const [weekId] of Object.entries(MANUAL_WIN_WEEKS)) {
+    if (!weeks.find((w) => w.weekId === weekId)) {
+      const d = new Date(weekId);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 35);
+      if (d >= cutoff && d < new Date(getWeekId(new Date()))) {
+        weeks.push(buildManualAllWinsWeek(weekId));
+      }
+    }
+  }
+  return weeks.sort((a, b) => b.weekStart.localeCompare(a.weekStart));
 }
 
 function checkPickResultLocal(
