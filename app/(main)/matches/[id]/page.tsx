@@ -1497,7 +1497,7 @@ export default function MatchDetailPage({ params }: PageProps) {
           )}
 
           {(bookmakerOdds.length > 0 || (match.markets && match.markets.length > 0)) && (
-            <div className="px-3 pb-3 lg:hidden">
+            <div className="px-3 pb-3 hidden md:block lg:hidden">
               <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
                 <div className="mb-2.5 flex items-center justify-between gap-2">
                   <h3 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
@@ -2108,11 +2108,11 @@ export default function MatchDetailPage({ params }: PageProps) {
                   )}
                 </div>
                 <CardContent className="p-3 space-y-2.5">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className={cn('grid gap-2', match.odds.draw !== undefined ? 'grid-cols-3' : 'grid-cols-2')}>
                     <OddsCardLarge label="1 Home" sublabel={match.homeTeam.name} value={match.odds.home} />
                     {match.odds.draw !== undefined
                       ? <OddsCardLarge label="X Draw" sublabel="Draw" value={match.odds.draw} highlight />
-                      : <div />}
+                      : null}
                     <OddsCardLarge label="2 Away" sublabel={match.awayTeam.name} value={match.odds.away} />
                   </div>
                   <div>
@@ -2299,7 +2299,7 @@ export default function MatchDetailPage({ params }: PageProps) {
 
             {/* All other markets — BTTS, Totals, Double Chance, Half-time, etc. */}
             {match.markets && match.markets.length > 0 && (
-              <div className="md:grid md:gap-4 md:grid-cols-2 flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory [&>*]:snap-start [&>*]:shrink-0 [&>*]:w-[85vw] md:[&>*]:w-auto">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                 {match.markets
                   .filter((m) => m.key !== 'h2h' && m.outcomes && m.outcomes.length > 0)
                   .map((mkt) => (
