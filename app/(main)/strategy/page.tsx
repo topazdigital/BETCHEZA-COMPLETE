@@ -163,8 +163,17 @@ function DayCard({
           {isLocked && !isYesterday ? (
             <div className="flex flex-col items-center gap-3 py-4 text-center text-muted-foreground">
               <Lock className="h-6 w-6 opacity-40" />
-              <p className="text-sm font-medium">Today&apos;s picks are for subscribers only</p>
-              <p className="text-xs">Subscribe to unlock all current &amp; upcoming days instantly.</p>
+              {day.status === 'active' ? (
+                <>
+                  <p className="text-sm font-medium">Today&apos;s picks are for subscribers only</p>
+                  <p className="text-xs">Subscribe to unlock all current &amp; upcoming days instantly.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">Picks for this day are reserved for subscribers</p>
+                  <p className="text-xs">Subscribe now — your 7-day plan starts today and covers all upcoming days.</p>
+                </>
+              )}
               <button
                 onClick={onSubscribe}
                 className="rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2"

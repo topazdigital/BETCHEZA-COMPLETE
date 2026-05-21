@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     captcha?: { token: string; id?: string },
-    options?: { rememberMe?: boolean },
+    options?: { rememberMe?: boolean; loginType?: 'email' | 'phone' | 'username' },
   ) => {
     try {
       const controller = new AbortController();
@@ -101,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           captchaToken: captcha?.token,
           captchaId: captcha?.id,
           rememberMe: !!options?.rememberMe,
+          loginType: options?.loginType,
         }),
         signal: controller.signal,
       });

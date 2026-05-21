@@ -443,7 +443,7 @@ function LoginPanel() {
       ? (selectedLoginCountry?.dialCode || '+254') + loginPhoneLocal.replace(/[^\d]/g, '')
       : identifier.trim();
     setIsLoading(true);
-    const result = await login(fullIdentifier, password, captcha, { rememberMe });
+    const result = await login(fullIdentifier, password, captcha, { rememberMe, loginType: loginTab });
     setIsLoading(false);
     if (!result.success) {
       setError(result.error || 'Login failed');

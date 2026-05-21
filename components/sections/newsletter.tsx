@@ -1,14 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Mail, Check, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+const LS_KEY = 'betcheza_newsletter_subscribed';
 
 export function NewsletterSection() {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(LS_KEY) === '1') setDone(true);
+    } catch { /* private browsing */ }
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,11 +31,13 @@ export function NewsletterSection() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 409 || data.alreadySubscribed) {
-        setDone(true); // treat as success — already subscribed is fine
+        try { localStorage.setItem(LS_KEY, '1'); } catch { /* ignore */ }
+        setDone(true);
         setEmail('');
         return;
       }
       if (!res.ok) throw new Error(data.error || 'Subscription failed');
+      try { localStorage.setItem(LS_KEY, '1'); } catch { /* ignore */ }
       setDone(true);
       setEmail('');
     } catch (err) {

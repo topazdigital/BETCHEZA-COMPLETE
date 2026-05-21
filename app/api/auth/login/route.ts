@@ -74,13 +74,14 @@ export async function POST(request: Request) {
     }
 
     // Support both legacy `email` field and new `identifier` field
-    const { email: emailField, identifier: identifierField, password, captchaToken, captchaId, rememberMe } = body as {
+    const { email: emailField, identifier: identifierField, password, captchaToken, captchaId, rememberMe, loginType } = body as {
       email?: string;
       identifier?: string;
       password?: string;
       captchaToken?: string;
       captchaId?: string;
       rememberMe?: boolean;
+      loginType?: 'email' | 'phone' | 'username';
     };
 
     const rawIdentifier = (identifierField || emailField || '').trim();
@@ -88,6 +89,20 @@ export async function POST(request: Request) {
     if (!rawIdentifier || !password) {
       return NextResponse.json(
         { success: false, error: 'Please enter your login details and password' },
+        { status: 400 }
+      );
+    }
+
+    // Validate that the identifier matches the declared tab type
+    if (loginType === 'email' && !rawIdentifier.includes('@')) {
+      return NextResponse.json(
+        { success: false, error: 'Please enter a valid email address' },
+        { status: 400 }
+      );
+    }
+    if (loginType === 'phone' && !/^\+?[\d\s\-()]{7,}$/.test(rawIdentifier)) {
+      return NextResponse.json(
+        { success: false, error: 'Please enter a valid phone number' },
         { status: 400 }
       );
     }
@@ -125,11 +140,12 @@ export async function POST(request: Request) {
       }
     }
 
-    const identifierType = detectIdentifierType(rawIdentifier);
+    // Use the explicit loginType from the client when available; fall back to auto-detection
+    const resolvedType = loginType || detectIdentifierType(rawIdentifier);
     let user: DbUser | null = null;
-    if (identifierType === 'email') {
+    if (resolvedType === 'email') {
       user = await findUserByEmail(rawIdentifier);
-    } else if (identifierType === 'phone') {
+    } else if (resolvedType === 'phone') {
       user = await findUserByPhone(rawIdentifier);
     } else {
       user = await findUserByUsername(rawIdentifier);
