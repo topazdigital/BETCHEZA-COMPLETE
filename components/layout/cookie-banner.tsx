@@ -4,54 +4,30 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Cookie, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useSiteSettings } from "@/lib/hooks/use-site-settings"
 
 const STORAGE_KEY = "betcheza_cookie_consent_v1"
 
-interface PublicSettings {
-  cookieBannerEnabled?: boolean
-  cookieBannerMessage?: string
-}
-
 /**
- * Footer cookie consent banner. Reads admin-managed config from
- * /api/site-settings so admins can toggle it on/off and edit the copy
- * without a deploy. The user's choice (accept/decline) is persisted in
- * localStorage so the banner only shows on first visit.
+ * Footer cookie consent banner. Uses the shared useSiteSettings hook so it
+ * reuses the already-cached SWR response — zero extra HTTP requests.
  */
 export function CookieBanner() {
   const [visible, setVisible] = useState(false)
-  const [message, setMessage] = useState<string>("")
+  const [consented, setConsented] = useState(true)
+  const { data } = useSiteSettings()
 
   useEffect(() => {
-    let cancelled = false
-    // Only show once per browser per choice.
     const stored = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null
     if (stored === "accept" || stored === "decline") return
-
-    fetch("/api/site-settings", { cache: "no-store" })
-      .then((r) => (r.ok ? (r.json() as Promise<PublicSettings>) : null))
-      .then((s) => {
-        if (cancelled || !s) return
-        if (s.cookieBannerEnabled === false) return
-        setMessage(
-          s.cookieBannerMessage ||
-            "We use cookies to improve your experience, analyse site traffic and personalise content."
-        )
-        setVisible(true)
-      })
-      .catch(() => {
-        // On failure, fall back to showing the banner with default copy so
-        // the legal notice is never silently hidden.
-        setMessage(
-          "We use cookies to improve your experience, analyse site traffic and personalise content."
-        )
-        setVisible(true)
-      })
-
-    return () => {
-      cancelled = true
-    }
+    setConsented(false)
   }, [])
+
+  useEffect(() => {
+    if (consented || !data) return
+    if (data.cookieBannerEnabled === false) return
+    setVisible(true)
+  }, [data, consented])
 
   const persist = (choice: "accept" | "decline") => {
     try {
@@ -70,7 +46,7 @@ export function CookieBanner() {
         <div className="flex items-start gap-3">
           <Cookie className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
           <p className="text-sm text-muted-foreground">
-            {message}{" "}
+            {data?.cookieBannerMessage || "We use cookies to improve your experience, analyse site traffic and personalise content."}{" "}
             <Link href="/cookies" className="text-primary underline-offset-2 hover:underline">
               Learn more
             </Link>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSiteSettings } from "@/lib/hooks/use-site-settings"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -167,9 +168,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const [userCountry, setUserCountry] = useState<string>('KE')
   const [intlMatchCount, setIntlMatchCount] = useState(0)
   const stats = useMatchStats()
-  const [branding, setBranding] = useState<{ siteName: string; logoUrl: string; logoDarkUrl: string }>(
-    { siteName: "Betcheza", logoUrl: "", logoDarkUrl: "" }
-  )
+  const { data: siteData } = useSiteSettings()
+  const branding = {
+    siteName: siteData?.siteName || "Betcheza",
+    logoUrl: siteData?.logoUrl || "",
+    logoDarkUrl: siteData?.logoDarkUrl || "",
+  }
 
   useEffect(() => {
     setUserCountry(detectCountryCode() || 'KE')
@@ -177,23 +181,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     let cancelled = false
-    // Batch both fetches in parallel — avoids two sequential network round-trips on mount
-    Promise.all([
-      fetch("/api/site-settings").then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/matches?category=international&limit=50').then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([settings, intlData]) => {
-      if (cancelled) return
-      if (settings) {
-        setBranding({
-          siteName: settings.siteName || "Betcheza",
-          logoUrl: settings.logoUrl || "",
-          logoDarkUrl: settings.logoDarkUrl || "",
-        })
-      }
-      if (intlData) {
-        const intlMatches = intlData.matches || intlData || []
-        if (Array.isArray(intlMatches)) setIntlMatchCount(intlMatches.length)
-      }
+    fetch('/api/matches?category=international&limit=50').then(r => r.ok ? r.json() : null).catch(() => null)
+    .then((intlData) => {
+      if (cancelled || !intlData) return
+      const intlMatches = intlData.matches || intlData || []
+      if (Array.isArray(intlMatches)) setIntlMatchCount(intlMatches.length)
     })
     return () => { cancelled = true }
   }, [])

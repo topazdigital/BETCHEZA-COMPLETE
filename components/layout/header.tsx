@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { User, ChevronDown, Settings, LogOut, Menu, X, Bookmark, Globe, Trophy } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HeaderSearch } from '@/components/layout/header-search';
@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { useUserSettings } from '@/contexts/user-settings-context';
 import { formatOdds } from '@/lib/utils/odds-converter';
+import { useSiteSettings } from '@/lib/hooks/use-site-settings';
 import type { OddsFormat } from '@/lib/types';
 
 const oddsFormats: { value: OddsFormat; label: string }[] = [
@@ -31,27 +32,12 @@ export function Header() {
   const { open: openAuthModal } = useAuthModal();
   const { settings, setOddsFormat } = useUserSettings();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [branding, setBranding] = useState<{ siteName: string; logoUrl: string; logoDarkUrl: string }>({
-    siteName: 'Betcheza',
-    logoUrl: '',
-    logoDarkUrl: '',
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/site-settings')
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (cancelled || !d) return;
-        setBranding({
-          siteName: d.siteName || 'Betcheza',
-          logoUrl: d.logoUrl || '',
-          logoDarkUrl: d.logoDarkUrl || '',
-        });
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
+  const { data: siteData } = useSiteSettings();
+  const branding = {
+    siteName: siteData?.siteName || 'Betcheza',
+    logoUrl: siteData?.logoUrl || '',
+    logoDarkUrl: siteData?.logoDarkUrl || '',
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card">

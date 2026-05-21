@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOAuthConfig } from '@/lib/oauth-config-store';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * Publicly exposes the Google OAuth client ID (not secret) so the client-side
  * Google Identity Services script can initialise One Tap without having the
@@ -16,8 +14,12 @@ export async function GET() {
     '';
 
   if (!clientId) {
-    return NextResponse.json({ clientId: null });
+    const res = NextResponse.json({ clientId: null });
+    res.headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+    return res;
   }
 
-  return NextResponse.json({ clientId });
+  const res = NextResponse.json({ clientId });
+  res.headers.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+  return res;
 }

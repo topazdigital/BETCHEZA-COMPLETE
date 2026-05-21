@@ -2,45 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { Sparkles, X, Rocket } from 'lucide-react';
-import useSWR from 'swr';
 import Link from 'next/link';
+import { useSiteSettings } from '@/lib/hooks/use-site-settings';
 
 const DISMISS_KEY = 'betcheza_back_banner_dismissed_v2';
-const CACHE_KEY = 'bz_announcement';
-
-const fetcher = (url: string) => fetch(url).then(r => r.json());
-
-interface AnnouncementData {
-  announcementEnabled: boolean;
-  announcementLabel: string;
-  announcementHeadline: string;
-  announcementSubtext: string;
-  announcementLink: string;
-}
-
-function readCache(): AnnouncementData | undefined {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    return raw ? JSON.parse(raw) : undefined;
-  } catch { return undefined; }
-}
 
 export function BetchezaBackBanner() {
   const [dismissed, setDismissed] = useState(true);
   const [mounted, setMounted] = useState(false);
-
-  const cached = mounted ? readCache() : undefined;
-
-  const { data } = useSWR<AnnouncementData>('/api/site-settings', fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 5 * 60_000,
-    refreshInterval: 0,
-    fallbackData: cached,
-    onSuccess(d) {
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch {}
-    },
-  });
+  const { data } = useSiteSettings();
 
   useEffect(() => {
     setMounted(true);

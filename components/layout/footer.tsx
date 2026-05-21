@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import useSWR from 'swr';
+import { useSiteSettings } from '@/lib/hooks/use-site-settings';
 import {
   Facebook,
   Twitter,
@@ -22,16 +22,6 @@ interface SocialLink {
   handle?: string;
   enabled?: boolean;
 }
-
-interface PublicSettings {
-  siteName?: string;
-  siteDescription?: string;
-  logoUrl?: string;
-  footerLogoUrl?: string;
-  socialLinks?: SocialLink[];
-}
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 const PLATFORM_META: Record<string, { label: string; icon: LucideIcon }> = {
   twitter: { label: 'Twitter / X', icon: Twitter },
@@ -95,10 +85,7 @@ function cn(...parts: Array<string | false | null | undefined>) {
 }
 
 export function Footer() {
-  const { data } = useSWR<PublicSettings>('/api/site-settings', fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 60_000,
-  });
+  const { data } = useSiteSettings();
   const siteName = data?.siteName || 'Betcheza';
   const description =
     data?.siteDescription ||

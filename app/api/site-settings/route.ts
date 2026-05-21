@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSiteSettings, parseSocialLinks } from '@/lib/site-settings';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * Public, safe-to-read subset of site settings — used by client components
  * (header logo, theme color, footer social icons, etc). No secrets exposed.
@@ -33,6 +31,6 @@ export async function GET() {
     announcementSubtext: s.announcement_subtext,
     announcementLink: s.announcement_link,
   });
-  res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  res.headers.set('Cache-Control', 'public, max-age=300, s-maxage=300, stale-while-revalidate=600');
   return res;
 }

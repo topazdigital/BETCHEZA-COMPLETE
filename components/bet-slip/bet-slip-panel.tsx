@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { X, Trash2, ChevronDown, ChevronUp, Ticket, ExternalLink, Lightbulb, Send, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useBetSlip } from '@/contexts/bet-slip-context'
@@ -20,8 +21,14 @@ export function BetSlipPanel() {
   } = useBetSlip()
   const { isAuthenticated, user } = useAuth()
   const { open: openAuthModal } = useAuthModal()
-  const [defaultBookmakerUrl, setDefaultBookmakerUrl] = useState<string | null>(null)
-  const [defaultBookmakerName, setDefaultBookmakerName] = useState<string>('Bookmaker')
+  const bookmakerFetcher = (url: string) => fetch(url).then(r => r.json())
+  const { data: bookmakerData } = useSWR('/api/bookmakers', bookmakerFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60 * 60_000,
+    refreshInterval: 0,
+  })
+  const defaultBookmakerUrl = bookmakerData?.bookmakers?.[0]?.affiliateUrl ?? null
+  const defaultBookmakerName = bookmakerData?.bookmakers?.[0]?.name ?? 'Bookmaker'
 
   // Acca tip posting state
   const [showAccaForm, setShowAccaForm] = useState(false)
@@ -31,18 +38,6 @@ export function BetSlipPanel() {
   const [accaResult, setAccaResult] = useState<'success' | 'error' | null>(null)
   const [accaError, setAccaError] = useState('')
 
-  useEffect(() => {
-    fetch('/api/bookmakers')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.bookmakers?.length) {
-          const bk = data.bookmakers[0]
-          setDefaultBookmakerUrl(bk.affiliateUrl || null)
-          setDefaultBookmakerName(bk.name || 'Bookmaker')
-        }
-      })
-      .catch(() => {})
-  }, [])
 
   if (selections.length === 0) return null
 
