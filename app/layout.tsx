@@ -12,6 +12,7 @@ import { getSiteSettings, parseSeoPages, findSeoForPath } from '@/lib/site-setti
 import { Toaster } from 'sonner'
 import { NavigationProgress } from '@/components/layout/navigation-progress'
 import { ServiceWorkerRegister } from '@/components/layout/service-worker-register'
+import { ClarityAnalytics } from '@/components/layout/clarity-analytics'
 import './globals.css'
 
 const geist = Geist({ 
