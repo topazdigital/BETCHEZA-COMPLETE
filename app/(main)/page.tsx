@@ -20,7 +20,10 @@ import {
   ShieldCheck,
   Medal,
 } from 'lucide-react';
-import { BetchezaBackBanner } from '@/components/home/betcheza-back-banner';
+const BetchezaBackBanner = dynamic(
+  () => import('@/components/home/betcheza-back-banner').then(m => ({ default: m.BetchezaBackBanner })),
+  { ssr: false }
+);
 import { SportsFilter } from '@/components/sports/sports-filter';
 import { MatchCardNew } from '@/components/matches/match-card-new';
 import { TeamLogo } from '@/components/ui/team-logo';
@@ -244,14 +247,14 @@ export default function HomePage() {
                     href="/matches?status=live"
                     className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
                   >
-                    <div className="text-2xl font-bold text-foreground">{stats.live ?? 0}</div>
+                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.live ?? 0}</div>
                     <div className="text-xs text-muted-foreground">Live Now</div>
                   </Link>
                   <Link
                     href="/matches"
                     className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
                   >
-                    <div className="text-2xl font-bold text-foreground">{stats.today ?? 0}</div>
+                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.today ?? 0}</div>
                     <div className="text-xs text-muted-foreground">Today</div>
                   </Link>
                   <Link

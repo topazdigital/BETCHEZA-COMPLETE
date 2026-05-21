@@ -177,30 +177,25 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     let cancelled = false
-    fetch("/api/site-settings")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (cancelled || !d) return
+    // Batch both fetches in parallel — avoids two sequential network round-trips on mount
+    Promise.all([
+      fetch("/api/site-settings").then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/matches?category=international&limit=50').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([settings, intlData]) => {
+      if (cancelled) return
+      if (settings) {
         setBranding({
-          siteName: d.siteName || "Betcheza",
-          logoUrl: d.logoUrl || "",
-          logoDarkUrl: d.logoDarkUrl || "",
+          siteName: settings.siteName || "Betcheza",
+          logoUrl: settings.logoUrl || "",
+          logoDarkUrl: settings.logoDarkUrl || "",
         })
-      })
-      .catch(() => undefined)
+      }
+      if (intlData) {
+        const intlMatches = intlData.matches || intlData || []
+        if (Array.isArray(intlMatches)) setIntlMatchCount(intlMatches.length)
+      }
+    })
     return () => { cancelled = true }
-  }, [])
-
-  // Fetch today's international match count for the Internationals badge
-  useEffect(() => {
-    fetch('/api/matches?category=international&limit=50')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (!d) return
-        const matches = d.matches || d || []
-        if (Array.isArray(matches)) setIntlMatchCount(matches.length)
-      })
-      .catch(() => undefined)
   }, [])
 
   // Build popular leagues list: user's country leagues first, then global popular

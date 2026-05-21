@@ -386,7 +386,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
-      <head />
+      <head>
+        {/* Preconnect to Google Fonts CDN so font files load without a DNS round-trip */}
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
+        {/* DNS-prefetch for external sports/data APIs used by the app */}
+        <link rel="dns-prefetch" href="https://site.api.espn.com" />
+        <link rel="dns-prefetch" href="https://www.fotmob.com" />
+        <link rel="dns-prefetch" href="https://api.sofascore.com" />
+        <link rel="dns-prefetch" href="https://upload.wikimedia.org" />
+        {/* Preload the main logo SVG so it's ready before the sidebar mounts */}
+        <link rel="preload" href="/icon.svg" as="image" type="image/svg+xml" />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <NavigationProgress />
         <ServiceWorkerRegister />
