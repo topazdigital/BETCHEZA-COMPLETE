@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import {
   Flame,
   TrendingUp,
@@ -98,31 +98,28 @@ interface TipsterOfWeekData {
   performanceVerified: boolean;
 }
 
-const tipstersFetcher = (url: string) =>
-  fetch(url)
-    .then((r) => r.json())
-    .then((d) => (Array.isArray(d?.tipsters) ? (d.tipsters as ApiTipster[]) : []));
-
-const genericFetcher = (url: string) => fetch(url).then((r) => r.json());
+const homeFetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function HomePage() {
   const [selectedSportId, setSelectedSportId] = useState<number | null>(null);
   const { open: openAuthModal } = useAuthModal();
+  const { mutate } = useSWRConfig();
 
-  // Real top tipsters (DB-backed; gracefully shows fallback panel when empty)
-  const { data: topTipstersData } = useSWR<ApiTipster[]>(
-    '/api/tipsters?sortBy=winRate&limit=4',
-    tipstersFetcher,
-    { refreshInterval: 10 * 60 * 1000, revalidateOnFocus: false, dedupingInterval: 10 * 60 * 1000 },
-  );
-  const topTipsters = topTipstersData ?? [];
+  // ── Single consolidated fetch: replaces 5 separate API calls ──────────────
+  const { data: homeData } = useSWR('/api/home', homeFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5 * 60_000,
+    refreshInterval: 5 * 60_000,
+    onSuccess(data) {
+      // Only seed caches that aren't already independently fetched by child hooks.
+      // Do NOT seed /api/matches — the layout's useMatchStats fetches it with a
+      // different key shape; seeding with wrong data causes .filter() errors.
+      if (data?.featured) mutate('/api/featured', data.featured, false);
+    },
+  });
 
-  // Tipster of the week spotlight
-  const { data: totwData } = useSWR<TipsterOfWeekData>(
-    '/api/tipsters/tipster-of-the-week',
-    genericFetcher,
-    { refreshInterval: 15 * 60 * 1000, revalidateOnFocus: false, dedupingInterval: 15 * 60 * 1000 },
-  );
+  const topTipsters: ApiTipster[] = homeData?.topTipsters?.tipsters ?? [];
+  const totwData: TipsterOfWeekData | undefined = homeData?.tipsterOfWeek ?? undefined;
 
   const { matches, isLoading } = useMatches(
     selectedSportId ? { sportId: selectedSportId } : undefined

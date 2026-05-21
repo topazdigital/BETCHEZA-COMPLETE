@@ -520,7 +520,8 @@ export function useMatchStats() {
     }
   );
 
-  const matches = data || [];
+  // Guard against stale/incorrect cache shapes (e.g. object instead of array)
+  const matches = Array.isArray(data) ? data : [];
 
   return {
     total: matches.length,

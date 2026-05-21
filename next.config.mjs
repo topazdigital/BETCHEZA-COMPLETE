@@ -71,6 +71,11 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Next.js static assets are content-hashed — safe to cache forever
+        source: '/_next/static/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
         source: '/:path*.png',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
@@ -111,12 +116,16 @@ const nextConfig = {
         headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }],
       },
       {
+        source: '/api/home',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=30, s-maxage=30, stale-while-revalidate=60' }],
+      },
+      {
         source: '/api/site-settings',
-        headers: [{ key: 'Cache-Control', value: 's-maxage=60, stale-while-revalidate=300' }],
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=300, s-maxage=300, stale-while-revalidate=600' }],
       },
       {
         source: '/api/bookmakers',
-        headers: [{ key: 'Cache-Control', value: 's-maxage=300, stale-while-revalidate=600' }],
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400' }],
       },
       {
         source: '/api/matches',
