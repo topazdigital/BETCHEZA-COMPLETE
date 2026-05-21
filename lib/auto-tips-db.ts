@@ -1,9 +1,9 @@
 // DB-backed persistence for auto-generated tips.
-// Provides MySQL CRUD on top of the in-memory store so tips survive
+// Provides PostgreSQL CRUD on top of the in-memory store so tips survive
 // server restarts and are shared across multiple Next.js workers.
-// All functions silently degrade when DB_HOST is not configured.
+// All functions silently degrade when DATABASE_URL is not configured.
 
-import { getPool } from './db';
+import { query, getPool } from './db';
 import type { GeneratedTip } from './auto-tips-store';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ export async function initAutoTipsTable(): Promise<boolean> {
   const pool = getPool();
   if (!pool) return false;
   try {
-    await pool.execute(`
+    await query(`
       CREATE TABLE IF NOT EXISTS auto_tips (
         id              VARCHAR(128)  NOT NULL PRIMARY KEY,
         tipster_id      INT           NOT NULL,
@@ -22,7 +22,7 @@ export async function initAutoTipsTable(): Promise<boolean> {
         away_team       VARCHAR(200)  NOT NULL,
         league          VARCHAR(200)  DEFAULT NULL,
         sport           VARCHAR(100)  DEFAULT NULL,
-        kickoff         DATETIME      DEFAULT NULL,
+        kickoff         TIMESTAMP     DEFAULT NULL,
         market          VARCHAR(200)  NOT NULL,
         market_key      VARCHAR(100)  DEFAULT NULL,
         prediction      VARCHAR(200)  NOT NULL,
@@ -30,20 +30,20 @@ export async function initAutoTipsTable(): Promise<boolean> {
         stake           INT           NOT NULL DEFAULT 3,
         confidence      INT           NOT NULL DEFAULT 70,
         analysis        TEXT          DEFAULT NULL,
-        is_premium      TINYINT(1)    NOT NULL DEFAULT 0,
-        status          ENUM('pending','won','lost','void') NOT NULL DEFAULT 'pending',
-        settled_by_prob TINYINT(1)    NOT NULL DEFAULT 0,
+        is_premium      BOOLEAN       NOT NULL DEFAULT FALSE,
+        status          VARCHAR(20)   NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','won','lost','void')),
+        settled_by_prob BOOLEAN       NOT NULL DEFAULT FALSE,
         likes           INT           NOT NULL DEFAULT 0,
         dislikes        INT           NOT NULL DEFAULT 0,
         comments        INT           NOT NULL DEFAULT 0,
         created_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_match_id   (match_id),
-        INDEX idx_tipster_id (tipster_id),
-        INDEX idx_status     (status),
-        INDEX idx_kickoff    (kickoff)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        updated_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
     `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_auto_tips_match_id ON auto_tips(match_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_auto_tips_tipster_id ON auto_tips(tipster_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_auto_tips_status ON auto_tips(status)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_auto_tips_kickoff ON auto_tips(kickoff)`);
     return true;
   } catch (e) {
     console.warn('[auto-tips-db] initAutoTipsTable failed:', e);
@@ -57,8 +57,8 @@ export async function loadAllTipsFromDb(): Promise<GeneratedTip[] | null> {
   const pool = getPool();
   if (!pool) return null;
   try {
-    const [rows] = await pool.execute<Array<Record<string, unknown>>>(`SELECT * FROM auto_tips ORDER BY created_at DESC`);
-    return (rows as Array<Record<string, unknown>>).map(rowToTip);
+    const result = await query<Record<string, unknown>>(`SELECT * FROM auto_tips ORDER BY created_at DESC`);
+    return result.rows.map(rowToTip);
   } catch (e) {
     console.warn('[auto-tips-db] loadAllTipsFromDb failed:', e);
     return null;
@@ -71,50 +71,32 @@ export async function upsertTipsToDb(tips: GeneratedTip[]): Promise<void> {
   const pool = getPool();
   if (!pool || tips.length === 0) return;
   try {
-    const placeholders = tips.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').join(',');
-    const values: unknown[] = [];
     for (const t of tips) {
-      values.push(
-        t.id,
-        t.tipsterId,
-        t.matchId,
-        t.matchSlug ?? null,
-        t.homeTeam,
-        t.awayTeam,
-        t.league ?? null,
-        t.sport ?? null,
-        t.kickoff ? new Date(t.kickoff) : null,
-        t.market,
-        t.marketKey ?? null,
-        t.prediction,
-        t.odds,
-        t.stake,
-        t.confidence,
-        t.analysis ?? null,
-        t.isPremium ? 1 : 0,
-        t.status,
-        t.settledByProb ? 1 : 0,
-        t.likes,
-        t.dislikes,
-        t.comments,
+      await query(
+        `INSERT INTO auto_tips
+          (id,tipster_id,match_id,match_slug,home_team,away_team,league,sport,kickoff,
+           market,market_key,prediction,odds,stake,confidence,analysis,is_premium,
+           status,settled_by_prob,likes,dislikes,comments)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT (id) DO UPDATE SET
+           status          = EXCLUDED.status,
+           settled_by_prob = EXCLUDED.settled_by_prob,
+           likes           = EXCLUDED.likes,
+           dislikes        = EXCLUDED.dislikes,
+           comments        = EXCLUDED.comments,
+           analysis        = EXCLUDED.analysis,
+           match_slug      = EXCLUDED.match_slug`,
+        [
+          t.id, t.tipsterId, t.matchId, t.matchSlug ?? null,
+          t.homeTeam, t.awayTeam, t.league ?? null, t.sport ?? null,
+          t.kickoff ? new Date(t.kickoff) : null,
+          t.market, t.marketKey ?? null, t.prediction,
+          t.odds, t.stake, t.confidence, t.analysis ?? null,
+          t.isPremium, t.status, t.settledByProb,
+          t.likes, t.dislikes, t.comments,
+        ],
       );
     }
-    await pool.execute(
-      `INSERT INTO auto_tips
-        (id,tipster_id,match_id,match_slug,home_team,away_team,league,sport,kickoff,
-         market,market_key,prediction,odds,stake,confidence,analysis,is_premium,
-         status,settled_by_prob,likes,dislikes,comments)
-       VALUES ${placeholders}
-       ON DUPLICATE KEY UPDATE
-         status          = VALUES(status),
-         settled_by_prob = VALUES(settled_by_prob),
-         likes           = VALUES(likes),
-         dislikes        = VALUES(dislikes),
-         comments        = VALUES(comments),
-         analysis        = VALUES(analysis),
-         match_slug      = VALUES(match_slug)`,
-      values,
-    );
   } catch (e) {
     console.warn('[auto-tips-db] upsertTipsToDb failed:', e);
   }
@@ -128,9 +110,9 @@ export async function updateTipStatusInDb(
   const pool = getPool();
   if (!pool) return;
   try {
-    await pool.execute(
+    await query(
       `UPDATE auto_tips SET status=?, settled_by_prob=? WHERE id=?`,
-      [status, settledByProb ? 1 : 0, id],
+      [status, settledByProb, id],
     );
   } catch (e) {
     console.warn('[auto-tips-db] updateTipStatusInDb failed:', e);

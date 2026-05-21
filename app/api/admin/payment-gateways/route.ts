@@ -96,14 +96,14 @@ async function ensureAdminSettingsTable(): Promise<void> {
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS admin_settings (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         name VARCHAR(255) UNIQUE NOT NULL,
-        value LONGTEXT,
+        value TEXT,
         type VARCHAR(50) DEFAULT 'text',
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
     `);
   } catch { /* ignore — no DB connected */ }
 }
@@ -115,7 +115,7 @@ async function saveGateways(gateways: PaymentGateway[]): Promise<void> {
   try {
     await ensureAdminSettingsTable();
     await query(
-      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration') ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payment_gateways', ?, 'json', 'Payment gateway configuration') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
       [JSON.stringify(gateways)]
     );
   } catch { /* file store is the reliable fallback */ }
@@ -141,7 +141,7 @@ async function savePayoutSettings(settings: PayoutSettings): Promise<void> {
   fileStoreSet('payout-settings', settings);
   try {
     await query(
-      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payout_settings', ?, 'json', 'Tipster payout configuration') ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+      `INSERT INTO admin_settings (name, value, type, description) VALUES ('payout_settings', ?, 'json', 'Tipster payout configuration') ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
       [JSON.stringify(settings)]
     );
   } catch {}
