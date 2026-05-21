@@ -167,11 +167,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const [userCountry, setUserCountry] = useState<string>('KE')
   const [intlMatchCount, setIntlMatchCount] = useState(0)
   const stats = useMatchStats()
-  const [branding, setBranding] = useState<{ siteName: string; logoUrl: string; logoDarkUrl: string }>({
-    siteName: "Betcheza",
-    logoUrl: "",
-    logoDarkUrl: "",
-  })
+  const [branding, setBranding] = useState<{ siteName: string; logoUrl: string; logoDarkUrl: string }>(
+    { siteName: "Betcheza", logoUrl: "", logoDarkUrl: "" }
+  )
 
   useEffect(() => {
     setUserCountry(detectCountryCode() || 'KE')
@@ -493,6 +491,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               </Link>
             </Button>
             
+            {/* Fixed min-width prevents header from shifting when auth state resolves */}
+            <div className="flex min-w-[5rem] items-center justify-end">
             {isLoading ? (
               <div className="h-7 w-7 animate-pulse rounded-full bg-muted" />
             ) : isAuthenticated && user ? (
@@ -575,6 +575,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 </Button>
               </div>
             )}
+            </div>
           </div>
         </header>
 

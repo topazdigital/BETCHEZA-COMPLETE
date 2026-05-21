@@ -12,7 +12,7 @@ export async function GET() {
   const socialLinks = parseSocialLinks(s.social_links).filter(
     (l) => l.enabled !== false && l.url,
   );
-  return NextResponse.json({
+  const res = NextResponse.json({
     siteName: s.site_name,
     siteDescription: s.site_description,
     logoUrl: s.logo_url,
@@ -33,4 +33,6 @@ export async function GET() {
     announcementSubtext: s.announcement_subtext,
     announcementLink: s.announcement_link,
   });
+  res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  return res;
 }

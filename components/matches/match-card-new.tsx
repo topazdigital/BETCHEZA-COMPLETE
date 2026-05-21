@@ -56,7 +56,7 @@ function useLiveCardMinute(
       }
     };
     tick();
-    const id = setInterval(tick, 1_000);
+    const id = setInterval(tick, 10_000);
     return () => clearInterval(id);
   }, [status, sportSlug, kickoffTime, period, storedMinute]);
 

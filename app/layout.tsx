@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { headers } from 'next/headers'
-import { Analytics } from '@vercel/analytics/next'
+// Analytics removed — not needed for self-hosted deployments
 import { ThemeProvider } from '@/components/theme-provider'
 import { UserSettingsProvider } from '@/contexts/user-settings-context'
 import { AuthProvider } from '@/contexts/auth-context'
@@ -17,10 +17,12 @@ import './globals.css'
 const geist = Geist({ 
   subsets: ["latin"],
   variable: '--font-geist-sans',
+  display: 'swap',
 });
 const geistMono = Geist_Mono({ 
   subsets: ["latin"],
   variable: '--font-geist-mono',
+  display: 'swap',
 });
 
 /**
@@ -237,11 +239,6 @@ export async function generateMetadata(): Promise<Metadata> {
     verification: process.env.GOOGLE_SITE_VERIFICATION
       ? { google: process.env.GOOGLE_SITE_VERIFICATION }
       : undefined,
-    other: {
-      'script:ld+json:website': JSON.stringify(websiteJsonLd),
-      'script:ld+json:organization': JSON.stringify(organizationJsonLd),
-      'script:ld+json:faq': JSON.stringify(faqJsonLd),
-    },
     openGraph: {
       type: 'website',
       locale: 'en_US',
@@ -411,7 +408,6 @@ export default function RootLayout({
             </AuthModalProvider>
           </AuthProvider>
         </ThemeProvider>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

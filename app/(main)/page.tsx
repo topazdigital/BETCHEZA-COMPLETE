@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import useSWR from 'swr';
@@ -37,17 +37,25 @@ import { matchToSlug } from '@/lib/utils/match-url';
 import { liveStatusLabel } from '@/lib/utils/live-status';
 import { tipsterHref } from '@/lib/utils/slug';
 
+const PanelSkeleton = () => (
+  <div className="space-y-2 p-1">
+    {[1,2,3].map(i => (
+      <div key={i} className="h-16 rounded-xl bg-muted/50 animate-pulse" />
+    ))}
+  </div>
+);
+
 const BestBetsPanel = dynamic(
   () => import('@/components/home/best-bets-panel').then(m => ({ default: m.BestBetsPanel })),
-  { ssr: false }
+  { ssr: false, loading: () => <PanelSkeleton /> }
 );
 const FavoritedTipsPanel = dynamic(
   () => import('@/components/home/favorited-tips-panel').then(m => ({ default: m.FavoritedTipsPanel })),
-  { ssr: false }
+  { ssr: false, loading: () => <PanelSkeleton /> }
 );
 const NewsletterSection = dynamic(
   () => import('@/components/sections/newsletter').then(m => ({ default: m.NewsletterSection })),
-  { ssr: false }
+  { ssr: false, loading: () => <div className="h-24 rounded-xl bg-muted/30 animate-pulse" /> }
 );
 
 interface ApiTipster {

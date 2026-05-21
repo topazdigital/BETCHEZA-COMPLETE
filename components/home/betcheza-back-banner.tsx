@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Sparkles, X, Rocket } from 'lucide-react';
 import useSWR from 'swr';
 import Link from 'next/link';
 
-const STORAGE_KEY = 'betcheza_back_banner_dismissed_v2';
+const DISMISS_KEY = 'betcheza_back_banner_dismissed_v2';
+const CACHE_KEY = 'bz_announcement';
+
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface AnnouncementData {
@@ -16,33 +18,39 @@ interface AnnouncementData {
   announcementLink: string;
 }
 
+function readCache(): AnnouncementData | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : undefined;
+  } catch { return undefined; }
+}
+
 export function BetchezaBackBanner() {
-  const [dismissed, setDismissed] = useState(true);
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try { return !!window.sessionStorage.getItem(DISMISS_KEY); } catch { return false; }
+  });
+
+  const cached = readCache();
 
   const { data } = useSWR<AnnouncementData>('/api/site-settings', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 5 * 60_000,
     refreshInterval: 0,
+    fallbackData: cached,
+    onSuccess(d) {
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch {}
+    },
   });
 
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined' && !window.sessionStorage.getItem(STORAGE_KEY)) {
-        setDismissed(false);
-      }
-    } catch {
-      setDismissed(false);
-    }
-  }, []);
-
-  if (dismissed) return null;
-  if (!data) return null;
-  if (!data.announcementEnabled) return null;
-
   const dismiss = () => {
-    try { window.sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
+    try { window.sessionStorage.setItem(DISMISS_KEY, '1'); } catch {}
     setDismissed(true);
   };
+
+  if (dismissed) return null;
+  if (!data?.announcementEnabled) return null;
 
   const hasLink = !!data.announcementLink;
   const label = data.announcementLabel || "We're back — and sharper than ever";
@@ -80,8 +88,6 @@ export function BetchezaBackBanner() {
 
   return (
     <div className="relative mb-3 overflow-hidden rounded-xl border border-primary/40 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-3 shadow-sm">
-      <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-primary/15 to-transparent" />
-
       <button
         type="button"
         onClick={dismiss}
@@ -96,14 +102,6 @@ export function BetchezaBackBanner() {
           {Inner}
         </Link>
       ) : Inner}
-
-      <style jsx>{`
-        @keyframes shimmer {
-          0%   { transform: translateX(-100%); }
-          50%  { transform: translateX(100%); }
-          100% { transform: translateX(100%); }
-        }
-      `}</style>
     </div>
   );
 }

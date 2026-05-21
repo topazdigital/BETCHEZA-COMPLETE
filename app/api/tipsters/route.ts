@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
     tipsters = fake.slice(offset, offset + limit);
   }
 
-  return NextResponse.json({
+  const res = NextResponse.json({
     tipsters, pagination: { total, limit, offset, hasMore: offset + limit < total },
     stats: {
       totalTipsters: total, proTipsters: tipsters.filter((t) => t.isPro).length,
@@ -206,4 +206,6 @@ export async function GET(request: NextRequest) {
       totalTips: tipsters.reduce((s, t) => s + t.totalTips, 0),
     },
   });
+  res.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
+  return res;
 }
