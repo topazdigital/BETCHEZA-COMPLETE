@@ -146,14 +146,14 @@ const mainNavItems: NavItem[] = [
   { href: "/how-it-works", label: "How It Works", icon: BookOpen, color: "text-cyan-500", activeColor: "bg-cyan-500" },
 ]
 
-// Popular bookmakers for the sidebar
+// Popular bookmakers for the sidebar — colours only, no external logo requests
 const SIDEBAR_BOOKMAKERS = [
-  { name: "Bet365", slug: "bet365", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Bet365_logo.svg/200px-Bet365_logo.svg.png" },
-  { name: "1xBet", slug: "1xbet", logo: "https://1xbet.co.ke/favicon.ico" },
-  { name: "SportPesa", slug: "sportpesa", logo: "https://www.sportpesa.co.ke/favicon.ico" },
-  { name: "Betway", slug: "betway", logo: "https://www.betway.co.ke/favicon.ico" },
-  { name: "Odibets", slug: "odibets", logo: "https://odibets.com/favicon.ico" },
-  { name: "Mozzartbet", slug: "mozzartbet", logo: "https://mozzartbet.co.ke/favicon.ico" },
+  { name: "Bet365", slug: "bet365", color: "#027B5B" },
+  { name: "1xBet", slug: "1xbet", color: "#1565C0" },
+  { name: "SportPesa", slug: "sportpesa", color: "#E53935" },
+  { name: "Betway", slug: "betway", color: "#00A651" },
+  { name: "Odibets", slug: "odibets", color: "#FF6600" },
+  { name: "Mozzartbet", slug: "mozzartbet", color: "#8B0000" },
 ];
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -417,17 +417,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                   onClick={() => setSidebarOpen(false)}
                   className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
-                  <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm border border-border bg-white">
-                    {bk.logo ? (
-                      <img
-                        src={bk.logo}
-                        alt={bk.name}
-                        className="h-4 w-4 object-contain"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                      />
-                    ) : (
-                      <span className="text-[7px] font-bold text-muted-foreground leading-none">{bk.name.slice(0, 2).toUpperCase()}</span>
-                    )}
+                  <div
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-[7px] font-bold text-white leading-none"
+                    style={{ backgroundColor: bk.color }}
+                  >
+                    {bk.name.slice(0, 2).toUpperCase()}
                   </div>
                   <span className="truncate">{bk.name}</span>
                 </Link>

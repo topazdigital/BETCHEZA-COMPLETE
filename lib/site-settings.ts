@@ -120,7 +120,7 @@ function resolveUploadPaths(settings: SiteSettings): void {
 }
 
 const g = globalThis as { __siteSettingsCache?: { value: SiteSettings; ts: number } };
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 5 * 60_000; // 5 minutes — reduces DB hits significantly on busy pages
 
 export async function getSiteSettings(): Promise<SiteSettings> {
   const now = Date.now();

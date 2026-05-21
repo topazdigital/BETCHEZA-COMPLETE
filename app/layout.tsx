@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Geist } from 'next/font/google'
 import { headers } from 'next/headers'
 // Analytics removed — not needed for self-hosted deployments
 import { ThemeProvider } from '@/components/theme-provider'
@@ -19,11 +19,7 @@ const geist = Geist({
   subsets: ["latin"],
   variable: '--font-geist-sans',
   display: 'swap',
-});
-const geistMono = Geist_Mono({ 
-  subsets: ["latin"],
-  variable: '--font-geist-mono',
-  display: 'swap',
+  preload: true,
 });
 
 /**
@@ -214,14 +210,9 @@ export async function generateMetadata(): Promise<Metadata> {
   const icons: Metadata['icons'] = customFavicon
     ? { icon: customFavicon, apple: customFavicon }
     : {
-        // SVG-first so the redesigned Betcheza mark renders crisply in modern browsers.
-        // PNGs stay as fallbacks for legacy / RSS readers.
         icon: [
           { url: '/icon.svg', type: 'image/svg+xml' },
           { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)', sizes: '32x32' },
-          { url: '/icon-dark-32x32.png', media: '(prefers-color-scheme: dark)', sizes: '32x32' },
         ],
         apple: '/apple-icon.png',
       };
@@ -386,19 +377,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
-      <head>
-        {/* Preconnect to Google Fonts CDN so font files load without a DNS round-trip */}
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
-        {/* DNS-prefetch for external sports/data APIs used by the app */}
-        <link rel="dns-prefetch" href="https://site.api.espn.com" />
-        <link rel="dns-prefetch" href="https://www.fotmob.com" />
-        <link rel="dns-prefetch" href="https://api.sofascore.com" />
-        <link rel="dns-prefetch" href="https://upload.wikimedia.org" />
-        {/* Preload the main logo SVG so it's ready before the sidebar mounts */}
-        <link rel="preload" href="/icon.svg" as="image" type="image/svg+xml" />
-      </head>
+    <html lang="en" className={geist.variable} suppressHydrationWarning>
+      <head />
       <body className="min-h-screen bg-background font-sans antialiased">
         <ClarityAnalytics />
         <NavigationProgress />
