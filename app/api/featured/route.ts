@@ -10,6 +10,27 @@ import {
 export const dynamic = 'force-dynamic';
 export const revalidate = 30;
 
+// ─── In-process stale-while-revalidate cache (30 s TTL) ───────────────────────
+const FEATURED_CACHE_TTL = 30_000;
+let _featuredCache: { data: unknown; ts: number } | null = null;
+let _featuredRefreshing = false;
+
+async function getCachedFeaturedPayload(builder: () => Promise<unknown>): Promise<unknown> {
+  const now = Date.now();
+  if (_featuredCache && now - _featuredCache.ts < FEATURED_CACHE_TTL) return _featuredCache.data;
+  if (_featuredCache && !_featuredRefreshing) {
+    _featuredRefreshing = true;
+    builder()
+      .then(data => { _featuredCache = { data, ts: Date.now() }; })
+      .catch(() => {})
+      .finally(() => { _featuredRefreshing = false; });
+    return _featuredCache.data;
+  }
+  const data = await builder();
+  _featuredCache = { data, ts: Date.now() };
+  return data;
+}
+
 // Mirror of /api/matches/[id]/tips TIPSTERS so featured panel uses the
 // same author pool with the same "rank" semantics.
 const TIPSTERS = [
@@ -95,10 +116,10 @@ function toFeatured(match: UnifiedMatch, pinned: boolean): FeaturedItem {
   };
 }
 
-export async function GET() {
+async function buildFeaturedPayload() {
   const config = await getFeaturedConfig();
   if (!config.enabled) {
-    return NextResponse.json({ enabled: false, items: [], config });
+    return { enabled: false, items: [], config };
   }
 
   const hidden = new Set(config.hiddenMatchIds || []);
@@ -165,9 +186,14 @@ export async function GET() {
     auto.sort((a, b) => b.tip.confidence - a.tip.confidence);
   }
 
-  return NextResponse.json({
+  return {
     enabled: true,
     items: [...pinned, ...auto.slice(0, remaining)],
     config,
-  });
+  };
+}
+
+export async function GET() {
+  const data = await getCachedFeaturedPayload(buildFeaturedPayload);
+  return NextResponse.json(data);
 }
