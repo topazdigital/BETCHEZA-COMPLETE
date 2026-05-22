@@ -67,56 +67,64 @@ export async function loadAllTipsFromDb(): Promise<GeneratedTip[] | null> {
 
 // ── Write ─────────────────────────────────────────────────────────────────────
 
+// MySQL prepared statements cap at 65,535 placeholders.
+// With 22 columns per row the safe batch ceiling is floor(65535/22) = 2978.
+const UPSERT_BATCH = 2_000;
+
 export async function upsertTipsToDb(tips: GeneratedTip[]): Promise<void> {
   const pool = getPool();
   if (!pool || tips.length === 0) return;
-  try {
-    const placeholders = tips.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').join(',');
-    const values: unknown[] = [];
-    for (const t of tips) {
-      values.push(
-        t.id,
-        t.tipsterId,
-        t.matchId,
-        t.matchSlug ?? null,
-        t.homeTeam,
-        t.awayTeam,
-        t.league ?? null,
-        t.sport ?? null,
-        t.kickoff ? new Date(t.kickoff) : null,
-        t.market,
-        t.marketKey ?? null,
-        t.prediction,
-        t.odds,
-        t.stake,
-        t.confidence,
-        t.analysis ?? null,
-        t.isPremium ? 1 : 0,
-        t.status,
-        t.settledByProb ? 1 : 0,
-        t.likes,
-        t.dislikes,
-        t.comments,
+
+  for (let start = 0; start < tips.length; start += UPSERT_BATCH) {
+    const batch = tips.slice(start, start + UPSERT_BATCH);
+    try {
+      const placeholders = batch.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').join(',');
+      const values: unknown[] = [];
+      for (const t of batch) {
+        values.push(
+          t.id,
+          t.tipsterId,
+          t.matchId,
+          t.matchSlug ?? null,
+          t.homeTeam,
+          t.awayTeam,
+          t.league ?? null,
+          t.sport ?? null,
+          t.kickoff ? new Date(t.kickoff) : null,
+          t.market,
+          t.marketKey ?? null,
+          t.prediction,
+          t.odds,
+          t.stake,
+          t.confidence,
+          t.analysis ?? null,
+          t.isPremium ? 1 : 0,
+          t.status,
+          t.settledByProb ? 1 : 0,
+          t.likes,
+          t.dislikes,
+          t.comments,
+        );
+      }
+      await pool.execute(
+        `INSERT INTO auto_tips
+          (id,tipster_id,match_id,match_slug,home_team,away_team,league,sport,kickoff,
+           market,market_key,prediction,odds,stake,confidence,analysis,is_premium,
+           status,settled_by_prob,likes,dislikes,comments)
+         VALUES ${placeholders}
+         ON DUPLICATE KEY UPDATE
+           status          = VALUES(status),
+           settled_by_prob = VALUES(settled_by_prob),
+           likes           = VALUES(likes),
+           dislikes        = VALUES(dislikes),
+           comments        = VALUES(comments),
+           analysis        = VALUES(analysis),
+           match_slug      = VALUES(match_slug)`,
+        values,
       );
+    } catch (e) {
+      console.warn(`[auto-tips-db] upsertTipsToDb batch ${start}–${start + batch.length} failed:`, e);
     }
-    await pool.execute(
-      `INSERT INTO auto_tips
-        (id,tipster_id,match_id,match_slug,home_team,away_team,league,sport,kickoff,
-         market,market_key,prediction,odds,stake,confidence,analysis,is_premium,
-         status,settled_by_prob,likes,dislikes,comments)
-       VALUES ${placeholders}
-       ON DUPLICATE KEY UPDATE
-         status          = VALUES(status),
-         settled_by_prob = VALUES(settled_by_prob),
-         likes           = VALUES(likes),
-         dislikes        = VALUES(dislikes),
-         comments        = VALUES(comments),
-         analysis        = VALUES(analysis),
-         match_slug      = VALUES(match_slug)`,
-      values,
-    );
-  } catch (e) {
-    console.warn('[auto-tips-db] upsertTipsToDb failed:', e);
   }
 }
 
