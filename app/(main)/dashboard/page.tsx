@@ -657,11 +657,11 @@ function AiTipCard({ ev }: { ev: DashboardEvent }) {
           <div className="flex items-center gap-1">
             <span className="text-base font-bold text-amber-600 tabular-nums">@{odds.toFixed(2)}</span>
             {isEstimated && (
-              <span className="text-[9px] font-medium text-muted-foreground bg-muted rounded px-1 py-0.5">AI est.</span>
+              <span className="text-[9px] font-medium text-amber-700/60 bg-amber-500/10 rounded px-1 py-0.5">AI</span>
             )}
           </div>
         ) : (
-          <span className="text-[11px] text-muted-foreground italic">No odds yet</span>
+          <span className="text-[11px] text-muted-foreground italic">Calculating...</span>
         )}
         {odds != null && <span className="text-[10px] text-muted-foreground">{confidence}% conf.</span>}
       </div>

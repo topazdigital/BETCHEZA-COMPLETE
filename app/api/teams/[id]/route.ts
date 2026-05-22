@@ -144,11 +144,23 @@ async function resolveTeamSportLeague(
   const probeSport = hint?.sport || 'soccer';
   const probeLeague = hint?.league || 'eng.1';
   const probed = await probeTeam(probeSport, probeLeague, espnTeamId);
+  // Normalise legacy / wrong league slugs to their current equivalents so
+  // fetchTeamInfo never tries a slug ESPN dropped or renamed.
+  const LEAGUE_SLUG_ALIASES: Record<string, string> = {
+    'sau.1': 'ksa.1',
+    'saud.1': 'ksa.1',
+    'ksa.super': 'ksa.1',
+    'arab.super.1': 'ksa.1',
+    'rus.1': 'rus.premier',
+    'chn.super': 'chn.1',
+  };
+
   if (probed && probeSport === 'soccer') {
     // Prefer ESPN's own defaultLeague field — it's always the team's
     // real domestic league, avoiding slug-parsing edge cases (e.g. slugs
     // like "team.viking_fk" that don't follow the "nor.viking" convention).
-    const defaultLeagueSlug = probed.team?.defaultLeague?.slug?.toLowerCase().trim() || probed.team?.leagueAbbrev?.toLowerCase().trim();
+    const rawSlug = probed.team?.defaultLeague?.slug?.toLowerCase().trim() || probed.team?.leagueAbbrev?.toLowerCase().trim();
+    const defaultLeagueSlug = (rawSlug && LEAGUE_SLUG_ALIASES[rawSlug]) ? LEAGUE_SLUG_ALIASES[rawSlug] : rawSlug;
     if (defaultLeagueSlug && defaultLeagueSlug !== 'eng.1') {
       // Validate it's a known soccer league by checking the slug resolves
       const choice = { sport: 'soccer', league: defaultLeagueSlug };
@@ -682,11 +694,38 @@ export async function GET(
     listFollowersOfTeam(espnTeamId).catch(() => [] as number[]),
   ]);
 
+  // Recovery: if fetchTeamInfo failed with the resolved league (e.g. league
+  // endpoint redirected or season gap returns 404), retry with the slug-derived
+  // domestic league and then directly with the primary candidates.
+  let finalTeamData = teamData;
+  let finalLeague = league;
+  let finalSport = sport;
   if (!teamData?.team) {
+    const recoveryLeagues: Array<[string, string]> = [];
+    // Derive from slug if available (e.g. "sau.al_nassr" → "ksa.1")
+    const slugResult = teamLeagueCache.get(cacheKey + ':slug') as { sport: string; league: string } | undefined;
+    if (slugResult) recoveryLeagues.push([slugResult.sport, slugResult.league]);
+    // Try the most common leagues for well-known clubs
+    for (const [s, l] of TEAM_RESOLVER_CANDIDATES.slice(0, 20)) {
+      if (l !== league) recoveryLeagues.push([s, l]);
+    }
+    for (const [s, l] of recoveryLeagues.slice(0, 10)) {
+      const recovered = await fetchTeamInfo(s, l, espnTeamId);
+      if (recovered?.team) {
+        finalTeamData = recovered;
+        finalLeague = l;
+        finalSport = s;
+        // Update cache with the working league
+        teamLeagueCache.set(cacheKey, { sport: s, league: l });
+        break;
+      }
+    }
+  }
+  if (!finalTeamData?.team) {
     return NextResponse.json({ error: 'Team not found' }, { status: 404 });
   }
 
-  const t = teamData.team;
+  const t = finalTeamData.team;
 
   // League / country lookup using the *resolved* league id (not the URL hint).
   const leagueRow = ALL_LEAGUES.find(l => l.id === resolvedLeagueId);
@@ -757,8 +796,8 @@ export async function GET(
     'cricket/cricket':                     'cricket',
     'golf/pga':                            'golf',
   };
-  const sportTag = sport !== 'soccer'
-    ? (LEAGUE_TO_SPORT_TAG[`${sport}/${league}`] || sport)
+  const sportTag = finalSport !== 'soccer'
+    ? (LEAGUE_TO_SPORT_TAG[`${finalSport}/${finalLeague}`] || finalSport)
     : null;
   const canonicalId = sportTag
     ? (nameSlug ? `${nameSlug}-${sportTag}-${t.id}` : `${sportTag}-${t.id}`)
@@ -1125,7 +1164,7 @@ export async function GET(
     roster,
     injuries,
     followersCount: followers.length,
-    league: { sport, league },
+    league: { sport: finalSport, league: finalLeague },
     timestamp: new Date().toISOString(),
   });
 }
