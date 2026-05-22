@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
-import { listPosts, listPostsByHashtag, createPost } from '@/lib/feed-store';
+import { listPosts, listPostsByHashtag, listPostsByRoom, createPost } from '@/lib/feed-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +11,14 @@ export async function GET(req: NextRequest) {
     const limit = Number(req.nextUrl.searchParams.get('limit') || 25);
     const offset = Number(req.nextUrl.searchParams.get('offset') || 0);
     const hashtag = req.nextUrl.searchParams.get('hashtag')?.toLowerCase().trim() || null;
+    const room = req.nextUrl.searchParams.get('room')?.toLowerCase().trim() || null;
+
     const allPosts = hashtag
       ? await listPostsByHashtag(hashtag, limit + offset, user?.userId ?? null)
-      : await listPosts(limit + offset, user?.userId ?? null);
+      : room
+        ? await listPostsByRoom(room, limit + offset, user?.userId ?? null)
+        : await listPosts(limit + offset, user?.userId ?? null);
+
     const posts = allPosts.slice(offset, offset + limit);
     const hasMore = allPosts.length > offset + limit;
     return NextResponse.json({ success: true, posts, hasMore, offset, limit });
@@ -50,6 +55,16 @@ export async function POST(req: NextRequest) {
     }
   } catch {}
 
+  const roomSlug = typeof body.room === 'string' ? body.room : null;
+  let roomId: number | null = null;
+  if (roomSlug) {
+    try {
+      const rr = await query<{ id: number }>(
+        `SELECT id FROM community_rooms WHERE slug = ? AND is_active = 1 LIMIT 1`, [roomSlug]);
+      roomId = rr.rows[0]?.id ?? null;
+    } catch {}
+  }
+
   const post = await createPost({
     userId: user.userId,
     authorName,
@@ -60,6 +75,7 @@ export async function POST(req: NextRequest) {
     pick: typeof body.pick === 'string' ? body.pick : null,
     odds: typeof body.odds === 'number' ? body.odds : null,
     imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl : null,
+    roomId,
   });
 
   return NextResponse.json({ success: true, post });

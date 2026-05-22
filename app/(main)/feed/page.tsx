@@ -12,12 +12,75 @@ import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button
 import {
   Heart, MessageCircle, Send, Sparkles, Loader2, Flame, TrendingUp, Users, Lock,
   Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff, Megaphone, Hash, X, Trash2,
+  DoorOpen, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 const POSTS_KEY = '/api/feed/posts';
+
+interface CommunityRoom {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  postCount: number;
+  sortOrder: number;
+}
+
+function RoomsPanel({ activeRoom, onRoomClick }: { activeRoom: string | null; onRoomClick: (slug: string | null) => void }) {
+  const { data } = useSWR<{ rooms: CommunityRoom[] }>(
+    '/api/feed/rooms',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 120_000 },
+  );
+  const rooms = data?.rooms ?? [];
+
+  return (
+    <Card className="border-border/60">
+      <CardContent className="p-3">
+        <div className="mb-2.5 flex items-center gap-1.5">
+          <DoorOpen className="h-3.5 w-3.5 text-primary" />
+          <h3 className="text-xs font-bold">Rooms</h3>
+        </div>
+        <div className="space-y-0.5">
+          <button
+            onClick={() => onRoomClick(null)}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors',
+              activeRoom === null
+                ? 'bg-primary text-primary-foreground font-semibold'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <span className="text-sm">🌐</span>
+            <span className="flex-1 text-left">All Rooms</span>
+            {activeRoom === null && <ChevronRight className="h-3 w-3 opacity-70" />}
+          </button>
+          {rooms.map(room => (
+            <button
+              key={room.slug}
+              onClick={() => onRoomClick(room.slug)}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors',
+                activeRoom === room.slug
+                  ? 'bg-primary text-primary-foreground font-semibold'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              <span className="text-sm">{room.icon ?? '💬'}</span>
+              <span className="flex-1 text-left truncate">{room.name}</span>
+              {activeRoom === room.slug && <ChevronRight className="h-3 w-3 opacity-70 shrink-0" />}
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 interface Post {
   id: string;
@@ -527,7 +590,7 @@ function flattenMarketPicks(match: MatchSuggestion): Array<{ market: string; lab
   return picks;
 }
 
-function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPosted: () => void }) {
+function Composer({ me, onPosted, activeRoom }: { me: Me['user'] | null | undefined; onPosted: () => void; activeRoom?: string | null }) {
   const [content, setContent] = useState('');
   const [pick, setPick] = useState('');
   const [odds, setOdds] = useState<string>('');
@@ -698,6 +761,7 @@ function Composer({ me, onPosted }: { me: Me['user'] | null | undefined; onPoste
         odds: odds.trim() ? Number(odds) : null,
         matchTitle: matchTitle.trim() || null,
         matchId: selectedMatch?.id ?? null,
+        room: activeRoom ?? null,
       }),
     });
     setSubmitting(false);
@@ -1278,10 +1342,14 @@ function TrendingRail({ onHashtagClick }: { onHashtagClick: (tag: string) => voi
 export default function FeedPage() {
   const { data: meRes } = useSWR<Me>('/api/auth/me', fetcher);
   const [activeHashtag, setActiveHashtag] = useState<string | null>(null);
+  const [activeRoom, setActiveRoom] = useState<string | null>(null);
   const [fetchLimit, setFetchLimit] = useState(25);
+
   const postsKey = activeHashtag
     ? `${POSTS_KEY}?hashtag=${encodeURIComponent(activeHashtag)}&limit=${fetchLimit}`
-    : `${POSTS_KEY}?limit=${fetchLimit}`;
+    : activeRoom
+      ? `${POSTS_KEY}?room=${encodeURIComponent(activeRoom)}&limit=${fetchLimit}`
+      : `${POSTS_KEY}?limit=${fetchLimit}`;
   const { data: postsRes, isLoading, error: postsError } = useSWR<{ posts: Post[]; hasMore?: boolean }>(postsKey, fetcher, { refreshInterval: 60000, revalidateOnFocus: false, dedupingInterval: 60000 });
   const posts = postsRes?.posts ?? [];
   const hasMore = postsRes?.hasMore ?? false;
@@ -1304,6 +1372,15 @@ export default function FeedPage() {
 
   const handleHashtagClick = (tag: string) => {
     setActiveHashtag(prev => prev === tag ? null : tag);
+    setActiveRoom(null);
+    setFetchLimit(25);
+    scrolledRef.current = false;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleRoomClick = (slug: string | null) => {
+    setActiveRoom(slug);
+    setActiveHashtag(null);
     setFetchLimit(25);
     scrolledRef.current = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1351,6 +1428,7 @@ export default function FeedPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)_260px] xl:grid-cols-[240px_minmax(0,1fr)_300px] p-3 md:p-4">
             {/* LEFT RAIL */}
             <aside className="hidden lg:block space-y-3">
+              <RoomsPanel activeRoom={activeRoom} onRoomClick={handleRoomClick} />
               <RecommendedTipstersRail />
             </aside>
 
@@ -1382,7 +1460,21 @@ export default function FeedPage() {
               <TipOfDay />
 
               {/* Composer */}
-              <Composer me={meRes?.user ?? null} onPosted={refresh} />
+              <Composer me={meRes?.user ?? null} onPosted={refresh} activeRoom={activeRoom} />
+
+              {/* Room filter banner */}
+              {activeRoom && (
+                <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2">
+                  <DoorOpen className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-xs font-semibold text-primary flex-1 capitalize">{activeRoom.replace(/-/g, ' ')}</span>
+                  <button
+                    onClick={() => handleRoomClick(null)}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3 w-3" /> All rooms
+                  </button>
+                </div>
+              )}
 
               {/* Hashtag filter banner */}
               {activeHashtag && (
