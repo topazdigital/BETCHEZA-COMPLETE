@@ -14,15 +14,21 @@ git stash push --include-untracked -m "auto-stash before deploy $(date +%Y%m%d-%
 git pull origin main
 
 echo -e "${YELLOW}[1b/5] Ensuring runtime env vars are set...${NC}"
-# GOOGLE_SITE_VERIFICATION is a public value (visible in HTML source).
-# We write it to .env.local so Next.js picks it up without a manual server step.
 ENV_FILE="$APP_DIR/.env.local"
+
+# GOOGLE_SITE_VERIFICATION is a public value (visible in HTML source).
+# Append to .env.local so Next.js picks it up without a manual server step.
 if ! grep -q "GOOGLE_SITE_VERIFICATION" "$ENV_FILE" 2>/dev/null; then
   echo "GOOGLE_SITE_VERIFICATION=c6CwjlMj8vH8Pf7zQyFqp_BpbK-d1URyeKUso4QSJPs" >> "$ENV_FILE"
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION written to .env.local${NC}"
 else
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION already in .env.local — OK${NC}"
 fi
+
+# Read PORT from .env.local (fallback 3000 — matches production default)
+APP_PORT=$(grep -E '^PORT=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+APP_PORT="${APP_PORT:-3000}"
+echo -e "${GREEN}App port: $APP_PORT${NC}"
 
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
 npm install --prefer-offline
@@ -51,7 +57,8 @@ if [ -d "$DOMAIN_ROOT" ]; then
   # ── Brotli / gzip compression + performance .htaccess ──────────────────────
   # This reduces the 1.3 MB page to ~300–400 KB over the wire,
   # cutting London load time from ~1.25 s to under 1 s.
-  cat > "$DOMAIN_ROOT/.htaccess" << 'HTACCESS'
+  # Note: heredoc is unquoted so $APP_PORT expands; literal $1 is escaped as \$1
+  cat > "$DOMAIN_ROOT/.htaccess" << HTACCESS
 # ── Brotli compression (Apache mod_brotli — preferred over gzip) ──────────────
 <IfModule mod_brotli.c>
   AddOutputFilterByType BROTLI_COMPRESS \
@@ -120,8 +127,8 @@ if [ -d "$DOMAIN_ROOT" ]; then
   # Serve public assets (favicon, icons, manifest, sw.js) directly
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule ^ - [L]
-  # Everything else → Node.js on port 5001
-  RewriteRule ^(.*)$ http://127.0.0.1:5001/$1 [P,L]
+  # Everything else → Node.js (port read from .env.local)
+  RewriteRule ^(.*)\$ http://127.0.0.1:${APP_PORT}/\$1 [P,L]
 </IfModule>
 HTACCESS
 
@@ -151,7 +158,7 @@ else
 fi
 
 echo -e "${YELLOW}[5/5] Restarting server...${NC}"
-fuser -k 5001/tcp 2>/dev/null || true
+fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
 sleep 1
 pm2 restart betcheza --update-env 2>/dev/null || pm2 start npm --name "betcheza" -- start
 pm2 save
