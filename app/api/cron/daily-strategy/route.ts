@@ -53,45 +53,71 @@ function getOpenAI(): OpenAI | null {
   try { return new OpenAI({ apiKey, baseURL }); } catch { return null; }
 }
 
-function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date; odds?: { home: number; draw: number; away: number } | null }, idx: number): StrategyPick {
-  // Use real bookmaker odds from the match if available — never use Math.random().
-  // The strategy target is a combined accumulator of 3.00–4.00 so individual picks
-  // should be modest favourites (1.30–2.20 range works best in a 2–3 leg acca).
+/** Score how "safe" a set of bookmaker odds is. Higher = safer bet. */
+function oddsToSafetyScore(odds: number): number {
+  if (odds >= 1.20 && odds <= 1.50) return 100; // very strong favourite — safest
+  if (odds >  1.50 && odds <= 1.80) return 90;  // strong favourite
+  if (odds >  1.80 && odds <= 2.10) return 75;  // slight favourite
+  if (odds >  2.10 && odds <= 2.50) return 55;  // near-evens
+  if (odds >  2.50 && odds <= 3.20) return 35;  // underdog territory
+  return 20;                                      // big underdog / long shot
+}
+
+/**
+ * Given a match with real odds, return the SAFEST single pick from it.
+ * Priority order: Double Chance (1X/X2) → Outright favourite → BTTS/O2.5 proxy.
+ * Returns the pick along with its safety score so the greedy loop can sort candidates.
+ */
+function safestPick(
+  match: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date; odds?: { home: number; draw: number; away: number } | null },
+  idx: number,
+): StrategyPick & { safetyScore: number } {
   let odds = 1.65;
   let pick = match.homeTeam.name;
   let market = '1X2';
+  let safetyScore = 50;
 
   if (match.odds) {
     const { home, draw, away } = match.odds;
-    // Prefer a home win between 1.30–2.50 — good value and confidence
-    if (home >= 1.30 && home <= 2.50) {
-      odds = home;
-      pick = match.homeTeam.name;
+
+    // Option A: Double Chance covers 2 of 3 outcomes — inherently safer
+    // Approximate DC odds using devig of 1X (home win or draw)
+    const totalInv = (1 / home) + (1 / draw) + (1 / away);
+    const dc1xFair = ((1 / home) + (1 / draw)) / totalInv;
+    const dcX2Fair = ((1 / away) + (1 / draw)) / totalInv;
+    const dc1xOdds = parseFloat((1 / dc1xFair).toFixed(2));
+    const dcX2Odds = parseFloat((1 / dcX2Fair).toFixed(2));
+    const bestDcOdds = dc1xOdds <= dcX2Odds ? dc1xOdds : dcX2Odds;
+    const bestDcPick = dc1xOdds <= dcX2Odds
+      ? `${match.homeTeam.name} or Draw`
+      : `${match.awayTeam.name} or Draw`;
+
+    // Option B: straight win on the favourite
+    const favOdds = home <= away ? home : away;
+    const favPick = home <= away ? match.homeTeam.name : match.awayTeam.name;
+
+    // Prefer DC if it lands in 1.15–1.85 (good safe range)
+    if (bestDcOdds >= 1.15 && bestDcOdds <= 1.90) {
+      odds = bestDcOdds;
+      pick = bestDcPick;
+      market = 'Double Chance';
+      safetyScore = oddsToSafetyScore(odds) + 10; // bonus for DC
+    } else if (favOdds >= 1.25 && favOdds <= 2.50) {
+      odds = favOdds;
+      pick = favPick;
       market = '1X2';
-    } else if (away >= 1.30 && away <= 2.50) {
-      odds = away;
-      pick = match.awayTeam.name;
-      market = '1X2';
-    } else if (draw >= 2.80 && draw <= 3.80) {
-      odds = draw;
-      pick = 'Draw';
-      market = '1X2';
+      safetyScore = oddsToSafetyScore(odds);
     } else {
-      // Use double-chance (1X or X2) which typically lands 1.20–1.80
-      const dcOdds = parseFloat(((home + draw) / 2).toFixed(2));
-      if (dcOdds >= 1.15 && dcOdds <= 1.80) {
-        odds = dcOdds;
-        pick = `${match.homeTeam.name} or Draw`;
-        market = 'Double Chance';
-      } else {
-        odds = Math.max(1.30, Math.min(2.20, home));
-        pick = match.homeTeam.name;
-        market = '1X2';
-      }
+      // Fallback: take the lower of the two outright odds
+      odds = parseFloat(Math.min(home, away).toFixed(2));
+      pick = home <= away ? match.homeTeam.name : match.awayTeam.name;
+      market = '1X2';
+      safetyScore = oddsToSafetyScore(odds);
     }
   }
 
-  odds = parseFloat(odds.toFixed(2));
+  odds = Math.max(1.10, parseFloat(odds.toFixed(2)));
+  safetyScore = Math.max(0, safetyScore);
 
   return {
     id: `auto-${Date.now()}-${idx}`,
@@ -102,10 +128,52 @@ function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: str
     pick,
     market,
     odds,
-    confidence: 'Medium',
-    reasoning: `${pick} identified from ${market} market${match.odds ? ` at bookmaker odds ${odds}` : ''}. Home advantage and current form support this selection.`,
+    confidence: odds <= 1.50 ? 'High' : odds <= 1.85 ? 'Medium' : 'Low',
+    reasoning: `${pick} selected from ${market} market at real bookmaker odds ${odds}. Pick prioritises low-risk selection to keep combined accumulator in the 3.0–4.0 range.`,
     result: 'pending',
-  };
+    safetyScore,
+  } as StrategyPick & { safetyScore: number };
+}
+
+/**
+ * Greedy accumulator builder.
+ * Picks the SAFEST legs from the candidate pool and keeps adding until the
+ * combined odds land in [minTarget, maxTarget].  Works with 1–10+ games.
+ */
+function buildGreedyAccumulator(
+  pool: Parameters<typeof safestPick>[0][],
+  dateStr: string,
+  minTarget = 2.90,
+  maxTarget = 4.20,
+): StrategyPick[] {
+  if (pool.length === 0) return [];
+
+  // Score every candidate and sort safest-first
+  const candidates = pool
+    .map((m, i) => ({ m, pick: safestPick(m, i) }))
+    .sort((a, b) => b.pick.safetyScore - a.pick.safetyScore);
+
+  const chosen: (StrategyPick & { safetyScore: number })[] = [];
+  let combined = 1.0;
+
+  for (const { pick } of candidates) {
+    if (combined >= minTarget) break;          // target reached — stop adding
+    const projected = combined * pick.odds;
+    if (projected > maxTarget + 0.30) continue; // would overshoot — skip this leg
+    chosen.push(pick);
+    combined = projected;
+    if (chosen.length >= 10) break;            // hard cap
+  }
+
+  // If we still haven't hit the floor, just return what we have (better than nothing)
+  if (chosen.length === 0 && candidates.length > 0) {
+    chosen.push(candidates[0].pick);
+  }
+
+  return chosen.map((p, i) => ({
+    ...p,
+    id: `${dateStr}-greedy-${i}`,
+  }));
 }
 
 async function ensureTable(): Promise<void> {
@@ -188,41 +256,33 @@ async function generatePicksForDate(targetDate: Date, dayPlan: { stake: number; 
 
 Today is ${dateDisplay}. This is Day ${dayNumber} of the weekly "3 Daily Odds" compounding plan — stake KES ${dayPlan.stake.toLocaleString()}, target win KES ${dayPlan.targetWin.toLocaleString()}.
 
-STRATEGY GOAL: Select 1–5 football picks so that ALL odds multiplied together (combined accumulator) falls STRICTLY between 3.00 and 4.00.
+STRATEGY GOAL: Select ANY NUMBER of football picks (1, 2, 3, 4, 5, 6 — whatever works) so that ALL odds multiplied together (combined accumulator) falls between 2.90 and 4.20. The number of games does NOT matter — 1 game is fine, 10 games is fine. What matters is: combined odds 2.90–4.20.
 
-ODDS RULES — This is critical:
-- Use REALISTIC bookmaker-style decimal odds (e.g. 1.73, 1.87, 2.10, 1.62, not round numbers like 1.5, 2.0)
-- Where odds are provided in the match list (H=/D=/A=), use those exact bookmaker odds as your pick odds
-- Where no odds are shown, estimate market-realistic odds: strong home favourites 1.35–1.75, slight favourites 1.80–2.20, even matches 2.50–3.10, clear underdogs 3.25+
-- Aim for picks in the 1.60–2.20 range each — 2 or 3 such picks combine to a 3.00–4.00 accumulator
+SAFETY FIRST — minimise risk:
+- ALWAYS prefer Double Chance (1X or X2) over outright 1X2 when the match is tight
+- Prefer lower odds (1.20–1.80) — more games with safe odds beats fewer games with risky odds
+- Where bookmaker odds are shown (H=/D=/A=), use those EXACT values — never invent odds
+- Where no odds are shown, estimate conservatively: strong favourites 1.35–1.65, slight favourites 1.70–2.10
 
-MARKET DIVERSITY RULES — vary the markets across picks:
-- Use a MIX of markets across the 1–5 picks. Do NOT use the same market for every pick.
-- Allowed markets (choose the best fit for each match):
-  • "1X2" — pick the outright match result (Home Win, Draw, or Away Win)
-  • "BTTS" — pick "Both Teams to Score - Yes" or "No"
-  • "Over/Under" — pick "Over 2.5 Goals" or "Under 2.5 Goals"
-  • "Double Chance" — pick "Home Win or Draw (1X)" or "Away Win or Draw (X2)"
-  • "Asian Handicap" — pick "Home -0.5" or "Away +0.5" for lopsided games
-- Choose BTTS Yes when both teams have scored in 4+ of last 5 games
-- Choose Over 2.5 when the match is likely high-scoring (both attack, weak defences)
-- Choose Double Chance when one side is a slight favourite but the draw is possible
-- Choose 1X2 for clear favourites (odds 1.40–2.20)
+MARKET MIX — vary where suitable:
+- "1X2" for clear favourites (odds < 2.00)
+- "Double Chance" (1X or X2) when either side could win but one is favoured
+- "BTTS Yes" when both teams score regularly
+- "Over 2.5 Goals" for high-scoring matchups
+- "Under 2.5 Goals" for defensive teams
 
-ANALYSIS RULES:
-- Analyse each match based on home advantage, recent form, head-to-head records
-- Write specific reasoning: mention actual factors like "7 wins in last 8 home games", "both teams scored in 4 of last 5 meetings", "trailing 2 points with 3 games left", etc.
+ANALYSIS: mention actual form factors in reasoning (home record, head-to-head, goals scored/conceded etc.)
 
 Available matches (with bookmaker odds where available):
 ${matchList}
 
-Return ONLY valid JSON (1 to 5 picks). All odds multiplied MUST equal 3.00–4.00:
-[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"1X2","odds":1.87,"confidence":"High","reasoning":"Specific analysis here..."}]`;
+Return ONLY valid JSON array. Any number of picks is allowed as long as the combined product of all odds is between 2.90 and 4.20:
+[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"Double Chance","odds":1.45,"confidence":"High","reasoning":"..."}]`;
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 1500,
+        max_completion_tokens: 2000,
       });
 
       const raw = completion.choices?.[0]?.message?.content || '[]';
@@ -231,69 +291,31 @@ Return ONLY valid JSON (1 to 5 picks). All odds multiplied MUST equal 3.00–4.0
         const parsed = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
         const arr = Array.isArray(parsed) ? parsed : [];
         if (arr.length >= 1) {
-          const candidates: StrategyPick[] = arr.slice(0, 5).map((p: StrategyPick, i: number) => ({
+          const candidates: StrategyPick[] = arr.slice(0, 10).map((p: StrategyPick, i: number) => ({
             ...p,
             id: `${dateStr}-${i}`,
-            odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
+            odds: Math.max(1.05, parseFloat(String(p.odds)) || 1.5),
             result: 'pending' as const,
           }));
           const combined = candidates.reduce((acc, p) => acc * p.odds, 1);
-          // Accept if combined odds are in range or close (we don't want to discard good picks)
-          if (combined >= 2.5 && combined <= 5.0) {
+          // Accept if combined odds are comfortably within target (2.80–4.50 is fine)
+          if (combined >= 2.80 && combined <= 4.50) {
             picks = candidates;
           }
         }
       } catch { }
     }
 
-    // Fallback: use real odds from pool matches to build an accumulator near 3.00–4.00
+    // Fallback: greedy safety-first accumulator from real bookmaker odds.
+    // Works with any number of games (1–10+) — always tries to hit 2.90–4.20.
     if (picks.length === 0 && pool.length > 0) {
-      // Try to find 2–3 picks from pool with real odds that combine to 3.00–4.00
-      const candidates = pool.filter(m => m.odds && m.odds.home > 1).slice(0, 15);
-      if (candidates.length >= 2) {
-        // Try pairs first
-        outer: for (let i = 0; i < candidates.length; i++) {
-          for (let j = i + 1; j < candidates.length; j++) {
-            const p1 = fallbackPick(candidates[i], 0);
-            const p2 = fallbackPick(candidates[j], 1);
-            const combined = p1.odds * p2.odds;
-            if (combined >= 3.00 && combined <= 4.00) {
-              picks = [
-                { ...p1, id: `${dateStr}-fallback-0` },
-                { ...p2, id: `${dateStr}-fallback-1` },
-              ];
-              break outer;
-            }
-          }
-        }
-        // If no good pair found, try triplets
-        if (picks.length === 0) {
-          outer2: for (let i = 0; i < Math.min(candidates.length, 8); i++) {
-            for (let j = i + 1; j < Math.min(candidates.length, 8); j++) {
-              for (let k = j + 1; k < Math.min(candidates.length, 8); k++) {
-                const p1 = fallbackPick(candidates[i], 0);
-                const p2 = fallbackPick(candidates[j], 1);
-                const p3 = fallbackPick(candidates[k], 2);
-                const combined = p1.odds * p2.odds * p3.odds;
-                if (combined >= 3.00 && combined <= 4.00) {
-                  picks = [
-                    { ...p1, id: `${dateStr}-fallback-0` },
-                    { ...p2, id: `${dateStr}-fallback-1` },
-                    { ...p3, id: `${dateStr}-fallback-2` },
-                  ];
-                  break outer2;
-                }
-              }
-            }
-          }
-        }
+      const oddsPool = pool.filter(m => m.odds && m.odds.home > 1).slice(0, 25);
+      if (oddsPool.length > 0) {
+        picks = buildGreedyAccumulator(oddsPool, dateStr, 2.90, 4.20);
       }
-      // If still empty, use the first 2 matches with their real odds
-      if (picks.length === 0) {
-        picks = pool.slice(0, 2).map((m, i) => ({
-          ...fallbackPick(m, i),
-          id: `${dateStr}-fallback-${i}`,
-        }));
+      // If still no picks (no real odds available), use any available matches
+      if (picks.length === 0 && pool.length > 0) {
+        picks = buildGreedyAccumulator(pool.slice(0, 10), dateStr, 2.90, 4.20);
       }
     }
   } catch (e: unknown) {

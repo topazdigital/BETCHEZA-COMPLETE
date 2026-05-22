@@ -609,32 +609,14 @@ function AiTipCard({ ev }: { ev: DashboardEvent }) {
   let market = `${ev.team.name} to win`;
   let odds: number | null = null;
   let confidence = 62;
-  const isEstimated = false;
 
   if (hasRealOdds && teamOdds && oppOdds) {
-    const teamFav = teamOdds <= oppOdds;
+    // Use raw bookmaker odds directly — no derived or estimated values
     odds = teamOdds;
-    if (!teamFav && drawOdds) {
-      // Team is the underdog — recommend Double Chance (team win OR draw).
-      // DC odds are always LOWER than the straight-win odds because it covers 2 outcomes.
-      const teamProb = 1 / teamOdds;
-      const drawProb = 1 / drawOdds;
-      // Remove the bookmaker margin before combining (devig)
-      const totalProb = teamProb + drawProb + 1 / oppOdds;
-      const dcFair = (teamProb + drawProb) / totalProb;
-      const dcOdds = parseFloat((1 / dcFair).toFixed(2));
-      if (dcOdds >= 1.05 && dcOdds < teamOdds) {
-        market = 'Double chance — ' + ev.team.name + ' or draw';
-        odds = dcOdds;
-        confidence = Math.round(dcFair * 100);
-      }
-      // else: keep straight win (dcOdds would be ≥ win odds which is nonsensical)
-    } else if (teamFav) {
-      const impliedProbs = (1/teamOdds) + (1/oppOdds) + (drawOdds ? 1/drawOdds : 0);
-      confidence = Math.min(82, Math.round((1 / teamOdds) / impliedProbs * 100));
-    }
+    const impliedProbs = (1 / teamOdds) + (1 / oppOdds) + (drawOdds ? 1 / drawOdds : 0);
+    confidence = Math.min(82, Math.round((1 / teamOdds) / impliedProbs * 100));
   }
-  // No real bookmaker odds → skip this match in AI picks (don't show made-up numbers)
+  // No real bookmaker odds → skip this match in AI picks
 
   // Only show cards with real bookmaker odds — no synthetic numbers
   if (odds === null) return null;

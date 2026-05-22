@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, hashPassword } from '@/lib/auth';
 import { hasPermission, type Role, ROLE_LABELS } from '@/lib/permissions';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getUserRoleOverride, setUserRoleOverride } from '@/lib/user-role-overrides';
-import { query } from '@/lib/db';
+import { query, execute } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -139,4 +139,45 @@ export async function PATCH(request: NextRequest) {
     console.warn('[admin/users] DB role update failed (in-memory override still applied):', e instanceof Error ? e.message : e);
   }
   return NextResponse.json({ success: true, id, role });
+}
+
+export async function POST(request: NextRequest) {
+  const me = await getCurrentUser();
+  if (!me || !hasPermission(me.role, 'admin.users.read')) {
+    return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
+  }
+  const body = await request.json().catch(() => ({} as Record<string, unknown>));
+  const email = String(body.email || '').trim().toLowerCase();
+  const username = String(body.username || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const displayName = String(body.displayName || body.username || '').trim();
+  const password = String(body.password || '');
+  const role = (body.role as Role) || 'user';
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return NextResponse.json({ success: false, error: 'Invalid email' }, { status: 400 });
+  if (!username || username.length < 3)
+    return NextResponse.json({ success: false, error: 'Username must be at least 3 characters' }, { status: 400 });
+  if (!password || password.length < 8)
+    return NextResponse.json({ success: false, error: 'Password must be at least 8 characters' }, { status: 400 });
+
+  try {
+    const existing = await query<{ id: number }>(
+      'SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1',
+      [email, username]
+    );
+    if (existing.rows.length > 0)
+      return NextResponse.json({ success: false, error: 'Email or username already exists' }, { status: 409 });
+
+    const passwordHash = await hashPassword(password);
+    const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
+    const result = await execute(
+      `INSERT INTO users (email, username, display_name, password_hash, avatar_url, role, balance, timezone, odds_format, is_verified, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, 'Africa/Nairobi', 'decimal', 1, NOW(), NOW())`,
+      [email, username, displayName || username, passwordHash, avatar, role]
+    );
+    return NextResponse.json({ success: true, id: result.insertId, email, username, role });
+  } catch (e) {
+    console.error('[admin/users] create user failed:', e);
+    return NextResponse.json({ success: false, error: 'Failed to create user' }, { status: 500 });
+  }
 }

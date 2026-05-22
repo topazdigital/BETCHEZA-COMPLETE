@@ -349,7 +349,10 @@ export async function getExistingSubscriber(email: string): Promise<EmailSubscri
 
 export async function saveEmailSubscriber(input: Omit<EmailSubscriberRow, 'id'>): Promise<EmailSubscriberRow> {
   const id = `es_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const row: EmailSubscriberRow = { id, active: true, ...input };
+  // Auto-generate unsubscribeToken if the caller didn't supply one (prevents DB NOT NULL failure)
+  const unsubscribeToken = (input as { unsubscribeToken?: string }).unsubscribeToken ||
+    `ut_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 16)}`;
+  const row: EmailSubscriberRow = { id, active: true, ...input, unsubscribeToken };
   if (hasDb()) {
     try {
       await query(
