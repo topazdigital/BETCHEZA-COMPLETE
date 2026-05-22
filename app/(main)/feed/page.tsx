@@ -1101,14 +1101,94 @@ function MyTipsPanel({ userId }: { userId?: number | null }) {
   );
 }
 
+interface StrategyPickSlim {
+  homeTeam: string;
+  awayTeam: string;
+  league: string;
+  pick: string;
+  market: string;
+  odds: number;
+  confidence: string;
+  matchTime?: string;
+}
+
+interface StrategyDaySlim {
+  date: string;
+  picks: StrategyPickSlim[];
+  result?: string;
+}
+
+interface StrategyWeekSlim {
+  days: StrategyDaySlim[];
+}
+
 function TipOfDay() {
-  const { data } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, { refreshInterval: 300000, revalidateOnFocus: false });
-  const top = data?.trending?.find(p => p.pick && p.odds && Number(p.odds) > 1) ?? null;
+  // Try strategy picks first (real verified odds from the daily strategy)
+  const { data: stratData } = useSWR<StrategyWeekSlim>('/api/strategy/predictions', fetcher, {
+    refreshInterval: 600_000,
+    revalidateOnFocus: false,
+    dedupingInterval: 300_000,
+  });
 
-  if (!top) return null;
+  // Fall back to community trending posts
+  const { data: trendData } = useSWR<TrendingResponse>('/api/feed/trending', fetcher, {
+    refreshInterval: 300_000,
+    revalidateOnFocus: false,
+  });
 
+  // Find today's strategy pick (best confidence, then odds closest to 1.90)
+  const today = new Date().toISOString().slice(0, 10);
+  const todayDay = stratData?.days?.find(d => d.date === today && (!d.result || d.result === 'pending'));
+  const stratPicks = todayDay?.picks ?? [];
+  const bestStratPick = stratPicks.length > 0
+    ? stratPicks.slice().sort((a, b) => {
+        const confScore = (c: string) => c === 'High' ? 3 : c === 'Medium' ? 2 : 1;
+        const cs = confScore(b.confidence) - confScore(a.confidence);
+        if (cs !== 0) return cs;
+        return Math.abs(a.odds - 1.90) - Math.abs(b.odds - 1.90);
+      })[0]
+    : null;
+
+  // Community trending fallback
+  const communityPick = trendData?.trending?.find(p => p.pick && p.odds && Number(p.odds) > 1.10) ?? null;
+
+  if (!bestStratPick && !communityPick) return null;
+
+  if (bestStratPick) {
+    const matchTitle = `${bestStratPick.homeTeam} vs ${bestStratPick.awayTeam}`;
+    return (
+      <div className="relative overflow-hidden rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-card p-4">
+        <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-amber-400/20 blur-2xl" />
+        <div className="relative">
+          <div className="mb-2 flex items-center gap-1.5">
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500">Tip of the Day</span>
+          </div>
+          <Link href="/strategy" className="mb-1 block truncate text-[11px] text-primary hover:underline font-medium">
+            {matchTitle}
+          </Link>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2">
+              <div className="text-[9px] uppercase tracking-wide text-amber-600 font-medium">Pick</div>
+              <div className="text-base font-black text-foreground leading-tight truncate">{bestStratPick.pick}</div>
+            </div>
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-center">
+              <div className="text-[9px] uppercase tracking-wide text-emerald-600 font-medium">Odds</div>
+              <div className="text-base font-black text-emerald-500">{Number(bestStratPick.odds).toFixed(2)}</div>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <p className="text-[10px] text-muted-foreground truncate">{bestStratPick.market} · {bestStratPick.league}</p>
+            <Link href="/strategy" className="text-[9px] font-semibold text-amber-500 hover:underline shrink-0">3 Daily Odds →</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Community trending fallback
+  const top = communityPick!;
   const matchHref = top.matchId ? `/matches/${top.matchId}` : null;
-
   return (
     <div className="relative overflow-hidden rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-card p-4">
       <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-amber-400/20 blur-2xl" />

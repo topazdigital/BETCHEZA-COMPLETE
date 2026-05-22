@@ -145,6 +145,38 @@ export async function register() {
 
       console.log('[instrumentation] DB migrations applied (community_rooms + room_id)');
 
+      // 4b. Backfill room_id on existing fake-tipster posts (user_id >= 1000)
+      //     that were created before rooms existed. Match rules:
+      //       - basketball sport mention  → basketball room
+      //       - live match posts          → live-chat room (no easy way to detect; skip)
+      //       - has pick + match_title    → football room
+      //       - has match_title, no pick  → analysis room
+      //       - value/odds keywords       → value-bets room
+      //       - analysis keywords         → analysis room
+      //       - everything else           → general room
+      const roomRows = await query<{ id: number; slug: string }>(
+        `SELECT id, slug FROM community_rooms WHERE is_active = 1`, []
+      ).catch(() => ({ rows: [] as Array<{ id: number; slug: string }> }));
+      const roomMap = new Map(roomRows.rows.map(r => [r.slug, r.id]));
+
+      if (roomMap.size > 0) {
+        const bball  = roomMap.get('basketball');
+        const ftball = roomMap.get('football');
+        const val    = roomMap.get('value-bets');
+        const anal   = roomMap.get('analysis');
+        const gen    = roomMap.get('general');
+
+        if (bball)  await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND (LOWER(content) LIKE '%nba%' OR LOWER(content) LIKE '%basketball%' OR LOWER(content) LIKE '%euroleague%')`, [bball]).catch(() => {});
+        if (ftball) await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NOT NULL AND pick IS NOT NULL`, [ftball]).catch(() => {});
+        if (anal)   await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NOT NULL AND pick IS NULL`, [anal]).catch(() => {});
+        if (val)    await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NULL AND (LOWER(content) LIKE '%value%' OR LOWER(content) LIKE '%odds%' OR LOWER(content) LIKE '%line%' OR LOWER(content) LIKE '%market%')`, [val]).catch(() => {});
+        if (anal)   await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NULL AND (LOWER(content) LIKE '%xg%' OR LOWER(content) LIKE '%h2h%' OR LOWER(content) LIKE '%stats%' OR LOWER(content) LIKE '%analysis%' OR LOWER(content) LIKE '%research%')`, [anal]).catch(() => {});
+        if (gen)    await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000`, [gen]).catch(() => {});
+        // Sync post_count in community_rooms to match actual rows
+        await query(`UPDATE community_rooms cr SET post_count = (SELECT COUNT(*) FROM feed_posts fp WHERE fp.room_id = cr.id)`).catch(() => {});
+        console.log('[instrumentation] Backfilled room_id on existing fake-tipster posts');
+      }
+
       // 4. Fix known data corrections that were only applied in code (MANUAL_DAY_OVERRIDES)
       //    These rows exist in DB with wrong results; correct them once here.
       const corrections: Array<{ date: string; result: 'win' | 'loss'; picksResult: 'win' | 'loss' }> = [

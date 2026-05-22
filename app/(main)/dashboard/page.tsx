@@ -588,21 +588,41 @@ function DashboardMatchRow({ ev, tz, kind }: { ev: DashboardEvent; tz: string; k
 function AiTipCard({ ev }: { ev: DashboardEvent }) {
   const oppName = ev.opponent?.name || 'Opponent';
   const o = ev.odds || {};
-  const teamOdds = ev.isHome ? o.home : o.away;
-  const oppOdds = ev.isHome ? o.away : o.home;
+  const homeOdds = o.home;
+  const awayOdds = o.away;
+  const drawOdds = o.draw;
+
+  // Only use real bookmaker odds — never fall back to fabricated prices
+  const teamOdds = ev.isHome ? homeOdds : awayOdds;
+  const oppOdds  = ev.isHome ? awayOdds : homeOdds;
+  const hasRealOdds = !!(teamOdds && teamOdds > 1.01);
+
   let market = `${ev.team.name} to win`;
-  let odds = teamOdds || 2.0;
+  let odds: number | null = hasRealOdds ? (teamOdds ?? null) : null;
   let confidence = 60;
-  if (teamOdds && oppOdds) {
-    const teamFav = teamOdds < oppOdds;
-    if (!teamFav) {
-      market = 'Double chance — ' + ev.team.name + ' or draw';
-      odds = Math.max(1.5, teamOdds * 0.7);
-      confidence = 55;
-    } else {
-      confidence = Math.min(85, Math.round((1 / teamOdds) / (1/teamOdds + 1/oppOdds + (o.draw ? 1/o.draw : 0)) * 100));
+
+  if (hasRealOdds && teamOdds && oppOdds) {
+    const teamFav = teamOdds <= oppOdds;
+    if (!teamFav && drawOdds) {
+      // Team is the underdog — recommend Double Chance using real DC market estimate
+      // DC (1X or X2): implied prob = team win prob + draw prob
+      const teamProb = 1 / teamOdds;
+      const drawProb = 1 / drawOdds;
+      const dcProb = teamProb + drawProb;
+      // Only show DC if we have a draw odd to build from
+      const dcOdds = parseFloat((1 / dcProb).toFixed(2));
+      if (dcOdds >= 1.05) {
+        market = 'Double chance — ' + ev.team.name + ' or draw';
+        odds = dcOdds;
+        confidence = 58;
+      }
+    } else if (teamFav) {
+      // Favourite — straight win
+      const impliedProbs = (1/teamOdds) + (1/oppOdds) + (drawOdds ? 1/drawOdds : 0);
+      confidence = Math.min(82, Math.round((1 / teamOdds) / impliedProbs * 100));
     }
   }
+
   return (
     <Link
       href={`/matches/${matchIdToSlug(ev.id)}`}
@@ -615,8 +635,12 @@ function AiTipCard({ ev }: { ev: DashboardEvent }) {
       <p className="mt-1 truncate text-xs font-semibold">vs {oppName}</p>
       <p className="mt-1 truncate text-[11px] text-muted-foreground">{market}</p>
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        <span className="text-base font-bold text-amber-600 tabular-nums">@{odds.toFixed(2)}</span>
-        <span className="text-[10px] text-muted-foreground">{confidence}% conf.</span>
+        {odds != null ? (
+          <span className="text-base font-bold text-amber-600 tabular-nums">@{odds.toFixed(2)}</span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground italic">No odds yet</span>
+        )}
+        {odds != null && <span className="text-[10px] text-muted-foreground">{confidence}% conf.</span>}
       </div>
       <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
         <span className="inline-flex items-center gap-1 truncate">

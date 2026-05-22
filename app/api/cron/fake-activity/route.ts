@@ -291,7 +291,68 @@ const g = globalThis as {
   __fakeActivityLastRun?: number;
   __fakeActivityTipsterLastPost?: Map<number, number>;
   __fakeActivityTipsterLastComment?: Map<number, number>;
+  __fakeActivityRoomIds?: Map<string, number>;
 };
+
+// ── Room assignment ───────────────────────────────────────────────────────────
+// Fetch room slug→id mapping once and cache for the process lifetime.
+async function getRoomId(slug: string): Promise<number | null> {
+  if (!g.__fakeActivityRoomIds) {
+    try {
+      const { query } = await import('@/lib/db');
+      const r = await query<{ id: number; slug: string }>(
+        `SELECT id, slug FROM community_rooms WHERE is_active = 1`,
+        [],
+      );
+      g.__fakeActivityRoomIds = new Map(r.rows.map(x => [x.slug, x.id]));
+    } catch {
+      g.__fakeActivityRoomIds = new Map();
+    }
+  }
+  return g.__fakeActivityRoomIds.get(slug) ?? null;
+}
+
+/**
+ * Pick the best room for a fake post based on sport, match liveness, content,
+ * and tipster status.
+ */
+async function pickRoomForPost(opts: {
+  sport?: string;
+  isLive?: boolean;
+  hasPick?: boolean;
+  hasOdds?: boolean;
+  contentLower: string;
+  isPro?: boolean;
+}): Promise<number | null> {
+  const { sport, isLive, hasPick, hasOdds, contentLower, isPro } = opts;
+
+  // Pro tipsters with confirmed picks → Premium Picks
+  if (isPro && hasPick && hasOdds) return getRoomId('premium');
+
+  // Basketball posts
+  if (sport === 'basketball') return getRoomId('basketball');
+
+  // Live match → Live Chat
+  if (isLive) return getRoomId('live-chat');
+
+  // Football match tip with real odds → Football Tips
+  if (hasPick && hasOdds && (sport === 'soccer' || sport === 'football' || !sport)) {
+    return getRoomId('football');
+  }
+
+  // Value / odds analysis posts
+  const valueTerms = ['value', 'odds', 'line moved', 'price', 'market', 'mispriced', 'implied', 'line'];
+  if (valueTerms.some(t => contentLower.includes(t))) return getRoomId('value-bets');
+
+  // Stats / analysis posts
+  const analysisTerms = ['xg', 'h2h', 'stats', 'analysis', 'model', 'data', 'research', 'form', 'pattern'];
+  if (analysisTerms.some(t => contentLower.includes(t))) return getRoomId('analysis');
+
+  // Football match watch/analysis without odds → Analysis
+  if (!hasPick || !hasOdds) return getRoomId('analysis');
+
+  return getRoomId('general');
+}
 
 // Minimum gaps so each fake tipster feels like a real person with a daily rhythm
 const TIPSTER_POST_COOLDOWN_MS    = 3 * 60 * 60 * 1000; // 3 h between posts per tipster
@@ -443,11 +504,21 @@ export async function GET(req: NextRequest) {
         content = randPick(genericAnalysis);
       }
 
+      const isLiveMatch = ['live', 'halftime', 'extra_time', 'penalties'].includes(match.status);
+      const roomId = await pickRoomForPost({
+        sport: match.sport?.slug,
+        isLive: isLiveMatch,
+        hasPick: !!postPick,
+        hasOdds: !!postOdds,
+        contentLower: content.toLowerCase(),
+        isPro: tipster.isPro,
+      });
+
       try {
         await createPost({
           userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
           content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-          pick: postPick, odds: postOdds, imageUrl: null,
+          pick: postPick, odds: postOdds, imageUrl: null, roomId,
         });
         if (postPick && postOdds) recordActivityTip(tipster.id, match.id, postPick, postOdds);
         g.__fakeActivityPostedMatches!.add(match.id);
@@ -488,10 +559,14 @@ export async function GET(req: NextRequest) {
       const tipster = randPick(eligible);
       usedInGeneric.add(tipster.id);
       const content = randPick(GENERIC_POSTS);
+      const genRoomId = await pickRoomForPost({
+        contentLower: content.toLowerCase(),
+        isPro: tipster.isPro,
+      });
       try {
         await createPost({
           userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
-          content, matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null,
+          content, matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null, roomId: genRoomId,
         });
         g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
         results.postsCreated++;
