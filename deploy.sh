@@ -13,6 +13,17 @@ git rm -r --cached .local/data/ 2>/dev/null || true
 git stash push --include-untracked -m "auto-stash before deploy $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
 git pull origin main
 
+echo -e "${YELLOW}[1b/5] Ensuring runtime env vars are set...${NC}"
+# GOOGLE_SITE_VERIFICATION is a public value (visible in HTML source).
+# We write it to .env.local so Next.js picks it up without a manual server step.
+ENV_FILE="$APP_DIR/.env.local"
+if ! grep -q "GOOGLE_SITE_VERIFICATION" "$ENV_FILE" 2>/dev/null; then
+  echo "GOOGLE_SITE_VERIFICATION=c6CwjlMj8vH8Pf7zQyFqp_BpbK-d1URyeKUso4QSJPs" >> "$ENV_FILE"
+  echo -e "${GREEN}GOOGLE_SITE_VERIFICATION written to .env.local${NC}"
+else
+  echo -e "${GREEN}GOOGLE_SITE_VERIFICATION already in .env.local — OK${NC}"
+fi
+
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
 npm install --prefer-offline
 
