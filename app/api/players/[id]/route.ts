@@ -49,7 +49,7 @@ const SPORT_PATHS = [
   'soccer/aut.1', 'soccer/sui.1', 'soccer/gre.1', 'soccer/rus.1', 'soccer/ukr.1',
   'soccer/usa.1', 'soccer/usa.2', 'soccer/mex.1', 'soccer/mex.2', 'soccer/can.1',
   'soccer/bra.1', 'soccer/arg.1', 'soccer/col.1', 'soccer/chi.1', 'soccer/uru.1',
-  'soccer/sau.1', 'soccer/aus.1', 'soccer/jpn.1', 'soccer/kor.1', 'soccer/chn.1',
+  'soccer/ksa.1', 'soccer/aus.1', 'soccer/jpn.1', 'soccer/kor.1', 'soccer/chn.1',
   'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/uefa.europa.conf',
   'soccer/uefa.nations', 'soccer/uefa.euro',
   'soccer/conmebol.libertadores', 'soccer/conmebol.sudamericana', 'soccer/conmebol.america',

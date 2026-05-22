@@ -113,7 +113,7 @@ const LEAGUE_KEY_MAP: Record<string, string> = {
   aus1: 'aus.1',
   jpn1: 'jpn.1',
   chn1: 'chn.1',
-  sau1: 'sau.1',
+  ksa1: 'ksa.1',
   kor1: 'kor.1',
   idn1: 'idn.1',
   tha1: 'tha.1',

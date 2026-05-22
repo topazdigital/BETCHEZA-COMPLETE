@@ -247,7 +247,7 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'aus.1', sportId: 1, leagueId: 20, leagueName: 'A-League', country: 'Australia', countryCode: 'AU', sportType: 'soccer' },
   { sport: 'soccer', league: 'jpn.1', sportId: 1, leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP', sportType: 'soccer' },
   { sport: 'soccer', league: 'chn.1', sportId: 1, leagueId: 28, leagueName: 'Chinese Super League', country: 'China', countryCode: 'CN', sportType: 'soccer' },
-  { sport: 'soccer', league: 'sau.1', sportId: 1, leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ksa.1', sportId: 1, leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA', sportType: 'soccer' },
   { sport: 'soccer', league: 'kor.1', sportId: 1, leagueId: 32, leagueName: 'K League 1', country: 'South Korea', countryCode: 'KR', sportType: 'soccer' },
   { sport: 'soccer', league: 'idn.1', sportId: 1, leagueId: 33, leagueName: 'Liga 1 Indonesia', country: 'Indonesia', countryCode: 'ID', sportType: 'soccer' },
   { sport: 'soccer', league: 'tha.1', sportId: 1, leagueId: 34, leagueName: 'Thai League 1', country: 'Thailand', countryCode: 'TH', sportType: 'soccer' },
@@ -1068,6 +1068,37 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '1978': { name: 'FIFA Club World Cup', country: 'World', countryCode: 'WO' },
 };
 
+// Maps ESPN's internal numeric league IDs → our internal leagueId.
+// Without this, global scoreboard matches get a synthetic `80000 + espnId`
+// leagueId that never matches the league page filter (md.leagueId === ourId).
+// ESPN numeric IDs confirmed by fetching /<league>/scoreboard and reading
+// leagues[0].id or event.uid => l:<id>.
+const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
+  '700':   1,   // Premier League       (eng.1)
+  '740':   2,   // La Liga              (esp.1)
+  '720':   3,   // Bundesliga           (ger.1)
+  '730':   4,   // Serie A              (ita.1)
+  '710':   5,   // Ligue 1              (fra.1)
+  '725':   6,   // Eredivisie           (ned.1)
+  '715':   7,   // Primeira Liga        (por.1)
+  '735':   8,   // Scottish Premiership (sco.1)
+  '775':   9,   // Champions League
+  '1062':  10,  // Europa League
+  '770':   11,  // MLS                  (usa.1)
+  '630':   12,  // Brasileirao          (bra.1)
+  '745':   13,  // Argentine Primera    (arg.1)
+  '21231': 14,  // Saudi Pro League     (ksa.1) ← critical fix
+  '3946':  15,  // Turkish Super Lig    (tur.1)
+  '3901':  16,  // Belgian Pro League   (bel.1)
+  '760':   17,  // Liga MX              (mex.1)  — id from sports-data check
+  '1063':  26,  // UEFA Conference League
+  '9022':  9022,// Kenya Premier League (ken.1)
+  '11054': 9022,// Kenya Premier League alternate ESPN numeric
+  '11585': 252, // Ghana Premier League
+  '11584': 9027,// Nigerian Premier League
+  '11587': 256, // Tanzanian Premier League
+};
+
 // Convert a season slug like "2025-26-saudi-pro-league" or "uefa-champions-league"
 // into a clean display name. Strips year prefixes and title-cases the rest.
 function leagueNameFromSeasonSlug(slug?: string): string | null {
@@ -1208,9 +1239,11 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     const espnLeagueId = espnLeagueIdMatch?.[1] || '0';
     const leagueInfo = leagueInfoMap.get(espnLeagueId) || { name: 'Unknown League', slug: `espn-${espnLeagueId}`, country: 'World', countryCode: 'WO' };
 
-    // Pseudo-config for ID stability — a deterministic leagueId derived from
-    // ESPN's league id keeps URLs consistent across requests.
-    const ourLeagueId = 80000 + parseInt(espnLeagueId, 10);
+    // Use our internal leagueId if we have a mapping, otherwise fall back to
+    // a deterministic synthetic id (80000 + espnNumericId). The mapping is
+    // critical so that e.g. Saudi Pro League (ESPN: 21231) correctly maps to
+    // our leagueId 14 and shows up on the /leagues/saudi-pro-league page.
+    const ourLeagueId = ESPN_NUMERIC_TO_OUR_LEAGUE_ID[espnLeagueId] ?? (80000 + parseInt(espnLeagueId, 10));
     // Use ESPN league id as the slug fragment in our match ID so the match
     // detail page can reconstruct it. Format: espn_global<id>_<eventId>
     const leagueKeyForId = `global${espnLeagueId}`;
@@ -1333,7 +1366,7 @@ const PRIORITY_LEAGUE_KEYS = new Set<string>([
   'ned.1', 'por.1', 'sco.1', 'bel.1', 'tur.1',
   'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'uefa.nations',
   'usa.1', 'mex.1', 'bra.1', 'arg.1',
-  'sau.1', 'jpn.1', 'aus.1',
+  'ksa.1', 'jpn.1', 'aus.1',
   'nba', 'nfl', 'mlb', 'nhl', 'ufc',
 ]);
 

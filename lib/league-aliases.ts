@@ -48,8 +48,8 @@ export const ESPN_LEAGUE_ALIASES: Record<string, string> = {
   'arg-1': 'argentine-primera',
   'arg.1': 'argentine-primera',
   // Saudi
-  'sau-1': 'saudi-pro-league',
   'ksa-1': 'saudi-pro-league',
+  'sau-1': 'saudi-pro-league',
   // Japan
   'jpn-1': 'j-league',
   'jpn.1': 'j-league',

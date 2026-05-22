@@ -80,7 +80,7 @@ export const KNOWN_LEAGUES: LeagueRef[] = [
   { leagueId: 260, leagueName: 'Colombian Primera A',          sportFocus: 'football', espnKey: 'col.1',  aliases: ['colombia league', 'dimayor'] },
   { leagueId: 261, leagueName: 'Chilean Primera Division',     sportFocus: 'football', espnKey: 'chi.1',  aliases: ['chile league', 'primera division chile'] },
   // ── Middle East / Asia ────────────────────────────────────────────────────
-  { leagueId: 14, leagueName: 'Saudi Pro League',              sportFocus: 'football', espnKey: 'sau.1',  aliases: ['spl', 'saudi league', 'roshn saudi league'] },
+  { leagueId: 14, leagueName: 'Saudi Pro League',              sportFocus: 'football', espnKey: 'ksa.1',  aliases: ['spl', 'saudi league', 'roshn saudi league'] },
   { leagueId: 270, leagueName: 'UAE Pro League',               sportFocus: 'football', espnKey: 'uae.1',  aliases: ['uae league', 'arabian gulf league'] },
   { leagueId: 271, leagueName: 'J-League',                     sportFocus: 'football', espnKey: 'jpn.1',  aliases: ['japan j league', 'j1 league', 'japanese league'] },
   { leagueId: 272, leagueName: 'K-League',                     sportFocus: 'football', espnKey: 'kor.1',  aliases: ['korea k league', 'south korea league', 'k1 league'] },

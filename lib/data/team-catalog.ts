@@ -129,49 +129,46 @@ export const SENIOR_FOOTBALL_TEAMS: CatalogTeam[] = [
   { id: '224',   name: 'Fenerbahçe',            aliases: ['fenerbahce'],               league: 'Turkish Super Lig', country: 'Turkey' },
   { id: '225',   name: 'Beşiktaş',              aliases: ['besiktas'],                 league: 'Turkish Super Lig', country: 'Turkey' },
 
-  // ── Croatian HNL ─────────────────────────────────────────────────
-  { id: '3310',  name: 'Dinamo Zagreb',         aliases: ['gnk dinamo', 'zagreb'],     league: 'HNL', country: 'Croatia' },
-  { id: '3311',  name: 'Hajduk Split',          aliases: ['hajduk'],                   league: 'HNL', country: 'Croatia' },
-  { id: '3312',  name: 'NK Osijek',             aliases: ['osijek', 'nk osijek'],      league: 'HNL', country: 'Croatia' },
-  { id: '3313',  name: 'HNK Rijeka',            aliases: ['rijeka'],                   league: 'HNL', country: 'Croatia' },
-  { id: '3314',  name: 'NK Lokomotiva',         aliases: ['lokomotiva'],               league: 'HNL', country: 'Croatia' },
-  { id: '3315',  name: 'HNK Gorica',            aliases: ['gorica'],                   league: 'HNL', country: 'Croatia' },
-  { id: '3316',  name: 'Slaven Belupo',         aliases: ['slaven belupo', 'belupo'],  league: 'HNL', country: 'Croatia' },
-  { id: '3317',  name: 'NK Istra 1961',         aliases: ['istra', 'istra 1961'],      league: 'HNL', country: 'Croatia' },
+  // ── Croatian HNL (real ESPN IDs) ─────────────────────────────────
+  { id: '597',   name: 'Dinamo Zagreb',         aliases: ['gnk dinamo', 'zagreb'],     league: 'HNL', country: 'Croatia' },
+  { id: '489',   name: 'Hajduk Split',          aliases: ['hajduk'],                   league: 'HNL', country: 'Croatia' },
+  { id: '4413',  name: 'NK Lokomotiva',         aliases: ['lokomotiva'],               league: 'HNL', country: 'Croatia' },
 
-  // ── Serbian SuperLiga ─────────────────────────────────────────────
-  { id: '3320',  name: 'Red Star Belgrade',     aliases: ['crvena zvezda', 'red star'], league: 'SuperLiga', country: 'Serbia' },
-  { id: '3321',  name: 'Partizan Belgrade',     aliases: ['partizan'],                  league: 'SuperLiga', country: 'Serbia' },
+  // ── Serbian SuperLiga (real ESPN IDs) ────────────────────────────
+  { id: '2290',  name: 'Red Star Belgrade',     aliases: ['crvena zvezda', 'red star', 'cz beograd'], league: 'SuperLiga', country: 'Serbia' },
+  { id: '541',   name: 'Partizan Belgrade',     aliases: ['partizan'],                  league: 'SuperLiga', country: 'Serbia' },
 
-  // ── Greek Super League ─────────────────────────────────────────────
-  { id: '3330',  name: 'Olympiakos',            aliases: ['olympiacos'],               league: 'Super League', country: 'Greece' },
-  { id: '3331',  name: 'PAOK',                  aliases: ['paok fc'],                  league: 'Super League', country: 'Greece' },
-  { id: '3332',  name: 'Panathinaikos',         aliases: ['panathinaikos fc'],         league: 'Super League', country: 'Greece' },
-  { id: '3333',  name: 'AEK Athens',            aliases: ['aek'],                      league: 'Super League', country: 'Greece' },
+  // ── Greek Super League (real ESPN IDs) ────────────────────────────
+  { id: '435',   name: 'Olympiakos',            aliases: ['olympiacos', 'olympiakos pireus'], league: 'Super League', country: 'Greece' },
+  { id: '605',   name: 'PAOK',                  aliases: ['paok fc', 'paok salonika'],  league: 'Super League', country: 'Greece' },
+  { id: '443',   name: 'Panathinaikos',         aliases: ['panathinaikos fc', 'pao'],   league: 'Super League', country: 'Greece' },
+  { id: '887',   name: 'AEK Athens',            aliases: ['aek'],                       league: 'Super League', country: 'Greece' },
 
-  // ── Ukrainian Premier League ──────────────────────────────────────
-  { id: '3340',  name: 'Shakhtar Donetsk',      aliases: ['shakhtar'],                 league: 'Premier League Ukraine', country: 'Ukraine' },
-  { id: '3341',  name: 'Dynamo Kyiv',           aliases: ['dynamo kiev', 'dynamo kyiv'], league: 'Premier League Ukraine', country: 'Ukraine' },
+  // ── Ukrainian Premier League (real ESPN IDs) ─────────────────────
+  { id: '493',   name: 'Shakhtar Donetsk',      aliases: ['shakhtar'],                  league: 'Premier League Ukraine', country: 'Ukraine' },
+  { id: '440',   name: 'Dynamo Kyiv',           aliases: ['dynamo kiev', 'dynamo kyiv'], league: 'Premier League Ukraine', country: 'Ukraine' },
 
-  // ── Polish Ekstraklasa ────────────────────────────────────────────
-  { id: '3350',  name: 'Legia Warsaw',          aliases: ['legia'],                    league: 'Ekstraklasa', country: 'Poland' },
-  { id: '3351',  name: 'Lech Poznan',           aliases: ['lech'],                     league: 'Ekstraklasa', country: 'Poland' },
+  // ── Polish Ekstraklasa (real ESPN IDs) ───────────────────────────
+  { id: '555',   name: 'Legia Warsaw',          aliases: ['legia'],                     league: 'Ekstraklasa', country: 'Poland' },
+  { id: '2990',  name: 'Lech Poznan',           aliases: ['lech'],                      league: 'Ekstraklasa', country: 'Poland' },
 
-  // ── Austrian Bundesliga ───────────────────────────────────────────
-  { id: '3360',  name: 'Red Bull Salzburg',     aliases: ['rb salzburg', 'salzburg'],  league: 'Austrian Bundesliga', country: 'Austria' },
-  { id: '3361',  name: 'Rapid Vienna',          aliases: ['rapid wien'],               league: 'Austrian Bundesliga', country: 'Austria' },
-  { id: '3362',  name: 'Sturm Graz',            aliases: ['sturm'],                    league: 'Austrian Bundesliga', country: 'Austria' },
+  // ── Austrian Bundesliga (real ESPN IDs) ──────────────────────────
+  { id: '519',   name: 'Rapid Vienna',          aliases: ['rapid wien'],                league: 'Austrian Bundesliga', country: 'Austria' },
+  { id: '3746',  name: 'Sturm Graz',            aliases: ['sturm'],                     league: 'Austrian Bundesliga', country: 'Austria' },
 
-  // ── African giants (CAF-covered) ─────────────────────────────────
-  { id: '3400',  name: 'Gor Mahia',             aliases: ['gor'],                      league: 'KPL', country: 'Kenya' },
-  { id: '3401',  name: 'AFC Leopards',          aliases: ['ingwe', 'leopards'],        league: 'KPL', country: 'Kenya' },
-  { id: '3402',  name: 'Tusker FC',             aliases: ['tusker'],                   league: 'KPL', country: 'Kenya' },
-  { id: '3403',  name: 'Kakamega Homeboyz',     aliases: ['homeboyz', 'kakamega'],     league: 'KPL', country: 'Kenya' },
-  { id: '3410',  name: 'Al Ahly',               aliases: ['ahly'],                     league: 'Egyptian Premier League', country: 'Egypt' },
-  { id: '3411',  name: 'Zamalek',               aliases: ['zamalek sc'],               league: 'Egyptian Premier League', country: 'Egypt' },
-  { id: '3420',  name: 'Mamelodi Sundowns',     aliases: ['sundowns', 'brazilians'],   league: 'Premier Soccer League', country: 'South Africa' },
-  { id: '3421',  name: 'Kaizer Chiefs',         aliases: ['chiefs', 'amakhosi'],       league: 'Premier Soccer League', country: 'South Africa' },
-  { id: '3422',  name: 'Orlando Pirates',       aliases: ['pirates', 'buccaneers'],    league: 'Premier Soccer League', country: 'South Africa' },
+  // ── Saudi Pro League (ksa.1 — real ESPN IDs) ─────────────────────
+  { id: '817',   name: 'Al Nassr',              aliases: ['al-nassr', 'nassr'],         league: 'Saudi Pro League', country: 'Saudi Arabia' },
+  { id: '929',   name: 'Al Hilal',              aliases: ['al-hilal', 'hilal'],         league: 'Saudi Pro League', country: 'Saudi Arabia' },
+  { id: '2276',  name: 'Al Ittihad',            aliases: ['al-ittihad', 'ittihad'],     league: 'Saudi Pro League', country: 'Saudi Arabia' },
+  { id: '793',   name: 'Al Shabab',             aliases: ['al-shabab', 'shabab'],       league: 'Saudi Pro League', country: 'Saudi Arabia' },
+  { id: '8346',  name: 'Al Ahli',               aliases: ['al-ahli saudi'],             league: 'Saudi Pro League', country: 'Saudi Arabia' },
+  { id: '8363',  name: 'Al Ettifaq',            aliases: ['ettifaq'],                   league: 'Saudi Pro League', country: 'Saudi Arabia' },
+  { id: '18459', name: 'Al Taawoun',            aliases: ['taawoun'],                   league: 'Saudi Pro League', country: 'Saudi Arabia' },
+  { id: '13033', name: 'Al Fateh',              aliases: ['fateh'],                     league: 'Saudi Pro League', country: 'Saudi Arabia' },
+
+  // ── African giants (real ESPN IDs where available) ────────────────
+  { id: '8004',  name: 'Gor Mahia',             aliases: ['gor'],                       league: 'KPL', country: 'Kenya' },
+  { id: '18977', name: 'Al Ahly',               aliases: ['ahly', 'al ahly sc'],        league: 'Egyptian Premier League', country: 'Egypt' },
 ];
 
 // Apply ESPN logo URL to every entry (overridable per-team if needed).

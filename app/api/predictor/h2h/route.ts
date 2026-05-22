@@ -6,8 +6,8 @@ export const runtime = 'nodejs';
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
 const SPORT_LEAGUE_MAP: Record<string, { sport: string; leagues: string[] }> = {
-  football: { sport: 'soccer', leagues: ['eng.1','esp.1','ger.1','ita.1','fra.1','ned.1','por.1','sco.1','bel.1','tur.1','uefa.champions','uefa.europa','usa.1','bra.1','arg.1','sau.1','mex.1','aus.1','jpn.1'] },
-  soccer: { sport: 'soccer', leagues: ['eng.1','esp.1','ger.1','ita.1','fra.1','ned.1','por.1','sco.1','bel.1','tur.1','uefa.champions','uefa.europa','usa.1','bra.1','arg.1','sau.1','mex.1'] },
+  football: { sport: 'soccer', leagues: ['eng.1','esp.1','ger.1','ita.1','fra.1','ned.1','por.1','sco.1','bel.1','tur.1','uefa.champions','uefa.europa','usa.1','bra.1','arg.1','ksa.1','mex.1','aus.1','jpn.1'] },
+  soccer: { sport: 'soccer', leagues: ['eng.1','esp.1','ger.1','ita.1','fra.1','ned.1','por.1','sco.1','bel.1','tur.1','uefa.champions','uefa.europa','usa.1','bra.1','arg.1','ksa.1','mex.1'] },
   basketball: { sport: 'basketball', leagues: ['nba'] },
   'american-football': { sport: 'football', leagues: ['nfl'] },
   baseball: { sport: 'baseball', leagues: ['mlb'] },

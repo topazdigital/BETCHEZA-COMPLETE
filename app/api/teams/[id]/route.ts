@@ -20,7 +20,7 @@ const SOCCER_COUNTRY_TO_LEAGUE: Record<string, string> = {
   ned: 'ned.1', por: 'por.1', sco: 'sco.1', tur: 'tur.1', bel: 'bel.1',
   usa: 'usa.1', mex: 'mex.1',
   bra: 'bra.1', arg: 'arg.1', col: 'col.1', chi: 'chi.1',
-  sau: 'sau.1', aus: 'aus.1', jpn: 'jpn.1', kor: 'kor.1',
+  sau: 'ksa.1', ksa: 'ksa.1', aus: 'aus.1', jpn: 'jpn.1', kor: 'kor.1',
   rus: 'rus.1', ukr: 'ukr.1', gre: 'gre.1', den: 'den.1', swe: 'swe.1',
   nor: 'nor.1', sui: 'sui.1', aut: 'aut.1', cze: 'cze.1', pol: 'pol.1',
   rou: 'rou.1', irl: 'irl.1', wal: 'wal.1', nir: 'nir.1',
@@ -43,7 +43,9 @@ const TEAM_RESOLVER_CANDIDATES: Array<[string, string]> = [
   ['soccer', 'ned.1'], ['soccer', 'por.1'], ['soccer', 'sco.1'], ['soccer', 'tur.1'], ['soccer', 'bel.1'],
   ['soccer', 'usa.1'], ['soccer', 'usa.2'], ['soccer', 'mex.1'],
   ['soccer', 'bra.1'], ['soccer', 'arg.1'], ['soccer', 'col.1'], ['soccer', 'chi.1'],
-  ['soccer', 'sau.1'], ['soccer', 'aus.1'], ['soccer', 'jpn.1'], ['soccer', 'kor.1'],
+  ['soccer', 'ksa.1'], ['soccer', 'hrv.1'], ['soccer', 'srb.1'], ['soccer', 'gre.1'],
+  ['soccer', 'pol.1'], ['soccer', 'aut.1'], ['soccer', 'ukr.1'], ['soccer', 'egy.1'],
+  ['soccer', 'mar.1'], ['soccer', 'aus.1'], ['soccer', 'jpn.1'], ['soccer', 'kor.1'],
   // Women's top flights (matches `eng.w.1`, `usa.nwsl`, etc).
   ['soccer', 'eng.w.1'], ['soccer', 'esp.w.1'], ['soccer', 'ger.w.1'], ['soccer', 'fra.w.1'],
   ['soccer', 'ita.w.1'], ['soccer', 'usa.nwsl'], ['soccer', 'aus.w-league'],
@@ -893,7 +895,7 @@ export async function GET(
     'gha.1': { short: 'GPL', full: 'Ghana Premier League' },
     'egy.1': { short: 'Premier', full: 'Egyptian Premier League' },
     'rsa.1': { short: 'PSL', full: 'Betway Premiership' },
-    'sau.1': { short: 'SPL', full: 'Saudi Pro League' },
+    'ksa.1': { short: 'SPL', full: 'Saudi Pro League' },
     // ── Asia / Oceania ─────────────────────────────────────────────────────
     'jpn.1': { short: 'J1 League', full: 'J1 League' },
     'kor.1': { short: 'K League 1', full: 'K League 1' },
