@@ -102,6 +102,82 @@ export async function register() {
     console.warn('[instrumentation] SMTP seed failed:', e);
   }
 
+  // ── DB migrations: run on every server start ────────────────────────────
+  // This ensures tables/columns exist on the production server the moment
+  // the app restarts after a GitHub deploy — no manual phpMyAdmin needed.
+  setTimeout(async () => {
+    try {
+      const { query, execute, getPool } = await import('./lib/db');
+      if (!getPool()) return; // no DB configured — skip silently
+
+      // 1. community_rooms table
+      await query(`
+        CREATE TABLE IF NOT EXISTS community_rooms (
+          id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          name        VARCHAR(80) NOT NULL,
+          slug        VARCHAR(80) NOT NULL,
+          description TEXT DEFAULT NULL,
+          icon        VARCHAR(10) DEFAULT NULL,
+          color       VARCHAR(80) DEFAULT NULL,
+          post_count  INT NOT NULL DEFAULT 0,
+          sort_order  INT NOT NULL DEFAULT 0,
+          is_active   TINYINT(1) NOT NULL DEFAULT 1,
+          created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_room_slug (slug)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      // 2. Seed default rooms (INSERT IGNORE = skip if already present)
+      await query(`
+        INSERT IGNORE INTO community_rooms (name, slug, description, icon, color, sort_order) VALUES
+          ('General',       'general',    'General betting chat',                 '💬', 'bg-blue-500/15 text-blue-500 border-blue-500/30',         1),
+          ('Football Tips', 'football',   'Football predictions & analysis',      '⚽', 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30', 2),
+          ('Value Bets',    'value-bets', 'High value picks & odds hunting',      '🎯', 'bg-amber-500/15 text-amber-600 border-amber-500/30',      3),
+          ('Live Chat',     'live-chat',  'Chat during live matches',             '🔴', 'bg-rose-500/15 text-rose-500 border-rose-500/30',         4),
+          ('Analysis',      'analysis',   'Deep dives, stats and breakdowns',     '📊', 'bg-purple-500/15 text-purple-600 border-purple-500/30',   5),
+          ('Basketball',    'basketball', 'NBA, EuroLeague & more',               '🏀', 'bg-orange-500/15 text-orange-600 border-orange-500/30',   6),
+          ('Premium Picks', 'premium',    'Top tipster premium predictions',      '👑', 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',   7)
+      `);
+
+      // 3. Add room_id column to feed_posts if not already there
+      await query(`ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS room_id INT DEFAULT NULL`).catch(() => {});
+      await query(`ALTER TABLE feed_posts ADD INDEX IF NOT EXISTS idx_fp_room_id (room_id)`).catch(() => {});
+
+      console.log('[instrumentation] DB migrations applied (community_rooms + room_id)');
+
+      // 4. Fix known data corrections that were only applied in code (MANUAL_DAY_OVERRIDES)
+      //    These rows exist in DB with wrong results; correct them once here.
+      const corrections: Array<{ date: string; result: 'win' | 'loss'; picksResult: 'win' | 'loss' }> = [
+        // Week 18 Day 4 (Thu 21 May 2026): Both corners picks were wins
+        // Inter Kashi 4 + East Bengal 10 = 14 corners → Over 9.5 ✓
+        // Jamshedpur 11 + Odisha 1 = 12 corners → Over 9.5 ✓
+        { date: '2026-05-21', result: 'win', picksResult: 'win' },
+      ];
+
+      for (const fix of corrections) {
+        const rows = await query<{ id: number; picks: string | null; result: string | null }>(
+          `SELECT id, picks, result FROM daily_strategy WHERE date = ? LIMIT 1`,
+          [fix.date],
+        );
+        if (!rows.rows.length) continue;
+        const row = rows.rows[0];
+        if (row.result === fix.result) continue; // already correct
+
+        let picks: Array<{ result?: string }> = [];
+        try { picks = JSON.parse(row.picks || '[]'); } catch { picks = []; }
+        const updatedPicks = picks.map(p => ({ ...p, result: fix.picksResult }));
+
+        await execute(
+          `UPDATE daily_strategy SET result = ?, picks = ?, status = 'completed', settled_at = NOW() WHERE id = ?`,
+          [fix.result, JSON.stringify(updatedPicks), row.id],
+        );
+        console.log(`[instrumentation] Fixed daily_strategy result for ${fix.date}: ${row.result} → ${fix.result}`);
+      }
+    } catch (e) {
+      console.warn('[instrumentation] DB migration error:', e);
+    }
+  }, 2000); // 2s delay — let the pool fully initialise first
+
   const { startCron } = await import('./lib/cron');
   startCron();
 

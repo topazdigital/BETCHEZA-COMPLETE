@@ -136,14 +136,10 @@ const MANUAL_WIN_WEEKS: Record<string, 'all'> = {
   '2026-05-11': 'all',
 };
 
-// Manual overrides for individual days where API corner/stat data was wrong.
-// Key = YYYY-MM-DD date string. picks = per-pick results by index (0-based).
-const MANUAL_DAY_OVERRIDES: Record<string, { result: 'win' | 'loss'; picksResult: 'win' | 'loss' }> = {
-  // Day 4 (Thu 21 May): Both corners picks confirmed WIN via Google match stats:
-  //   Inter Kashi 4 + East Bengal 10 = 14 corners → Over 9.5 ✅
-  //   Jamshedpur 11 + Odisha 1 = 12 corners → Over 9.5 ✅
-  '2026-05-21': { result: 'win', picksResult: 'win' },
-};
+// Manual day overrides are no longer needed — corrections are applied directly
+// to the DB via instrumentation.ts on every server start. This map is kept
+// empty so past corrected results are read from the source of truth (DB).
+const MANUAL_DAY_OVERRIDES: Record<string, { result: 'win' | 'loss'; picksResult: 'win' | 'loss' }> = {};
 
 function buildManualAllWinsWeek(weekId: string): WeeklyStrategy {
   const weekStart = new Date(weekId);
