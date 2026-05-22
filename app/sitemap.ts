@@ -112,6 +112,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Tipster profile pages — DB users + fake tipsters
   const tipsterSlugs = new Set<string>();
   let matchEntries: MetadataRoute.Sitemap = [];
+  let competitionEntries: MetadataRoute.Sitemap = [];
 
   try {
     const pool = await getPool();
@@ -121,6 +122,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         'SELECT username FROM users WHERE role != "admin" ORDER BY id LIMIT 500'
       );
       for (const r of userRows) if (r.username) tipsterSlugs.add(r.username.toLowerCase());
+
+      // Competition pages — active and upcoming
+      try {
+        const [compRows] = await pool.query<any[]>(`
+          SELECT slug, status, updated_at, end_date
+          FROM competitions
+          WHERE status IN ('active', 'upcoming', 'completed')
+          ORDER BY start_date DESC
+          LIMIT 100
+        `);
+        for (const c of compRows) {
+          if (!c.slug) continue;
+          const isCompleted = c.status === 'completed';
+          competitionEntries.push({
+            url: `${base}/competitions/${c.slug}`,
+            lastModified: c.updated_at ? new Date(c.updated_at) : now,
+            changeFrequency: isCompleted ? 'monthly' : 'hourly',
+            priority: isCompleted ? 0.55 : 0.80,
+          });
+        }
+      } catch { /* competitions table may not exist — skip */ }
 
       // Match pages — upcoming (next 7 days) + recently finished (last 3 days)
       // These are the most valuable for SEO: predictions before, scores after.
@@ -185,6 +207,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...bookmakerTipEntries,
     ...sportEntries,
     ...leagueEntries,
+    ...competitionEntries,
     ...tipsterEntries,
     ...matchEntries,
   ];
