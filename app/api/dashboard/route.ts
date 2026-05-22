@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listFollowedTeams, getFollowedTipsters as listFollowedTipsters } from '@/lib/follows-store';
 import { getFakeTipsterById } from '@/lib/fake-tipsters';
+import { getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -135,6 +136,31 @@ export async function GET(req: Request) {
     ),
   ]);
 
+  // Build an odds lookup from the enriched match cache (may have Odds API data)
+  // Key: normalized "teamA_vs_teamB_date" so we can inject real odds into ESPN events
+  type CachedOdds = { home?: number; away?: number; draw?: number };
+  const oddsLookup = new Map<string, CachedOdds>();
+  try {
+    const cachedMatches = await Promise.race([
+      getAllMatches(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    ]);
+    for (const m of cachedMatches) {
+      if (!m.odds?.home || !m.odds?.away) continue;
+      const day = (m.kickoffTime instanceof Date ? m.kickoffTime : new Date(m.kickoffTime))
+        .toISOString().slice(0, 10);
+      // Key by both home+away and away+home so lookup works for either team perspective
+      const k1 = `${m.homeTeam.id}_${m.awayTeam.id}_${day}`;
+      const k2 = `${m.awayTeam.id}_${m.homeTeam.id}_${day}`;
+      const flipped: CachedOdds = { home: m.odds.away, away: m.odds.home, draw: m.odds.draw };
+      oddsLookup.set(k1, m.odds as CachedOdds);
+      oddsLookup.set(k2, flipped);
+      // Also key by just the team IDs in case dates don't align exactly
+      oddsLookup.set(`${m.homeTeam.id}_${m.awayTeam.id}`, m.odds as CachedOdds);
+      oddsLookup.set(`${m.awayTeam.id}_${m.homeTeam.id}`, flipped);
+    }
+  } catch { /* continue without enrichment */ }
+
   const upcomingMatches: Array<Record<string, unknown>> = [];
   const recentResults: Array<Record<string, unknown>> = [];
   for (const { follow, data } of teamData) {
@@ -144,7 +170,25 @@ export async function GET(req: Request) {
       logo: data?.team?.logo || follow.teamLogo,
     };
     for (const ev of (data?.upcoming || []).slice(0, 3)) {
-      upcomingMatches.push({ ...(ev as object), team: teamObj, league: { name: follow.leagueName, slug: follow.leagueSlug, countryCode: follow.countryCode } });
+      const evObj = ev as Record<string, unknown>;
+      // Inject real odds from match cache when ESPN event has no odds
+      const existingOdds = evObj.odds as CachedOdds | undefined;
+      if (!existingOdds?.home || !existingOdds?.away) {
+        const oppId = (evObj.opponent as Record<string, unknown> | undefined)?.id as string | undefined;
+        const teamId = follow.teamId;
+        const evDate = (evObj.date as string | undefined)?.slice(0, 10) || '';
+        const isHome = evObj.isHome as boolean | undefined;
+        // Try date-specific key first, then fallback to id-only key
+        const lookupKey = isHome
+          ? `${teamId}_${oppId}_${evDate}`
+          : `${oppId}_${teamId}_${evDate}`;
+        const fallbackKey = isHome ? `${teamId}_${oppId}` : `${oppId}_${teamId}`;
+        const enrichedOdds = oddsLookup.get(lookupKey) || oddsLookup.get(fallbackKey);
+        if (enrichedOdds?.home && enrichedOdds?.away) {
+          (evObj as Record<string, unknown>).odds = enrichedOdds;
+        }
+      }
+      upcomingMatches.push({ ...evObj, team: teamObj, league: { name: follow.leagueName, slug: follow.leagueSlug, countryCode: follow.countryCode } });
     }
     for (const ev of (data?.past || []).slice(0, 3)) {
       recentResults.push({ ...(ev as object), team: teamObj, league: { name: follow.leagueName, slug: follow.leagueSlug, countryCode: follow.countryCode } });

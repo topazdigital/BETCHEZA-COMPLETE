@@ -142,16 +142,22 @@ async function fetchDay(dateStr: string): Promise<UnifiedMatch[]> {
 
   const url = `${FM_BASE}/matches?date=${dateStr}`;
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     const r = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'User-Agent': UA,
         Accept: 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
         Referer: 'https://www.fotmob.com/',
         Origin: 'https://www.fotmob.com',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'cache-control': 'no-cache',
       },
-      next: { revalidate: 600 },
-    });
+    }).finally(() => clearTimeout(timer));
     if (!r.ok) {
       cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });
       return [];

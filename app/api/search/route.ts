@@ -49,7 +49,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 let _matchCache: { data: UnifiedMatch[]; ts: number } | null = null;
-const MATCH_CACHE_TTL = 30_000;
+const MATCH_CACHE_TTL = 5 * 60_000; // 5 minutes — matches don't change second-to-second
 
 async function getCachedMatches(): Promise<UnifiedMatch[]> {
   const now = Date.now();
@@ -58,6 +58,10 @@ async function getCachedMatches(): Promise<UnifiedMatch[]> {
   _matchCache = { data: matches, ts: now };
   return matches;
 }
+
+// Query-level result cache: same search returns instantly within 90 seconds
+const _queryCache = new Map<string, { hits: SearchHit[]; ts: number }>();
+const QUERY_CACHE_TTL = 90_000;
 
 type SearchHit =
   | { type: 'league'; id: string; title: string; subtitle: string; href: string; logoUrl?: string; sportSlug?: string }
@@ -162,6 +166,13 @@ export async function GET(request: NextRequest) {
 
   if (rawQ.length < 2) {
     return NextResponse.json({ q: rawQ, hits: [] satisfies SearchHit[] });
+  }
+
+  // Return cached result immediately if fresh — makes repeated queries feel instant
+  const cacheKey = `${rawQ.toLowerCase()}:${limitPerKind}`;
+  const cached = _queryCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < QUERY_CACHE_TTL) {
+    return NextResponse.json({ q: rawQ, hits: cached.hits });
   }
 
   const WOMEN_SUFFIX_RE = /\s+(women|wfc|fem(en[ií]?)?|ladies?|lfc|ddl)\s*$/i;
@@ -301,5 +312,15 @@ export async function GET(request: NextRequest) {
     }));
   } catch { tipsterHits = []; }
 
-  return NextResponse.json({ q: rawQ, hits: [...trimmedMatches, ...leagueHits, ...teamHits, ...tipsterHits] });
+  const allHits = [...trimmedMatches, ...leagueHits, ...teamHits, ...tipsterHits];
+
+  // Cache this result so repeat/incremental queries return instantly
+  _queryCache.set(cacheKey, { hits: allHits, ts: Date.now() });
+  // Trim cache to avoid unbounded growth
+  if (_queryCache.size > 200) {
+    const oldest = [..._queryCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+    if (oldest) _queryCache.delete(oldest[0]);
+  }
+
+  return NextResponse.json({ q: rawQ, hits: allHits });
 }
