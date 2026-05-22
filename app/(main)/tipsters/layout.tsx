@@ -21,12 +21,38 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Best Tipsters Kenya | Betcheza',
-    description: 'Follow Kenya\'s top verified football tipsters. Free tips from experts with proven win rates.',
+    description: "Follow Kenya's top verified football tipsters. Free tips from experts with proven win rates.",
   },
   alternates: { canonical: 'https://betcheza.co.ke/tipsters' },
   robots: { index: true, follow: true },
 };
 
+const baseUrl = 'https://betcheza.co.ke';
+
+const itemListSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: 'Best Sports Tipsters in Kenya',
+  description: "Kenya's top verified football tipsters ranked by win rate and ROI on Betcheza.",
+  url: `${baseUrl}/tipsters`,
+  itemListOrder: 'https://schema.org/ItemListOrderDescending',
+};
+
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Betcheza', item: baseUrl },
+    { '@type': 'ListItem', position: 2, name: 'Tipsters', item: `${baseUrl}/tipsters` },
+  ],
+};
+
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return children;
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      {children}
+    </>
+  );
 }

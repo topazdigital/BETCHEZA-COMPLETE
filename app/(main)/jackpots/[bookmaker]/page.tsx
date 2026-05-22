@@ -31,6 +31,66 @@ export default async function BookmakerJackpotPage({ params }: Props) {
   const { bookmaker: slug } = await params;
   const bk = SUPPORTED_BOOKMAKERS.find(b => b.slug === slug);
   if (!bk) notFound();
-  const jsonLd = { '@context':'https://schema.org','@type':'WebPage',name:bk.name+' Jackpot Predictions',description:'Free AI predictions for '+bk.name+' jackpots in Kenya — '+bk.jackpotTypes.join(', ')+'.',url:'https://betcheza.co.ke/jackpots/'+bk.slug,publisher:{'@type':'Organization',name:'Betcheza',url:'https://betcheza.co.ke'},breadcrumb:{'@type':'BreadcrumbList',itemListElement:[{'@type':'ListItem',position:1,name:'Home',item:'https://betcheza.co.ke'},{'@type':'ListItem',position:2,name:'Jackpots',item:'https://betcheza.co.ke/jackpots'},{'@type':'ListItem',position:3,name:bk.name+' Jackpot',item:'https://betcheza.co.ke/jackpots/'+bk.slug}]},mainEntity:{'@type':'FAQPage',mainEntity:bk.jackpotTypes.map(type=>({'@type':'Question',name:'When is the '+bk.name+' '+type+' published?',acceptedAnswer:{'@type':'Answer',text:bk.name+' publishes the '+type+' regularly. Check Betcheza.co.ke for the latest AI predictions as soon as games are released.'}}))}};
-  return (<><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} /><BookmakerJackpotClient bookmaker={bk} /></>);
+
+  const baseUrl = 'https://betcheza.co.ke';
+  const canonical = `${baseUrl}/jackpots/${bk.slug}`;
+
+  // WebPage + BreadcrumbList (top-level — not nested inside each other)
+  const webPageSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': canonical,
+    name: `${bk.name} Jackpot Predictions`,
+    description: `Free AI predictions for ${bk.name} jackpots in Kenya — ${bk.jackpotTypes.join(', ')}.`,
+    url: canonical,
+    publisher: { '@type': 'Organization', name: 'Betcheza', url: baseUrl },
+    breadcrumb: {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: baseUrl },
+        { '@type': 'ListItem', position: 2, name: 'Jackpots', item: `${baseUrl}/jackpots` },
+        { '@type': 'ListItem', position: 3, name: `${bk.name} Jackpot`, item: canonical },
+      ],
+    },
+  };
+
+  // FAQPage must be top-level (not nested) for Google to show FAQ rich results
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      ...bk.jackpotTypes.map(type => ({
+        '@type': 'Question',
+        name: `When are ${bk.name} ${type} predictions published?`,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: `Betcheza publishes AI-powered ${bk.name} ${type} predictions as soon as the games are released by the bookmaker. Check betcheza.co.ke/jackpots/${bk.slug} for the latest tips.`,
+        },
+      })),
+      {
+        '@type': 'Question',
+        name: `How accurate are the ${bk.name} jackpot predictions?`,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: `Betcheza's AI analyzes form, head-to-head records, team statistics and odds to generate predictions with confidence ratings. Each game shows a confidence score so you can identify the banker picks.`,
+        },
+      },
+      {
+        '@type': 'Question',
+        name: `Is the ${bk.name} jackpot prediction service free?`,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: `Yes. All ${bk.name} jackpot predictions on Betcheza are 100% free. Create a free account to save your picks and track your prediction history.`,
+        },
+      },
+    ],
+  };
+
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
+      <BookmakerJackpotClient bookmaker={bk} />
+    </>
+  );
 }

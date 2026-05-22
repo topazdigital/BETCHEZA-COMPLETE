@@ -141,12 +141,20 @@ type Props = { params: Promise<{ bookmaker: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { bookmaker } = await params;
   const bm = BOOKMAKERS[bookmaker];
-  if (!bm) return { title: 'Tips | Betcheza' };
+  const siteName = 'Betcheza';
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  if (!bm) return { title: `Tips | ${siteName}` };
 
+  const canonical = `${baseUrl}/tips/${bookmaker}`;
   const jackpotStr = bm.jackpot ? ` ${bm.jackpot} Predictions,` : '';
+  const title = `${bm.name} Tips & Predictions Today | Free ${bm.name} Kenya Tips | ${siteName}`;
+  const description = `Free ${bm.name} Kenya tips today. Expert${jackpotStr} football predictions, jackpot banker picks and accumulator tips for ${bm.name}. Updated daily by verified tipsters.`;
+
   return {
-    title: `${bm.name} Tips & Predictions Today | Free ${bm.name} Kenya Tips | Betcheza`,
-    description: `Free ${bm.name} Kenya tips today. Expert${jackpotStr} football predictions, jackpot banker picks and accumulator tips for ${bm.name}. Updated daily by verified tipsters.`,
+    title,
+    description,
+    alternates: { canonical },
+    robots: { index: true, follow: true },
     keywords: [
       `${bm.name} tips`, `${bm.name} predictions`, `${bm.name} tips today`,
       `${bm.name} Kenya tips`, `${bm.name} Kenya predictions`, `free ${bm.name} tips`,
@@ -154,12 +162,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       `${bm.name} free tips today`, `${bm.name} winning tips`, `${bm.name} football tips`,
       `how to win ${bm.name} jackpot`, `${bm.name} accumulator tips`,
       `best ${bm.name} tips`, `${bm.name} analysis`, 'betting tips Kenya',
-      'free tips Kenya', 'jackpot tips Kenya', 'Betcheza',
+      'free tips Kenya', 'jackpot tips Kenya', siteName,
     ],
     openGraph: {
-      title: `Free ${bm.name} Tips Today — Betcheza`,
+      title: `Free ${bm.name} Tips Today — ${siteName}`,
       description: bm.description,
       type: 'website',
+      url: canonical,
+      siteName,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
     },
   };
 }
@@ -177,8 +192,66 @@ export default async function BookmakerTipsPage({ params }: Props) {
     .filter(b => b.slug !== bookmaker)
     .slice(0, 6);
 
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const canonical = `${baseUrl}/tips/${bookmaker}`;
+
+  const webPageSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': canonical,
+    url: canonical,
+    name: `Free ${bm.name} Tips & Predictions Today`,
+    description: bm.description,
+    isPartOf: { '@id': `${baseUrl}/#website` },
+    about: {
+      '@type': 'Organization',
+      name: bm.fullName,
+    },
+    breadcrumb: {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Betcheza', item: baseUrl },
+        { '@type': 'ListItem', position: 2, name: 'Bookmakers', item: `${baseUrl}/bookmakers` },
+        { '@type': 'ListItem', position: 3, name: `${bm.name} Tips`, item: canonical },
+      ],
+    },
+  };
+
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: `Where can I get free ${bm.name} tips today?`,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: `Betcheza provides free daily ${bm.name} tips, jackpot banker picks and football predictions updated by verified tipsters. Visit betcheza.co.ke/tips/${bookmaker}.`,
+        },
+      },
+      ...(bm.jackpot ? [{
+        '@type': 'Question',
+        name: `How do I win the ${bm.name} ${bm.jackpot}?`,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: `The ${bm.name} ${bm.jackpot} requires correctly predicting ${bm.jackpotGames ?? 'all'} matches. Betcheza's AI predictor and community tipsters publish daily banker picks and analysis to help you pick the best selections.`,
+        },
+      }] : []),
+      {
+        '@type': 'Question',
+        name: `Is ${bm.name} available in Kenya?`,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: `Yes. ${bm.fullName} is a licensed betting operator in Kenya${bm.mpesa ? ', accepting M-Pesa deposits and withdrawals' : ''}. Minimum bet is ${bm.minBet}.`,
+        },
+      },
+    ],
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
 
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 text-sm text-muted-foreground" aria-label="Breadcrumb">
