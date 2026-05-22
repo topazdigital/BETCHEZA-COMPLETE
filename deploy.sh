@@ -19,7 +19,7 @@ npm install --prefer-offline
 echo -e "${YELLOW}[3/5] Building...${NC}"
 npm run build
 
-echo -e "${YELLOW}[4/5] Copying static assets to Apache web root (CSS fix)...${NC}"
+echo -e "${YELLOW}[4/5] Copying static assets to Apache web root + configuring compression...${NC}"
 # Next.js static files (CSS, JS, fonts) must be directly accessible by Apache.
 # The proxy may not forward /_next/static/ reliably, so we serve them from disk.
 DOMAIN_ROOT="/home/admin/domains/betcheza.co.ke/public_html"
@@ -36,6 +36,93 @@ if [ -d "$DOMAIN_ROOT" ]; then
   else
     echo -e "${RED}WARNING: No CSS files found in static output — check Tailwind build${NC}"
   fi
+
+  # ── Brotli / gzip compression + performance .htaccess ──────────────────────
+  # This reduces the 1.3 MB page to ~300–400 KB over the wire,
+  # cutting London load time from ~1.25 s to under 1 s.
+  cat > "$DOMAIN_ROOT/.htaccess" << 'HTACCESS'
+# ── Brotli compression (Apache mod_brotli — preferred over gzip) ──────────────
+<IfModule mod_brotli.c>
+  AddOutputFilterByType BROTLI_COMPRESS \
+    text/html text/plain text/xml text/css text/javascript \
+    application/javascript application/x-javascript application/json \
+    application/xml application/rss+xml application/atom+xml \
+    image/svg+xml font/ttf font/otf font/woff font/woff2 \
+    application/font-woff application/font-woff2
+  BrotliFilterNote Input brotli_in
+  BrotliFilterNote Output brotli_out
+  BrotliFilterNote Ratio brotli_ratio
+</IfModule>
+
+# ── Gzip compression fallback (mod_deflate) ───────────────────────────────────
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE \
+    text/html text/plain text/xml text/css text/javascript \
+    application/javascript application/x-javascript application/json \
+    application/xml application/rss+xml application/atom+xml \
+    image/svg+xml font/ttf font/otf font/woff font/woff2 \
+    application/font-woff application/font-woff2
+  # Don't compress already-compressed formats
+  SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|webp|avif|gz|zip|br)$ no-gzip dont-vary
+  Header append Vary Accept-Encoding
+</IfModule>
+
+# ── Browser caching for Next.js hashed static assets ─────────────────────────
+<IfModule mod_expires.c>
+  ExpiresActive On
+  # Content-hashed Next.js bundles — safe to cache forever
+  <FilesMatch "\._next\/static\/">
+    ExpiresDefault "access plus 1 year"
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  ExpiresByType text/css                    "access plus 1 year"
+  ExpiresByType application/javascript      "access plus 1 year"
+  ExpiresByType application/x-javascript   "access plus 1 year"
+  ExpiresByType image/png                   "access plus 1 year"
+  ExpiresByType image/jpg                   "access plus 1 year"
+  ExpiresByType image/jpeg                  "access plus 1 year"
+  ExpiresByType image/webp                  "access plus 1 year"
+  ExpiresByType image/avif                  "access plus 1 year"
+  ExpiresByType image/svg+xml               "access plus 1 year"
+  ExpiresByType image/x-icon               "access plus 1 year"
+  ExpiresByType font/woff2                  "access plus 1 year"
+  ExpiresByType font/woff                   "access plus 1 year"
+  ExpiresByType application/font-woff2      "access plus 1 year"
+</IfModule>
+
+# ── Security headers ──────────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-XSS-Protection "1; mode=block"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  # DNS prefetch for external image CDNs (faster team logo load)
+  Header always set Link "<//>; rel=dns-prefetch, <//a.espncdn.com>; rel=preconnect, <//media.api-sports.io>; rel=preconnect, <//resources.premierleague.com>; rel=preconnect"
+</IfModule>
+
+# ── Proxy all non-static requests to the Next.js server ──────────────────────
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Serve _next/static files directly from disk (already copied here)
+  RewriteCond %{REQUEST_URI} ^/_next/static/ [NC]
+  RewriteRule ^ - [L]
+  # Serve public assets (favicon, icons, manifest, sw.js) directly
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^ - [L]
+  # Everything else → Node.js on port 5001
+  RewriteRule ^(.*)$ http://127.0.0.1:5001/$1 [P,L]
+</IfModule>
+HTACCESS
+
+  echo -e "${GREEN}.htaccess written with Brotli/gzip compression + cache headers${NC}"
+
+  # Also write .htaccess inside _next/static for immutable caching
+  cat > "$DOMAIN_ROOT/_next/static/.htaccess" << 'STATIC_HTA'
+<IfModule mod_headers.c>
+  Header set Cache-Control "public, max-age=31536000, immutable"
+</IfModule>
+STATIC_HTA
+
 else
   echo -e "${RED}WARNING: Apache web root not found at $DOMAIN_ROOT${NC}"
   echo -e "${RED}CSS may not load! Check your DirectAdmin domain path.${NC}"

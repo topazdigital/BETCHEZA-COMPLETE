@@ -146,6 +146,20 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // Preconnect to image CDNs so team logos resolve DNS before they render
+          {
+            key: 'Link',
+            value: [
+              '<https://a.espncdn.com>; rel=preconnect',
+              '<https://a.espncdn.com>; rel=dns-prefetch',
+              '<https://media.api-sports.io>; rel=preconnect; crossorigin',
+              '<https://media.api-sports.io>; rel=dns-prefetch',
+              '<https://resources.premierleague.com>; rel=preconnect',
+              '<https://resources.premierleague.com>; rel=dns-prefetch',
+              '<https://upload.wikimedia.org>; rel=preconnect',
+              '<https://cdn.worldvectorlogo.com>; rel=dns-prefetch',
+            ].join(', '),
+          },
         ],
       },
     ]

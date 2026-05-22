@@ -111,16 +111,53 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Tipster profile pages — DB users + fake tipsters
   const tipsterSlugs = new Set<string>();
-  // DB users
+  let matchEntries: MetadataRoute.Sitemap = [];
+
   try {
     const pool = await getPool();
     if (pool) {
-      const [rows] = await pool.query<any[]>(
+      // Tipster usernames
+      const [userRows] = await pool.query<any[]>(
         'SELECT username FROM users WHERE role != "admin" ORDER BY id LIMIT 500'
       );
-      for (const r of rows) if (r.username) tipsterSlugs.add(r.username.toLowerCase());
+      for (const r of userRows) if (r.username) tipsterSlugs.add(r.username.toLowerCase());
+
+      // Match pages — upcoming (next 7 days) + recently finished (last 3 days)
+      // These are the most valuable for SEO: predictions before, scores after.
+      const sevenDaysAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      try {
+        const [matchRows] = await pool.query<any[]>(`
+          SELECT
+            match_id,
+            home_team,
+            away_team,
+            kickoff_time,
+            status,
+            home_score,
+            away_score
+          FROM matches
+          WHERE kickoff_time BETWEEN ? AND ?
+          ORDER BY kickoff_time ASC
+          LIMIT 500
+        `, [threeDaysAgo.toISOString(), sevenDaysAhead.toISOString()]);
+
+        for (const m of matchRows) {
+          if (!m.match_id) continue;
+          const isFinished = ['finished', 'ft', 'full-time', 'aet', 'pen'].includes(
+            (m.status || '').toLowerCase()
+          );
+          matchEntries.push({
+            url: `${base}/matches/${encodeURIComponent(m.match_id)}`,
+            lastModified: isFinished ? new Date(m.kickoff_time) : now,
+            changeFrequency: isFinished ? 'weekly' : 'hourly',
+            priority: isFinished ? 0.70 : 0.82,
+          });
+        }
+      } catch { /* matches table may not exist — skip */ }
     }
   } catch { /* no DB — skip */ }
+
   // Fake tipsters (community seed data)
   const fakeTipsters = getFakeTipsters();
   for (const t of fakeTipsters) {
@@ -149,5 +186,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...sportEntries,
     ...leagueEntries,
     ...tipsterEntries,
+    ...matchEntries,
   ];
 }
