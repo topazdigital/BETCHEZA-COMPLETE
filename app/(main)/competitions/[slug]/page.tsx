@@ -21,16 +21,69 @@ interface PageParams { params: Promise<{ slug: string }> }
 export async function generateMetadata({ params }: PageParams): Promise<Metadata> {
   const { slug } = await params;
   const comp = getCompetitionBySlug(slug);
-  if (!comp) return { title: 'Competition not found · Betcheza' };
-  const prizeStr = comp.prizes.slice(0, 3)
-    .map(p => `${p.place}: ${comp.currency} ${p.amount.toLocaleString()}`)
-    .join(', ');
-  const desc = `${comp.description} 🏆 Prize pool: ${comp.currency} ${comp.prizePool.toLocaleString()}. Prizes: ${prizeStr}. Join now and compete!`;
+  const siteName = 'Betcheza';
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+
+  if (!comp) {
+    return {
+      title: `Competition Not Found | ${siteName}`,
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const canonical = `${baseUrl}/competitions/${slug}`;
+  const prizeFormatted = `${comp.currency} ${comp.prizePool.toLocaleString()}`;
+  const entryFormatted = comp.entryFee > 0
+    ? `${comp.currency} ${comp.entryFee.toLocaleString()} entry`
+    : 'Free entry';
+  const sport = comp.sportFocus === 'multi-sport' ? 'multi-sport' : comp.sportFocus;
+  const statusLabel = comp.status === 'active'
+    ? 'Open now'
+    : comp.status === 'upcoming'
+    ? 'Coming soon'
+    : 'Completed';
+
+  // Title: "Weekly Tipster Challenge | Win KES 50,000 | Betcheza"
+  const title = `${comp.name} | Win ${prizeFormatted} | ${siteName}`;
+
+  // Description optimised for click-through
+  const topPrize = comp.prizes[0];
+  const topPrizeStr = topPrize
+    ? `1st place wins ${comp.currency} ${topPrize.amount.toLocaleString()}`
+    : `Prize pool: ${prizeFormatted}`;
+  const description = `${statusLabel} — ${comp.description || comp.name}. ${topPrizeStr}. ${entryFormatted}. ${comp.maxParticipants} spots available. Compete with tipsters on ${siteName} Kenya.`;
+
+  const keywords: string[] = [
+    comp.name,
+    `${comp.name} Kenya`,
+    `${sport} tipster competition`,
+    `${sport} prediction contest Kenya`,
+    'betting competition Kenya',
+    'sports tipster contest',
+    `win ${prizeFormatted}`,
+    'betcheza competition',
+    'online tipster league Kenya',
+    comp.type === 'daily' ? 'daily prediction contest' : comp.type === 'weekly' ? 'weekly tipster challenge' : 'monthly betting league',
+  ].filter(Boolean);
+
   return {
-    title: `${comp.name} · Betcheza Competitions`,
-    description: desc,
-    openGraph: { title: comp.name, description: desc, type: 'article' },
-    twitter: { title: comp.name, description: desc },
+    title,
+    description,
+    keywords,
+    alternates: { canonical },
+    robots: { index: true, follow: true },
+    openGraph: {
+      title,
+      description,
+      type: 'article',
+      url: canonical,
+      siteName,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
   };
 }
 
@@ -110,8 +163,60 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
   const pointsGap = personAbove && myStanding ? Math.max(0, personAbove.points - myStanding.points) : 0;
   const winsNeeded = pointsGap > 0 ? Math.ceil(pointsGap / 10) : 0;
 
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const canonical = `${baseUrl}/competitions/${slug}`;
+  const eventSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    '@id': canonical,
+    name: comp.name,
+    description: comp.description || comp.name,
+    url: canonical,
+    startDate: comp.startDate,
+    endDate: comp.endDate,
+    eventStatus: comp.status === 'active'
+      ? 'https://schema.org/EventScheduled'
+      : comp.status === 'upcoming'
+      ? 'https://schema.org/EventScheduled'
+      : 'https://schema.org/EventScheduled',
+    eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
+    location: {
+      '@type': 'VirtualLocation',
+      url: canonical,
+    },
+    organizer: {
+      '@type': 'Organization',
+      name: 'Betcheza',
+      url: baseUrl,
+    },
+    offers: {
+      '@type': 'Offer',
+      price: comp.entryFee,
+      priceCurrency: comp.currency,
+      availability: comp.status === 'active'
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/SoldOut',
+      url: canonical,
+    },
+    ...(comp.prizes[0] ? {
+      prize: `${comp.currency} ${comp.prizePool.toLocaleString()} prize pool — 1st place: ${comp.currency} ${comp.prizes[0].amount.toLocaleString()}`,
+    } : {}),
+  };
+
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Betcheza', item: baseUrl },
+      { '@type': 'ListItem', position: 2, name: 'Competitions', item: `${baseUrl}/competitions` },
+      { '@type': 'ListItem', position: 3, name: comp.name, item: canonical },
+    ],
+  };
+
   return (
     <div className="flex-1 overflow-hidden">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(eventSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
       <div className="px-3 py-2.5">
         <Button variant="ghost" size="sm" className="mb-2 h-7 text-xs" asChild>
           <Link href="/competitions"><ArrowLeft className="mr-1 h-3.5 w-3.5" />All competitions</Link>
