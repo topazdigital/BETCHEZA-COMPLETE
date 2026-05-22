@@ -5,7 +5,7 @@ import { Sparkles, X, Rocket } from 'lucide-react';
 import Link from 'next/link';
 import { useSiteSettings } from '@/lib/hooks/use-site-settings';
 
-const DISMISS_KEY = 'betcheza_back_banner_dismissed_v2';
+const DISMISS_KEY = 'betcheza_back_banner_dismissed_v3';
 
 export function BetchezaBackBanner() {
   const [dismissed, setDismissed] = useState(true);
@@ -15,14 +15,14 @@ export function BetchezaBackBanner() {
   useEffect(() => {
     setMounted(true);
     try {
-      setDismissed(!!window.sessionStorage.getItem(DISMISS_KEY));
+      setDismissed(!!window.localStorage.getItem(DISMISS_KEY));
     } catch {
       setDismissed(false);
     }
   }, []);
 
   const dismiss = () => {
-    try { window.sessionStorage.setItem(DISMISS_KEY, '1'); } catch {}
+    try { window.localStorage.setItem(DISMISS_KEY, '1'); } catch {}
     setDismissed(true);
   };
 

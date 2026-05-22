@@ -10,46 +10,69 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
-const DISMISS_KEY = "bcz_install_dismiss_v1"
-const DISMISS_DAYS = 3  // reduced from 7 — show sooner after deletion
+// Once dismissed, never auto-show again (permanent). User can still click the mini
+// install button if they change their mind.
+const DISMISS_KEY    = "bcz_install_dismiss_perm_v1"
+const INSTALLED_KEY  = "bcz_app_installed_v1"
+
+function isPermanentlyDismissed() {
+  try { return !!localStorage.getItem(DISMISS_KEY); } catch { return false; }
+}
+function markDismissed() {
+  try { localStorage.setItem(DISMISS_KEY, "1"); } catch {}
+}
+function markInstalled() {
+  try { localStorage.setItem(INSTALLED_KEY, "1"); } catch {}
+}
+function wasInstalled() {
+  try { return !!localStorage.getItem(INSTALLED_KEY); } catch { return false; }
+}
+
+/** True when device is genuinely mobile (not desktop Chrome with emulation). */
+function isMobileDevice() {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent.toLowerCase();
+  // Must have touch AND a mobile UA — desktop Chrome emulation has touch but wide viewport
+  const hasMobileUA = /android|iphone|ipad|ipod/.test(ua);
+  const narrowScreen = window.innerWidth <= 820;
+  return hasMobileUA && narrowScreen;
+}
 
 export function InstallPrompt() {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
-  const [show, setShow] = useState(false)
+  const [show, setShow]         = useState(false)
   const [installed, setInstalled] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
+  const [isIOS, setIsIOS]       = useState(false)
   const [isAndroid, setIsAndroid] = useState(false)
-  // Tracks whether a mini install button should show (event captured but banner dismissed)
   const [showMini, setShowMini] = useState(false)
   const deferredRef = useRef<BeforeInstallPromptEvent | null>(null)
 
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    // Already running as installed PWA?
+    // Already running as installed PWA or user previously installed it?
     const standalone =
       window.matchMedia?.("(display-mode: standalone)").matches ||
       // iOS Safari
       // @ts-expect-error - iOS only
       window.navigator.standalone === true
-    if (standalone) {
+
+    if (standalone || wasInstalled()) {
       setInstalled(true)
       return
     }
 
-    const ua = window.navigator.userAgent.toLowerCase()
-    const ios = /iphone|ipad|ipod/.test(ua) && !/crios|fxios|edgios/.test(ua)
-    const android = /android/.test(ua)
+    const ua = navigator.userAgent.toLowerCase()
+    const mobile = isMobileDevice()
+    const ios    = /iphone|ipad|ipod/.test(ua) && !/crios|fxios|edgios/.test(ua) && mobile
+    const android = /android/.test(ua) && mobile
+
+    const dismissed = isPermanentlyDismissed()
 
     if (ios) {
       setIsIOS(true)
-      // Check dismiss for iOS
-      const dismissed = localStorage.getItem(DISMISS_KEY)
-      const recentlyDismissed = dismissed &&
-        !Number.isNaN(parseInt(dismissed, 10)) &&
-        Date.now() - parseInt(dismissed, 10) < DISMISS_DAYS * 86_400_000
-      if (!recentlyDismissed) {
-        const t = setTimeout(() => setShow(true), 4000)
+      if (!dismissed) {
+        const t = setTimeout(() => setShow(true), 5000)
         return () => clearTimeout(t)
       }
       return
@@ -57,47 +80,36 @@ export function InstallPrompt() {
 
     if (android) setIsAndroid(true)
 
-    // Check if recently dismissed — we still register the listener but won't auto-show banner
-    const dismissed = localStorage.getItem(DISMISS_KEY)
-    const recentlyDismissed = dismissed &&
-      !Number.isNaN(parseInt(dismissed, 10)) &&
-      Date.now() - parseInt(dismissed, 10) < DISMISS_DAYS * 86_400_000
-
     const onPrompt = (e: Event) => {
       e.preventDefault()
       const evt = e as BeforeInstallPromptEvent
       setDeferred(evt)
       deferredRef.current = evt
-      // If NOT recently dismissed: show the full banner
-      // If recently dismissed: just capture the event silently — mini button appears
-      if (!recentlyDismissed) {
+      if (!dismissed) {
         setShow(true)
       } else {
+        // Already dismissed — just keep mini button available but don't show banner
         setShowMini(true)
       }
     }
 
     const onInstalled = () => {
+      markInstalled()
       setInstalled(true)
       setShow(false)
       setShowMini(false)
       setDeferred(null)
       deferredRef.current = null
-      // Clear dismiss key so prompt can re-appear if the app is later deleted and reinstalled
-      localStorage.removeItem(DISMISS_KEY)
     }
 
     window.addEventListener("beforeinstallprompt", onPrompt)
     window.addEventListener("appinstalled", onInstalled)
 
-    // Android fallback: if beforeinstallprompt never fires within 6s (Chrome cooldown
-    // after deletion, or criteria not met) show a manual install guide instead
+    // Android fallback: only on real mobile + only if not dismissed
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null
-    if (android && !recentlyDismissed) {
+    if (android && !dismissed) {
       fallbackTimer = setTimeout(() => {
-        // Only show if we still haven't gotten the native prompt
-        if (!deferredRef.current) {
-          setIsAndroid(true)
+        if (!deferredRef.current && !isPermanentlyDismissed()) {
           setShow(true)
         }
       }, 6000)
@@ -111,9 +123,9 @@ export function InstallPrompt() {
   }, [])
 
   const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, String(Date.now()))
+    markDismissed()
     setShow(false)
-    // If the native prompt event is already captured, show mini button instead
+    // Show the compact mini button only if we have the native install event ready
     if (deferredRef.current) setShowMini(true)
   }
 
@@ -124,6 +136,7 @@ export function InstallPrompt() {
       await evt.prompt()
       const { outcome } = await evt.userChoice
       if (outcome === "accepted") {
+        markInstalled()
         setInstalled(true)
         setShowMini(false)
       }
@@ -139,7 +152,8 @@ export function InstallPrompt() {
 
   return (
     <>
-      {/* Mini persistent install button — shows when event captured but banner was dismissed */}
+      {/* Compact floating install button — visible once user dismissed the banner
+          but the native browser install event is still captured */}
       {showMini && !show && (
         <button
           onClick={install}
@@ -156,7 +170,7 @@ export function InstallPrompt() {
         </button>
       )}
 
-      {/* Main install banner */}
+      {/* Main install banner — bottom of screen */}
       {show && (
         <div
           className={cn(
@@ -203,15 +217,23 @@ export function InstallPrompt() {
                     </p>
                   </div>
                 ) : isAndroid && !deferred ? (
-                  // Android fallback: browser prompt didn't fire (e.g. after deletion cooldown)
-                  <div className="mt-3 space-y-1.5">
+                  /* Android fallback: browser didn't fire native prompt — guide manually */
+                  <div className="mt-3 space-y-2">
                     <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                       <Smartphone className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                      <span>Tap the <strong>⋮ menu</strong> in your browser</span>
+                      <span>In Chrome, tap the <strong>⋮</strong> menu (top-right)</span>
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      <span className="font-semibold text-foreground">Then</span> tap <strong>Add to Home screen</strong> or <strong>Install app</strong>
+                      Then tap <strong>Add to Home screen</strong> or <strong>Install app</strong>
                     </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-8 text-xs border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
+                      onClick={dismiss}
+                    >
+                      Got it — I&apos;ll install manually
+                    </Button>
                   </div>
                 ) : (
                   <div className="mt-3 flex gap-2">
@@ -221,7 +243,7 @@ export function InstallPrompt() {
                       onClick={install}
                     >
                       <Download className="h-3.5 w-3.5 mr-1.5" />
-                      Install App
+                      Install Now — it&apos;s free
                     </Button>
                     <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={dismiss}>
                       Later

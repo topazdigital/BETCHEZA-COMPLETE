@@ -1358,16 +1358,42 @@ async function fetchESPNGlobalAll(): Promise<UnifiedMatch[]> {
 // Leagues we always fetch a multi-day window for (so today + a week of fixtures
 // always show up regardless of ESPN's default "next game day" behaviour).
 const PRIORITY_LEAGUE_KEYS = new Set<string>([
-  'eng.1', 'eng.2', 'eng.fa', 'eng.league_cup',
-  'esp.1', 'esp.2', 'esp.copa_del_rey',
-  'ger.1', 'ger.2', 'ger.dfb_pokal',
-  'ita.1', 'ita.2', 'ita.coppa_italia',
-  'fra.1', 'fra.2',
-  'ned.1', 'por.1', 'sco.1', 'bel.1', 'tur.1',
-  'uefa.champions', 'uefa.europa', 'uefa.europa.conf', 'uefa.nations',
-  'usa.1', 'mex.1', 'bra.1', 'arg.1',
-  'ksa.1', 'jpn.1', 'aus.1',
-  'nba', 'nfl', 'mlb', 'nhl', 'ufc',
+  // ── England ──────────────────────────────────────────────
+  'eng.1', 'eng.2', 'eng.3', 'eng.4', 'eng.fa', 'eng.league_cup', 'eng.w.1',
+  // ── Spain ────────────────────────────────────────────────
+  'esp.1', 'esp.2', 'esp.copa_del_rey', 'esp.w.1',
+  // ── Germany ──────────────────────────────────────────────
+  'ger.1', 'ger.2', 'ger.dfb_pokal', 'ger.w.1',
+  // ── Italy ────────────────────────────────────────────────
+  'ita.1', 'ita.2', 'ita.coppa_italia', 'ita.w.1',
+  // ── France ───────────────────────────────────────────────
+  'fra.1', 'fra.2', 'fra.coupe_de_france', 'fra.w.1',
+  // ── Rest of Top European ─────────────────────────────────
+  'ned.1', 'ned.2', 'por.1', 'por.2',
+  'sco.1', 'bel.1', 'tur.1', 'sui.1', 'aut.1',
+  'gre.1', 'den.1', 'swe.1', 'nor.1', 'fin.1',
+  'pol.1', 'cze.1', 'rou.1', 'ukr.1', 'rus.1',
+  'srb.1', 'hrv.1', 'hun.1', 'bgr.1', 'svk.1', 'svn.1',
+  'irl.1', 'wal.1', 'isl.1',
+  // ── European Club Competitions ────────────────────────────
+  'uefa.champions', 'uefa.europa', 'uefa.europa.conf',
+  'uefa.nations', 'uefa.wchampions',
+  // ── Americas ─────────────────────────────────────────────
+  'usa.1', 'usa.2', 'usa.nwsl', 'mex.1',
+  'bra.1', 'arg.1', 'col.1', 'chi.1', 'per.1', 'uru.1', 'ven.1', 'ecu.1',
+  'conmebol.libertadores', 'conmebol.sudamericana',
+  'concacaf.champions_cup', 'concacaf.gold',
+  // ── Middle East & Africa ─────────────────────────────────
+  'ksa.1', 'are.1', 'qat.1', 'irn.1', 'isr.1',
+  'egy.1', 'mar.1', 'nga.1', 'rsa.1', 'tun.1', 'alg.1', 'ken.1',
+  // ── Asia & Oceania ────────────────────────────────────────
+  'jpn.1', 'jpn.2', 'kor.1', 'chn.1',
+  'aus.1', 'ind.1', 'idn.1', 'tha.1', 'mys.1',
+  // ── North America Pro Sports ──────────────────────────────
+  'nba', 'wnba', 'nfl', 'mlb', 'nhl', 'ufc',
+  // ── International ─────────────────────────────────────────
+  'fifa.world', 'fifa.wwc', 'afc.asian.qual', 'concacaf.wcq',
+  'uefa.euro.qual', 'copa.america',
 ]);
 
 function formatYYYYMMDD(d: Date): string {

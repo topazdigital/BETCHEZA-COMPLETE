@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { User, ChevronDown, Settings, LogOut, Menu, X, Bookmark, Globe, Trophy } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { User, ChevronDown, Settings, LogOut, Menu, X, Bookmark, Globe, Trophy, Download } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HeaderSearch } from '@/components/layout/header-search';
 import { NotificationBell } from '@/components/layout/notification-bell';
@@ -27,12 +27,63 @@ const oddsFormats: { value: OddsFormat; label: string }[] = [
   { value: 'american', label: 'American' },
 ];
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
+const INSTALLED_KEY = 'bcz_app_installed_v1';
+// DISMISS_KEY retained for symmetry with install-prompt.tsx
+const _DISMISS_KEY  = 'bcz_install_dismiss_perm_v1'; void _DISMISS_KEY;
+
 export function Header() {
   const { user, isAuthenticated, logout } = useAuth();
   const { open: openAuthModal } = useAuthModal();
   const { settings, setOddsFormat } = useUserSettings();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: siteData } = useSiteSettings();
+  const deferredInstall = useRef<BeforeInstallPromptEvent | null>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const standalone = window.matchMedia?.('(display-mode: standalone)').matches ||
+      // @ts-expect-error iOS only
+      window.navigator.standalone === true;
+    if (standalone) return;
+    try {
+      if (localStorage.getItem(INSTALLED_KEY)) return;
+    } catch {}
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      deferredInstall.current = e as BeforeInstallPromptEvent;
+      setShowInstallBtn(true);
+    };
+    const onInstalled = () => {
+      try { localStorage.setItem(INSTALLED_KEY, '1'); } catch {}
+      setShowInstallBtn(false);
+    };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    const evt = deferredInstall.current;
+    if (!evt) return;
+    try {
+      await evt.prompt();
+      const { outcome } = await evt.userChoice;
+      if (outcome === 'accepted') {
+        try { localStorage.setItem(INSTALLED_KEY, '1'); } catch {}
+        setShowInstallBtn(false);
+      }
+    } catch {}
+    deferredInstall.current = null;
+  };
   const branding = {
     siteName: siteData?.siteName || 'Betcheza',
     logoUrl: siteData?.logoUrl || '',
@@ -97,6 +148,18 @@ export function Header() {
 
         {/* Right Section */}
         <div className="flex items-center gap-2">
+          {/* Prominent Install App button — only shows when browser fires beforeinstallprompt */}
+          {showInstallBtn && (
+            <Button
+              size="sm"
+              onClick={handleInstallClick}
+              className="hidden sm:flex gap-1.5 h-8 px-3 text-xs bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white border-0"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Install App
+            </Button>
+          )}
+
           {/* Search — typeahead across matches, leagues, teams, tipsters */}
           <div className="relative hidden sm:block">
             <HeaderSearch />

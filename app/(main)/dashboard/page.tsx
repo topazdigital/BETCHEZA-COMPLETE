@@ -323,19 +323,29 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* AI Tips strip for upcoming matches */}
-          {data.upcomingMatches.length > 0 && (
-            <section>
-              <h2 className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Target className="h-3 w-3 text-amber-500" /> AI picks for your teams
-              </h2>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {data.upcomingMatches.slice(0, 6).map((ev, i) => (
-                  <AiTipCard key={ev.id + 'tip' + i} ev={ev} />
-                ))}
-              </div>
-            </section>
-          )}
+          {/* AI Tips strip for upcoming matches — only shows when real bookmaker odds are available */}
+          {data.upcomingMatches.length > 0 && (() => {
+            const cards = data.upcomingMatches.slice(0, 9)
+              .map((ev, i) => ({ ev, i }))
+              .filter(({ ev }) => {
+                const ho = ev.isHome ? ev.odds?.home : ev.odds?.away;
+                const ao = ev.isHome ? ev.odds?.away : ev.odds?.home;
+                return !!(ho && ho > 1.01 && ao && ao > 1.01);
+              });
+            if (cards.length === 0) return null;
+            return (
+              <section>
+                <h2 className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <Target className="h-3 w-3 text-amber-500" /> AI picks for your teams
+                </h2>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {cards.slice(0, 6).map(({ ev, i }) => (
+                    <AiTipCard key={ev.id + 'tip' + i} ev={ev} />
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
         </div>
 
         {/* Right column = followed tipsters with their latest tip inline */}
@@ -599,47 +609,35 @@ function AiTipCard({ ev }: { ev: DashboardEvent }) {
   let market = `${ev.team.name} to win`;
   let odds: number | null = null;
   let confidence = 62;
-  let isEstimated = false;
+  const isEstimated = false;
 
   if (hasRealOdds && teamOdds && oppOdds) {
     const teamFav = teamOdds <= oppOdds;
     odds = teamOdds;
     if (!teamFav && drawOdds) {
+      // Team is the underdog — recommend Double Chance (team win OR draw).
+      // DC odds are always LOWER than the straight-win odds because it covers 2 outcomes.
       const teamProb = 1 / teamOdds;
       const drawProb = 1 / drawOdds;
-      const dcProb = teamProb + drawProb;
-      const dcOdds = parseFloat((1 / dcProb).toFixed(2));
-      if (dcOdds >= 1.05) {
+      // Remove the bookmaker margin before combining (devig)
+      const totalProb = teamProb + drawProb + 1 / oppOdds;
+      const dcFair = (teamProb + drawProb) / totalProb;
+      const dcOdds = parseFloat((1 / dcFair).toFixed(2));
+      if (dcOdds >= 1.05 && dcOdds < teamOdds) {
         market = 'Double chance — ' + ev.team.name + ' or draw';
         odds = dcOdds;
-        confidence = 58;
+        confidence = Math.round(dcFair * 100);
       }
+      // else: keep straight win (dcOdds would be ≥ win odds which is nonsensical)
     } else if (teamFav) {
       const impliedProbs = (1/teamOdds) + (1/oppOdds) + (drawOdds ? 1/drawOdds : 0);
       confidence = Math.min(82, Math.round((1 / teamOdds) / impliedProbs * 100));
     }
-  } else {
-    // No bookmaker odds available — generate AI-estimated odds from statistical model
-    // Uses a home-advantage prior: home teams win ~46%, away ~30%, draw ~24%
-    const homeAdvantage = ev.isHome ? 0.46 : 0.30;
-    const drawPrior = 0.24;
-    // Add small random variation seeded from the match id so it's stable across renders
-    const seed = ev.id ? ev.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0) : 42;
-    const variation = ((seed % 17) - 8) * 0.01; // ±8% variation
-    const winProb = Math.max(0.25, Math.min(0.70, homeAdvantage + variation));
-    const dcProb  = Math.min(0.92, winProb + drawPrior);
-    const rawOdds = 1 / winProb;
-    // If team looks strong enough, recommend win; otherwise recommend double chance
-    if (winProb >= 0.45) {
-      odds = Math.round(rawOdds * 20) / 20; // round to nearest 0.05
-      confidence = Math.round(winProb * 100);
-    } else {
-      market = 'Double chance — ' + ev.team.name + ' or draw';
-      odds = Math.round((1 / dcProb) * 20) / 20;
-      confidence = Math.round(dcProb * 100);
-    }
-    isEstimated = true;
   }
+  // No real bookmaker odds → skip this match in AI picks (don't show made-up numbers)
+
+  // Only show cards with real bookmaker odds — no synthetic numbers
+  if (odds === null) return null;
 
   return (
     <Link
@@ -653,17 +651,10 @@ function AiTipCard({ ev }: { ev: DashboardEvent }) {
       <p className="mt-1 truncate text-xs font-semibold">vs {oppName}</p>
       <p className="mt-1 truncate text-[11px] text-muted-foreground">{market}</p>
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        {odds != null ? (
-          <div className="flex items-center gap-1">
-            <span className="text-base font-bold text-amber-600 tabular-nums">@{odds.toFixed(2)}</span>
-            {isEstimated && (
-              <span className="text-[9px] font-medium text-amber-700/60 bg-amber-500/10 rounded px-1 py-0.5">AI</span>
-            )}
-          </div>
-        ) : (
-          <span className="text-[11px] text-muted-foreground italic">Calculating...</span>
-        )}
-        {odds != null && <span className="text-[10px] text-muted-foreground">{confidence}% conf.</span>}
+        <div className="flex items-center gap-1">
+          <span className="text-base font-bold text-amber-600 tabular-nums">@{odds.toFixed(2)}</span>
+        </div>
+        <span className="text-[10px] text-muted-foreground">{confidence}% conf.</span>
       </div>
       <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
         <span className="inline-flex items-center gap-1 truncate">

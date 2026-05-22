@@ -80,6 +80,15 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
     refreshRecent();
   }, [refreshRecent]);
 
+  // Pre-warm the match cache as soon as search opens so the first query hits cache.
+  const preWarmed = useRef(false);
+  const prewarm = useCallback(() => {
+    if (preWarmed.current) return;
+    preWarmed.current = true;
+    // Fire a background prefetch — result warms the server-side match cache
+    fetch('/api/search?q=__prewarm__&limit=1').catch(() => {});
+  }, []);
+
   // Instant search — fires immediately on each keystroke, uses AbortController
   // to cancel the previous in-flight request so results are never stale.
   useEffect(() => {
@@ -209,7 +218,7 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
             className="pl-9"
             value={q}
             onChange={(e) => { setQ(e.target.value); setShowDropdown(true); }}
-            onFocus={() => { refreshRecent(); setShowDropdown(true); }}
+            onFocus={() => { prewarm(); refreshRecent(); setShowDropdown(true); }}
             onKeyDown={onKeyDown}
           />
           {q && (
@@ -275,7 +284,7 @@ export function HeaderSearch({ inline = false, className, placeholder }: HeaderS
               className="w-72 pl-7"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              onFocus={() => { refreshRecent(); }}
+              onFocus={() => { prewarm(); refreshRecent(); }}
               onKeyDown={onKeyDown}
             />
           </div>
