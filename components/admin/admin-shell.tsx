@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { 
   LayoutDashboard, Users, Trophy, Calendar, Settings, 
-  Bell, LogOut, Menu, X, Shield, MessageSquare, Newspaper, Wallet, Mail, Rss, KeyRound, Star, CreditCard, Database, FileText, BarChart3, Wand2, UserPlus, Globe, MousePointerClick, Gem, TrendingUp, Megaphone, Activity,
+  Bell, LogOut, Menu, X, Shield, MessageSquare, Newspaper, Wallet, Mail, Rss, KeyRound, Star, CreditCard, Database, FileText, BarChart3, Wand2, UserPlus, Globe, MousePointerClick, Gem, TrendingUp, Megaphone, Activity, DoorOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -26,6 +26,7 @@ const adminNavItems = [
   { href: "/admin/competitions", label: "Competitions", icon: Shield },
   { href: "/admin/comments", label: "Comments", icon: MessageSquare },
   { href: "/admin/feed", label: "Community Feed", icon: Rss },
+  { href: "/admin/rooms", label: "Rooms", icon: DoorOpen },
   { href: "/admin/news", label: "News", icon: Newspaper },
   { href: "/admin/payments", label: "Payments", icon: Wallet },
   { href: "/admin/transactions", label: "Transactions", icon: BarChart3 },

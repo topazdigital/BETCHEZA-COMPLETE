@@ -203,18 +203,8 @@ export interface CommunityRoom {
   sortOrder: number;
 }
 
-const DEFAULT_ROOMS: CommunityRoom[] = [
-  { id: 1, name: 'General',       slug: 'general',    description: 'General betting chat',             icon: '💬', color: 'bg-blue-500/15 text-blue-500 border-blue-500/30',        postCount: 0, sortOrder: 1 },
-  { id: 2, name: 'Football Tips', slug: 'football',   description: 'Football predictions & analysis',  icon: '⚽', color: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30', postCount: 0, sortOrder: 2 },
-  { id: 3, name: 'Value Bets',    slug: 'value-bets', description: 'High value picks & odds hunting',  icon: '🎯', color: 'bg-amber-500/15 text-amber-600 border-amber-500/30',      postCount: 0, sortOrder: 3 },
-  { id: 4, name: 'Live Chat',     slug: 'live-chat',  description: 'Chat during live matches',         icon: '🔴', color: 'bg-rose-500/15 text-rose-500 border-rose-500/30',          postCount: 0, sortOrder: 4 },
-  { id: 5, name: 'Analysis',      slug: 'analysis',   description: 'Deep dives, stats and breakdowns', icon: '📊', color: 'bg-purple-500/15 text-purple-600 border-purple-500/30',   postCount: 0, sortOrder: 5 },
-  { id: 6, name: 'Basketball',    slug: 'basketball', description: 'NBA, EuroLeague & more',           icon: '🏀', color: 'bg-orange-500/15 text-orange-600 border-orange-500/30',   postCount: 0, sortOrder: 6 },
-  { id: 7, name: 'Premium Picks', slug: 'premium',    description: 'Top tipster premium predictions',  icon: '👑', color: 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',   postCount: 0, sortOrder: 7 },
-];
-
 export async function listRooms(): Promise<CommunityRoom[]> {
-  if (!hasDb()) return DEFAULT_ROOMS;
+  if (!hasDb()) return [];
   try {
     const r = await query<{
       id: number; name: string; slug: string; description: string | null;
@@ -223,22 +213,54 @@ export async function listRooms(): Promise<CommunityRoom[]> {
       `SELECT id, name, slug, description, icon, color, post_count, sort_order
        FROM community_rooms WHERE is_active = 1 ORDER BY sort_order ASC`,
       [],
-    ).catch(async (e: { code?: string }) => {
-      if (e?.code === 'ER_NO_SUCH_TABLE') {
-        await ensureCommunityRoomsTable();
-        return query<{ id: number; name: string; slug: string; description: string | null; icon: string | null; color: string | null; post_count: number; sort_order: number }>(
-          `SELECT id, name, slug, description, icon, color, post_count, sort_order
-           FROM community_rooms WHERE is_active = 1 ORDER BY sort_order ASC`,
-          [],
-        );
-      }
-      throw e;
-    });
+    );
     return r.rows.map(x => ({
       id: x.id, name: x.name, slug: x.slug, description: x.description,
       icon: x.icon, color: x.color, postCount: x.post_count, sortOrder: x.sort_order,
     }));
-  } catch { return DEFAULT_ROOMS; }
+  } catch { return []; }
+}
+
+export async function listAllRoomsAdmin(): Promise<(CommunityRoom & { isActive: boolean; createdAt: string })[]> {
+  if (!hasDb()) return [];
+  const r = await query<{
+    id: number; name: string; slug: string; description: string | null;
+    icon: string | null; color: string | null; post_count: number; sort_order: number;
+    is_active: number; created_at: string;
+  }>(
+    `SELECT id, name, slug, description, icon, color, post_count, sort_order, is_active, created_at
+     FROM community_rooms ORDER BY sort_order ASC`,
+    [],
+  );
+  return r.rows.map(x => ({
+    id: x.id, name: x.name, slug: x.slug, description: x.description,
+    icon: x.icon, color: x.color, postCount: x.post_count, sortOrder: x.sort_order,
+    isActive: !!x.is_active, createdAt: String(x.created_at),
+  }));
+}
+
+export async function upsertRoom(data: {
+  id?: number; name: string; slug: string; description?: string | null;
+  icon?: string | null; color?: string | null; sortOrder?: number; isActive?: boolean;
+}): Promise<void> {
+  if (!hasDb()) throw new Error('No database connection');
+  const slug = data.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (data.id) {
+    await query(
+      `UPDATE community_rooms SET name=?, slug=?, description=?, icon=?, color=?, sort_order=?, is_active=? WHERE id=?`,
+      [data.name, slug, data.description ?? null, data.icon ?? null, data.color ?? null, data.sortOrder ?? 0, data.isActive !== false ? 1 : 0, data.id],
+    );
+  } else {
+    await query(
+      `INSERT INTO community_rooms (name, slug, description, icon, color, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)`,
+      [data.name, slug, data.description ?? null, data.icon ?? null, data.color ?? null, data.sortOrder ?? 0],
+    );
+  }
+}
+
+export async function deleteRoom(id: number): Promise<void> {
+  if (!hasDb()) throw new Error('No database connection');
+  await query(`DELETE FROM community_rooms WHERE id = ?`, [id]);
 }
 
 export async function listPostsByRoom(roomSlug: string, limit = 50, viewerId?: number | null): Promise<FeedPost[]> {
