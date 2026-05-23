@@ -27,7 +27,7 @@ function getBaseUrl(): string {
     process.env.INTERNAL_BASE_URL ||
     process.env.NEXT_PUBLIC_BASE_URL ||
     (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null) ||
-    'http://localhost:5000'
+    `http://localhost:${process.env.PORT || 5000}`
   );
 }
 
