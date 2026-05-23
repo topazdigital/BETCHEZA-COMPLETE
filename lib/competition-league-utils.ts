@@ -7,6 +7,7 @@
  */
 
 import { query } from '@/lib/db';
+import { getFakeTipsterById } from '@/lib/fake-tipsters';
 
 // ── Canonical league list ─────────────────────────────────────────────────────
 export interface LeagueRef {
@@ -252,16 +253,32 @@ export async function computeLeaderboard(params: {
   const { startDate, endDate, leagueId, leagueName, sportFocus, minTips = 3, limit = 100, allowedUserIds, matchKickoffFrom, matchKickoffTo } = params;
 
   const conditions: string[] = [
-    'at.created_at >= ?',
-    'at.created_at <= ?',
     'at.status IN (\'won\', \'lost\', \'pending\')',
   ];
-  const sqlParams: (string | number)[] = [startDate, endDate];
+  const sqlParams: (string | number)[] = [];
 
   if (matchKickoffFrom && matchKickoffTo) {
+    // Round-based competition: filter by match kickoff window.
+    // Tips count as long as they were placed before the match kicked off,
+    // regardless of when the competition officially "started".
     conditions.push('at.kickoff >= ?');
     conditions.push('at.kickoff <= ?');
+    conditions.push('at.created_at <= at.kickoff');
     sqlParams.push(matchKickoffFrom, matchKickoffTo);
+  } else if (leagueName || leagueId) {
+    // League-scoped competition without an explicit kickoff window:
+    // Use match kickoff as the anchor so tips posted days before the
+    // competition start date (but for matches during the window) are included.
+    // Tips must be placed before kickoff and the kickoff must be within the competition window.
+    conditions.push('at.kickoff >= ?');
+    conditions.push('at.kickoff <= ?');
+    conditions.push('at.created_at <= at.kickoff');
+    sqlParams.push(startDate, endDate);
+  } else {
+    // General competition: filter by tip creation date window.
+    conditions.push('at.created_at >= ?');
+    conditions.push('at.created_at <= ?');
+    sqlParams.push(startDate, endDate);
   }
 
   if (allowedUserIds !== null && allowedUserIds !== undefined) {
@@ -274,14 +291,34 @@ export async function computeLeaderboard(params: {
     }
   }
 
-  if (leagueName) {
-    conditions.push('at.league LIKE ?');
-    sqlParams.push(`%${leagueName}%`);
-  } else if (leagueId) {
-    const ref = KNOWN_LEAGUES.find(l => l.leagueId === leagueId);
+  if (leagueName || leagueId) {
+    // Build a set of all exact name variants for this league so that
+    // "English Premier League" also matches tips stored as "Premier League".
+    // We use exact equality (= ?) for aliases to avoid false positives —
+    // e.g. LIKE '%premier league%' would incorrectly match "Kenya Premier League".
+    const ref = leagueId
+      ? KNOWN_LEAGUES.find(l => l.leagueId === leagueId)
+      : KNOWN_LEAGUES.find(l =>
+          l.leagueName.toLowerCase() === (leagueName ?? '').toLowerCase() ||
+          l.aliases.some(a => a.toLowerCase() === (leagueName ?? '').toLowerCase())
+        );
+
     if (ref) {
-      conditions.push('at.league LIKE ?');
+      // Canonical name uses LIKE for partial matches (e.g. "English Premier League" stored with prefix/suffix)
+      // Aliases use exact equality to avoid cross-league collisions
+      const exactTerms = [ref.leagueName, ...ref.aliases]
+        .filter((t, i, arr) => arr.indexOf(t) === i); // dedupe
+
+      const clauses: string[] = exactTerms.map(() => 'at.league = ?');
+      // Also keep a LIKE on the canonical name for safety
+      clauses.push('at.league LIKE ?');
+      conditions.push(`(${clauses.join(' OR ')})`);
+      for (const t of exactTerms) sqlParams.push(t);
       sqlParams.push(`%${ref.leagueName}%`);
+    } else if (leagueName) {
+      // Unknown league — fall back to plain LIKE match on whatever name was given
+      conditions.push('at.league LIKE ?');
+      sqlParams.push(`%${leagueName}%`);
     }
   } else if (sportFocus && sportFocus !== 'multi-sport') {
     const sportMap: Record<string, string> = {
@@ -329,10 +366,10 @@ export async function computeLeaderboard(params: {
         ROUND(AVG(at.odds), 2)                                     AS avg_odds,
         ROUND(SUM(CASE WHEN at.status = 'won' THEN at.odds ELSE 0 END), 2) AS won_odds_sum
       FROM auto_tips at
-      JOIN users u ON u.id = at.tipster_id
+      LEFT JOIN users u ON u.id = at.tipster_id
       LEFT JOIN user_profiles up ON up.user_id = at.tipster_id
       WHERE ${whereClause}
-      GROUP BY at.tipster_id, u.username, up.display_name, up.avatar_url
+      GROUP BY at.tipster_id, up.display_name, up.avatar_url
       HAVING total_tips >= ?
       ORDER BY
         (SUM(at.status = 'won') * 10 + FLOOR(COALESCE(SUM(CASE WHEN at.status = 'won' THEN at.odds ELSE 0 END) / NULLIF(SUM(at.status = 'won'), 0), 0)) - SUM(at.status = 'lost') * 5) DESC,
@@ -352,11 +389,14 @@ export async function computeLeaderboard(params: {
       const winRate = totalSettled > 0 ? (won / totalSettled) * 100 : 0;
       const tipsterId = Number(row.tipster_id);
 
+      // For fake tipsters (id >= 1000), look up their real name/avatar from the in-memory catalogue
+      const fakeTipster = tipsterId >= 1000 ? getFakeTipsterById(tipsterId) : null;
+
       return {
         userId: tipsterId,
-        username: row.username,
-        displayName: row.display_name,
-        avatar: row.avatar_url,
+        username: fakeTipster ? fakeTipster.username : (row.username || `User#${tipsterId}`),
+        displayName: fakeTipster ? fakeTipster.displayName : (row.display_name || null),
+        avatar: fakeTipster ? fakeTipster.avatar : (row.avatar_url || null),
         totalTips: Number(row.total_tips),
         won,
         lost,
