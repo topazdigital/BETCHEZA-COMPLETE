@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, X } from 'lucide-react';
+import { Bell, X, AlertCircle } from 'lucide-react';
 import { ensurePushSubscribed, isPushSupported, getPushPermission } from '@/lib/push-client';
 
 const DISMISSED_KEY = 'betcheza_push_prompt_dismissed';
@@ -10,6 +10,7 @@ export function PushPromptBanner() {
   const [visible, setVisible] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isPushSupported()) return;
@@ -17,7 +18,6 @@ export function PushPromptBanner() {
     try {
       if (sessionStorage.getItem(DISMISSED_KEY)) return;
     } catch {}
-    // Small delay so it doesn't pop on first paint
     const t = setTimeout(() => setVisible(true), 2500);
     return () => clearTimeout(t);
   }, []);
@@ -29,11 +29,14 @@ export function PushPromptBanner() {
 
   async function enable() {
     setEnabling(true);
+    setError(null);
     const res = await ensurePushSubscribed({ topics: ['general', 'tips', 'matches'] });
     setEnabling(false);
     if (res.ok) {
       setDone(true);
       setTimeout(() => setVisible(false), 2000);
+    } else {
+      setError(res.error || 'Could not enable notifications');
     }
   }
 
@@ -52,6 +55,11 @@ export function PushPromptBanner() {
             <>
               <p className="text-xs font-bold leading-snug">Get alerts even when Betcheza is closed</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">New tips, live goals, and daily picks — direct to your phone.</p>
+              {error && (
+                <p className="mt-1 text-[10px] text-rose-500 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 shrink-0" /> {error}
+                </p>
+              )}
               <button
                 onClick={enable}
                 disabled={enabling}

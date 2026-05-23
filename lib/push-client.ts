@@ -44,12 +44,13 @@ export async function ensurePushSubscribed(opts: { topics?: string[]; countryCod
   }
 
   try {
-    // Register service worker
+    // Register service worker and wait until it is fully active
     let registration = await navigator.serviceWorker.getRegistration('/sw.js');
     if (!registration) {
-      registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     }
-    await navigator.serviceWorker.ready;
+    // Always use the ready registration so we get the active SW, not a pending one
+    registration = await navigator.serviceWorker.ready;
 
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
