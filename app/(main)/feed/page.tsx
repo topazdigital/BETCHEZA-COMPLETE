@@ -31,6 +31,43 @@ interface CommunityRoom {
   sortOrder: number;
 }
 
+function MobileRoomsBar({ activeRoom, onRoomClick }: { activeRoom: string | null; onRoomClick: (slug: string | null) => void }) {
+  const { data } = useSWR<{ rooms: CommunityRoom[] }>(
+    '/api/feed/rooms',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 120_000 },
+  );
+  const rooms = data?.rooms ?? [];
+
+  return (
+    <div className="block lg:hidden -mx-0.5 overflow-x-auto scrollbar-none">
+      <div className="flex gap-1.5 px-0.5 pb-0.5">
+        <button
+          onClick={() => onRoomClick(null)}
+          className={cn(
+            'flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+            activeRoom === null ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground',
+          )}
+        >
+          🌐 All Rooms
+        </button>
+        {rooms.map(room => (
+          <button
+            key={room.slug}
+            onClick={() => onRoomClick(room.slug)}
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors',
+              activeRoom === room.slug ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {room.icon ?? '💬'} {room.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RoomsPanel({ activeRoom, onRoomClick }: { activeRoom: string | null; onRoomClick: (slug: string | null) => void }) {
   const { data } = useSWR<{ rooms: CommunityRoom[] }>(
     '/api/feed/rooms',
@@ -1535,6 +1572,9 @@ export default function FeedPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Mobile rooms selector (hidden on desktop where left rail shows) */}
+              <MobileRoomsBar activeRoom={activeRoom} onRoomClick={handleRoomClick} />
 
               {/* Tip of the Day */}
               <TipOfDay />

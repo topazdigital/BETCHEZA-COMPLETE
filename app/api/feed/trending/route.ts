@@ -1,11 +1,23 @@
 import { NextResponse } from 'next/server';
 import { listPosts } from '@/lib/feed-store';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
+import { getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 
 const CACHE_TTL = 2 * 60_000;
 const g = globalThis as { __trendingCache?: { data: unknown; ts: number } };
+
+function resolveRealOdds(
+  pick: string,
+  matchOdds: { home?: number | null; draw?: number | null; away?: number | null },
+): number | null {
+  const p = pick.toLowerCase().trim();
+  if (p.includes('home win') || p === 'home' || p === '1' || p === '1x2 home') return matchOdds.home ?? null;
+  if (p.includes('away win') || p === 'away' || p === '2' || p === '1x2 away') return matchOdds.away ?? null;
+  if (p.includes('draw') || p === 'x') return matchOdds.draw ?? null;
+  return null;
+}
 
 export async function GET() {
   const now = Date.now();
@@ -18,22 +30,42 @@ export async function GET() {
   const since = now - 24 * 60 * 60 * 1000;
   const recent = posts.filter(p => new Date(p.createdAt).getTime() >= since);
 
+  // Build a real-odds lookup from cached matches (fast — uses internal cache)
+  const oddsLookup = new Map<string, { home?: number | null; draw?: number | null; away?: number | null }>();
+  try {
+    const allMatches = await Promise.race([
+      getAllMatches(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500)),
+    ]);
+    for (const m of allMatches) {
+      if (m.id && m.odds) oddsLookup.set(m.id, m.odds as { home?: number; draw?: number; away?: number });
+    }
+  } catch { /* skip odds enrichment on timeout — user-submitted odds will be used */ }
+
   const trending = [...recent]
     .filter(p => p.pick && p.odds && Number(p.odds) > 1)
     .sort((a, b) => (b.likes + b.commentCount * 2) - (a.likes + a.commentCount * 2))
     .slice(0, 6)
-    .map(p => ({
-      id: p.id,
-      authorName: p.authorName,
-      authorUsername: p.authorUsername,
-      pick: p.pick,
-      odds: p.odds,
-      matchTitle: p.matchTitle,
-      matchId: p.matchId ?? null,
-      likes: p.likes,
-      commentCount: p.commentCount,
-      createdAt: p.createdAt,
-    }));
+    .map(p => {
+      let finalOdds: number | string | null = p.odds;
+      // Prefer real bookmaker odds over user-submitted odds
+      if (p.matchId && p.pick && oddsLookup.has(p.matchId)) {
+        const real = resolveRealOdds(p.pick, oddsLookup.get(p.matchId)!);
+        if (real && real > 1) finalOdds = real;
+      }
+      return {
+        id: p.id,
+        authorName: p.authorName,
+        authorUsername: p.authorUsername,
+        pick: p.pick,
+        odds: finalOdds,
+        matchTitle: p.matchTitle,
+        matchId: p.matchId ?? null,
+        likes: p.likes,
+        commentCount: p.commentCount,
+        createdAt: p.createdAt,
+      };
+    });
 
   const totalPosts = posts.length;
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
