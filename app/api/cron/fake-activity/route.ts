@@ -6,7 +6,7 @@ import {
   recordActivityTip,
   settleActivityTips,
 } from '@/lib/fake-tipsters';
-import { getCompetitions } from '@/lib/competitions-store';
+import { getCompetitionsAsync } from '@/lib/competitions-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -473,7 +473,7 @@ export async function GET(req: NextRequest) {
     // Collect active league-specific competitions so fake tipsters only tip
     // on those league's fixtures. If a competition has leagueName/leagueId,
     // fake tips must come from that specific league to appear on the leaderboard.
-    const activeCompetitions = getCompetitions().filter(c => c.status === 'active');
+    const activeCompetitions = (await getCompetitionsAsync()).filter(c => c.status === 'active');
     const activeLeagueNames = new Set<string>();
     const activeLeagueIds = new Set<number>();
     for (const comp of activeCompetitions) {

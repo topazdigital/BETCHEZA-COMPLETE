@@ -1,14 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────
-// Tipster competitions store.
+// Tipster competitions store — MySQL primary, in-memory cache.
 //
-// Competitions are seeded deterministically from the fake-tipster
-// catalogue so leaderboards always have content. They persist in
-// memory for the life of the process, with hooks for future MySQL
-// persistence (table is created lazily if DATABASE_URL exists).
+// All reads/writes go to MySQL (competitions + competition_entries tables).
+// An in-memory cache is kept for the lifetime of the process and refreshed
+// on demand. Missing columns are added via ALTER TABLE migrations on startup.
 // ─────────────────────────────────────────────────────────────────────
 
-import fs from 'fs';
-import path from 'path';
+import { query, execute, getPool } from './db';
 
 export interface CompetitionParticipant {
   rank: number;
@@ -26,11 +24,6 @@ export interface CompetitionParticipant {
   isVerified: boolean;
 }
 
-/**
- * Structured rule configuration for auto-enforcement.
- * Each rule has a type + optional numeric value + display label.
- * enforceable = true rules trigger violation checks (kick + email).
- */
 export interface RuleConfig {
   type: 'min_tips' | 'min_avg_odds' | 'max_losses' | 'kickoff_only' | 'league_only' | 'sport_only' | 'score_formula' | 'tiebreaker' | 'custom';
   value?: number | string;
@@ -54,29 +47,15 @@ export interface Competition {
   prizes: Array<{ place: string; amount: number }>;
   participants: CompetitionParticipant[];
   rules: string[];
-  /** Structured rule configs used for auto-enforcement (kick + email on violation). */
   ruleConfig?: RuleConfig[];
   sportFocus: string;
-  /** Specific league ID (e.g. 1 = Premier League). Null = general / all leagues. */
   leagueId?: number | null;
-  /** Display name of the detected league (e.g. "Premier League"). */
   leagueName?: string | null;
-  /** Auto-set to true when endDate is derived from round end date */
   roundBased?: boolean;
-  /**
-   * Optional match-kickoff window filter.
-   * When set, only tips on matches whose kickoff falls within this range count.
-   * Use this to restrict a competition to a specific match round / gameweek.
-   * ISO string (e.g. "2026-05-25T15:00:00.000Z")
-   */
   matchKickoffFrom?: string | null;
   matchKickoffTo?: string | null;
-  /** User IDs kicked for rule violations */
   kickedUsers?: number[];
 }
-
-const NOW = () => Date.now();
-const DAY = 24 * 60 * 60 * 1000;
 
 function slugify(s: string): string {
   return s
@@ -85,69 +64,229 @@ function slugify(s: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-// ─── Persistence ──────────────────────────────────────────────────────
-// Admin-created competitions persist across restarts in
-// .local/state/competitions.json
+// ─── In-memory cache ───────────────────────────────────────────────────────
+const g = globalThis as {
+  __competitionsCache?: Competition[];
+  __competitionsCacheAt?: number;
+  __competitionsDbMigrated?: boolean;
+};
 
-const STATE_FILE = path.join(process.cwd(), '.local', 'state', 'competitions.json');
+const CACHE_TTL_MS = 60_000; // refresh from DB every 60 s
 
-interface PersistedState {
-  // Competitions added by admin (overlay on top of seeded ones)
-  added: Competition[];
-  // Per-competition list of joined human-user IDs
-  joinedByCompetition: Record<number, number[]>;
+function invalidateCache() {
+  g.__competitionsCache = undefined;
+  g.__competitionsCacheAt = undefined;
 }
 
-const g = globalThis as { __competitionsState?: PersistedState };
-g.__competitionsState = g.__competitionsState || { added: [], joinedByCompetition: {} };
-const state = g.__competitionsState;
+// ─── DB migrations ─────────────────────────────────────────────────────────
+// Add columns to competitions table that were added after the initial schema.
 
-function ensureDir(p: string) {
-  try { fs.mkdirSync(path.dirname(p), { recursive: true }); } catch {}
-}
+async function ensureCompetitionColumns() {
+  if (g.__competitionsDbMigrated) return;
+  g.__competitionsDbMigrated = true;
+  if (!getPool()) return;
 
-let _stateLoaded = false;
-function loadState() {
-  if (_stateLoaded) return;
-  _stateLoaded = true;
   try {
-    if (!fs.existsSync(STATE_FILE)) return;
-    const raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as PersistedState;
-    state.added = Array.isArray(raw.added) ? raw.added : [];
-    state.joinedByCompetition = raw.joinedByCompetition || {};
+    // Get existing columns from DB so we only ADD what is missing
+    const colResult = await query<{ Field: string }>(`SHOW COLUMNS FROM competitions`);
+    const existing = new Set(colResult.rows.map(r => r.Field));
+
+    const toAdd: Array<[string, string]> = [
+      ['match_kickoff_from', 'datetime DEFAULT NULL'],
+      ['match_kickoff_to',   'datetime DEFAULT NULL'],
+      ['round_based',        'tinyint(1) NOT NULL DEFAULT 0'],
+      ['rule_config',        'longtext DEFAULT NULL'],
+      ['kicked_users',       'longtext DEFAULT NULL'],
+      ['slug',               'varchar(200) DEFAULT NULL'],
+      ['currency',           "varchar(10) DEFAULT 'KES'"],
+      ['prize_breakdown',    'longtext DEFAULT NULL'],
+    ];
+
+    for (const [col, def] of toAdd) {
+      if (!existing.has(col)) {
+        try {
+          await query(`ALTER TABLE competitions ADD COLUMN ${col} ${def}`);
+        } catch (e) {
+          console.warn(`[competitions] ALTER TABLE ADD COLUMN ${col} failed (may already exist):`, e);
+        }
+      }
+    }
   } catch (e) {
-    console.warn('[competitions] load failed', e);
+    console.warn('[competitions] migration check failed:', e);
   }
 }
-loadState();
 
-function persistState() {
+// ─── Row → Competition mapping ─────────────────────────────────────────────
+
+interface CompetitionRow {
+  id: number;
+  name: string;
+  description: string | null;
+  start_date: string;
+  end_date: string;
+  prize_pool: number;
+  entry_fee: number;
+  max_participants: number | null;
+  status: string;
+  rules: string | null;
+  type: string;
+  sport_focus: string | null;
+  league_id: number | null;
+  league_name: string | null;
+  currency: string | null;
+  prize_breakdown: string | null;
+  slug: string | null;
+  match_kickoff_from: string | null;
+  match_kickoff_to: string | null;
+  round_based: number | null;
+  rule_config: string | null;
+  kicked_users: string | null;
+}
+
+function rowToCompetition(row: CompetitionRow): Competition {
+  let prizes: Competition['prizes'] = [];
+  try { prizes = row.prize_breakdown ? JSON.parse(row.prize_breakdown) : []; } catch {}
+
+  let rules: string[] = [];
+  try { rules = row.rules ? JSON.parse(row.rules) : []; } catch {
+    // plain text rules (old format)
+    if (row.rules) rules = [row.rules];
+  }
+
+  let ruleConfig: RuleConfig[] | undefined;
+  try { ruleConfig = row.rule_config ? JSON.parse(row.rule_config) : undefined; } catch {}
+
+  let kickedUsers: number[] = [];
+  try { kickedUsers = row.kicked_users ? JSON.parse(row.kicked_users) : []; } catch {}
+
+  const slug = row.slug || slugify(row.name) || `competition-${row.id}`;
+
+  // Map DB status 'finished' → 'completed' for app consistency
+  let status: Competition['status'] = 'upcoming';
+  if (row.status === 'active') status = 'active';
+  else if (row.status === 'finished' || row.status === 'completed') status = 'completed';
+
+  return {
+    id: row.id,
+    slug,
+    name: row.name,
+    description: row.description || '',
+    type: (row.type as Competition['type']) || 'weekly',
+    status,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    prizePool: Number(row.prize_pool) || 0,
+    currency: row.currency || 'KES',
+    entryFee: Number(row.entry_fee) || 0,
+    maxParticipants: Number(row.max_participants) || 100,
+    prizes,
+    participants: [], // populated separately from competition_entries
+    rules,
+    ruleConfig,
+    sportFocus: row.sport_focus || 'multi-sport',
+    leagueId: row.league_id ?? null,
+    leagueName: row.league_name ?? null,
+    roundBased: !!row.round_based,
+    matchKickoffFrom: row.match_kickoff_from ?? null,
+    matchKickoffTo: row.match_kickoff_to ?? null,
+    kickedUsers,
+  };
+}
+
+// ─── Core read functions ────────────────────────────────────────────────────
+
+export async function getCompetitionsAsync(): Promise<Competition[]> {
+  const now = Date.now();
+  if (g.__competitionsCache && g.__competitionsCacheAt && now - g.__competitionsCacheAt < CACHE_TTL_MS) {
+    return g.__competitionsCache;
+  }
+
+  await ensureCompetitionColumns();
+
   try {
-    ensureDir(STATE_FILE);
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state));
+    const result = await query<CompetitionRow>(`
+      SELECT id, name, description, start_date, end_date, prize_pool, entry_fee,
+             max_participants, status, rules, type, sport_focus, league_id, league_name,
+             currency, prize_breakdown, slug, match_kickoff_from, match_kickoff_to,
+             round_based, rule_config, kicked_users
+      FROM competitions
+      ORDER BY start_date DESC
+    `);
+
+    const competitions = result.rows.map(rowToCompetition);
+
+    // Load joined user IDs from competition_entries for each competition
+    if (competitions.length > 0) {
+      const ids = competitions.map(c => c.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const entries = await query<{ competition_id: number; user_id: number }>(
+        `SELECT competition_id, user_id FROM competition_entries WHERE competition_id IN (${placeholders})`,
+        ids
+      );
+      const byComp = new Map<number, number[]>();
+      for (const e of entries.rows) {
+        const list = byComp.get(e.competition_id) ?? [];
+        list.push(e.user_id);
+        byComp.set(e.competition_id, list);
+      }
+      for (const comp of competitions) {
+        const userIds = byComp.get(comp.id) ?? [];
+        comp.participants = userIds.map((uid, i) => ({
+          rank: i + 1,
+          tipsterId: uid,
+          username: `user_${uid}`,
+          displayName: `user_${uid}`,
+          avatar: null,
+          countryCode: null,
+          winRate: 0,
+          roi: 0,
+          tips: 0,
+          won: 0,
+          points: 0,
+          streak: 0,
+          isVerified: false,
+        }));
+      }
+    }
+
+    g.__competitionsCache = competitions;
+    g.__competitionsCacheAt = now;
+    return competitions;
   } catch (e) {
-    console.warn('[competitions] persist failed', e);
+    console.error('[competitions] DB read failed:', e);
+    return g.__competitionsCache ?? [];
   }
 }
 
+/** Synchronous getter — returns cached data or empty array. Triggers async refresh in background. */
 export function getCompetitions(): Competition[] {
-  return [...state.added];
+  // Kick off a background refresh if cache is stale
+  const now = Date.now();
+  if (!g.__competitionsCache || !g.__competitionsCacheAt || now - g.__competitionsCacheAt >= CACHE_TTL_MS) {
+    getCompetitionsAsync().catch(() => {});
+  }
+  return g.__competitionsCache ?? [];
 }
 
 export function getCompetitionBySlug(slug: string): Competition | undefined {
   return getCompetitions().find(c => c.slug === slug);
 }
 
+export async function getCompetitionBySlugAsync(slug: string): Promise<Competition | undefined> {
+  const all = await getCompetitionsAsync();
+  return all.find(c => c.slug === slug);
+}
+
 export function getCompetitionById(id: number): Competition | undefined {
   return getCompetitions().find(c => c.id === id);
 }
 
-// ─── Admin & user mutations ───────────────────────────────────────────
-
-function nextId(): number {
-  const all = getCompetitions();
-  return Math.max(0, ...all.map(c => c.id)) + 1;
+export async function getCompetitionByIdAsync(id: number): Promise<Competition | undefined> {
+  const all = await getCompetitionsAsync();
+  return all.find(c => c.id === id);
 }
+
+// ─── Write functions ────────────────────────────────────────────────────────
 
 export interface NewCompetitionInput {
   name: string;
@@ -162,184 +301,220 @@ export interface NewCompetitionInput {
   maxParticipants: number;
   prizes?: Array<{ place: string; amount: number }>;
   rules?: string[];
-  /** Structured rule configs for auto-enforcement (kick + email on violation). */
   ruleConfig?: RuleConfig[];
   sportFocus: string;
-  /** Detected or overridden league ID (null = general competition) */
   leagueId?: number | null;
-  /** Display name of the specific league this competition tracks */
   leagueName?: string | null;
-  /** True when the end date was auto-derived from the last match of the round */
   roundBased?: boolean;
-  /**
-   * Optional match-kickoff window: only tips on matches whose kickoff falls
-   * within [matchKickoffFrom, matchKickoffTo] contribute to scoring.
-   * Ideal for single-round / final-day competitions (e.g. GW38 only).
-   */
   matchKickoffFrom?: string | null;
   matchKickoffTo?: string | null;
 }
 
-export function addCompetition(input: NewCompetitionInput): Competition {
-  const id = nextId();
-  const baseSlug = slugify(input.name) || `competition-${id}`;
-  // Avoid slug collisions
+export async function addCompetition(input: NewCompetitionInput): Promise<Competition> {
+  await ensureCompetitionColumns();
+
+  const allExisting = await getCompetitionsAsync();
+  const baseSlug = slugify(input.name) || `competition-${Date.now()}`;
   let slug = baseSlug;
   let n = 2;
-  while (getCompetitions().some(c => c.slug === slug)) {
+  while (allExisting.some(c => c.slug === slug)) {
     slug = `${baseSlug}-${n++}`;
   }
-  const comp: Competition = {
-    id,
+
+  const prizes = input.prizes && input.prizes.length > 0 ? input.prizes : [
+    { place: '1st', amount: Math.round((Number(input.prizePool) || 0) * 0.5) },
+    { place: '2nd', amount: Math.round((Number(input.prizePool) || 0) * 0.3) },
+    { place: '3rd', amount: Math.round((Number(input.prizePool) || 0) * 0.15) },
+    { place: '4-10th', amount: Math.round((Number(input.prizePool) || 0) * 0.05 / 7) },
+  ];
+  const rules = input.rules && input.rules.length > 0 ? input.rules : [
+    'Tips must be placed before kickoff.',
+    'Tie-breaker is total ROI.',
+  ];
+
+  // Map 'completed' → 'finished' for DB enum
+  const dbStatus = input.status === 'completed' ? 'finished' : (input.status || 'upcoming');
+
+  const result = await execute(`
+    INSERT INTO competitions
+      (name, description, start_date, end_date, prize_pool, entry_fee, max_participants,
+       status, rules, type, sport_focus, league_id, league_name, currency,
+       prize_breakdown, slug, match_kickoff_from, match_kickoff_to, round_based,
+       rule_config, kicked_users)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    input.name,
+    input.description || '',
+    input.startDate,
+    input.endDate,
+    Number(input.prizePool) || 0,
+    Number(input.entryFee) || 0,
+    Number(input.maxParticipants) || 100,
+    dbStatus,
+    JSON.stringify(rules),
+    input.type,
+    input.sportFocus || 'multi-sport',
+    input.leagueId ?? null,
+    input.leagueName ?? null,
+    input.currency || 'KES',
+    JSON.stringify(prizes),
     slug,
-    name: input.name,
-    description: input.description || '',
-    type: input.type,
-    status: input.status || 'upcoming',
-    startDate: input.startDate,
-    endDate: input.endDate,
-    leagueId: input.leagueId ?? null,
-    leagueName: input.leagueName ?? null,
-    roundBased: input.roundBased ?? false,
-    matchKickoffFrom: input.matchKickoffFrom ?? null,
-    matchKickoffTo: input.matchKickoffTo ?? null,
-    prizePool: Number(input.prizePool) || 0,
-    currency: input.currency || 'KES',
-    entryFee: Number(input.entryFee) || 0,
-    maxParticipants: Number(input.maxParticipants) || 100,
-    prizes: input.prizes && input.prizes.length > 0 ? input.prizes : [
-      { place: '1st', amount: Math.round((Number(input.prizePool) || 0) * 0.5) },
-      { place: '2nd', amount: Math.round((Number(input.prizePool) || 0) * 0.3) },
-      { place: '3rd', amount: Math.round((Number(input.prizePool) || 0) * 0.15) },
-      { place: '4-10th', amount: Math.round((Number(input.prizePool) || 0) * 0.05 / 7) },
-    ],
-    rules: input.rules && input.rules.length > 0 ? input.rules : [
-      'Tips must be placed before kickoff.',
-      'Tie-breaker is total ROI.',
-    ],
-    ruleConfig: input.ruleConfig && input.ruleConfig.length > 0 ? input.ruleConfig : undefined,
-    sportFocus: input.sportFocus || 'multi-sport',
-    participants: [],
-  };
-  state.added.push(comp);
-  persistState();
+    input.matchKickoffFrom ?? null,
+    input.matchKickoffTo ?? null,
+    input.roundBased ? 1 : 0,
+    input.ruleConfig ? JSON.stringify(input.ruleConfig) : null,
+    null,
+  ]);
+
+  invalidateCache();
+  const comp = await getCompetitionByIdAsync(result.insertId);
+  if (!comp) throw new Error('Failed to load competition after insert');
   return comp;
 }
 
-export function updateCompetition(id: number, patch: Partial<NewCompetitionInput>): Competition | null {
-  const idx = state.added.findIndex(c => c.id === id);
-  if (idx < 0) return null;
-  const cur = state.added[idx];
-  const updated: Competition = {
-    ...cur,
-    ...patch,
-    id: cur.id,
-    slug: cur.slug,
-    participants: cur.participants,
-    prizePool: patch.prizePool !== undefined ? Number(patch.prizePool) : cur.prizePool,
-    entryFee: patch.entryFee !== undefined ? Number(patch.entryFee) : cur.entryFee,
-    maxParticipants: patch.maxParticipants !== undefined ? Number(patch.maxParticipants) : cur.maxParticipants,
-    currency: patch.currency || cur.currency,
-    status: (patch.status as Competition['status']) || cur.status,
-    type: (patch.type as Competition['type']) || cur.type,
-    prizes: patch.prizes && patch.prizes.length > 0 ? patch.prizes : cur.prizes,
-    rules: patch.rules && patch.rules.length > 0 ? patch.rules : cur.rules,
-    matchKickoffFrom: patch.matchKickoffFrom !== undefined ? (patch.matchKickoffFrom ?? null) : cur.matchKickoffFrom,
-    matchKickoffTo: patch.matchKickoffTo !== undefined ? (patch.matchKickoffTo ?? null) : cur.matchKickoffTo,
-  };
-  state.added[idx] = updated;
-  persistState();
-  return updated;
+export async function updateCompetition(id: number, patch: Partial<NewCompetitionInput>): Promise<Competition | null> {
+  await ensureCompetitionColumns();
+
+  const cur = await getCompetitionByIdAsync(id);
+  if (!cur) return null;
+
+  const prizes = patch.prizes && patch.prizes.length > 0 ? patch.prizes : cur.prizes;
+  const rules = patch.rules && patch.rules.length > 0 ? patch.rules : cur.rules;
+  const dbStatus = patch.status === 'completed' ? 'finished' : (patch.status || cur.status);
+
+  await execute(`
+    UPDATE competitions SET
+      name = ?,
+      description = ?,
+      start_date = ?,
+      end_date = ?,
+      prize_pool = ?,
+      entry_fee = ?,
+      max_participants = ?,
+      status = ?,
+      rules = ?,
+      type = ?,
+      sport_focus = ?,
+      league_id = ?,
+      league_name = ?,
+      currency = ?,
+      prize_breakdown = ?,
+      match_kickoff_from = ?,
+      match_kickoff_to = ?,
+      round_based = ?,
+      rule_config = ?
+    WHERE id = ?
+  `, [
+    patch.name ?? cur.name,
+    patch.description ?? cur.description,
+    patch.startDate ?? cur.startDate,
+    patch.endDate ?? cur.endDate,
+    patch.prizePool !== undefined ? Number(patch.prizePool) : cur.prizePool,
+    patch.entryFee !== undefined ? Number(patch.entryFee) : cur.entryFee,
+    patch.maxParticipants !== undefined ? Number(patch.maxParticipants) : cur.maxParticipants,
+    dbStatus,
+    JSON.stringify(rules),
+    patch.type ?? cur.type,
+    patch.sportFocus ?? cur.sportFocus,
+    patch.leagueId !== undefined ? (patch.leagueId ?? null) : (cur.leagueId ?? null),
+    patch.leagueName !== undefined ? (patch.leagueName ?? null) : (cur.leagueName ?? null),
+    patch.currency ?? cur.currency,
+    JSON.stringify(prizes),
+    patch.matchKickoffFrom !== undefined ? (patch.matchKickoffFrom ?? null) : (cur.matchKickoffFrom ?? null),
+    patch.matchKickoffTo !== undefined ? (patch.matchKickoffTo ?? null) : (cur.matchKickoffTo ?? null),
+    patch.roundBased !== undefined ? (patch.roundBased ? 1 : 0) : (cur.roundBased ? 1 : 0),
+    patch.ruleConfig ? JSON.stringify(patch.ruleConfig) : (cur.ruleConfig ? JSON.stringify(cur.ruleConfig) : null),
+    id,
+  ]);
+
+  invalidateCache();
+  return getCompetitionByIdAsync(id) as Promise<Competition>;
 }
 
-export function deleteCompetition(id: number): boolean {
-  const before = state.added.length;
-  state.added = state.added.filter(c => c.id !== id);
-  if (state.added.length === before) return false;
-  delete state.joinedByCompetition[id];
-  persistState();
+export async function deleteCompetition(id: number): Promise<boolean> {
+  const result = await execute(`DELETE FROM competitions WHERE id = ?`, [id]);
+  if (result.affectedRows === 0) return false;
+  await execute(`DELETE FROM competition_entries WHERE competition_id = ?`, [id]);
+  invalidateCache();
   return true;
 }
+
+// ─── Join / membership ─────────────────────────────────────────────────────
 
 export type JoinResult =
   | { ok: true; alreadyJoined: boolean; participantCount: number }
   | { ok: false; error: string };
 
-export function joinCompetition(competitionId: number, userId: number, userName: string): JoinResult {
-  const comp = getCompetitionById(competitionId);
+export async function joinCompetition(competitionId: number, userId: number, _userName: string): Promise<JoinResult> {
+  const comp = await getCompetitionByIdAsync(competitionId);
   if (!comp) return { ok: false, error: 'Competition not found' };
   if (comp.status === 'completed') return { ok: false, error: 'Competition has already ended' };
 
-  const joined = state.joinedByCompetition[competitionId] || [];
-  if (joined.includes(userId)) {
+  // Check if already joined
+  const existing = await query<{ id: number }>(
+    `SELECT id FROM competition_entries WHERE competition_id = ? AND user_id = ?`,
+    [competitionId, userId]
+  );
+  if (existing.rows.length > 0) {
     return { ok: true, alreadyJoined: true, participantCount: comp.participants.length };
   }
-  if (comp.participants.length >= comp.maxParticipants) {
+
+  const countResult = await query<{ cnt: number }>(
+    `SELECT COUNT(*) AS cnt FROM competition_entries WHERE competition_id = ?`,
+    [competitionId]
+  );
+  const currentCount = Number(countResult.rows[0]?.cnt ?? 0);
+  if (currentCount >= comp.maxParticipants) {
     return { ok: false, error: 'Competition is full' };
   }
 
-  // Add the human user as a real participant on top of the fake leaderboard.
-  comp.participants.push({
-    rank: comp.participants.length + 1,
-    tipsterId: userId,
-    username: userName,
-    displayName: userName,
-    avatar: null,
-    countryCode: null,
-    winRate: 0,
-    roi: 0,
-    tips: 0,
-    won: 0,
-    points: 0,
-    streak: 0,
-    isVerified: false,
-  });
-  state.joinedByCompetition[competitionId] = [...joined, userId];
-  persistState();
-  return { ok: true, alreadyJoined: false, participantCount: comp.participants.length };
+  await execute(
+    `INSERT INTO competition_entries (competition_id, user_id) VALUES (?, ?)`,
+    [competitionId, userId]
+  );
+
+  invalidateCache();
+  return { ok: true, alreadyJoined: false, participantCount: currentCount + 1 };
 }
 
-export function hasUserJoined(competitionId: number, userId: number): boolean {
-  return (state.joinedByCompetition[competitionId] || []).includes(userId);
+export async function hasUserJoined(competitionId: number, userId: number): Promise<boolean> {
+  const result = await query<{ id: number }>(
+    `SELECT id FROM competition_entries WHERE competition_id = ? AND user_id = ?`,
+    [competitionId, userId]
+  );
+  return result.rows.length > 0;
 }
 
-/** Returns all real user IDs that have joined a competition. */
-export function getJoinedUserIds(competitionId: number): number[] {
-  return [...(state.joinedByCompetition[competitionId] || [])];
+export async function getJoinedUserIds(competitionId: number): Promise<number[]> {
+  const result = await query<{ user_id: number }>(
+    `SELECT user_id FROM competition_entries WHERE competition_id = ?`,
+    [competitionId]
+  );
+  return result.rows.map(r => r.user_id);
 }
 
-/**
- * Kick a user from a competition for a rule violation.
- * Removes them from the joined list and adds to kickedUsers array.
- */
-export function kickUserFromCompetition(
-  competitionId: number,
-  userId: number,
-): boolean {
-  const comp = getCompetitionById(competitionId);
+export async function kickUserFromCompetition(competitionId: number, userId: number): Promise<boolean> {
+  const comp = await getCompetitionByIdAsync(competitionId);
   if (!comp) return false;
 
-  // Remove from join list
-  const joinList = state.joinedByCompetition[competitionId] || [];
-  state.joinedByCompetition[competitionId] = joinList.filter(id => id !== userId);
+  await execute(
+    `DELETE FROM competition_entries WHERE competition_id = ? AND user_id = ?`,
+    [competitionId, userId]
+  );
 
-  // Track kicked users
-  if (!comp.kickedUsers) comp.kickedUsers = [];
-  if (!comp.kickedUsers.includes(userId)) comp.kickedUsers.push(userId);
+  // Track in kicked_users JSON column
+  const kicked = [...(comp.kickedUsers ?? [])];
+  if (!kicked.includes(userId)) kicked.push(userId);
+  await execute(
+    `UPDATE competitions SET kicked_users = ? WHERE id = ?`,
+    [JSON.stringify(kicked), competitionId]
+  );
 
-  // Also remove from participant list if present
-  const idx = comp.participants.findIndex(p => p.tipsterId === userId);
-  if (idx >= 0) comp.participants.splice(idx, 1);
-
-  persistState();
+  invalidateCache();
   return true;
 }
 
-// ─── Settlement / prize payout ────────────────────────────────────────
-// Marks a competition as `completed`, records who has been paid (so we
-// never double-pay) and returns the list of (userId, amount) tuples to
-// credit. The actual wallet credit is performed by the admin route so
-// that this store stays free of cross-cutting wallet imports.
+// ─── Settlement / prize payout ─────────────────────────────────────────────
 
 interface SettlementRecord {
   paidAt: string;
@@ -360,12 +535,6 @@ export function getSettlement(competitionId: number): SettlementRecord | null {
   return settlements[competitionId] || null;
 }
 
-/**
- * Returns the prize pay-outs for the current leaderboard order. Does NOT
- * mutate any wallet — the caller (admin route) is responsible for that.
- * Each `prizes[]` row is matched to as many participants as the place
- * label implies (e.g. "4-10th" → 7 participants starting at rank 4).
- */
 export function computePayouts(competitionId: number): SettlementRecord['payouts'] {
   const comp = getCompetitionById(competitionId);
   if (!comp) return [];
@@ -376,7 +545,6 @@ export function computePayouts(competitionId: number): SettlementRecord['payouts
     if (!prize.amount || prize.amount <= 0) continue;
     const m = prize.place.match(/^(\d+)(?:[-–](\d+))?/);
     if (!m) {
-      // Single-place "1st" fallback by ordinal
       const slot = ranked[cursor++];
       if (slot) payouts.push({
         rank: slot.rank,
@@ -407,51 +575,36 @@ export function computePayouts(competitionId: number): SettlementRecord['payouts
   return payouts;
 }
 
-/**
- * Records a settlement (status → completed, store payouts). Returns the
- * payouts that should now be credited to real (non-fake) user wallets.
- * Idempotent: a second call returns an empty list.
- */
-export function settleCompetition(competitionId: number): {
+export async function settleCompetition(competitionId: number): Promise<{
   ok: boolean;
   alreadySettled: boolean;
   toCredit: SettlementRecord['payouts'];
   competition: Competition | null;
-} {
-  const comp = getCompetitionById(competitionId);
+}> {
+  const comp = await getCompetitionByIdAsync(competitionId);
   if (!comp) return { ok: false, alreadySettled: false, toCredit: [], competition: null };
 
   if (settlements[competitionId]) {
-    return {
-      ok: true,
-      alreadySettled: true,
-      toCredit: [],
-      competition: comp,
-    };
+    return { ok: true, alreadySettled: true, toCredit: [], competition: comp };
   }
 
   const payouts = computePayouts(competitionId);
-  // Only real human users get credited (fake tipsters have ids ≥ 1000).
   const toCredit = payouts.filter(p => !p.isFakeTipster);
   const totalPaid = toCredit.reduce((a, p) => a + p.amount, 0);
 
-  settlements[competitionId] = {
-    paidAt: new Date().toISOString(),
-    payouts,
-    totalPaid,
-  };
+  settlements[competitionId] = { paidAt: new Date().toISOString(), payouts, totalPaid };
 
-  // Mark the competition as completed.
-  comp.status = 'completed';
-  // Persist the status change for admin-added competitions
-  const idx = state.added.findIndex(c => c.id === competitionId);
-  if (idx >= 0) {
-    state.added[idx] = comp;
-    persistState();
-  }
+  // Mark as finished in DB
+  await execute(
+    `UPDATE competitions SET status = 'finished' WHERE id = ?`,
+    [competitionId]
+  );
+  invalidateCache();
 
   return { ok: true, alreadySettled: false, toCredit, competition: comp };
 }
+
+// ─── Public summary (used by API routes) ───────────────────────────────────
 
 export function publicCompetitionSummary(c: Competition) {
   return {

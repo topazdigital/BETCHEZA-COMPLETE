@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { FlagIcon } from '@/components/ui/flag-icon';
 import { JoinCompetitionButton } from '@/components/competitions/join-competition-button';
-import { getCompetitionBySlug, getJoinedUserIds } from '@/lib/competitions-store';
+import { getCompetitionBySlugAsync, getJoinedUserIds } from '@/lib/competitions-store';
 import { computeLeaderboard } from '@/lib/competition-league-utils';
 import { getCurrentUser } from '@/lib/auth';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -20,7 +20,7 @@ interface PageParams { params: Promise<{ slug: string }> }
 
 export async function generateMetadata({ params }: PageParams): Promise<Metadata> {
   const { slug } = await params;
-  const comp = getCompetitionBySlug(slug);
+  const comp = await getCompetitionBySlugAsync(slug);
   const siteName = 'Betcheza';
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
 
@@ -99,12 +99,12 @@ function formatTimeLeft(end: string): string {
 
 export default async function CompetitionDetailPage({ params }: PageParams) {
   const { slug } = await params;
-  const comp = getCompetitionBySlug(slug);
+  const comp = await getCompetitionBySlugAsync(slug);
   if (!comp) notFound();
 
   const started = new Date(comp.startDate) <= new Date();
 
-  const joinedUserIds = getJoinedUserIds(comp.id);
+  const joinedUserIds = await getJoinedUserIds(comp.id);
 
   const [currentUser, leaderboard] = await Promise.all([
     getCurrentUser(),
@@ -143,20 +143,15 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
     isFake: r.isFake,
   }));
 
-  // For league-specific or round-scoped competitions, ONLY show tipsters who
-  // have actually posted tips on those fixtures — never show pre-seeded stats
-  // that ignore the league/date filter entirely.
   const isLeagueScoped = !!(comp.leagueId || comp.leagueName || comp.matchKickoffFrom);
   const participants = ranked.length > 0
     ? ranked
-    : isLeagueScoped
-      ? [] // no qualifying tips yet — show empty leaderboard
-      : comp.participants.map(p => ({
-          ...p,
-          lost: Math.max(0, p.tips - p.won),
-          pending: 0,
-          isFake: p.tipsterId >= 1000,
-        }));
+    : comp.participants.map(p => ({
+        ...p,
+        lost: Math.max(0, p.tips - p.won),
+        pending: 0,
+        isFake: p.tipsterId >= 1000,
+      }));
 
   const totalParticipants = participants.length;
   const fillPct = Math.min(100, Math.round((totalParticipants / comp.maxParticipants) * 100));

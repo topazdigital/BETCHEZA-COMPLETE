@@ -1,18 +1,6 @@
-/**
- * Competition rule-violation checker.
- * Called every 60 min by the cron scheduler.
- *
- * For every ACTIVE competition with enforceable ruleConfig entries, we:
- *  1. Compute each joined real user's current stats from auto_tips.
- *  2. If a stat violates the rule threshold we kick the user
- *     (remove from join list + participant list) and send an email.
- *
- * Fake tipsters (id >= 1000) are never kicked — they always behave correctly.
- */
-
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getCompetitions,
+  getCompetitionsAsync,
   getJoinedUserIds,
   kickUserFromCompetition,
   type RuleConfig,
@@ -72,7 +60,6 @@ async function sendViolationEmail(
   competitionName: string,
   violatedRule: string,
 ): Promise<void> {
-  // Fetch the user's email from DB
   try {
     const result = await query<{ email: string; display_name: string }>(
       `SELECT email, display_name FROM users WHERE id = ? LIMIT 1`,
@@ -80,44 +67,30 @@ async function sendViolationEmail(
     );
     const user = result.rows[0];
     if (!user?.email) return;
-
-    // Log the email (actual sending would use an email service)
     console.log(
       `[rule-check] VIOLATION EMAIL → ${user.email} (${user.display_name}): ` +
         `removed from "${competitionName}" — rule: ${violatedRule}`,
     );
-
-    // If SMTP / email service is configured, send here.
-    // For now we record the kick in the store (kickUserFromCompetition already does this).
   } catch (e) {
     console.warn('[rule-check] email lookup failed:', e);
   }
 }
 
-function checkViolation(
-  rule: RuleConfig,
-  stats: UserStats,
-): string | null {
+function checkViolation(rule: RuleConfig, stats: UserStats): string | null {
   switch (rule.type) {
     case 'min_tips': {
       const min = Number(rule.value ?? 3);
-      if (stats.tipCount < min) {
-        return `Posted only ${stats.tipCount} tip(s) — minimum is ${min}.`;
-      }
+      if (stats.tipCount < min) return `Posted only ${stats.tipCount} tip(s) — minimum is ${min}.`;
       break;
     }
     case 'min_avg_odds': {
       const min = Number(rule.value ?? 1.5);
-      if (stats.avgOdds < min && stats.tipCount > 0) {
-        return `Average odds ${stats.avgOdds.toFixed(2)} is below minimum ${min}.`;
-      }
+      if (stats.avgOdds < min && stats.tipCount > 0) return `Average odds ${stats.avgOdds.toFixed(2)} is below minimum ${min}.`;
       break;
     }
     case 'max_losses': {
       const max = Number(rule.value ?? 999);
-      if (stats.lostCount > max) {
-        return `Loss count ${stats.lostCount} exceeds maximum allowed ${max}.`;
-      }
+      if (stats.lostCount > max) return `Loss count ${stats.lostCount} exceeds maximum allowed ${max}.`;
       break;
     }
     default:
@@ -133,7 +106,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const active = getCompetitions().filter(
+  const competitions = await getCompetitionsAsync();
+  const active = competitions.filter(
     (c) => c.status === 'active' && Array.isArray(c.ruleConfig) && c.ruleConfig.length > 0,
   );
 
@@ -148,10 +122,9 @@ export async function GET(req: NextRequest) {
     const enforceable = (comp.ruleConfig ?? []).filter((r) => r.enforceable);
     if (enforceable.length === 0) continue;
 
-    const joinedIds = getJoinedUserIds(comp.id).filter((id) => id < 1000);
+    const joinedIds = (await getJoinedUserIds(comp.id)).filter((id) => id < 1000);
 
     for (const userId of joinedIds) {
-      // Skip already-kicked users
       if (comp.kickedUsers?.includes(userId)) continue;
 
       const stats = await fetchUserStats(userId, comp.startDate, comp.endDate);
@@ -159,19 +132,15 @@ export async function GET(req: NextRequest) {
       for (const rule of enforceable) {
         const violation = checkViolation(rule, stats);
         if (violation) {
-          kickUserFromCompetition(comp.id, userId);
+          await kickUserFromCompetition(comp.id, userId);
           await sendViolationEmail(userId, comp.name, rule.label);
           totalKicked++;
           log.push(`Kicked user ${userId} from "${comp.name}": ${violation}`);
-          break; // one kick per user per run
+          break;
         }
       }
     }
   }
 
-  return NextResponse.json({
-    checked: active.length,
-    kicked: totalKicked,
-    log,
-  });
+  return NextResponse.json({ checked: active.length, kicked: totalKicked, log });
 }

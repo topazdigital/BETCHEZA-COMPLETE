@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCompetitionBySlug, getCompetitionById } from '@/lib/competitions-store';
+import { getCompetitionBySlugAsync, getCompetitionByIdAsync } from '@/lib/competitions-store';
 import { computeLeaderboard } from '@/lib/competition-league-utils';
 
 export const dynamic = 'force-dynamic';
@@ -12,19 +12,16 @@ export async function GET(
   const { slug } = await params;
   const idNum = Number(slug);
   const comp = (Number.isFinite(idNum) && idNum > 0)
-    ? getCompetitionById(idNum) ?? getCompetitionBySlug(slug)
-    : getCompetitionBySlug(slug);
+    ? (await getCompetitionByIdAsync(idNum) ?? await getCompetitionBySlugAsync(slug))
+    : await getCompetitionBySlugAsync(slug);
 
   if (!comp) {
     return NextResponse.json({ success: false, error: 'Competition not found' }, { status: 404 });
   }
 
-  // ── Query ALL tipsters (real + fake) from auto_tips for this competition
-  // Fake tipsters (id >= 1000) post real predictions to auto_tips just like
-  // real users — they get scored against the same filter (league/sport/dates)
   const now = new Date();
   const started = new Date(comp.startDate) <= now;
-  const endDate = started ? comp.endDate : comp.startDate; // cap to now if not started
+  const endDate = started ? comp.endDate : comp.startDate;
 
   const leaderboard = started
     ? await computeLeaderboard({
@@ -40,7 +37,6 @@ export async function GET(
       })
     : [];
 
-  // Convert to the participant shape the frontend expects
   const ranked = leaderboard.map((r, i) => ({
     rank: i + 1,
     tipsterId: r.userId,
@@ -61,10 +57,8 @@ export async function GET(
     isFake: r.isFake,
   }));
 
-  // Actual participant count = distinct tipsters who posted qualifying tips
   const actualParticipants = ranked.length;
 
-  // Scoring scope label
   const scopeLabel = comp.leagueName
     ? `Only ${comp.leagueName} tips count`
     : comp.sportFocus && comp.sportFocus !== 'multi-sport'

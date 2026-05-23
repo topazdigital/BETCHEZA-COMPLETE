@@ -1,15 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getCompetitions, publicCompetitionSummary } from '@/lib/competitions-store';
+import { getCompetitionsAsync, publicCompetitionSummary } from '@/lib/competitions-store';
 import { query } from '@/lib/db';
-import { KNOWN_LEAGUES } from '@/lib/competition-league-utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-/**
- * Build the WHERE conditions and params for a competition's tip filter
- * (same logic as computeLeaderboard, duplicated here so we can batch counts).
- */
 function buildTipFilter(comp: ReturnType<typeof publicCompetitionSummary>) {
   const conditions: string[] = ['created_at >= ?', 'created_at <= ?'];
   const params: (string | number)[] = [comp.startDate, comp.endDate];
@@ -45,13 +40,9 @@ function buildTipFilter(comp: ReturnType<typeof publicCompetitionSummary>) {
 }
 
 export async function GET() {
-  const all = getCompetitions();
+  const all = await getCompetitionsAsync();
   const summaries = all.map(publicCompetitionSummary);
 
-  // ── Real participant counts from auto_tips ────────────────────────
-  // For each active/upcoming competition query the actual number of distinct
-  // tipsters who posted at least one tip in the competition's scope window.
-  // We do this in parallel for speed.
   const countMap = new Map<number, number>();
 
   try {
@@ -67,15 +58,13 @@ export async function GET() {
             );
             const cnt = Number(res.rows[0]?.cnt ?? 0);
             countMap.set(comp.id, cnt);
-          } catch { /* DB unavailable — leave countMap empty for this comp */ }
+          } catch { /* DB unavailable */ }
         })
     );
   } catch { /* ignore batch-level errors */ }
 
-  // Merge real counts into summaries
   const enriched = summaries.map(c => ({
     ...c,
-    // If we got a real count use it; otherwise fall back to seeded participant count
     currentParticipants: countMap.has(c.id) ? countMap.get(c.id)! : c.currentParticipants,
   }));
 

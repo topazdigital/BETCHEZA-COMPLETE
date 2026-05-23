@@ -4,21 +4,18 @@ import {
   addCompetition,
   updateCompetition,
   deleteCompetition,
-  getCompetitions,
+  getCompetitionsAsync,
   type NewCompetitionInput,
 } from '@/lib/competitions-store';
 import {
   validateCompetitionLeague,
-  detectSportFocusFromName,
   findLeagueRoundEndDate,
   migrateCompetitionsTable,
 } from '@/lib/competition-league-utils';
-import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// Ensure DB columns exist the first time an admin hits this route
 let _migrated = false;
 async function ensureMigrated() {
   if (_migrated) return;
@@ -30,7 +27,8 @@ export async function GET() {
   const user = await requireAdmin();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   await ensureMigrated();
-  return NextResponse.json({ competitions: getCompetitions() });
+  const competitions = await getCompetitionsAsync();
+  return NextResponse.json({ competitions });
 }
 
 export async function POST(req: NextRequest) {
@@ -49,8 +47,6 @@ export async function POST(req: NextRequest) {
   }
 
   const name = String(body.name).trim();
-
-  // ── League detection & validation ──────────────────────────────────
   const validation = validateCompetitionLeague(name);
 
   if (!validation.valid) {
@@ -67,12 +63,10 @@ export async function POST(req: NextRequest) {
   const detected = validation.detected;
   const sportFocus = String(body.sportFocus || validation.sportFocus || 'multi-sport');
 
-  // ── Round-based end date detection ─────────────────────────────────
   let endDate = String(body.endDate);
   let roundBased = false;
 
   if (detected && body.type === 'weekly') {
-    // Try to find the last match of the league round within the competition window
     const roundEnd = await findLeagueRoundEndDate(
       detected.leagueName,
       String(body.startDate),
@@ -84,7 +78,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Build rules based on whether it's league-specific ──────────────
   const defaultRules = detected
     ? [
         `Only ${detected.leagueName} matches count for scoring.`,
@@ -99,7 +92,7 @@ export async function POST(req: NextRequest) {
         'Tie-breaker: win rate then ROI.',
       ];
 
-  const comp = addCompetition({
+  const comp = await addCompetition({
     name,
     description: String(body.description || ''),
     type: (body.type as NewCompetitionInput['type']) || 'weekly',
@@ -121,34 +114,6 @@ export async function POST(req: NextRequest) {
     matchKickoffTo: body.matchKickoffTo ? String(body.matchKickoffTo) : null,
   });
 
-  // ── Persist to MySQL if DB is available ────────────────────────────
-  await query(
-    `INSERT IGNORE INTO competitions
-       (id, name, description, type, status, sport_focus, league_id, league_name,
-        prize_pool, entry_fee, max_participants, currency, prize_breakdown, slug,
-        rules, start_date, end_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      comp.id,
-      comp.name,
-      comp.description,
-      comp.type,
-      comp.status,
-      sportFocus,
-      detected?.leagueId ?? null,
-      detected?.leagueName ?? null,
-      comp.prizePool,
-      comp.entryFee,
-      comp.maxParticipants,
-      comp.currency,
-      JSON.stringify(comp.prizes),
-      comp.slug,
-      JSON.stringify(comp.rules),
-      comp.startDate,
-      comp.endDate,
-    ],
-  ).catch(e => console.warn('[competitions POST] DB insert failed:', e));
-
   return NextResponse.json({
     success: true,
     competition: comp,
@@ -166,21 +131,13 @@ export async function PATCH(req: NextRequest) {
   try { body = await req.json(); } catch {}
   if (!body.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  const updated = updateCompetition(Number(body.id), body);
+  const updated = await updateCompetition(Number(body.id), body);
   if (!updated) {
     return NextResponse.json(
-      { error: 'Competition not found or is a built-in (not editable).' },
+      { error: 'Competition not found.' },
       { status: 404 },
     );
   }
-
-  // Mirror update to DB
-  await query(
-    `UPDATE competitions SET status = ?, end_date = ?, start_date = ?, prize_pool = ?, entry_fee = ?,
-     match_kickoff_from = ?, match_kickoff_to = ? WHERE id = ?`,
-    [updated.status, updated.endDate, updated.startDate, updated.prizePool, updated.entryFee,
-     updated.matchKickoffFrom ?? null, updated.matchKickoffTo ?? null, updated.id],
-  ).catch(() => {});
 
   return NextResponse.json({ success: true, competition: updated });
 }
@@ -193,14 +150,13 @@ export async function DELETE(req: NextRequest) {
   const id = Number(req.nextUrl.searchParams.get('id') || 0);
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  const ok = deleteCompetition(id);
+  const ok = await deleteCompetition(id);
   if (!ok) {
     return NextResponse.json(
-      { error: 'Competition not found or is a built-in (cannot be deleted).' },
+      { error: 'Competition not found.' },
       { status: 404 },
     );
   }
 
-  await query(`DELETE FROM competitions WHERE id = ?`, [id]).catch(() => {});
   return NextResponse.json({ success: true });
 }

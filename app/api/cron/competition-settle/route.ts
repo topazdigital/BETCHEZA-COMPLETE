@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getCompetitions,
+  getCompetitionsAsync,
   settleCompetition,
   addCompetition,
   type Competition,
@@ -11,16 +11,12 @@ import { query } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
 import { credit } from '@/lib/wallet-store';
 
-// Grace period after the last match kicks off before we treat a round-scoped
-// competition as eligible to settle (enough time for 90 min + extra time).
-const KICKOFF_GRACE_MS = 3 * 60 * 60 * 1000; // 3 hours
+const KICKOFF_GRACE_MS = 3 * 60 * 60 * 1000;
 
 export const dynamic = 'force-dynamic';
 
 const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 
-// League seasons — used to decide whether to restart a competition
-// True = league is actively running (should restart), false = off-season
 const LEAGUE_ACTIVE: Record<string, boolean> = {
   football: true,
   'premier-league': true,
@@ -39,35 +35,21 @@ const LEAGUE_ACTIVE: Record<string, boolean> = {
 function isLeagueActive(sportFocus: string): boolean {
   const key = sportFocus.toLowerCase().replace(/\s+/g, '-');
   if (LEAGUE_ACTIVE[key] !== undefined) return LEAGUE_ACTIVE[key];
-  // Default: assume active for unknown sports
   return true;
 }
 
 function nextPeriodDates(comp: Competition): { startDate: string; endDate: string } {
   const now = new Date();
   const originalDuration = new Date(comp.endDate).getTime() - new Date(comp.startDate).getTime();
-
   switch (comp.type) {
     case 'daily':
-      return {
-        startDate: now.toISOString(),
-        endDate: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-      };
+      return { startDate: now.toISOString(), endDate: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString() };
     case 'weekly':
-      return {
-        startDate: now.toISOString(),
-        endDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      };
+      return { startDate: now.toISOString(), endDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() };
     case 'monthly':
-      return {
-        startDate: now.toISOString(),
-        endDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      };
+      return { startDate: now.toISOString(), endDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() };
     default:
-      return {
-        startDate: now.toISOString(),
-        endDate: new Date(now.getTime() + originalDuration).toISOString(),
-      };
+      return { startDate: now.toISOString(), endDate: new Date(now.getTime() + originalDuration).toISOString() };
   }
 }
 
@@ -96,48 +78,34 @@ export async function GET(req: NextRequest) {
   }
 
   const now = Date.now();
-  const competitions = getCompetitions();
+  const competitions = await getCompetitionsAsync();
   const results: Array<{ id: number; name: string; action: string }> = [];
 
   for (const comp of competitions) {
-    // Only settle active competitions
     if (comp.status !== 'active') continue;
 
     const endedAt = new Date(comp.endDate).getTime();
-
-    // ── Kickoff-window scoped competition (any round / any league) ─────
-    // A competition with matchKickoffFrom/matchKickoffTo is treated as a
-    // single-round contest.  It becomes eligible to settle once the kickoff
-    // window closes AND a grace period has passed (matches need time to finish).
     const isRoundScoped = !!(comp.matchKickoffFrom && comp.matchKickoffTo);
+
     if (isRoundScoped) {
       const windowEnds = new Date(comp.matchKickoffTo!).getTime();
       if (now < windowEnds + KICKOFF_GRACE_MS) {
-        // Matches haven't had time to finish yet — wait
         results.push({ id: comp.id, name: comp.name, action: 'round-in-progress' });
         continue;
       }
-      // Window is over — fall through to settle regardless of endDate
     } else {
-      // Normal time-based competition: only settle when endDate has passed
       if (endedAt > now) continue;
     }
 
-    // ── 1. Check round-based end for league competitions ───────────────
-    // For weekly league competitions, the cron auto-extends the end date
-    // to match the actual last kickoff of the round.
     if (!isRoundScoped && comp.roundBased && comp.leagueName) {
       const weekAhead = new Date(new Date(comp.startDate).getTime() + 8 * 24 * 60 * 60 * 1000).toISOString();
       const roundEnd = await findLeagueRoundEndDate(comp.leagueName, comp.startDate, weekAhead);
       if (roundEnd && new Date(roundEnd).getTime() > now) {
-        // Round hasn't finished yet — skip this competition
         results.push({ id: comp.id, name: comp.name, action: 'round-not-finished' });
         continue;
       }
     }
 
-    // ── 2. Build real leaderboard from auto_tips before settling ──────
-    // Round-scoped competitions require only 1 tip minimum (short window).
     const realLeaderboard = await computeLeaderboard({
       startDate: comp.startDate,
       endDate: comp.endDate,
@@ -150,7 +118,6 @@ export async function GET(req: NextRequest) {
       limit: 50,
     });
 
-    // Inject real scores back into comp.participants so settleCompetition uses them
     if (realLeaderboard.length > 0) {
       const realMap = new Map(realLeaderboard.map((r, i) => [r.userId, { ...r, rank: i + 1 }]));
       for (const p of comp.participants) {
@@ -164,7 +131,6 @@ export async function GET(req: NextRequest) {
           p.rank = real.rank;
         }
       }
-      // Add real users that aren't in fake participants yet
       for (const [, real] of realMap) {
         const exists = comp.participants.some(p => p.tipsterId === real.userId);
         if (!exists) {
@@ -187,18 +153,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. SETTLE the competition
-    const settlement = settleCompetition(comp.id);
+    const settlement = await settleCompetition(comp.id);
     if (!settlement.ok || settlement.alreadySettled) continue;
 
     const payouts = settlement.toCredit;
     const winner = payouts[0];
 
-    // 4. CREDIT real winners in the wallet (wallet-store = source of truth for
-    //    the wallet dashboard; also mirror to MySQL wallet_balance for PayHero)
     for (const payout of payouts) {
       try {
-        // Primary: file-based wallet-store (what /api/wallet reads from)
         credit(payout.userId, payout.amount, {
           type: 'prize_payout',
           currency: comp.currency || 'KES',
@@ -213,25 +175,21 @@ export async function GET(req: NextRequest) {
           },
         });
 
-        // Mirror to MySQL wallet_balance so PayHero/admin panels stay in sync
         await query(
           `UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + ? WHERE id = ?`,
           [payout.amount, payout.userId]
-        ).catch(() => {}); // non-critical if column missing
+        ).catch(() => {});
 
-        // Transaction history record
         await query(
           `INSERT INTO transactions (user_id, type, amount, description, status, created_at)
            VALUES (?, 'competition_prize', ?, ?, 'completed', NOW())`,
           [payout.userId, payout.amount, `${buildPlaceLabel(payout.rank)} place in ${comp.name}`]
         ).catch(() => {});
       } catch {
-        // Non-critical — wallet-store credit already applied above
+        // non-critical
       }
     }
 
-    // 3. ANNOUNCE in the feed
-    // Build winner strings from real users (toCredit) and top fake participants
     const fakeWinnerSlots = comp.participants
       .filter(p => p.tipsterId >= 1000)
       .slice(0, 3)
@@ -260,7 +218,6 @@ export async function GET(req: NextRequest) {
       imageUrl: null,
     }).catch(() => {});
 
-    // 4. EMAIL real winners
     for (const payout of payouts.slice(0, 10)) {
       try {
         const userRow = await query<{ email: string; username: string; display_name: string | null }>(
@@ -298,18 +255,14 @@ export async function GET(req: NextRequest) {
           text: `Hi ${displayName}, you finished ${buildPlaceLabel(payout.rank)} in ${comp.name} and won KES ${payout.amount.toLocaleString()}. Visit betcheza.co.ke/competitions.`,
         }).catch(() => {});
       } catch {
-        // Non-critical
+        // non-critical
       }
     }
 
-    // 5. RESTART if recurring and league is active.
-    //    Round-scoped competitions (matchKickoffFrom/To set) are one-off —
-    //    the admin sets the next round manually, so never auto-restart them.
     let restarted = false;
     if (!isRoundScoped && comp.type !== 'special' && isLeagueActive(comp.sportFocus)) {
       const { startDate, endDate: baseEndDate } = nextPeriodDates(comp);
 
-      // For round-based league competitions: auto-detect the new round's end date
       let newEndDate = baseEndDate;
       let newRoundBased = comp.roundBased;
       if (comp.roundBased && comp.leagueName) {
@@ -321,7 +274,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      addCompetition({
+      await addCompetition({
         name: comp.name,
         description: comp.description,
         type: comp.type,
@@ -338,8 +291,6 @@ export async function GET(req: NextRequest) {
         leagueId: comp.leagueId ?? null,
         leagueName: comp.leagueName ?? null,
         roundBased: newRoundBased ?? false,
-        // Note: matchKickoffFrom/To are intentionally NOT copied — each round
-        // gets its own window set manually by the admin.
       });
       restarted = true;
     }

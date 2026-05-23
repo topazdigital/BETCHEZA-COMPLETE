@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import {
-  getCompetitionBySlug,
+  getCompetitionBySlugAsync,
   settleCompetition,
   getSettlement,
   computePayouts,
@@ -17,7 +17,6 @@ function renderTpl(s: string, vars: Record<string, string | number>): string {
   return s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => String(vars[k] ?? ''));
 }
 
-// GET — preview the payouts that would be applied (does not credit anything)
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ slug: string }> },
@@ -25,7 +24,7 @@ export async function GET(
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { slug } = await params;
-  const comp = getCompetitionBySlug(slug);
+  const comp = await getCompetitionBySlugAsync(slug);
   if (!comp) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({
     competition: { id: comp.id, slug: comp.slug, name: comp.name, status: comp.status },
@@ -34,7 +33,6 @@ export async function GET(
   });
 }
 
-// POST — perform settlement: marks competition completed and credits wallets
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ slug: string }> },
@@ -43,10 +41,10 @@ export async function POST(
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { slug } = await params;
-  const comp = getCompetitionBySlug(slug);
+  const comp = await getCompetitionBySlugAsync(slug);
   if (!comp) return NextResponse.json({ error: 'Competition not found' }, { status: 404 });
 
-  const result = settleCompetition(comp.id);
+  const result = await settleCompetition(comp.id);
   if (!result.ok) {
     return NextResponse.json({ error: 'Settle failed' }, { status: 400 });
   }
@@ -58,7 +56,6 @@ export async function POST(
     });
   }
 
-  // Credit wallets for each real (human) payout
   const tpl = getTemplate('prize_payout');
   const credited: Array<{
     userId: number;
@@ -84,7 +81,6 @@ export async function POST(
       },
     });
 
-    // Render the email template (we don't actually deliver, just record)
     let emailSubject: string | undefined;
     try {
       const user = await queryOne<{ username: string; display_name: string }>(
@@ -102,7 +98,7 @@ export async function POST(
         };
         emailSubject = renderTpl(tpl.subject, vars);
       }
-    } catch { /* email subject is non-critical */ }
+    } catch { /* non-critical */ }
 
     credited.push({
       userId: p.userId,

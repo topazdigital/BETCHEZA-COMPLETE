@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import {
-  getCompetitionBySlug,
+  getCompetitionBySlugAsync,
   joinCompetition,
   hasUserJoined,
 } from '@/lib/competitions-store';
@@ -22,12 +22,11 @@ export async function POST(
     );
   }
 
-  const comp = getCompetitionBySlug(slug);
+  const comp = await getCompetitionBySlugAsync(slug);
   if (!comp) {
     return NextResponse.json({ success: false, error: 'Competition not found' }, { status: 404 });
   }
 
-  // For paid competitions, require a paymentRef from the payment endpoint.
   let paymentRef: string | undefined;
   if (comp.entryFee > 0) {
     try {
@@ -50,7 +49,7 @@ export async function POST(
     || (user as unknown as { email?: string }).email
     || `user_${user.userId}`;
 
-  const result = joinCompetition(comp.id, user.userId, userName);
+  const result = await joinCompetition(comp.id, user.userId, userName);
   if (!result.ok) {
     return NextResponse.json({ success: false, error: result.error }, { status: 400 });
   }
@@ -62,19 +61,16 @@ export async function POST(
   });
 }
 
-// Lightweight GET so the UI can show "Joined ✓" on page load.
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params;
-  const comp = getCompetitionBySlug(slug);
+  const comp = await getCompetitionBySlugAsync(slug);
   if (!comp) {
     return NextResponse.json({ success: false, error: 'Competition not found' }, { status: 404 });
   }
   const user = await getCurrentUser();
-  return NextResponse.json({
-    success: true,
-    joined: user ? hasUserJoined(comp.id, user.userId) : false,
-  });
+  const joined = user ? await hasUserJoined(comp.id, user.userId) : false;
+  return NextResponse.json({ success: true, joined });
 }

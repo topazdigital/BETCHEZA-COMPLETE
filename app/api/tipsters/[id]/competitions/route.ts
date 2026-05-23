@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
-  getCompetitions,
+  getCompetitionsAsync,
   getJoinedUserIds,
   type Competition,
   type CompetitionParticipant,
@@ -40,7 +40,7 @@ export async function GET(_req: Request, ctx: RouteContext) {
   }
 
   const isFake = tipsterId >= 1000;
-  const allComps = getCompetitions();
+  const allComps = await getCompetitionsAsync();
   const results: CompHistoryEntry[] = [];
 
   for (const comp of allComps) {
@@ -51,7 +51,6 @@ export async function GET(_req: Request, ctx: RouteContext) {
     let winRate: number | null = null;
 
     if (isFake) {
-      // Fake tipsters appear in seeded participants
       const p: CompetitionParticipant | undefined = comp.participants.find(
         (x) => x.tipsterId === tipsterId,
       );
@@ -63,11 +62,9 @@ export async function GET(_req: Request, ctx: RouteContext) {
         winRate = p.winRate;
       }
     } else {
-      // Real users must have joined
-      const joinedIds = getJoinedUserIds(comp.id);
+      const joinedIds = await getJoinedUserIds(comp.id);
       if (joinedIds.includes(tipsterId)) {
         participated = true;
-        // Pull stats from participants if they've been computed
         const p = comp.participants.find((x) => x.tipsterId === tipsterId);
         if (p) {
           rank = p.rank;
@@ -99,7 +96,6 @@ export async function GET(_req: Request, ctx: RouteContext) {
     });
   }
 
-  // Most recent first
   results.sort(
     (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime(),
   );

@@ -235,146 +235,6 @@ function calculatePoints(won: number, lost: number, totalOdds: number, wonCount:
   return won * 10 + won * winBonus - lost * 5;
 }
 
-/**
- * File-based fallback for computeLeaderboard — used when MySQL is unavailable.
- * Reads from the in-memory auto-tips store (backed by .local/state/auto-tips.json)
- * and applies the same league / date / kickoff-window filters as the SQL query.
- */
-async function computeLeaderboardFromStore(params: {
-  startDate: string;
-  endDate: string;
-  leagueId?: number | null;
-  leagueName?: string | null;
-  sportFocus?: string | null;
-  minTips?: number;
-  limit?: number;
-  allowedUserIds?: number[] | null;
-  matchKickoffFrom?: string | null;
-  matchKickoffTo?: string | null;
-}): Promise<CompetitorScore[]> {
-  try {
-    const { listAllAutoTips } = await import('./auto-tips-store');
-    const { getFakeTipsterById } = await import('./fake-tipsters');
-
-    const {
-      startDate, endDate, leagueId, leagueName, sportFocus,
-      minTips = 3, limit = 100, allowedUserIds,
-      matchKickoffFrom, matchKickoffTo,
-    } = params;
-
-    // Determine league filter string (same logic as SQL branch)
-    let filterLeague: string | null = null;
-    if (leagueName) {
-      filterLeague = leagueName.toLowerCase();
-    } else if (leagueId) {
-      const ref = KNOWN_LEAGUES.find(l => l.leagueId === leagueId);
-      if (ref) filterLeague = ref.leagueName.toLowerCase();
-    }
-
-    const allTips = listAllAutoTips(100_000);
-
-    const filtered = allTips.filter(tip => {
-      // Date window: tip must have been posted within the competition period
-      if (tip.createdAt < startDate || tip.createdAt > endDate) return false;
-
-      // Kickoff-window filter (e.g. GW38 only — the single-round scope)
-      if (matchKickoffFrom && matchKickoffTo) {
-        if (!tip.kickoff) return false;
-        if (tip.kickoff < matchKickoffFrom || tip.kickoff > matchKickoffTo) return false;
-      }
-
-      // League/sport filter
-      if (filterLeague) {
-        const tipLeague = (tip.league || '').toLowerCase();
-        const matches =
-          tipLeague.includes(filterLeague) ||
-          filterLeague.includes(tipLeague.replace(/[^a-z0-9 ]/g, '').trim());
-        if (!matches) return false;
-      } else if (sportFocus && sportFocus !== 'multi-sport') {
-        const sportMap: Record<string, string[]> = {
-          football: ['football', 'soccer'],
-          basketball: ['basketball'],
-          tennis: ['tennis'],
-          baseball: ['baseball'],
-          'ice-hockey': ['hockey'],
-          mma: ['mma', 'ufc'],
-          cricket: ['cricket'],
-          rugby: ['rugby'],
-        };
-        const allowed = sportMap[sportFocus] ?? [sportFocus];
-        const tipSport = (tip.sport || '').toLowerCase();
-        if (!allowed.some(s => tipSport.includes(s))) return false;
-      }
-
-      // AllowedUserIds (real users who joined this competition)
-      if (allowedUserIds !== null && allowedUserIds !== undefined) {
-        if (allowedUserIds.length > 0) {
-          // Real users must be in the allowed list; fake tipsters always pass
-          if (tip.tipsterId < 1000 && !allowedUserIds.includes(tip.tipsterId)) return false;
-        } else {
-          // Only fake tipsters
-          if (tip.tipsterId < 1000) return false;
-        }
-      }
-
-      // Exclude void tips (same as SQL: only won/lost/pending count)
-      if (tip.status === 'void') return false;
-
-      return true;
-    });
-
-    // Group by tipster
-    const byTipster = new Map<number, typeof filtered>();
-    for (const tip of filtered) {
-      const list = byTipster.get(tip.tipsterId) ?? [];
-      list.push(tip);
-      byTipster.set(tip.tipsterId, list);
-    }
-
-    const scores: CompetitorScore[] = [];
-    for (const [tipsterId, tips] of byTipster) {
-      if (tips.length < minTips) continue;
-
-      let won = 0, lost = 0, pending = 0;
-      let oddsSum = 0, wonOddsSum = 0;
-      for (const tip of tips) {
-        oddsSum += tip.odds;
-        if (tip.status === 'won') { won++; wonOddsSum += tip.odds; }
-        else if (tip.status === 'lost') lost++;
-        else pending++;
-      }
-
-      const avgOdds = tips.length > 0 ? oddsSum / tips.length : 0;
-      const points = calculatePoints(won, lost, wonOddsSum, won);
-      const totalSettled = won + lost;
-      const roi = totalSettled > 0 ? ((won * avgOdds - totalSettled) / totalSettled) * 100 : 0;
-      const winRate = totalSettled > 0 ? (won / totalSettled) * 100 : 0;
-
-      const ft = getFakeTipsterById(tipsterId);
-      scores.push({
-        userId: tipsterId,
-        username: ft?.displayName ?? ft?.username ?? `User#${tipsterId}`,
-        displayName: ft?.displayName ?? null,
-        avatar: ft?.avatar ?? null,
-        totalTips: tips.length,
-        won,
-        lost,
-        pending,
-        avgOdds: Math.round(avgOdds * 100) / 100,
-        points,
-        roi: Math.round(roi * 10) / 10,
-        winRate: Math.round(winRate * 10) / 10,
-        isFake: tipsterId >= 1000,
-      });
-    }
-
-    scores.sort((a, b) => b.points - a.points || b.winRate - a.winRate);
-    return scores.slice(0, limit);
-  } catch (e) {
-    console.warn('[computeLeaderboard] file-store fallback failed:', e);
-    return [];
-  }
-}
 
 export async function computeLeaderboard(params: {
   startDate: string;
@@ -480,7 +340,7 @@ export async function computeLeaderboard(params: {
       LIMIT ?
     `, [...sqlParams, minTips, limit]);
 
-    const dbResults = result.rows.map(row => {
+    return result.rows.map(row => {
       const won = Number(row.won);
       const lost = Number(row.lost);
       const pending = Number(row.pending);
@@ -508,20 +368,9 @@ export async function computeLeaderboard(params: {
         isFake: tipsterId >= 1000,
       };
     });
-
-    // MySQL returned results — use them
-    if (dbResults.length > 0) return dbResults;
-
-    // MySQL connected but returned no rows (e.g. no tips posted yet for this
-    // competition scope). Fall through to the file-store fallback so the
-    // leaderboard still reflects the in-memory auto_tips data.
-    return computeLeaderboardFromStore(params);
   } catch (e) {
-    // MySQL unavailable — use the file-based auto-tips store as fallback.
-    // This ensures the leaderboard always filters by the correct league/date
-    // even when no DB is configured.
-    console.warn('[computeLeaderboard] DB error — using file-store fallback:', e);
-    return computeLeaderboardFromStore(params);
+    console.error('[computeLeaderboard] DB query failed:', e);
+    return [];
   }
 }
 
