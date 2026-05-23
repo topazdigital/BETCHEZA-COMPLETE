@@ -5,19 +5,29 @@ BOLD='\033[1m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
-echo -e "${BOLD}Betcheza Deploy — $(pwd)${NC}"
+# ── Step 1: Pull latest changes ───────────────────────────────────────────────
+# IMPORTANT: After git pull this script re-execs itself so the REST of the
+# deploy always runs with the newest version of deploy.sh, not the old one
+# that bash buffered at startup.
+if [ -z "$BETCHEZA_DEPLOY_REEXECED" ]; then
+  echo -e "${BOLD}Betcheza Deploy — $(pwd)${NC}"
+  echo -e "${YELLOW}[1/5] Pulling latest changes...${NC}"
+  git rm -r --cached .local/state/ 2>/dev/null || true
+  git rm -r --cached .local/data/ 2>/dev/null || true
+  git stash push --include-untracked -m "auto-stash before deploy $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+  git pull origin main
+  # Re-exec with the freshly-pulled script so all remaining steps use new code
+  export BETCHEZA_DEPLOY_REEXECED=1
+  exec bash "$APP_DIR/deploy.sh" "$@"
+fi
 
-echo -e "${YELLOW}[1/5] Pulling latest changes...${NC}"
-git rm -r --cached .local/state/ 2>/dev/null || true
-git rm -r --cached .local/data/ 2>/dev/null || true
-git stash push --include-untracked -m "auto-stash before deploy $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
-git pull origin main
+# ── From here we are running the pulled version of deploy.sh ─────────────────
+echo -e "${BOLD}Betcheza Deploy — $(pwd) [using updated deploy.sh]${NC}"
 
+# ── Step 1b: Ensure runtime env vars ─────────────────────────────────────────
 echo -e "${YELLOW}[1b/5] Ensuring runtime env vars are set...${NC}"
 ENV_FILE="$APP_DIR/.env.local"
 
-# GOOGLE_SITE_VERIFICATION is a public value (visible in HTML source).
-# Append to .env.local so Next.js picks it up without a manual server step.
 if ! grep -q "GOOGLE_SITE_VERIFICATION" "$ENV_FILE" 2>/dev/null; then
   echo "GOOGLE_SITE_VERIFICATION=c6CwjlMj8vH8Pf7zQyFqp_BpbK-d1URyeKUso4QSJPs" >> "$ENV_FILE"
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION written to .env.local${NC}"
@@ -25,9 +35,8 @@ else
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION already in .env.local — OK${NC}"
 fi
 
-# Read PORT: ecosystem.config.js takes priority (avoids port conflicts),
-# then .env.local, then default 3001.
-ECO_PORT=$(grep -o "PORT:[[:space:]]*['\"][0-9]*['\"]" "$APP_DIR/ecosystem.config.js" 2>/dev/null | grep -o "[0-9]*" | head -1)
+# Port: ecosystem.config.js wins (avoids conflicts), then .env.local, then 3001
+ECO_PORT=$(node -e "try{const c=require('./ecosystem.config.js');const e=c.apps[0].env;console.log(e&&e.PORT||'');}catch(e){}" 2>/dev/null)
 if [ -n "$ECO_PORT" ]; then
   APP_PORT="$ECO_PORT"
   echo -e "${GREEN}App port: $APP_PORT (from ecosystem.config.js)${NC}"
@@ -37,23 +46,23 @@ else
   echo -e "${GREEN}App port: $APP_PORT (from .env.local)${NC}"
 fi
 
+# ── Step 2: Install dependencies ──────────────────────────────────────────────
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
 npm install --prefer-offline
 
+# ── Step 3: Build ─────────────────────────────────────────────────────────────
 echo -e "${YELLOW}[3/5] Building...${NC}"
 npm run build
 
+# ── Step 4: Copy static assets + write .htaccess ─────────────────────────────
 echo -e "${YELLOW}[4/5] Copying static assets to Apache web root + configuring compression...${NC}"
-# Next.js static files (CSS, JS, fonts) must be directly accessible by Apache.
-# The proxy may not forward /_next/static/ reliably, so we serve them from disk.
 DOMAIN_ROOT="/home/admin/domains/betcheza.co.ke/public_html"
 if [ -d "$DOMAIN_ROOT" ]; then
   mkdir -p "$DOMAIN_ROOT/_next/static"
-  # Remove old static files first (avoids stale hashed files accumulating)
   rm -rf "$DOMAIN_ROOT/_next/static"
   cp -r "$APP_DIR/.next/static" "$DOMAIN_ROOT/_next/static"
   echo -e "${GREEN}Static files copied to $DOMAIN_ROOT/_next/static${NC}"
-  # Quick sanity check — look for at least one CSS file
+
   CSS_COUNT=$(find "$DOMAIN_ROOT/_next/static" -name "*.css" 2>/dev/null | wc -l)
   if [ "$CSS_COUNT" -gt 0 ]; then
     echo -e "${GREEN}CSS check: $CSS_COUNT stylesheet(s) found — OK${NC}"
@@ -61,10 +70,6 @@ if [ -d "$DOMAIN_ROOT" ]; then
     echo -e "${RED}WARNING: No CSS files found in static output — check Tailwind build${NC}"
   fi
 
-  # ── Brotli / gzip compression + performance .htaccess ──────────────────────
-  # This reduces the 1.3 MB page to ~300–400 KB over the wire,
-  # cutting London load time from ~1.25 s to under 1 s.
-  # Note: heredoc is unquoted so $APP_PORT expands; literal $1 is escaped as \$1
   cat > "$DOMAIN_ROOT/.htaccess" << HTACCESS
 # ── Brotli compression (Apache mod_brotli — preferred over gzip) ──────────────
 <IfModule mod_brotli.c>
@@ -87,7 +92,6 @@ if [ -d "$DOMAIN_ROOT" ]; then
     application/xml application/rss+xml application/atom+xml \
     image/svg+xml font/ttf font/otf font/woff font/woff2 \
     application/font-woff application/font-woff2
-  # Don't compress already-compressed formats
   SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|webp|avif|gz|zip|br)$ no-gzip dont-vary
   Header append Vary Accept-Encoding
 </IfModule>
@@ -95,7 +99,6 @@ if [ -d "$DOMAIN_ROOT" ]; then
 # ── Browser caching for Next.js hashed static assets ─────────────────────────
 <IfModule mod_expires.c>
   ExpiresActive On
-  # Content-hashed Next.js bundles — safe to cache forever
   <FilesMatch "\._next\/static\/">
     ExpiresDefault "access plus 1 year"
     Header set Cache-Control "public, max-age=31536000, immutable"
@@ -121,27 +124,22 @@ if [ -d "$DOMAIN_ROOT" ]; then
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set X-XSS-Protection "1; mode=block"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
-  # DNS prefetch for external image CDNs (faster team logo load)
   Header always set Link "<//>; rel=dns-prefetch, <//a.espncdn.com>; rel=preconnect, <//media.api-sports.io>; rel=preconnect, <//resources.premierleague.com>; rel=preconnect"
 </IfModule>
 
 # ── Proxy all non-static requests to the Next.js server ──────────────────────
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  # Serve _next/static files directly from disk (already copied here)
   RewriteCond %{REQUEST_URI} ^/_next/static/ [NC]
   RewriteRule ^ - [L]
-  # Serve public assets (favicon, icons, manifest, sw.js) directly
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule ^ - [L]
-  # Everything else → Node.js (port read from .env.local)
   RewriteRule ^(.*)\$ http://127.0.0.1:${APP_PORT}/\$1 [P,L]
 </IfModule>
 HTACCESS
 
-  echo -e "${GREEN}.htaccess written with Brotli/gzip compression + cache headers${NC}"
+  echo -e "${GREEN}.htaccess written — proxying to port ${APP_PORT}${NC}"
 
-  # Also write .htaccess inside _next/static for immutable caching
   cat > "$DOMAIN_ROOT/_next/static/.htaccess" << 'STATIC_HTA'
 <IfModule mod_headers.c>
   Header set Cache-Control "public, max-age=31536000, immutable"
@@ -150,8 +148,6 @@ STATIC_HTA
 
 else
   echo -e "${RED}WARNING: Apache web root not found at $DOMAIN_ROOT${NC}"
-  echo -e "${RED}CSS may not load! Check your DirectAdmin domain path.${NC}"
-  # Try common alternative paths
   for ALTDIR in "/var/www/html" "/home/admin/public_html" "/home/admin/www"; do
     if [ -d "$ALTDIR" ]; then
       echo -e "${YELLOW}Found possible web root at $ALTDIR — copying there instead${NC}"
@@ -164,25 +160,32 @@ else
   done
 fi
 
+# ── Step 5: Clean start — delete all betcheza instances, start fresh ──────────
 echo -e "${YELLOW}[5/5] Restarting server...${NC}"
-# Stop the PM2 process first so it releases the port cleanly
+
+# Stop and delete ALL existing betcheza PM2 instances (handles duplicates)
 pm2 stop betcheza 2>/dev/null || true
 sleep 2
-# Force-kill anything still holding the port (belt + suspenders)
+pm2 delete betcheza 2>/dev/null || true
+sleep 1
+
+# Force-kill anything still holding the port
 fuser -k -KILL "${APP_PORT}/tcp" 2>/dev/null || true
 lsof -ti:"${APP_PORT}" 2>/dev/null | xargs kill -9 2>/dev/null || true
 sleep 2
-# Use ecosystem config if available; fall back to bare pm2 restart
+
+# Start from ecosystem config (single clean instance)
 if [ -f "$APP_DIR/ecosystem.config.js" ]; then
-  pm2 startOrRestart "$APP_DIR/ecosystem.config.js" --update-env
+  pm2 start "$APP_DIR/ecosystem.config.js"
 else
-  pm2 restart betcheza --update-env 2>/dev/null || pm2 start npm --name "betcheza" -- start
+  PORT="$APP_PORT" pm2 start npm --name "betcheza" -- start
 fi
 pm2 save
 
+# ── Step 6: Health check ──────────────────────────────────────────────────────
 echo -e "${YELLOW}[6/6] Verifying app is healthy...${NC}"
 HEALTH_URL="http://127.0.0.1:${APP_PORT}/api/health"
-MAX_WAIT=60
+MAX_WAIT=90
 WAITED=0
 SUCCESS=false
 while [ $WAITED -lt $MAX_WAIT ]; do
@@ -193,14 +196,14 @@ while [ $WAITED -lt $MAX_WAIT ]; do
     SUCCESS=true
     break
   fi
-  echo -e "${YELLOW}  Waiting for app to start... (${WAITED}s / ${MAX_WAIT}s, got HTTP ${HTTP_CODE})${NC}"
-  sleep 3
-  WAITED=$((WAITED + 3))
+  echo -e "${YELLOW}  Waiting for app to start... (${WAITED}s / ${MAX_WAIT}s, HTTP ${HTTP_CODE})${NC}"
+  sleep 5
+  WAITED=$((WAITED + 5))
 done
 
 if [ "$SUCCESS" = false ]; then
   echo -e "${RED}✗ App did NOT come up within ${MAX_WAIT}s on port ${APP_PORT}!${NC}"
-  echo -e "${RED}  Check PM2 logs: pm2 logs betcheza --lines 50${NC}"
+  echo -e "${RED}  Check: pm2 logs betcheza --lines 50${NC}"
   pm2 logs betcheza --lines 30 --nostream 2>/dev/null || true
   exit 1
 fi
