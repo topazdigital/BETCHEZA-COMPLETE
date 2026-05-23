@@ -89,70 +89,79 @@ DA_CONF  = "$DA_CONF"
 DOMAIN   = "$DOMAIN"
 APP_PORT = $APP_PORT
 
-PROXY_BLOCK = """
-    # Node.js reverse proxy — managed by deploy.sh (do not remove)
-    ProxyPreserveHost On
-    ProxyPass        /_next/static/ !
-    ProxyPass        / http://127.0.0.1:{port}/
-    ProxyPassReverse / http://127.0.0.1:{port}/
-""".format(port=APP_PORT)
+PROXY_BLOCK = (
+    "\n    # Node.js reverse proxy — managed by deploy.sh\n"
+    "    ProxyPreserveHost On\n"
+    "    ProxyRequests Off\n"
+    "    ProxyPass        /.well-known !\n"
+    "    ProxyPass        /_next/static/ !\n"
+    f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/\n"
+    f"    ProxyPassReverse / http://127.0.0.1:{APP_PORT}/\n"
+)
 
 with open(DA_CONF, "r") as f:
     lines = f.readlines()
 
+# ── Pass 1: update any existing ProxyPass port lines inside betcheza VHosts ───
+# DA puts ProxyPass lines BEFORE ServerName in the VirtualHost block,
+# so we detect betcheza VHosts by looking 35 lines ahead.
 in_betcheza = False
-patched     = 0
 new_lines   = []
+updates     = 0
 
 for i, line in enumerate(lines):
-    # Detect start of a VirtualHost block
+    # Detect VirtualHost start — look 35 lines ahead for our domain
     if re.search(r"<VirtualHost[^>]+>", line):
-        # Peek at next ~8 lines to check if this VH is for our domain
-        chunk = "".join(lines[i : i + 8])
-        if DOMAIN in chunk:
-            in_betcheza = True
+        chunk = "".join(lines[i : i + 35])
+        in_betcheza = bool(
+            re.search(rf"(ServerName|ServerAlias)[^\n]*{re.escape(DOMAIN)}", chunk)
+        )
 
-    # Inject ProxyPass just before </VirtualHost> for betcheza blocks
-    if in_betcheza and re.match(r"\s*</VirtualHost>", line):
-        # Check we haven't already patched this block
-        preceding = "".join(new_lines[-25:])
-        if "ProxyPass" not in preceding:
-            new_lines.append(PROXY_BLOCK)
-            patched += 1
-        else:
-            # Update port in existing ProxyPass lines
-            pass
+    # Update existing ProxyPass / ProxyPassReverse lines pointing to wrong port
+    if in_betcheza and re.search(r"ProxyPass(Reverse)?\s+/\s+http://127\.0\.0\.1:\d+/", line):
+        new_line = re.sub(
+            r"(ProxyPass(?:Reverse)?\s+/\s+http://127\.0\.0\.1:)\d+(/)",
+            rf"\g<1>{APP_PORT}\2",
+            line,
+        )
+        if new_line != line:
+            updates += 1
+        new_lines.append(new_line)
+        continue
+
+    if re.match(r"\s*</VirtualHost>", line):
         in_betcheza = False
 
     new_lines.append(line)
 
-if patched == 0:
-    # May already be patched — check if ProxyPass is present
-    full = "".join(new_lines)
-    if "ProxyPass" in full and DOMAIN in full:
-        print(f"ProxyPass already present in {DA_CONF} — ensuring port is {APP_PORT}")
-        # Update port in existing entries
-        new_lines_str = "".join(new_lines)
-        import re as _re
-        new_lines_str = _re.sub(
-            r"(ProxyPass\s+/\s+http://127\.0\.0\.1:)\d+(/)",
-            rf"\g<1>{APP_PORT}\2",
-            new_lines_str
-        )
-        new_lines_str = _re.sub(
-            r"(ProxyPassReverse\s+/\s+http://127\.0\.0\.1:)\d+(/)",
-            rf"\g<1>{APP_PORT}\2",
-            new_lines_str
-        )
-        with open(DA_CONF, "w") as f:
-            f.write(new_lines_str)
-        print("Port updated.")
-    else:
-        print(f"WARNING: Could not find betcheza VirtualHost in {DA_CONF}", file=sys.stderr)
-else:
+# ── Pass 2: if no existing ProxyPass was found, inject before </VirtualHost> ──
+if updates == 0:
+    in_betcheza = False
+    patched     = 0
+    final_lines = []
+    for i, line in enumerate(new_lines):
+        if re.search(r"<VirtualHost[^>]+>", line):
+            chunk = "".join(new_lines[i : i + 35])
+            in_betcheza = bool(
+                re.search(rf"(ServerName|ServerAlias)[^\n]*{re.escape(DOMAIN)}", chunk)
+            )
+        if in_betcheza and re.match(r"\s*</VirtualHost>", line):
+            preceding = "".join(final_lines[-30:])
+            if "ProxyPass" not in preceding:
+                final_lines.append(PROXY_BLOCK)
+                patched += 1
+            in_betcheza = False
+        final_lines.append(line)
+    new_lines = final_lines
+    if patched > 0:
+        updates = patched
+
+if updates > 0:
     with open(DA_CONF, "w") as f:
         f.writelines(new_lines)
-    print(f"Patched {patched} VirtualHost block(s) for {DOMAIN} → port {APP_PORT}")
+    print(f"✓ Updated {updates} ProxyPass entry/entries for {DOMAIN} → port {APP_PORT}")
+else:
+    print(f"WARNING: Could not locate betcheza VirtualHost in {DA_CONF}", file=sys.stderr)
 PYEOF
 
   echo -e "${GREEN}DA httpd.conf patched with ProxyPass → port ${APP_PORT}${NC}"
