@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCompetitionBySlugAsync, getCompetitionByIdAsync } from '@/lib/competitions-store';
 import { computeLeaderboard } from '@/lib/competition-league-utils';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,6 +24,20 @@ export async function GET(
   const started = new Date(comp.startDate) <= now;
   const endDate = started ? comp.endDate : comp.startDate;
 
+  // Load real users who have explicitly joined this competition.
+  // Fake tipsters (id >= 1000) auto-appear based on their tips alone — no join required.
+  // Real users must have BOTH joined the competition AND posted qualifying tips.
+  let joinedUserIds: number[] = [];
+  try {
+    const res = await query<{ user_id: number }>(
+      'SELECT user_id FROM competition_entries WHERE competition_id = ?',
+      [comp.id],
+    );
+    joinedUserIds = res.rows.map(r => Number(r.user_id));
+  } catch {
+    joinedUserIds = [];
+  }
+
   const leaderboard = started
     ? await computeLeaderboard({
         startDate: comp.startDate,
@@ -34,6 +49,8 @@ export async function GET(
         matchKickoffTo: comp.matchKickoffTo,
         minTips: 1,
         limit: 200,
+        // Pass joined real-user IDs — fakes always included inside computeLeaderboard
+        allowedUserIds: joinedUserIds,
       })
     : [];
 
@@ -59,11 +76,20 @@ export async function GET(
 
   const actualParticipants = ranked.length;
 
-  const scopeLabel = comp.leagueName
-    ? `Only ${comp.leagueName} tips count`
-    : comp.sportFocus && comp.sportFocus !== 'multi-sport'
-      ? `Only ${comp.sportFocus} tips count`
-      : 'All sports and leagues count';
+  // Derive a human-readable scope label based on competition configuration
+  let scopeLabel: string;
+  if (comp.matchKickoffFrom && comp.matchKickoffTo) {
+    const from = new Date(comp.matchKickoffFrom).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const to = new Date(comp.matchKickoffTo).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    scopeLabel = `Gameweek/Round — matches kicking off ${from}–${to}`;
+  } else if (comp.leagueName) {
+    const typeLabel = comp.type === 'weekly' ? 'Weekly' : comp.type === 'monthly' ? 'Monthly' : 'Full season';
+    scopeLabel = `${typeLabel} — ${comp.leagueName} tips only`;
+  } else if (comp.sportFocus && comp.sportFocus !== 'multi-sport') {
+    scopeLabel = `${comp.sportFocus} tips count`;
+  } else {
+    scopeLabel = 'All sports and leagues count';
+  }
 
   return NextResponse.json({
     success: true,

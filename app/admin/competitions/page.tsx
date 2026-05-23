@@ -59,10 +59,12 @@ function fmtTimeLeft(end: string): string {
   return '<1h'
 }
 
+type CompScope = 'gameweek' | 'weekly' | 'monthly' | 'season'
+
 interface NewCompForm {
   name: string
   description: string
-  type: 'daily' | 'weekly' | 'monthly' | 'special'
+  scope: CompScope
   status: 'upcoming' | 'active' | 'completed'
   sportFocus: string
   startDate: string
@@ -73,6 +75,20 @@ interface NewCompForm {
   maxParticipants: string
   matchKickoffFrom: string
   matchKickoffTo: string
+}
+
+const SCOPE_OPTIONS: { value: CompScope; label: string; description: string; color: string }[] = [
+  { value: 'gameweek', label: 'Gameweek / Round', description: 'Only tips on matches in a specific kickoff window count (e.g. EPL Final Day, GW38)', color: 'amber' },
+  { value: 'weekly',   label: 'Weekly',           description: 'Tips on any qualifying match within a 7-day window count', color: 'blue' },
+  { value: 'monthly',  label: 'Monthly',          description: 'Tips on any qualifying match within a full calendar month count', color: 'purple' },
+  { value: 'season',   label: 'Full Season',      description: 'Tips on any qualifying match from start date to end date count', color: 'emerald' },
+]
+
+// Map scope → DB type
+function scopeToType(scope: CompScope): 'daily' | 'weekly' | 'monthly' | 'special' {
+  if (scope === 'weekly') return 'weekly'
+  if (scope === 'monthly') return 'monthly'
+  return 'special'
 }
 
 interface RuleItem {
@@ -108,7 +124,7 @@ const blankForm = (): NewCompForm => {
   return {
     name: '',
     description: '',
-    type: 'weekly',
+    scope: 'weekly',
     status: 'upcoming',
     sportFocus: 'multi-sport',
     startDate: iso(start),
@@ -224,6 +240,10 @@ export default function AdminCompetitionsPage() {
   const submit = async () => {
     setError(null)
     if (!form.name.trim()) { setError('Name is required.'); return }
+    if (form.scope === 'gameweek' && (!form.matchKickoffFrom || !form.matchKickoffTo)) {
+      setError('Gameweek/Round competitions require a kickoff window (From and To dates).')
+      return
+    }
     if (validation && !validation.valid) {
       setError(validation.warning || 'Invalid league name.')
       return
@@ -236,7 +256,7 @@ export default function AdminCompetitionsPage() {
         body: JSON.stringify({
           name: form.name.trim(),
           description: form.description.trim(),
-          type: form.type,
+          type: scopeToType(form.scope),
           status: form.status,
           sportFocus: validation?.sportFocus || form.sportFocus,
           startDate: new Date(form.startDate).toISOString(),
@@ -247,6 +267,7 @@ export default function AdminCompetitionsPage() {
           maxParticipants: Number(form.maxParticipants),
           ruleConfig: ruleConfig.length > 0 ? ruleConfig : undefined,
           rules: ruleConfig.length > 0 ? ruleConfig.map(r => r.label) : undefined,
+          roundBased: form.scope === 'gameweek',
           matchKickoffFrom: form.matchKickoffFrom ? new Date(form.matchKickoffFrom).toISOString() : null,
           matchKickoffTo: form.matchKickoffTo ? new Date(form.matchKickoffTo).toISOString() : null,
         }),
@@ -355,14 +376,78 @@ export default function AdminCompetitionsPage() {
           <CardContent className="p-3 space-y-2.5">
             <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Create competition</h2>
 
-            {/* Scoring info banner */}
-            <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-2 text-[10px] text-blue-400 flex gap-1.5">
-              <Info className="h-3 w-3 mt-0.5 shrink-0" />
-              <span>
-                <strong>League competitions</strong> (e.g. &ldquo;Premier League Weekly&rdquo;) only count tips for that league&rsquo;s matches and end after the last match of the round.{' '}
-                <strong>General competitions</strong> (e.g. &ldquo;Weekly Tipster Challenge&rdquo;) accept all sports.
-              </span>
+            {/* ── Competition Scope ─────────────────────────────────── */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase tracking-wide">Competition Scope</Label>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {SCOPE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, scope: opt.value }))}
+                    className={cn(
+                      'rounded-md border p-2 text-left transition-all',
+                      form.scope === opt.value
+                        ? opt.value === 'gameweek' ? 'border-amber-500/60 bg-amber-500/10'
+                          : opt.value === 'weekly' ? 'border-blue-500/60 bg-blue-500/10'
+                          : opt.value === 'monthly' ? 'border-purple-500/60 bg-purple-500/10'
+                          : 'border-emerald-500/60 bg-emerald-500/10'
+                        : 'border-border bg-muted/20 hover:bg-muted/40'
+                    )}
+                  >
+                    <div className={cn(
+                      'text-[11px] font-semibold',
+                      form.scope === opt.value
+                        ? opt.value === 'gameweek' ? 'text-amber-400'
+                          : opt.value === 'weekly' ? 'text-blue-400'
+                          : opt.value === 'monthly' ? 'text-purple-400'
+                          : 'text-emerald-400'
+                        : 'text-foreground'
+                    )}>{opt.label}</div>
+                    <div className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{opt.description}</div>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* ── Gameweek Kickoff Window (required when scope = gameweek) ── */}
+            {form.scope === 'gameweek' && (
+              <div className="space-y-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Timer className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                  <span className="text-[11px] font-semibold text-amber-400">Match Kickoff Window</span>
+                  <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-amber-500/40 text-amber-400">required</Badge>
+                </div>
+                <p className="text-[10px] text-amber-300/80">
+                  Only tips on matches whose kickoff falls within this window will count — perfect for a single gameweek or Final Day.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[10px] uppercase tracking-wide">Kickoff from (local time)</Label>
+                    <Input
+                      type="datetime-local"
+                      value={form.matchKickoffFrom}
+                      onChange={e => setForm({ ...form, matchKickoffFrom: e.target.value })}
+                      className="h-8 text-xs border-amber-500/30"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] uppercase tracking-wide">Kickoff to (local time)</Label>
+                    <Input
+                      type="datetime-local"
+                      value={form.matchKickoffTo}
+                      onChange={e => setForm({ ...form, matchKickoffTo: e.target.value })}
+                      className="h-8 text-xs border-amber-500/30"
+                    />
+                  </div>
+                </div>
+                {form.matchKickoffFrom && form.matchKickoffTo && (
+                  <p className="text-[9px] text-emerald-400">
+                    Window: {new Date(form.matchKickoffFrom).toLocaleString()} → {new Date(form.matchKickoffTo).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -371,7 +456,7 @@ export default function AdminCompetitionsPage() {
                   <Input
                     value={form.name}
                     onChange={e => setForm({ ...form, name: e.target.value })}
-                    placeholder="Premier League Weekly · Weekly Tipster Challenge · NBA Daily"
+                    placeholder="Premier League GW38 · Weekly Tipster Challenge · NBA January"
                     className="h-8 text-xs pr-6"
                   />
                   {validating && <Loader2 className="absolute right-2 top-2 h-3.5 w-3.5 animate-spin text-muted-foreground" />}
@@ -383,7 +468,7 @@ export default function AdminCompetitionsPage() {
                     {validation.detected ? (
                       <div className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-[10px] text-emerald-400">
                         <CheckCircle className="h-3 w-3 shrink-0" />
-                        <span>Detected league: <strong>{validation.detected.leagueName}</strong> · Only {validation.detected.leagueName} tips will count · Ends with last match of the round</span>
+                        <span>Detected league: <strong>{validation.detected.leagueName}</strong> — only these tips will count</span>
                       </div>
                     ) : validation.warning ? (
                       <div className="flex items-start gap-1 rounded-md border border-amber-500/20 bg-amber-500/5 p-1.5 text-[10px] text-amber-400">
@@ -416,24 +501,6 @@ export default function AdminCompetitionsPage() {
               </div>
 
               <div>
-                <Label className="text-[10px] uppercase tracking-wide">Type</Label>
-                <select className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs" value={form.type} onChange={e => setForm({ ...form, type: e.target.value as NewCompForm['type'] })}>
-                  <option value="daily">daily</option>
-                  <option value="weekly">weekly</option>
-                  <option value="monthly">monthly</option>
-                  <option value="special">special</option>
-                </select>
-                {validation?.detected && form.type === 'weekly' && (
-                  <p className="text-[9px] text-emerald-500 mt-0.5">End date will be set to last match of the round</p>
-                )}
-              </div>
-
-              <div className="sm:col-span-2">
-                <Label className="text-[10px] uppercase tracking-wide">Description</Label>
-                <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary shown on the public page." className="min-h-[52px] text-xs" />
-              </div>
-
-              <div>
                 <Label className="text-[10px] uppercase tracking-wide">Status</Label>
                 <select className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs" value={form.status} onChange={e => setForm({ ...form, status: e.target.value as NewCompForm['status'] })}>
                   <option value="upcoming">upcoming</option>
@@ -442,26 +509,34 @@ export default function AdminCompetitionsPage() {
                 </select>
               </div>
 
+              <div className="sm:col-span-2">
+                <Label className="text-[10px] uppercase tracking-wide">Description</Label>
+                <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary shown on the public page." className="min-h-[52px] text-xs" />
+              </div>
+
               <div>
                 <Label className="text-[10px] uppercase tracking-wide">Currency</Label>
                 <Input value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} className="h-8 text-xs" />
               </div>
 
+              <div />
+
               <div>
-                <Label className="text-[10px] uppercase tracking-wide">Start (local)</Label>
+                <Label className="text-[10px] uppercase tracking-wide">
+                  Start (local){form.scope === 'gameweek' ? ' — competition opens for entries' : ''}
+                </Label>
                 <Input type="datetime-local" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} className="h-8 text-xs" />
               </div>
               <div>
-                <Label className="text-[10px] uppercase tracking-wide">End (local)</Label>
+                <Label className="text-[10px] uppercase tracking-wide">
+                  End (local){form.scope === 'gameweek' ? ' — after last match finishes' : ''}
+                </Label>
                 <Input
                   type="datetime-local"
                   value={form.endDate}
                   onChange={e => setForm({ ...form, endDate: e.target.value })}
                   className="h-8 text-xs"
                 />
-                {validation?.detected && form.type === 'weekly' && (
-                  <p className="text-[9px] text-muted-foreground mt-0.5">May be overridden by round end detection</p>
-                )}
               </div>
 
               <div>
@@ -476,43 +551,6 @@ export default function AdminCompetitionsPage() {
                 <Label className="text-[10px] uppercase tracking-wide">Max participants</Label>
                 <Input type="number" value={form.maxParticipants} onChange={e => setForm({ ...form, maxParticipants: e.target.value })} className="h-8 text-xs" />
               </div>
-            </div>
-
-            {/* ── Match Kickoff Window ─────────────────────────────── */}
-            <div className="space-y-1.5 pt-1 border-t border-border/50">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <Timer className="h-3 w-3 text-muted-foreground" />
-                <Label className="text-[10px] uppercase tracking-wide">Match Kickoff Window</Label>
-                <span className="text-[9px] text-muted-foreground">(optional — restricts scoring to tips on matches kicking off in this window)</span>
-              </div>
-              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-2 text-[10px] text-blue-400">
-                Use this for single-round competitions (e.g. EPL Final Day — set the window to cover only GW38 kickoffs). Only tips on matches whose kickoff falls within this range will count toward the leaderboard.
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[10px] uppercase tracking-wide">Kickoff from (local)</Label>
-                  <Input
-                    type="datetime-local"
-                    value={form.matchKickoffFrom}
-                    onChange={e => setForm({ ...form, matchKickoffFrom: e.target.value })}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px] uppercase tracking-wide">Kickoff to (local)</Label>
-                  <Input
-                    type="datetime-local"
-                    value={form.matchKickoffTo}
-                    onChange={e => setForm({ ...form, matchKickoffTo: e.target.value })}
-                    className="h-8 text-xs"
-                  />
-                </div>
-              </div>
-              {form.matchKickoffFrom && form.matchKickoffTo && (
-                <p className="text-[9px] text-emerald-400">
-                  Only tips on matches kicking off between {new Date(form.matchKickoffFrom).toLocaleString()} and {new Date(form.matchKickoffTo).toLocaleString()} will score.
-                </p>
-              )}
             </div>
 
             {/* ── Rules Builder ────────────────────────────────────── */}
