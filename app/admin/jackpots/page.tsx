@@ -560,10 +560,11 @@ export default function AdminJackpotsPage() {
                         <Input className="h-6 w-10 text-xs text-center px-1" placeholder="A"
                           value={settleForm.gameResults[i]?.awayScore ?? ''}
                           onChange={e => setSettleForm(f => { if (!f) return f; const gr = [...f.gameResults]; gr[i] = { ...gr[i], awayScore: e.target.value }; return { ...f, gameResults: gr }; })} />
-                        <Select value={settleForm.gameResults[i]?.result ?? ''}
-                          onValueChange={v => setSettleForm(f => { if (!f) return f; const gr = [...f.gameResults]; gr[i] = { ...gr[i], result: v as '1' | 'X' | '2' }; return { ...f, gameResults: gr }; })}>
+                        <Select value={settleForm.gameResults[i]?.result || '__none'}
+                          onValueChange={v => setSettleForm(f => { if (!f) return f; const gr = [...f.gameResults]; gr[i] = { ...gr[i], result: v === '__none' ? '' : v as '1' | 'X' | '2' }; return { ...f, gameResults: gr }; })}>
                           <SelectTrigger className="h-6 w-14 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="__none">—</SelectItem>
                             <SelectItem value="1">1 (H)</SelectItem>
                             <SelectItem value="X">X (D)</SelectItem>
                             <SelectItem value="2">2 (A)</SelectItem>
@@ -698,11 +699,11 @@ export default function AdminJackpotsPage() {
                                 <Input className="h-7 text-xs hidden sm:block" defaultValue={game.league || ''}
                                   onBlur={e => { if (e.target.value !== (game.league || '')) updateGame(jackpot.id, i, 'league', e.target.value); }}
                                   placeholder="League" />
-                                <Select value={game.aiPrediction || game.prediction || ''}
-                                  onValueChange={v => updateGame(jackpot.id, i, 'aiPrediction', v as Prediction)}>
+                                <Select value={game.aiPrediction || game.prediction || '__none'}
+                                  onValueChange={v => updateGame(jackpot.id, i, 'aiPrediction', v === '__none' ? '' : v as Prediction)}>
                                   <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Pick" /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="">—</SelectItem>
+                                    <SelectItem value="__none">—</SelectItem>
                                     {PICKS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                                   </SelectContent>
                                 </Select>
