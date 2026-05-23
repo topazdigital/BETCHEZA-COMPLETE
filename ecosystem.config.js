@@ -6,7 +6,12 @@ module.exports = {
       args: 'start -H 0.0.0.0',
       cwd: '/home/admin/apps/betcheza',
 
-      // Use the PORT from .env.local (3000 in production)
+      // PORT 3001 — avoids conflict with other apps on the server.
+      // This overrides whatever PORT is in .env.local.
+      env: {
+        PORT: '3001',
+        NODE_ENV: 'production',
+      },
       env_file: '.env.local',
 
       // Restart policy — if the app crashes, PM2 brings it back

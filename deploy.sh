@@ -25,10 +25,17 @@ else
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION already in .env.local — OK${NC}"
 fi
 
-# Read PORT from .env.local (fallback 3000 — matches production default)
-APP_PORT=$(grep -E '^PORT=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-APP_PORT="${APP_PORT:-3000}"
-echo -e "${GREEN}App port: $APP_PORT${NC}"
+# Read PORT: ecosystem.config.js takes priority (avoids port conflicts),
+# then .env.local, then default 3001.
+ECO_PORT=$(grep -o "PORT:[[:space:]]*['\"][0-9]*['\"]" "$APP_DIR/ecosystem.config.js" 2>/dev/null | grep -o "[0-9]*" | head -1)
+if [ -n "$ECO_PORT" ]; then
+  APP_PORT="$ECO_PORT"
+  echo -e "${GREEN}App port: $APP_PORT (from ecosystem.config.js)${NC}"
+else
+  APP_PORT=$(grep -E '^PORT=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+  APP_PORT="${APP_PORT:-3001}"
+  echo -e "${GREEN}App port: $APP_PORT (from .env.local)${NC}"
+fi
 
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
 npm install --prefer-offline
@@ -158,8 +165,13 @@ else
 fi
 
 echo -e "${YELLOW}[5/5] Restarting server...${NC}"
-fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
-sleep 1
+# Stop the PM2 process first so it releases the port cleanly
+pm2 stop betcheza 2>/dev/null || true
+sleep 2
+# Force-kill anything still holding the port (belt + suspenders)
+fuser -k -KILL "${APP_PORT}/tcp" 2>/dev/null || true
+lsof -ti:"${APP_PORT}" 2>/dev/null | xargs kill -9 2>/dev/null || true
+sleep 2
 # Use ecosystem config if available; fall back to bare pm2 restart
 if [ -f "$APP_DIR/ecosystem.config.js" ]; then
   pm2 startOrRestart "$APP_DIR/ecosystem.config.js" --update-env
