@@ -163,5 +163,30 @@ sleep 1
 pm2 restart betcheza --update-env 2>/dev/null || pm2 start npm --name "betcheza" -- start
 pm2 save
 
+echo -e "${YELLOW}[6/6] Verifying app is healthy...${NC}"
+HEALTH_URL="http://127.0.0.1:${APP_PORT}/api/health"
+MAX_WAIT=60
+WAITED=0
+SUCCESS=false
+while [ $WAITED -lt $MAX_WAIT ]; do
+  HTTP_CODE=$(curl -s -o /tmp/betcheza_health.json -w "%{http_code}" "$HEALTH_URL" 2>/dev/null)
+  if [ "$HTTP_CODE" = "200" ]; then
+    DB_STATUS=$(grep -o '"db":"[^"]*"' /tmp/betcheza_health.json 2>/dev/null | cut -d'"' -f4)
+    echo -e "${GREEN}✓ App is UP on port ${APP_PORT} (db: ${DB_STATUS:-unknown})${NC}"
+    SUCCESS=true
+    break
+  fi
+  echo -e "${YELLOW}  Waiting for app to start... (${WAITED}s / ${MAX_WAIT}s, got HTTP ${HTTP_CODE})${NC}"
+  sleep 3
+  WAITED=$((WAITED + 3))
+done
+
+if [ "$SUCCESS" = false ]; then
+  echo -e "${RED}✗ App did NOT come up within ${MAX_WAIT}s on port ${APP_PORT}!${NC}"
+  echo -e "${RED}  Check PM2 logs: pm2 logs betcheza --lines 50${NC}"
+  pm2 logs betcheza --lines 30 --nostream 2>/dev/null || true
+  exit 1
+fi
+
 echo -e "${GREEN}${BOLD}Deploy complete! betcheza.co.ke is live.${NC}"
 pm2 list
