@@ -18,7 +18,6 @@ const nextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   experimental: {
-    optimizeCss: true,
     optimizePackageImports: [
       'lucide-react',
       '@radix-ui/react-accordion',

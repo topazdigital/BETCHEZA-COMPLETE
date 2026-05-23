@@ -17,8 +17,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect('/');
   }
 
+  const emailPrefix = user.email?.split('@')[0] || 'admin';
+
   return (
-    <AdminShell user={{ displayName: user.displayName || user.username || 'Admin', username: user.username || 'admin', role: user.role }}>
+    <AdminShell user={{ displayName: emailPrefix, username: emailPrefix, role: user.role }}>
       {children}
     </AdminShell>
   );

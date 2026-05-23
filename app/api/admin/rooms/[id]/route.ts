@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { canAccessAdmin } from '@/lib/permissions';
 import { upsertRoom, deleteRoom } from '@/lib/feed-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-function isAdmin(role?: string) {
-  return role === 'admin' || role === 'super_admin';
-}
-
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  const role = (user as unknown as { role?: string } | null)?.role;
-  if (!user || !isAdmin(role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!user || !canAccessAdmin(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { id } = await params;
   const body = await req.json().catch(() => null) as {
     name?: string; slug?: string; description?: string | null;
@@ -27,8 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  const role = (user as unknown as { role?: string } | null)?.role;
-  if (!user || !isAdmin(role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!user || !canAccessAdmin(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { id } = await params;
   await deleteRoom(Number(id));
   return NextResponse.json({ success: true });

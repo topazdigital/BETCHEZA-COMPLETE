@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { canAccessAdmin } from '@/lib/permissions';
 import { listAllAutoTips, getAutoTipsStats, settleByKnownResults, addKnownResult, settleTipWithResult, settleTipsByTeamNames } from '@/lib/auto-tips-store';
 import { listActivity } from '@/lib/auto-tip-activity';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
@@ -10,7 +11,7 @@ export const revalidate = 0;
 
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+  if (!user || !canAccessAdmin(user.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const tipsters = getFakeTipsters().map((t) => ({
@@ -32,7 +33,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+  if (!user || !canAccessAdmin(user.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

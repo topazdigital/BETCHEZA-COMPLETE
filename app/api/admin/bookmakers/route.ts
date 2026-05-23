@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { hasPermission } from '@/lib/permissions';
+import { getCurrentUser } from '@/lib/auth';
 import {
   listAllBookmakers,
   upsertBookmaker,
