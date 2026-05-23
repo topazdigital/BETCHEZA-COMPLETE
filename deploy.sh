@@ -6,8 +6,6 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
 # ── Step 1: Pull + re-exec ────────────────────────────────────────────────────
-# After git pull we re-exec so ALL remaining steps run with the freshly-pulled
-# version of this script, not the old version bash already buffered.
 if [ -z "$BETCHEZA_DEPLOY_REEXECED" ]; then
   echo -e "${BOLD}Betcheza Deploy — $(pwd)${NC}"
   echo -e "${YELLOW}[1/5] Pulling latest changes...${NC}"
@@ -25,7 +23,6 @@ echo -e "${BOLD}Betcheza Deploy — $(pwd) [running updated deploy.sh]${NC}"
 echo -e "${YELLOW}[1b/5] Reading configuration...${NC}"
 ENV_FILE="$APP_DIR/.env.local"
 
-# Ensure GOOGLE_SITE_VERIFICATION is present
 if ! grep -q "GOOGLE_SITE_VERIFICATION" "$ENV_FILE" 2>/dev/null; then
   echo "GOOGLE_SITE_VERIFICATION=c6CwjlMj8vH8Pf7zQyFqp_BpbK-d1URyeKUso4QSJPs" >> "$ENV_FILE"
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION written to .env.local${NC}"
@@ -33,7 +30,7 @@ else
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION already in .env.local — OK${NC}"
 fi
 
-# ── App port: ecosystem.config.js > .env.local > 3001 ────────────────────────
+# ── App port ──────────────────────────────────────────────────────────────────
 ECO_PORT=$(node -e "try{const c=require('./ecosystem.config.js');const e=c.apps[0].env;console.log(e&&e.PORT||'');}catch(e){}" 2>/dev/null)
 if [ -n "$ECO_PORT" ]; then
   APP_PORT="$ECO_PORT"
@@ -44,21 +41,20 @@ else
   echo -e "${GREEN}App port: $APP_PORT (from .env.local)${NC}"
 fi
 
-# ── Apache web root: DEPLOY_WEB_ROOT in .env.local, or auto-detect ───────────
-CONFIGURED_ROOT=$(grep -E '^DEPLOY_WEB_ROOT=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+DOMAIN="betcheza.co.ke"
 
+# ── Apache web root ───────────────────────────────────────────────────────────
+CONFIGURED_ROOT=$(grep -E '^DEPLOY_WEB_ROOT=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
 if [ -n "$CONFIGURED_ROOT" ]; then
   DOMAIN_ROOT="$CONFIGURED_ROOT"
-  echo -e "${GREEN}Web root: $DOMAIN_ROOT (from DEPLOY_WEB_ROOT in .env.local)${NC}"
+  echo -e "${GREEN}Web root: $DOMAIN_ROOT (from DEPLOY_WEB_ROOT)${NC}"
 else
-  # Auto-detect: try common DirectAdmin / cPanel / generic paths
   for CANDIDATE in \
-    "/home/admin/domains/betcheza.co.ke/public_html" \
+    "/home/admin/domains/$DOMAIN/public_html" \
     "/home/admin/public_html" \
     "/home/admin/www" \
     "/var/www/html" \
-    "/var/www/betcheza.co.ke" \
-    "/home/admin/apps/betcheza/public"; do
+    "/var/www/$DOMAIN"; do
     if [ -d "$CANDIDATE" ]; then
       DOMAIN_ROOT="$CANDIDATE"
       echo -e "${GREEN}Web root: $DOMAIN_ROOT (auto-detected)${NC}"
@@ -68,21 +64,7 @@ else
 fi
 
 if [ -z "$DOMAIN_ROOT" ]; then
-  echo -e "${RED}⚠ Could not find Apache web root. Static files will NOT be copied.${NC}"
-  echo -e "${RED}  Add DEPLOY_WEB_ROOT=/path/to/apache/docroot to your .env.local to fix this.${NC}"
-fi
-
-# ── Apache proxy port check ───────────────────────────────────────────────────
-# Find what port Apache's VirtualHost is currently configured to proxy to
-APACHE_PORT=$(grep -rh "ProxyPass\|127\.0\.0\.1" /etc/httpd/conf.d/ 2>/dev/null \
-  | grep -o "127\.0\.0\.1:[0-9]*" | head -1 | cut -d: -f2)
-if [ -n "$APACHE_PORT" ] && [ "$APACHE_PORT" != "$APP_PORT" ]; then
-  echo -e "${RED}⚠ WARNING: Apache is configured to proxy to port $APACHE_PORT but the app"
-  echo -e "  will start on port $APP_PORT. The site will NOT work until these match.${NC}"
-  echo -e "${YELLOW}  Fix option A: Update ecosystem.config.js → PORT: '$APACHE_PORT'${NC}"
-  echo -e "${YELLOW}  Fix option B: Update Apache VirtualHost → ProxyPass port to $APP_PORT${NC}"
-elif [ -n "$APACHE_PORT" ]; then
-  echo -e "${GREEN}Apache proxy port matches app port ($APP_PORT) — OK${NC}"
+  echo -e "${RED}⚠ Could not detect Apache web root — add DEPLOY_WEB_ROOT= to .env.local${NC}"
 fi
 
 # ── Step 2: Install dependencies ──────────────────────────────────────────────
@@ -93,26 +75,53 @@ npm install --prefer-offline
 echo -e "${YELLOW}[3/5] Building...${NC}"
 npm run build
 
-# ── Step 4: Copy static assets + write .htaccess (if web root found) ─────────
-echo -e "${YELLOW}[4/5] Copying static assets + writing .htaccess...${NC}"
+# ── Step 4: Apache proxy config + static assets ───────────────────────────────
+echo -e "${YELLOW}[4/5] Configuring Apache proxy + copying static assets...${NC}"
+
+# ── 4a: Write DirectAdmin userdata ProxyPass config (the RIGHT way on DA) ─────
+# DirectAdmin reads per-domain custom Apache config from userdata dirs.
+# Writing here means ProxyPass survives DirectAdmin config rebuilds.
+DA_PROXY_WRITTEN=false
+for DA_USERDATA in \
+  "/etc/httpd/conf/userdata/std/2_4/admin/$DOMAIN" \
+  "/etc/httpd/conf/userdata/std/2/admin/$DOMAIN" \
+  "/etc/httpd/conf/userdata/std/2_4/admin/${DOMAIN}.conf" \
+  "/etc/httpd/conf/userdata"; do
+  # Only try directories that exist (or parent exists for 2_4 path)
+  PARENT=$(dirname "$DA_USERDATA")
+  if [ -d "$PARENT" ] && [ "$(basename "$PARENT")" != "userdata" ]; then
+    mkdir -p "$DA_USERDATA"
+    cat > "$DA_USERDATA/nodejsproxy.conf" << PROXY
+# Betcheza — reverse proxy to Node.js (written by deploy.sh, do not edit manually)
+ProxyPreserveHost On
+ProxyPass        /_next/static/ !
+ProxyPass        / http://127.0.0.1:${APP_PORT}/
+ProxyPassReverse / http://127.0.0.1:${APP_PORT}/
+PROXY
+    echo -e "${GREEN}DirectAdmin proxy config written to $DA_USERDATA/nodejsproxy.conf${NC}"
+    DA_PROXY_WRITTEN=true
+    break
+  fi
+done
+
+if [ "$DA_PROXY_WRITTEN" = false ]; then
+  echo -e "${YELLOW}DirectAdmin userdata dir not found — relying on .htaccess for proxying${NC}"
+fi
+
+# ── 4b: Copy static files + write .htaccess (compression, caching, fallback proxy) ──
 if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   mkdir -p "$DOMAIN_ROOT/_next/static"
   rm -rf "$DOMAIN_ROOT/_next/static"
   cp -r "$APP_DIR/.next/static" "$DOMAIN_ROOT/_next/static"
-  echo -e "${GREEN}Static files copied to $DOMAIN_ROOT/_next/static${NC}"
-
   CSS_COUNT=$(find "$DOMAIN_ROOT/_next/static" -name "*.css" 2>/dev/null | wc -l)
-  [ "$CSS_COUNT" -gt 0 ] && echo -e "${GREEN}CSS check: $CSS_COUNT stylesheet(s) — OK${NC}" \
-    || echo -e "${RED}WARNING: No CSS files found${NC}"
+  echo -e "${GREEN}Static files copied ($CSS_COUNT CSS files)${NC}"
 
   cat > "$DOMAIN_ROOT/.htaccess" << HTACCESS
-# ── Brotli compression ────────────────────────────────────────────────────────
+# ── Compression ───────────────────────────────────────────────────────────────
 <IfModule mod_brotli.c>
   AddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css \
     application/javascript application/json image/svg+xml font/woff2
 </IfModule>
-
-# ── Gzip fallback ─────────────────────────────────────────────────────────────
 <IfModule mod_deflate.c>
   AddOutputFilterByType DEFLATE text/html text/plain text/css \
     application/javascript application/json image/svg+xml font/woff2
@@ -120,29 +129,28 @@ if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   Header append Vary Accept-Encoding
 </IfModule>
 
-# ── Long-term caching for hashed assets ──────────────────────────────────────
+# ── Caching ───────────────────────────────────────────────────────────────────
 <IfModule mod_expires.c>
   ExpiresActive On
-  ExpiresByType text/css                  "access plus 1 year"
-  ExpiresByType application/javascript    "access plus 1 year"
-  ExpiresByType image/png                 "access plus 1 year"
-  ExpiresByType image/jpeg                "access plus 1 year"
-  ExpiresByType image/webp                "access plus 1 year"
-  ExpiresByType image/avif                "access plus 1 year"
-  ExpiresByType image/svg+xml             "access plus 1 year"
-  ExpiresByType font/woff2                "access plus 1 year"
-  ExpiresByType font/woff                 "access plus 1 year"
+  ExpiresByType text/css               "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/png              "access plus 1 year"
+  ExpiresByType image/jpeg             "access plus 1 year"
+  ExpiresByType image/webp             "access plus 1 year"
+  ExpiresByType image/avif             "access plus 1 year"
+  ExpiresByType image/svg+xml          "access plus 1 year"
+  ExpiresByType font/woff2             "access plus 1 year"
+  ExpiresByType font/woff              "access plus 1 year"
 </IfModule>
 
 # ── Security headers ──────────────────────────────────────────────────────────
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
-  Header always set X-XSS-Protection "1; mode=block"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
-# ── Proxy to Next.js (only used if Apache AllowOverride lets .htaccess proxy) ─
+# ── Proxy fallback (used if VirtualHost-level ProxyPass is not configured) ────
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteCond %{REQUEST_URI} ^/_next/static/ [NC]
@@ -152,8 +160,7 @@ if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   RewriteRule ^(.*)\$ http://127.0.0.1:${APP_PORT}/\$1 [P,L]
 </IfModule>
 HTACCESS
-
-  echo -e "${GREEN}.htaccess written → proxying to port ${APP_PORT}${NC}"
+  echo -e "${GREEN}.htaccess written → port ${APP_PORT}${NC}"
 
   cat > "$DOMAIN_ROOT/_next/static/.htaccess" << 'STATIC_HTA'
 <IfModule mod_headers.c>
@@ -161,24 +168,33 @@ HTACCESS
 </IfModule>
 STATIC_HTA
 else
-  echo -e "${YELLOW}Skipping static copy (no web root found — Apache may use VirtualHost ProxyPass instead)${NC}"
+  echo -e "${YELLOW}Web root not found — skipping static copy${NC}"
+fi
+
+# ── 4c: Reload Apache to pick up any config changes ───────────────────────────
+echo -e "${YELLOW}Reloading Apache...${NC}"
+if systemctl reload httpd 2>/dev/null; then
+  echo -e "${GREEN}Apache reloaded (systemctl)${NC}"
+elif service httpd reload 2>/dev/null; then
+  echo -e "${GREEN}Apache reloaded (service)${NC}"
+elif apachectl graceful 2>/dev/null; then
+  echo -e "${GREEN}Apache reloaded (apachectl graceful)${NC}"
+else
+  echo -e "${RED}Could not reload Apache — you may need to run: systemctl reload httpd${NC}"
 fi
 
 # ── Step 5: Clean PM2 restart ─────────────────────────────────────────────────
-echo -e "${YELLOW}[5/5] Restarting server...${NC}"
+echo -e "${YELLOW}[5/5] Restarting Node.js server...${NC}"
 
-# Stop + delete ALL betcheza instances (handles duplicates cleanly)
 pm2 stop betcheza 2>/dev/null || true
 sleep 2
 pm2 delete betcheza 2>/dev/null || true
 sleep 1
 
-# Force-free the port
 fuser -k -KILL "${APP_PORT}/tcp" 2>/dev/null || true
 lsof -ti:"${APP_PORT}" 2>/dev/null | xargs kill -9 2>/dev/null || true
 sleep 2
 
-# Start single clean instance
 if [ -f "$APP_DIR/ecosystem.config.js" ]; then
   pm2 start "$APP_DIR/ecosystem.config.js"
 else
@@ -206,10 +222,28 @@ while [ $WAITED -lt $MAX_WAIT ]; do
 done
 
 if [ "$SUCCESS" = false ]; then
-  echo -e "${RED}✗ App did NOT come up within ${MAX_WAIT}s on port ${APP_PORT}!${NC}"
+  echo -e "${RED}✗ App did NOT come up within ${MAX_WAIT}s!${NC}"
   pm2 logs betcheza --lines 30 --nostream 2>/dev/null || true
   exit 1
 fi
 
-echo -e "${GREEN}${BOLD}Deploy complete! betcheza.co.ke is live.${NC}"
+echo ""
+echo -e "${GREEN}${BOLD}═══════════════════════════════════════${NC}"
+echo -e "${GREEN}${BOLD}  Deploy complete! Checking site...${NC}"
+echo -e "${GREEN}${BOLD}═══════════════════════════════════════${NC}"
+
+# Final end-to-end check via Apache
+SITE_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://127.0.0.1/" \
+  -H "Host: $DOMAIN" 2>/dev/null)
+if [ "$SITE_CODE" = "200" ] || [ "$SITE_CODE" = "301" ] || [ "$SITE_CODE" = "302" ]; then
+  echo -e "${GREEN}✓ Site is responding via Apache (HTTP $SITE_CODE)${NC}"
+else
+  echo -e "${RED}⚠ Apache returns HTTP $SITE_CODE for $DOMAIN — see diagnostic below:${NC}"
+  echo ""
+  echo -e "${YELLOW}Run this to diagnose the Apache → Node proxy:${NC}"
+  echo "  httpd -S 2>&1 | grep -i betcheza"
+  echo "  find /etc/httpd -name '*.conf' | xargs grep -l 'betcheza' 2>/dev/null"
+  echo "  curl -v -H 'Host: $DOMAIN' http://127.0.0.1/ 2>&1 | head -30"
+fi
+
 pm2 list
