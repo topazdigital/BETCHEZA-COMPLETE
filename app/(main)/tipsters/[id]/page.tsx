@@ -20,7 +20,8 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { FollowTipsterButton } from "@/components/tipsters/follow-tipster-button"
 import { useRouter } from "next/navigation"
-import { CreditCard, Loader2 } from "lucide-react"
+import { CreditCard, Loader2, Smartphone, Wallet, X } from "lucide-react"
+import { Input } from "@/components/ui/input"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -109,28 +110,109 @@ function SubscribeButton({ tipsterId, tipsterName, price, currency }: {
 }) {
   const { isAuthenticated } = useAuth()
   const router = useRouter()
-  const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  async function handleSubscribe() {
-    if (!isAuthenticated) {
-      router.push('/login?next=' + encodeURIComponent(window.location.pathname))
-      return
-    }
+  // Subscription status
+  const { data: subStatus, mutate: mutateStatus } = useSWR<{
+    subscribed: boolean; daysLeft: number; subscription?: { expiresAt: string }
+  }>(
+    isAuthenticated ? `/api/tipsters/${tipsterId}/subscribe` : null,
+    async (url: string) => { const r = await fetch(url); return r.json() },
+    { revalidateOnFocus: false }
+  )
+
+  // Wallet balance
+  const { data: walletData } = useSWR<{ balance: number; currency: string }>(
+    isAuthenticated ? '/api/wallet/balance' : null,
+    async (url: string) => { const r = await fetch(url); return r.json() },
+    { revalidateOnFocus: false }
+  )
+
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  // M-Pesa flow
+  const [showMpesa, setShowMpesa] = useState(false)
+  const [phone, setPhone] = useState('')
+  const [mpesaPending, setMpesaPending] = useState(false)
+  const [, setPollRef] = useState<string | null>(null)
+
+  // Poll for M-Pesa confirmation
+  const pollMpesaStatus = useCallback(async (ref: string) => {
+    const maxAttempts = 24 // 2 min at 5s intervals
+    let attempts = 0
+    const interval = setInterval(async () => {
+      attempts++
+      try {
+        const r = await fetch(`/api/tipsters/${tipsterId}/subscribe/status?ref=${ref}`)
+        const d = await r.json()
+        if (d.status === 'completed') {
+          clearInterval(interval)
+          setMpesaPending(false)
+          setSuccess('Payment confirmed! You are now subscribed.')
+          setOpen(false)
+          mutateStatus()
+        } else if (d.status === 'failed') {
+          clearInterval(interval)
+          setMpesaPending(false)
+          setError(d.message ?? 'Payment failed or was cancelled.')
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval)
+          setMpesaPending(false)
+          setError('Payment timed out. If you paid, please contact support.')
+        }
+      } catch {
+        if (attempts >= maxAttempts) clearInterval(interval)
+      }
+    }, 5000)
+  }, [tipsterId, mutateStatus])
+
+  async function handleWalletSubscribe() {
     setBusy(true)
     setError(null)
     try {
       const res = await fetch(`/api/tipsters/${tipsterId}/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipsterId, tipsterName, price, currency }),
+        body: JSON.stringify({ tipsterId, tipsterName, price, currency, paymentMethod: 'wallet' }),
       })
+      const d = await res.json().catch(() => ({}))
       if (res.ok) {
-        setDone(true)
+        setSuccess(`Subscribed! ${d.daysLeft ?? 30} days access. You keep winning!`)
+        setOpen(false)
+        mutateStatus()
       } else {
-        const d = await res.json().catch(() => ({}))
-        setError(d.error || 'Subscription failed')
+        setError(d.error ?? 'Payment failed')
+        if (d.canUseMpesa) setShowMpesa(true)
+      }
+    } catch {
+      setError('Network error — please try again')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleMpesaSubscribe() {
+    if (!phone.trim()) { setError('Please enter your M-Pesa phone number'); return }
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/tipsters/${tipsterId}/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipsterId, tipsterName, price, currency, paymentMethod: 'mpesa', phone: phone.trim() }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok && d.pending) {
+        setMpesaPending(true)
+        setPollRef(d.reference)
+        pollMpesaStatus(d.reference)
+      } else if (res.ok) {
+        setSuccess('Subscribed!')
+        setOpen(false)
+        mutateStatus()
+      } else {
+        setError(d.error ?? 'M-Pesa payment failed')
       }
     } catch {
       setError('Network error')
@@ -139,21 +221,133 @@ function SubscribeButton({ tipsterId, tipsterName, price, currency }: {
     }
   }
 
-  if (done) {
+  const walletBalance = walletData?.balance ?? 0
+  const hasEnoughBalance = walletBalance >= price
+  const isSubscribed = subStatus?.subscribed
+  const daysLeft = subStatus?.daysLeft ?? 0
+
+  if (!isAuthenticated) {
     return (
-      <Button variant="outline" size="sm" className="h-7 text-xs text-success border-success/40" disabled>
-        <Check className="mr-1 h-3 w-3" /> Subscribed!
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => router.push('/login?next=' + encodeURIComponent(window.location.pathname))}>
+        <CreditCard className="mr-1 h-3 w-3" />
+        Subscribe {currency} {price}/mo
       </Button>
+    )
+  }
+
+  // Active subscription state
+  if (isSubscribed) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <Button variant="outline" size="sm" className="h-7 text-xs text-success border-success/40 cursor-default" disabled>
+          <Check className="mr-1 h-3 w-3" />
+          Subscribed · {daysLeft}d left
+        </Button>
+        <span className="text-[10px] text-muted-foreground text-center">Premium picks unlocked</span>
+      </div>
+    )
+  }
+
+  // Success message after subscribing
+  if (success) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <Button variant="outline" size="sm" className="h-7 text-xs text-success border-success/40 cursor-default" disabled>
+          <Check className="mr-1 h-3 w-3" /> Subscribed!
+        </Button>
+        <span className="text-[9px] text-success text-center">{success}</span>
+      </div>
+    )
+  }
+
+  // Payment modal / expanded flow
+  if (open) {
+    return (
+      <div className="flex flex-col gap-1 rounded-xl border border-primary/30 bg-card p-3 min-w-[220px] shadow-lg">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-bold">Subscribe to {tipsterName}</span>
+          <button onClick={() => { setOpen(false); setError(null); setShowMpesa(false) }} className="text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+        </div>
+        <div className="text-[11px] text-muted-foreground mb-2">
+          <span className="font-semibold text-foreground">{currency} {price}</span> / month · 30 days access · Premium picks unlocked
+        </div>
+
+        {mpesaPending ? (
+          <div className="text-center py-2">
+            <Loader2 className="h-5 w-5 animate-spin mx-auto mb-1 text-primary" />
+            <p className="text-xs font-medium">Check your phone</p>
+            <p className="text-[10px] text-muted-foreground">Enter your M-Pesa PIN to complete payment</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Waiting for confirmation...</p>
+          </div>
+        ) : !showMpesa ? (
+          <>
+            {/* Wallet option */}
+            <Button
+              size="sm"
+              className="h-8 text-xs w-full"
+              onClick={handleWalletSubscribe}
+              disabled={busy || !hasEnoughBalance}
+            >
+              {busy ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Wallet className="mr-1.5 h-3 w-3" />}
+              Pay from Wallet
+              <span className="ml-auto text-[10px] opacity-70">
+                {hasEnoughBalance ? `${currency} ${walletBalance.toLocaleString()} available` : 'Insufficient'}
+              </span>
+            </Button>
+            {!hasEnoughBalance && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs w-full"
+                onClick={() => setShowMpesa(true)}
+                disabled={busy}
+              >
+                <Smartphone className="mr-1.5 h-3 w-3" />
+                Pay via M-Pesa
+              </Button>
+            )}
+            {!hasEnoughBalance && (
+              <p className="text-[10px] text-muted-foreground">
+                Wallet balance: <span className="font-medium text-foreground">{currency} {walletBalance.toLocaleString()}</span> — need {currency} {(price - walletBalance).toLocaleString()} more.{' '}
+                <a href="/dashboard/wallet" className="text-primary underline">Top up</a>
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            {/* M-Pesa STK push */}
+            <div className="flex gap-1.5">
+              <Input
+                type="tel"
+                placeholder="07XX XXX XXX"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                className="h-8 text-xs flex-1"
+                disabled={busy}
+              />
+              <Button size="sm" className="h-8 text-xs px-3" onClick={handleMpesaSubscribe} disabled={busy}>
+                {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Smartphone className="h-3 w-3" />}
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              M-Pesa STK push of <span className="font-medium text-foreground">{currency} {price}</span> will be sent to your phone.
+            </p>
+            <button className="text-[10px] text-primary text-left" onClick={() => setShowMpesa(false)}>← Back to wallet</button>
+          </>
+        )}
+
+        {error && <p className="text-[10px] text-destructive mt-1">{error}</p>}
+      </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-0.5">
-      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleSubscribe} disabled={busy}>
-        {busy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CreditCard className="mr-1 h-3 w-3" />}
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setOpen(true)}>
+        <CreditCard className="mr-1 h-3 w-3" />
         Subscribe {currency} {price}/mo
       </Button>
-      {error && <span className="text-[10px] text-destructive">{error}</span>}
+      <span className="text-[9px] text-muted-foreground text-center">Unlock premium picks</span>
     </div>
   )
 }
