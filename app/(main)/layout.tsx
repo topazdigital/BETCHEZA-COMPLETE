@@ -48,6 +48,10 @@ const SocialOnboardingModal = dynamic(
   () => import("@/components/auth/social-onboarding-modal").then(m => ({ default: m.SocialOnboardingModal })),
   { ssr: false }
 )
+const PushPromptBanner = dynamic(
+  () => import("@/components/notifications/push-prompt-banner").then(m => ({ default: m.PushPromptBanner })),
+  { ssr: false }
+)
 const WelcomeModal = dynamic(
   () => import("@/components/auth/welcome-modal").then(m => ({ default: m.WelcomeModal })),
   { ssr: false }
@@ -568,6 +572,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <LiveScoreboardWidget />
         <WelcomeModal />
         <SocialOnboardingModal />
+        <PushPromptBanner />
       </div>
     </div>
   )

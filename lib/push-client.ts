@@ -2,7 +2,7 @@
 
 const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
-  'BLg2P3-1UoNSjlrh-uXZH4t8Wm8QkP_4wLUZsv9zRRrGgQUBJSyvm1Z8XTwLrvW2K-G79kIgJh3pZEUbm1uvrhE';
+  'BKcZj01R4VVEgYZGqp2Mw2ecol5SZ2H9OSRjXJ0FBf-qS1vvAxBUf2-5PXUPr6-ZiLCVCtFovTgu83q09ZtwG5Y';
 
 export function isPushSupported(): boolean {
   if (typeof window === 'undefined') return false;
