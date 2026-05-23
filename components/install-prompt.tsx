@@ -203,26 +203,15 @@ export function InstallPrompt() {
                     <p className="text-[11px] text-muted-foreground">
                       <span className="font-semibold text-foreground">3.</span> Tap <strong>Add</strong> — it works just like an app!
                     </p>
-                    <div className="mt-3 flex gap-2">
-                      <a
-                        href="https://apps.apple.com/search?term=betcheza"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-black text-white text-[11px] font-semibold h-8 px-3 hover:bg-black/80 transition-colors"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                        App Store
-                      </a>
-                      <a
-                        href="https://play.google.com/store/search?q=betcheza"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-semibold h-8 px-3 hover:bg-emerald-700 transition-colors"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.76c.3.17.65.19.97.07L14.76 12 3.5.47a1.02 1.02 0 0 0-.32-.27C2.94.07 2.64 0 2.35 0 1.6 0 1 .64 1 1.43v21.14c0 .49.24.93.62 1.19l.56-.56zM16.29 10.06l-2.51-2.5 2.56-2.57 2.93 1.65c.84.47.84 1.24 0 1.71l-2.98 1.71zm-1.53 1.47L3.83 22.46l11.34-11.4 1.65 1.65-2.06 1.17zm0-3.06L3.97 2.54 14.76 13.3l1.65-1.65-1.65-1.18z"/></svg>
-                        Google Play
-                      </a>
-                    </div>
+                    <a
+                      href="https://betcheza.co.ke"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[11px] font-semibold h-8 px-3 hover:from-emerald-600 hover:to-teal-600 transition-colors"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download Betcheza App
+                    </a>
                   </div>
                 ) : isAndroid && !deferred ? (
                   <div className="mt-3 space-y-2">
@@ -233,26 +222,15 @@ export function InstallPrompt() {
                     <p className="text-[11px] text-muted-foreground">
                       Then tap <strong>Add to Home screen</strong> or <strong>Install app</strong>
                     </p>
-                    <div className="mt-1 flex gap-2">
-                      <a
-                        href="https://play.google.com/store/search?q=betcheza"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-semibold h-8 px-3 hover:bg-emerald-700 transition-colors"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.76c.3.17.65.19.97.07L14.76 12 3.5.47a1.02 1.02 0 0 0-.32-.27C2.94.07 2.64 0 2.35 0 1.6 0 1 .64 1 1.43v21.14c0 .49.24.93.62 1.19l.56-.56zM16.29 10.06l-2.51-2.5 2.56-2.57 2.93 1.65c.84.47.84 1.24 0 1.71l-2.98 1.71zm-1.53 1.47L3.83 22.46l11.34-11.4 1.65 1.65-2.06 1.17zm0-3.06L3.97 2.54 14.76 13.3l1.65-1.65-1.65-1.18z"/></svg>
-                        Download on Google Play
-                      </a>
-                      <a
-                        href="https://apps.apple.com/search?term=betcheza"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-black text-white text-[11px] font-semibold h-8 px-3 hover:bg-black/80 transition-colors"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                        App Store
-                      </a>
-                    </div>
+                    <a
+                      href="https://betcheza.co.ke"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 w-full flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[11px] font-semibold h-8 px-3 hover:from-emerald-600 hover:to-teal-600 transition-colors"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download Betcheza App
+                    </a>
                   </div>
                 ) : (
                   <div className="mt-3 flex gap-2">
