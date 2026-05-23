@@ -5,6 +5,9 @@ BOLD='\033[1m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
+DOMAIN="betcheza.co.ke"
+DA_CONF="/usr/local/directadmin/data/users/admin/httpd.conf"
+
 # ── Step 1: Pull + re-exec ────────────────────────────────────────────────────
 if [ -z "$BETCHEZA_DEPLOY_REEXECED" ]; then
   echo -e "${BOLD}Betcheza Deploy — $(pwd)${NC}"
@@ -17,7 +20,7 @@ if [ -z "$BETCHEZA_DEPLOY_REEXECED" ]; then
   exec bash "$APP_DIR/deploy.sh" "$@"
 fi
 
-echo -e "${BOLD}Betcheza Deploy — $(pwd) [running updated deploy.sh]${NC}"
+echo -e "${BOLD}Betcheza Deploy — $(pwd) [updated script]${NC}"
 
 # ── Step 1b: Read config ──────────────────────────────────────────────────────
 echo -e "${YELLOW}[1b/5] Reading configuration...${NC}"
@@ -30,7 +33,7 @@ else
   echo -e "${GREEN}GOOGLE_SITE_VERIFICATION already in .env.local — OK${NC}"
 fi
 
-# ── App port ──────────────────────────────────────────────────────────────────
+# App port: ecosystem.config.js > .env.local > 3001
 ECO_PORT=$(node -e "try{const c=require('./ecosystem.config.js');const e=c.apps[0].env;console.log(e&&e.PORT||'');}catch(e){}" 2>/dev/null)
 if [ -n "$ECO_PORT" ]; then
   APP_PORT="$ECO_PORT"
@@ -41,9 +44,7 @@ else
   echo -e "${GREEN}App port: $APP_PORT (from .env.local)${NC}"
 fi
 
-DOMAIN="betcheza.co.ke"
-
-# ── Apache web root ───────────────────────────────────────────────────────────
+# Apache web root
 CONFIGURED_ROOT=$(grep -E '^DEPLOY_WEB_ROOT=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
 if [ -n "$CONFIGURED_ROOT" ]; then
   DOMAIN_ROOT="$CONFIGURED_ROOT"
@@ -63,10 +64,6 @@ else
   done
 fi
 
-if [ -z "$DOMAIN_ROOT" ]; then
-  echo -e "${RED}⚠ Could not detect Apache web root — add DEPLOY_WEB_ROOT= to .env.local${NC}"
-fi
-
 # ── Step 2: Install dependencies ──────────────────────────────────────────────
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
 npm install --prefer-offline
@@ -75,49 +72,104 @@ npm install --prefer-offline
 echo -e "${YELLOW}[3/5] Building...${NC}"
 npm run build
 
-# ── Step 4: Apache proxy config + static assets ───────────────────────────────
-echo -e "${YELLOW}[4/5] Configuring Apache proxy + copying static assets...${NC}"
+# ── Step 4: Apache proxy config ───────────────────────────────────────────────
+echo -e "${YELLOW}[4/5] Configuring Apache reverse proxy...${NC}"
 
-# ── 4a: Write DirectAdmin userdata ProxyPass config (the RIGHT way on DA) ─────
-# DirectAdmin reads per-domain custom Apache config from userdata dirs.
-# Writing here means ProxyPass survives DirectAdmin config rebuilds.
-DA_PROXY_WRITTEN=false
-for DA_USERDATA in \
-  "/etc/httpd/conf/userdata/std/2_4/admin/$DOMAIN" \
-  "/etc/httpd/conf/userdata/std/2/admin/$DOMAIN" \
-  "/etc/httpd/conf/userdata/std/2_4/admin/${DOMAIN}.conf" \
-  "/etc/httpd/conf/userdata"; do
-  # Only try directories that exist (or parent exists for 2_4 path)
-  PARENT=$(dirname "$DA_USERDATA")
-  if [ -d "$PARENT" ] && [ "$(basename "$PARENT")" != "userdata" ]; then
-    mkdir -p "$DA_USERDATA"
-    cat > "$DA_USERDATA/nodejsproxy.conf" << PROXY
-# Betcheza — reverse proxy to Node.js (written by deploy.sh, do not edit manually)
-ProxyPreserveHost On
-ProxyPass        /_next/static/ !
-ProxyPass        / http://127.0.0.1:${APP_PORT}/
-ProxyPassReverse / http://127.0.0.1:${APP_PORT}/
-PROXY
-    echo -e "${GREEN}DirectAdmin proxy config written to $DA_USERDATA/nodejsproxy.conf${NC}"
-    DA_PROXY_WRITTEN=true
-    break
-  fi
-done
+# ── 4a: Patch DirectAdmin's httpd.conf (the authoritative Apache config on DA) ─
+# DA stores all VirtualHosts in /usr/local/directadmin/data/users/admin/httpd.conf
+# We inject ProxyPass into every betcheza VirtualHost using Python so it survives
+# across Apache config syntax changes. This is backed up before every change.
+if [ -f "$DA_CONF" ]; then
+  cp "$DA_CONF" "${DA_CONF}.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
 
-if [ "$DA_PROXY_WRITTEN" = false ]; then
-  echo -e "${YELLOW}DirectAdmin userdata dir not found — relying on .htaccess for proxying${NC}"
+  python3 << PYEOF
+import re, sys
+
+DA_CONF  = "$DA_CONF"
+DOMAIN   = "$DOMAIN"
+APP_PORT = $APP_PORT
+
+PROXY_BLOCK = """
+    # Node.js reverse proxy — managed by deploy.sh (do not remove)
+    ProxyPreserveHost On
+    ProxyPass        /_next/static/ !
+    ProxyPass        / http://127.0.0.1:{port}/
+    ProxyPassReverse / http://127.0.0.1:{port}/
+""".format(port=APP_PORT)
+
+with open(DA_CONF, "r") as f:
+    lines = f.readlines()
+
+in_betcheza = False
+patched     = 0
+new_lines   = []
+
+for i, line in enumerate(lines):
+    # Detect start of a VirtualHost block
+    if re.search(r"<VirtualHost[^>]+>", line):
+        # Peek at next ~8 lines to check if this VH is for our domain
+        chunk = "".join(lines[i : i + 8])
+        if DOMAIN in chunk:
+            in_betcheza = True
+
+    # Inject ProxyPass just before </VirtualHost> for betcheza blocks
+    if in_betcheza and re.match(r"\s*</VirtualHost>", line):
+        # Check we haven't already patched this block
+        preceding = "".join(new_lines[-25:])
+        if "ProxyPass" not in preceding:
+            new_lines.append(PROXY_BLOCK)
+            patched += 1
+        else:
+            # Update port in existing ProxyPass lines
+            pass
+        in_betcheza = False
+
+    new_lines.append(line)
+
+if patched == 0:
+    # May already be patched — check if ProxyPass is present
+    full = "".join(new_lines)
+    if "ProxyPass" in full and DOMAIN in full:
+        print(f"ProxyPass already present in {DA_CONF} — ensuring port is {APP_PORT}")
+        # Update port in existing entries
+        new_lines_str = "".join(new_lines)
+        import re as _re
+        new_lines_str = _re.sub(
+            r"(ProxyPass\s+/\s+http://127\.0\.0\.1:)\d+(/)",
+            rf"\g<1>{APP_PORT}\2",
+            new_lines_str
+        )
+        new_lines_str = _re.sub(
+            r"(ProxyPassReverse\s+/\s+http://127\.0\.0\.1:)\d+(/)",
+            rf"\g<1>{APP_PORT}\2",
+            new_lines_str
+        )
+        with open(DA_CONF, "w") as f:
+            f.write(new_lines_str)
+        print("Port updated.")
+    else:
+        print(f"WARNING: Could not find betcheza VirtualHost in {DA_CONF}", file=sys.stderr)
+else:
+    with open(DA_CONF, "w") as f:
+        f.writelines(new_lines)
+    print(f"Patched {patched} VirtualHost block(s) for {DOMAIN} → port {APP_PORT}")
+PYEOF
+
+  echo -e "${GREEN}DA httpd.conf patched with ProxyPass → port ${APP_PORT}${NC}"
+else
+  echo -e "${YELLOW}DA config not found at $DA_CONF — skipping VirtualHost patch${NC}"
 fi
 
-# ── 4b: Copy static files + write .htaccess (compression, caching, fallback proxy) ──
+# ── 4b: Copy static assets + .htaccess (fallback proxy + compression) ─────────
 if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   mkdir -p "$DOMAIN_ROOT/_next/static"
   rm -rf "$DOMAIN_ROOT/_next/static"
   cp -r "$APP_DIR/.next/static" "$DOMAIN_ROOT/_next/static"
   CSS_COUNT=$(find "$DOMAIN_ROOT/_next/static" -name "*.css" 2>/dev/null | wc -l)
-  echo -e "${GREEN}Static files copied ($CSS_COUNT CSS files)${NC}"
+  echo -e "${GREEN}Static files copied ($CSS_COUNT CSS file(s))${NC}"
 
   cat > "$DOMAIN_ROOT/.htaccess" << HTACCESS
-# ── Compression ───────────────────────────────────────────────────────────────
+# Compression
 <IfModule mod_brotli.c>
   AddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css \
     application/javascript application/json image/svg+xml font/woff2
@@ -129,7 +181,7 @@ if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   Header append Vary Accept-Encoding
 </IfModule>
 
-# ── Caching ───────────────────────────────────────────────────────────────────
+# Long-term caching
 <IfModule mod_expires.c>
   ExpiresActive On
   ExpiresByType text/css               "access plus 1 year"
@@ -143,14 +195,14 @@ if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   ExpiresByType font/woff              "access plus 1 year"
 </IfModule>
 
-# ── Security headers ──────────────────────────────────────────────────────────
+# Security headers
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
-# ── Proxy fallback (used if VirtualHost-level ProxyPass is not configured) ────
+# Fallback proxy (used only if VirtualHost-level ProxyPass is absent)
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteCond %{REQUEST_URI} ^/_next/static/ [NC]
@@ -171,16 +223,18 @@ else
   echo -e "${YELLOW}Web root not found — skipping static copy${NC}"
 fi
 
-# ── 4c: Reload Apache to pick up any config changes ───────────────────────────
+# ── 4c: Remove any stale conflicting conf.d file we may have created earlier ───
+rm -f "/etc/httpd/conf.d/${DOMAIN}.conf" 2>/dev/null && \
+  echo -e "${YELLOW}Removed stale /etc/httpd/conf.d/${DOMAIN}.conf${NC}" || true
+
+# ── 4d: Reload Apache to pick up DA config changes ────────────────────────────
 echo -e "${YELLOW}Reloading Apache...${NC}"
 if systemctl reload httpd 2>/dev/null; then
-  echo -e "${GREEN}Apache reloaded (systemctl)${NC}"
-elif service httpd reload 2>/dev/null; then
-  echo -e "${GREEN}Apache reloaded (service)${NC}"
+  echo -e "${GREEN}Apache reloaded${NC}"
 elif apachectl graceful 2>/dev/null; then
   echo -e "${GREEN}Apache reloaded (apachectl graceful)${NC}"
 else
-  echo -e "${RED}Could not reload Apache — you may need to run: systemctl reload httpd${NC}"
+  echo -e "${RED}Could not auto-reload Apache — run: systemctl reload httpd${NC}"
 fi
 
 # ── Step 5: Clean PM2 restart ─────────────────────────────────────────────────
@@ -202,8 +256,8 @@ else
 fi
 pm2 save
 
-# ── Step 6: Health check ──────────────────────────────────────────────────────
-echo -e "${YELLOW}[6/6] Verifying app is healthy on port ${APP_PORT}...${NC}"
+# ── Step 6: Health check on Node ──────────────────────────────────────────────
+echo -e "${YELLOW}[6/6] Verifying app health...${NC}"
 HEALTH_URL="http://127.0.0.1:${APP_PORT}/api/health"
 MAX_WAIT=90
 WAITED=0
@@ -212,7 +266,7 @@ while [ $WAITED -lt $MAX_WAIT ]; do
   HTTP_CODE=$(curl -s -o /tmp/betcheza_health.json -w "%{http_code}" "$HEALTH_URL" 2>/dev/null)
   if [ "$HTTP_CODE" = "200" ]; then
     DB_STATUS=$(grep -o '"db":"[^"]*"' /tmp/betcheza_health.json 2>/dev/null | cut -d'"' -f4)
-    echo -e "${GREEN}✓ App is UP on port ${APP_PORT} (db: ${DB_STATUS:-unknown})${NC}"
+    echo -e "${GREEN}✓ Node app is UP on port ${APP_PORT} (db: ${DB_STATUS:-unknown})${NC}"
     SUCCESS=true
     break
   fi
@@ -222,28 +276,26 @@ while [ $WAITED -lt $MAX_WAIT ]; do
 done
 
 if [ "$SUCCESS" = false ]; then
-  echo -e "${RED}✗ App did NOT come up within ${MAX_WAIT}s!${NC}"
+  echo -e "${RED}✗ Node app did NOT come up within ${MAX_WAIT}s!${NC}"
   pm2 logs betcheza --lines 30 --nostream 2>/dev/null || true
   exit 1
 fi
 
+# ── End-to-end site check via Apache ──────────────────────────────────────────
 echo ""
-echo -e "${GREEN}${BOLD}═══════════════════════════════════════${NC}"
-echo -e "${GREEN}${BOLD}  Deploy complete! Checking site...${NC}"
-echo -e "${GREEN}${BOLD}═══════════════════════════════════════${NC}"
-
-# Final end-to-end check via Apache
-SITE_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://127.0.0.1/" \
-  -H "Host: $DOMAIN" 2>/dev/null)
+echo -e "${YELLOW}Checking site via Apache (HTTPS)...${NC}"
+sleep 2
+SITE_CODE=$(curl -sk -o /dev/null -w "%{http_code}" \
+  --max-time 15 "https://${DOMAIN}/" 2>/dev/null)
 if [ "$SITE_CODE" = "200" ] || [ "$SITE_CODE" = "301" ] || [ "$SITE_CODE" = "302" ]; then
-  echo -e "${GREEN}✓ Site is responding via Apache (HTTP $SITE_CODE)${NC}"
+  echo -e "${GREEN}${BOLD}✓ betcheza.co.ke is LIVE (HTTPS $SITE_CODE)${NC}"
 else
-  echo -e "${RED}⚠ Apache returns HTTP $SITE_CODE for $DOMAIN — see diagnostic below:${NC}"
-  echo ""
-  echo -e "${YELLOW}Run this to diagnose the Apache → Node proxy:${NC}"
-  echo "  httpd -S 2>&1 | grep -i betcheza"
-  echo "  find /etc/httpd -name '*.conf' | xargs grep -l 'betcheza' 2>/dev/null"
-  echo "  curl -v -H 'Host: $DOMAIN' http://127.0.0.1/ 2>&1 | head -30"
+  echo -e "${RED}⚠ HTTPS returned $SITE_CODE — Apache may need manual check${NC}"
+  echo -e "${YELLOW}  Run: tail -30 /var/log/httpd/${DOMAIN}-error_log${NC}"
 fi
 
+echo ""
+echo -e "${GREEN}${BOLD}═══════════════════════════════════════${NC}"
+echo -e "${GREEN}${BOLD}  Deploy complete!${NC}"
+echo -e "${GREEN}${BOLD}═══════════════════════════════════════${NC}"
 pm2 list
