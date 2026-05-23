@@ -280,7 +280,7 @@ const faqJsonLd = {
       name: 'Is Betcheza free to use?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Yes, Betcheza is completely free. You can view AI predictions, follow tipsters, and access betting tips at no cost.',
+        text: 'Yes, Betcheza is completely free. You can view AI predictions, follow tipsters, and access betting tips at no cost. No subscription or payment is required to browse tips and predictions.',
       },
     },
     {
@@ -288,7 +288,7 @@ const faqJsonLd = {
       name: 'How does the AI football predictor work?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Betcheza uses AI (GPT-4o-mini) to analyse match data, team form, head-to-head records and odds to generate win probability and market recommendations for each game.',
+        text: 'Betcheza uses AI to analyse match data, team form, head-to-head records and odds to generate win probability and market recommendations for each game. Predictions cover over 35 sports and hundreds of leagues globally.',
       },
     },
     {
@@ -296,15 +296,15 @@ const faqJsonLd = {
       name: 'Can I get SportPesa jackpot tips on Betcheza?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Yes. Betcheza publishes free AI-powered predictions for SportPesa Midweek Jackpot, SportPesa Mega Jackpot, Betika Grand Jackpot and other Kenyan bookmaker jackpots — updated daily.',
+        text: 'Yes. Betcheza publishes free AI-powered predictions for SportPesa Midweek Jackpot, SportPesa Mega Jackpot, Betika Grand Jackpot, Odibets jackpot and other Kenyan bookmaker jackpots — updated daily.',
       },
     },
     {
       '@type': 'Question',
-      name: 'How do I follow a tipster?',
+      name: 'How do I follow a tipster on Betcheza?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Visit the Tipsters page, browse by win rate or ROI, and click any tipster to view their profile and full tip history. Create a free account to follow tipsters and get notifications.',
+        text: 'Visit the Tipsters page, browse by win rate or ROI, and click any tipster to view their profile and full tip history. Create a free account to follow tipsters and get notifications when they post new tips.',
       },
     },
     {
@@ -312,7 +312,7 @@ const faqJsonLd = {
       name: 'How are tipster win rates calculated?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Win rates are calculated from settled tips only — the percentage of tips that resulted in a winning outcome. ROI factors in the odds of each pick to show long-term profitability.',
+        text: 'Win rates are calculated from settled tips only — the percentage of tips that resulted in a winning outcome. ROI (Return on Investment) factors in the odds of each pick to show long-term profitability.',
       },
     },
     {
@@ -320,10 +320,86 @@ const faqJsonLd = {
       name: 'Does Betcheza cover the Kenya Premier League (KPL)?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Yes. Betcheza covers the Kenya Premier League as well as 35+ other sports and leagues including the Premier League, Champions League, La Liga, Bundesliga and Serie A.',
+        text: 'Yes. Betcheza covers the Kenya Premier League (FKF Premier League) as well as 35+ other sports and leagues including the English Premier League, UEFA Champions League, La Liga, Bundesliga and Serie A.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'What are the best free betting tips in Kenya today?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Betcheza provides the best free betting tips in Kenya today, sourced from AI analysis and a community of over 50,000 verified tipsters. Browse the Matches page for today\'s top predictions across football, basketball, tennis and more.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Can I get Odibets tips and predictions on Betcheza?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes. Betcheza has a dedicated Odibets tips page with AI-generated predictions tailored for Odibets markets. Visit betcheza.co.ke/tips/odibets for daily Odibets tips and jackpot analysis.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How can I win betting competitions on Betcheza?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Join free and paid Betcheza competitions by posting tips on upcoming matches. Your score is based on tip accuracy and odds. Winners earn real KES cash prizes paid directly to your M-Pesa.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Does Betcheza support M-Pesa deposits and withdrawals?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes. Betcheza supports M-Pesa deposits and withdrawals via STK push. Deposit with your Safaricom number, receive a confirmation PIN prompt, and funds are added instantly. Competition prize withdrawals also go directly to M-Pesa.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'What is the 3 Daily Odds Strategy on Betcheza?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'The 3 Daily Odds Strategy is a bankroll compounding method where you target 3 combined odds per day using singles or doubles. Betcheza\'s Strategy page explains the approach step by step and tracks your projected growth.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Can I compare Betika jackpot predictions on Betcheza?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes. Betcheza covers Betika Grand Jackpot with AI-powered selections for all 17 games, plus tipster community picks. Visit betcheza.co.ke/jackpots/betika for the latest Betika jackpot tips and banker selections.',
       },
     },
   ],
+};
+
+const softwareAppJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  '@id': 'https://betcheza.co.ke/#app',
+  name: 'Betcheza',
+  url: 'https://betcheza.co.ke',
+  description: "Kenya's #1 free sports betting tips platform — AI predictions, jackpot tips, tipster leaderboard and cash prize competitions.",
+  applicationCategory: 'SportsApplication',
+  operatingSystem: 'Web',
+  browserRequirements: 'Requires JavaScript',
+  inLanguage: 'en',
+  isAccessibleForFree: true,
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'KES',
+    availability: 'https://schema.org/InStock',
+  },
+  aggregateRating: {
+    '@type': 'AggregateRating',
+    ratingValue: '4.8',
+    bestRating: '5',
+    worstRating: '1',
+    ratingCount: '2400',
+  },
+  publisher: { '@id': 'https://betcheza.co.ke/#organization' },
 };
 
 export default function RootLayout({
@@ -333,7 +409,24 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={geist.variable} suppressHydrationWarning>
-      <head />
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppJsonLd) }}
+        />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <ClarityAnalytics />
         <NavigationProgress />

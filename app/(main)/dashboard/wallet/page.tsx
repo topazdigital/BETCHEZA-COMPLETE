@@ -5,7 +5,7 @@ import useSWR from 'swr';
 import {
   Wallet, ArrowDownToLine, ArrowUpFromLine, Smartphone, CreditCard,
   Building2, Bitcoin, Loader2, CheckCircle2, AlertTriangle,
-  ArrowDownLeft, ArrowUpRight, Trophy, Gift, RotateCcw, Clock,
+  ArrowDownLeft, ArrowUpRight, Trophy, Gift, RotateCcw, Clock, Medal,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -36,6 +36,23 @@ interface WalletResponse {
   balances: Record<string, number>;
   transactions: Txn[];
   referralBalance?: number;
+}
+
+interface Prize {
+  id: string;
+  amount: number;
+  currency: string;
+  createdAt: string;
+  competitionId: number | null;
+  competitionName: string;
+  place: string | null;
+  rank: number | null;
+  description: string | null;
+}
+
+interface PrizesResponse {
+  success: boolean;
+  prizes: Prize[];
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -83,10 +100,16 @@ export default function WalletPage() {
     fetcher,
     { refreshInterval: 0 },
   );
+  const { data: prizesData, isLoading: prizesLoading } = useSWR<PrizesResponse>(
+    user ? '/api/wallet/prizes' : null,
+    fetcher,
+    { refreshInterval: 0 },
+  );
 
   const balance = data?.balances?.KES ?? user?.balance ?? 0;
   const referralBalance = data?.referralBalance ?? 0;
   const txns = data?.transactions ?? [];
+  const prizes = prizesData?.prizes ?? [];
 
   if (authLoading) {
     return <div className="flex h-64 items-center justify-center"><Spinner /></div>;
@@ -156,6 +179,14 @@ export default function WalletPage() {
           <TabsTrigger value="deposit" className="text-xs gap-1"><ArrowDownToLine className="h-3.5 w-3.5" /> Deposit</TabsTrigger>
           <TabsTrigger value="withdraw" className="text-xs gap-1"><ArrowUpFromLine className="h-3.5 w-3.5" /> Withdraw</TabsTrigger>
           <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
+          <TabsTrigger value="prizes" className="text-xs gap-1">
+            <Medal className="h-3.5 w-3.5" /> My Prizes
+            {prizes.length > 0 && (
+              <span className="ml-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet-500 text-[9px] font-bold text-white">
+                {prizes.length}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="deposit">
@@ -201,6 +232,58 @@ export default function WalletPage() {
                             {positive ? '+' : ''}{fmtMoney(t.amount, t.currency)}
                           </p>
                           <p className="text-[10px] uppercase text-muted-foreground">{t.status}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="prizes">
+          <Card>
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Medal className="h-4 w-4 text-violet-500" /> My Prizes
+              </CardTitle>
+              <CardDescription className="text-xs">Competition prizes you have won.</CardDescription>
+            </CardHeader>
+            <CardContent className="px-2 pb-2">
+              {prizesLoading ? (
+                <div className="flex h-24 items-center justify-center"><Spinner /></div>
+              ) : prizes.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 px-3 py-10 text-center">
+                  <Trophy className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm font-medium text-muted-foreground">No prizes yet</p>
+                  <p className="text-xs text-muted-foreground">
+                    Join a competition and post tips to compete for cash prizes.
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {prizes.map((prize) => {
+                    const placeLabel = prize.place ?? (prize.rank ? `${prize.rank}${prize.rank === 1 ? 'st' : prize.rank === 2 ? 'nd' : prize.rank === 3 ? 'rd' : 'th'}` : null);
+                    const placeColors: Record<string, string> = { '1st': 'text-yellow-500', '2nd': 'text-slate-400', '3rd': 'text-amber-600' };
+                    const placeColor = placeLabel ? (placeColors[placeLabel] ?? 'text-violet-500') : 'text-violet-500';
+                    return (
+                      <li key={prize.id} className="flex items-center gap-3 px-3 py-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-500/10">
+                          <Medal className="h-5 w-5 text-violet-500" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{prize.competitionName}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {placeLabel && (
+                              <span className={cn('text-xs font-bold', placeColor)}>{placeLabel} Place</span>
+                            )}
+                            <span className="text-[11px] text-muted-foreground">{timeago(prize.createdAt)}</span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-bold text-emerald-500">+{fmtMoney(prize.amount, prize.currency)}</p>
+                          <p className="text-[10px] text-muted-foreground">Prize</p>
                         </div>
                       </li>
                     );

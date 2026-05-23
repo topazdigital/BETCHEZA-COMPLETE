@@ -6,6 +6,7 @@ import {
   recordActivityTip,
   settleActivityTips,
 } from '@/lib/fake-tipsters';
+import { getCompetitions } from '@/lib/competitions-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -469,13 +470,45 @@ export async function GET(req: NextRequest) {
       now - (g.__fakeActivityTipsterLastPost!.get(t.id) ?? 0) >= TIPSTER_POST_COOLDOWN_MS
     );
 
-    // Match-linked posts
-    const relevant = allMatches.filter(m => {
+    // Collect active league-specific competitions so fake tipsters only tip
+    // on those league's fixtures. If a competition has leagueName/leagueId,
+    // fake tips must come from that specific league to appear on the leaderboard.
+    const activeCompetitions = getCompetitions().filter(c => c.status === 'active');
+    const activeLeagueNames = new Set<string>();
+    const activeLeagueIds = new Set<number>();
+    for (const comp of activeCompetitions) {
+      if (comp.leagueName) activeLeagueNames.add(comp.leagueName.toLowerCase());
+      if (comp.leagueId) activeLeagueIds.add(comp.leagueId);
+    }
+    const hasLeagueFilter = activeLeagueNames.size > 0 || activeLeagueIds.size > 0;
+
+    // Match-linked posts — when there are active league-specific competitions,
+    // prefer matches from those leagues so fake tipsters show on leaderboards.
+    const candidateMatches = allMatches.filter(m => {
       const t = new Date(m.kickoffTime).getTime();
       const isLive = ['live', 'halftime', 'extra_time', 'penalties'].includes(m.status);
       const isUpcoming = m.status === 'scheduled' && t > now && t < now + 12 * 60 * 60 * 1000;
       return (isLive || isUpcoming) && !g.__fakeActivityPostedMatches!.has(m.id);
-    }).slice(0, 6);
+    });
+
+    // Partition into league-filtered and unfiltered pools
+    const leagueMatches = hasLeagueFilter
+      ? candidateMatches.filter(m => {
+          const leagueNameLower = (m.league?.name ?? '').toLowerCase();
+          const leagueId = (m.league as { id?: number })?.id;
+          const nameMatch = activeLeagueNames.size > 0 && [...activeLeagueNames].some(
+            n => leagueNameLower.includes(n) || n.includes(leagueNameLower.replace(/[^a-z0-9]/g, ''))
+          );
+          const idMatch = leagueId !== undefined && activeLeagueIds.has(leagueId);
+          return nameMatch || idMatch;
+        })
+      : [];
+
+    // Use league-filtered matches first (fill leaderboard), then top up with others
+    const relevant = [
+      ...leagueMatches.slice(0, 4),
+      ...candidateMatches.filter(m => !leagueMatches.includes(m)).slice(0, Math.max(0, 6 - leagueMatches.length)),
+    ].slice(0, 6);
 
     for (const match of relevant) {
       if (Math.random() > 0.4 || availablePosters.length === 0) continue;
