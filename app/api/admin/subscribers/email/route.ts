@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminFromRequest } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { listEmailSubscribers } from '@/lib/notification-store';
 import { getSiteSettings } from '@/lib/site-settings';
 import nodemailer from 'nodemailer';
@@ -7,8 +7,8 @@ import nodemailer from 'nodemailer';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const admin = await verifyAdminFromRequest(req);
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
   const { subject, html, batchIndex = 0, batchSize = 50, emails: emailOverride } = body as {
