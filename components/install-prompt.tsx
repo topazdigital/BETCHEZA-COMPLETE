@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Download, Share, X, Smartphone } from "lucide-react"
+import { Download, Share, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -10,8 +10,8 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
-const DISMISS_KEY    = "bcz_install_dismiss_perm_v1"
-const INSTALLED_KEY  = "bcz_app_installed_v1"
+const DISMISS_KEY   = "bcz_install_dismiss_perm_v1"
+const INSTALLED_KEY = "bcz_app_installed_v1"
 
 function isPermanentlyDismissed() {
   try { return !!localStorage.getItem(DISMISS_KEY); } catch { return false; }
@@ -29,9 +29,7 @@ function wasInstalled() {
 function isMobileDevice() {
   if (typeof window === "undefined") return false;
   const ua = navigator.userAgent.toLowerCase();
-  const hasMobileUA = /android|iphone|ipad|ipod/.test(ua);
-  const narrowScreen = window.innerWidth <= 820;
-  return hasMobileUA && narrowScreen;
+  return /android|iphone|ipad|ipod/.test(ua) && window.innerWidth <= 820;
 }
 
 export function InstallPrompt() {
@@ -39,7 +37,6 @@ export function InstallPrompt() {
   const [show, setShow]         = useState(false)
   const [installed, setInstalled] = useState(false)
   const [isIOS, setIsIOS]       = useState(false)
-  const [isAndroid, setIsAndroid] = useState(false)
   const [showMini, setShowMini] = useState(false)
   const deferredRef = useRef<BeforeInstallPromptEvent | null>(null)
 
@@ -59,8 +56,6 @@ export function InstallPrompt() {
     const ua = navigator.userAgent.toLowerCase()
     const mobile = isMobileDevice()
     const ios    = /iphone|ipad|ipod/.test(ua) && !/crios|fxios|edgios/.test(ua) && mobile
-    const android = /android/.test(ua) && mobile
-
     const dismissed = isPermanentlyDismissed()
 
     if (ios) {
@@ -71,8 +66,6 @@ export function InstallPrompt() {
       }
       return
     }
-
-    if (android) setIsAndroid(true)
 
     const onPrompt = (e: Event) => {
       e.preventDefault()
@@ -98,23 +91,14 @@ export function InstallPrompt() {
     window.addEventListener("beforeinstallprompt", onPrompt)
     window.addEventListener("appinstalled", onInstalled)
 
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
-    if (android && !dismissed) {
-      fallbackTimer = setTimeout(() => {
-        if (!deferredRef.current && !isPermanentlyDismissed()) {
-          setShow(true)
-        }
-      }, 6000)
-    }
-
     return () => {
       window.removeEventListener("beforeinstallprompt", onPrompt)
       window.removeEventListener("appinstalled", onInstalled)
-      if (fallbackTimer) clearTimeout(fallbackTimer)
     }
   }, [])
 
-  const dismiss = () => {
+  const dismiss = (e: React.MouseEvent) => {
+    e.stopPropagation()
     markDismissed()
     setShow(false)
     if (deferredRef.current) setShowMini(true)
@@ -166,7 +150,13 @@ export function InstallPrompt() {
             "bottom-20 md:bottom-6"
           )}
         >
-          <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/15 via-background to-background backdrop-blur-xl shadow-2xl p-4">
+          <div
+            onClick={!isIOS ? install : undefined}
+            className={cn(
+              "rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/15 via-background to-background backdrop-blur-xl shadow-2xl p-4",
+              !isIOS && "cursor-pointer active:scale-[0.98] transition-transform"
+            )}
+          >
             <div className="flex gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg overflow-hidden">
                 <img src="/favicon.png" alt="Betcheza" className="h-8 w-8 object-contain" />
@@ -178,7 +168,7 @@ export function InstallPrompt() {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {isIOS
                         ? "Add to your home screen for live tips, instant alerts and offline access."
-                        : "Install for live tips, instant alerts and offline access."}
+                        : "Live tips, instant alerts and offline access — free."}
                     </p>
                   </div>
                   <button
@@ -207,28 +197,15 @@ export function InstallPrompt() {
                       <span className="font-semibold text-foreground">3.</span> Tap <strong>Add</strong> — done!
                     </p>
                   </div>
-                ) : isAndroid && !deferred ? (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      Open this page in <strong>Chrome</strong>, then:
-                    </p>
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                      <Smartphone className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                      Tap the <strong>⋮</strong> menu (top-right of Chrome)
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Then tap <strong>Add to Home screen</strong> or <strong>Install app</strong>
-                    </p>
-                  </div>
                 ) : (
                   <div className="mt-3 flex gap-2">
                     <Button
                       size="sm"
                       className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white border-0 h-8 px-3 text-xs"
-                      onClick={install}
+                      onClick={(e) => { e.stopPropagation(); install(); }}
                     >
                       <Download className="h-3.5 w-3.5 mr-1.5" />
-                      Install Now — it&apos;s free
+                      Install App — it&apos;s free
                     </Button>
                     <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={dismiss}>
                       Later
