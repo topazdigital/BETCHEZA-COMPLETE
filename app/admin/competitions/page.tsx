@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import useSWR, { mutate as globalMutate } from "swr"
 import Link from "next/link"
-import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X, Info, CheckCircle, AlertTriangle, ShieldAlert } from "lucide-react"
+import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X, Info, CheckCircle, AlertTriangle, ShieldAlert, Zap } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -286,6 +286,37 @@ export default function AdminCompetitionsPage() {
     }
   }
 
+  // ── Manual settle ────────────────────────────────────────────────────
+  const [settlingId, setSettlingId] = useState<number | null>(null)
+  const [settleMsg, setSettleMsg] = useState<string | null>(null)
+
+  const settleComp = async (c: AdminCompetition) => {
+    if (!confirm(`Settle "${c.name}" now? This will distribute prizes to top finishers' wallets and close the competition.`)) return
+    setSettlingId(c.id)
+    setSettleMsg(null)
+    try {
+      const r = await fetch(`/api/admin/competitions/${c.slug}/settle`, { method: 'POST' })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        setSettleMsg(`Error: ${data.error || 'Settlement failed'}`)
+        return
+      }
+      if (data.alreadySettled) {
+        setSettleMsg(`"${c.name}" was already settled.`)
+      } else {
+        const n = (data.credited ?? []).length
+        setSettleMsg(`"${c.name}" settled — ${n} prize${n !== 1 ? 's' : ''} credited to wallets.`)
+      }
+      mutate()
+      globalMutate('/api/competitions')
+    } catch {
+      setSettleMsg('Network error — settlement may have failed.')
+    } finally {
+      setSettlingId(null)
+      setTimeout(() => setSettleMsg(null), 6000)
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -307,6 +338,17 @@ export default function AdminCompetitionsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Settle result toast */}
+      {settleMsg && (
+        <div className={cn(
+          'rounded-lg border px-3 py-2 text-xs flex items-center gap-2',
+          settleMsg.startsWith('Error') ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+        )}>
+          {settleMsg.startsWith('Error') ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> : <CheckCircle className="h-3.5 w-3.5 shrink-0" />}
+          {settleMsg}
+        </div>
+      )}
 
       {showForm && (
         <Card>
@@ -633,6 +675,19 @@ export default function AdminCompetitionsPage() {
                   <td className="px-2 py-1.5 text-right text-muted-foreground">{fmtTimeLeft(c.endDate)}</td>
                   <td className="px-2 py-1.5 text-right">
                     <div className="flex items-center justify-end gap-0.5">
+                      {/* Settle Now — shown for active competitions */}
+                      {c.status === 'active' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-emerald-500 hover:bg-emerald-500/10"
+                          title="Settle now — distribute prizes to winners' wallets"
+                          onClick={() => settleComp(c)}
+                          disabled={settlingId === c.id}
+                        >
+                          {settlingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"

@@ -9,6 +9,11 @@ import { computeLeaderboard, findLeagueRoundEndDate } from '@/lib/competition-le
 import { createPost } from '@/lib/feed-store';
 import { query } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
+import { credit } from '@/lib/wallet-store';
+
+// Grace period after the last match kicks off before we treat a round-scoped
+// competition as eligible to settle (enough time for 90 min + extra time).
+const KICKOFF_GRACE_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 export const dynamic = 'force-dynamic';
 
@@ -95,15 +100,33 @@ export async function GET(req: NextRequest) {
   const results: Array<{ id: number; name: string; action: string }> = [];
 
   for (const comp of competitions) {
-    // Only settle active competitions that have passed their end date
+    // Only settle active competitions
     if (comp.status !== 'active') continue;
+
     const endedAt = new Date(comp.endDate).getTime();
-    if (endedAt > now) continue; // not finished yet
+
+    // ── Kickoff-window scoped competition (any round / any league) ─────
+    // A competition with matchKickoffFrom/matchKickoffTo is treated as a
+    // single-round contest.  It becomes eligible to settle once the kickoff
+    // window closes AND a grace period has passed (matches need time to finish).
+    const isRoundScoped = !!(comp.matchKickoffFrom && comp.matchKickoffTo);
+    if (isRoundScoped) {
+      const windowEnds = new Date(comp.matchKickoffTo!).getTime();
+      if (now < windowEnds + KICKOFF_GRACE_MS) {
+        // Matches haven't had time to finish yet — wait
+        results.push({ id: comp.id, name: comp.name, action: 'round-in-progress' });
+        continue;
+      }
+      // Window is over — fall through to settle regardless of endDate
+    } else {
+      // Normal time-based competition: only settle when endDate has passed
+      if (endedAt > now) continue;
+    }
 
     // ── 1. Check round-based end for league competitions ───────────────
     // For weekly league competitions, the cron auto-extends the end date
     // to match the actual last kickoff of the round.
-    if (comp.roundBased && comp.leagueName) {
+    if (!isRoundScoped && comp.roundBased && comp.leagueName) {
       const weekAhead = new Date(new Date(comp.startDate).getTime() + 8 * 24 * 60 * 60 * 1000).toISOString();
       const roundEnd = await findLeagueRoundEndDate(comp.leagueName, comp.startDate, weekAhead);
       if (roundEnd && new Date(roundEnd).getTime() > now) {
@@ -114,6 +137,7 @@ export async function GET(req: NextRequest) {
     }
 
     // ── 2. Build real leaderboard from auto_tips before settling ──────
+    // Round-scoped competitions require only 1 tip minimum (short window).
     const realLeaderboard = await computeLeaderboard({
       startDate: comp.startDate,
       endDate: comp.endDate,
@@ -122,7 +146,7 @@ export async function GET(req: NextRequest) {
       sportFocus: comp.sportFocus,
       matchKickoffFrom: comp.matchKickoffFrom,
       matchKickoffTo: comp.matchKickoffTo,
-      minTips: 3,
+      minTips: isRoundScoped ? 1 : 3,
       limit: 50,
     });
 
@@ -170,21 +194,39 @@ export async function GET(req: NextRequest) {
     const payouts = settlement.toCredit;
     const winner = payouts[0];
 
-    // 4. CREDIT real winners in the wallet
+    // 4. CREDIT real winners in the wallet (wallet-store = source of truth for
+    //    the wallet dashboard; also mirror to MySQL wallet_balance for PayHero)
     for (const payout of payouts) {
       try {
+        // Primary: file-based wallet-store (what /api/wallet reads from)
+        credit(payout.userId, payout.amount, {
+          type: 'prize_payout',
+          currency: comp.currency || 'KES',
+          method: 'system',
+          reference: `comp-${comp.id}-rank-${payout.rank}`,
+          description: `${buildPlaceLabel(payout.rank)} place prize — ${comp.name}`,
+          meta: {
+            competitionId: comp.id,
+            competitionName: comp.name,
+            place: payout.place,
+            rank: payout.rank,
+          },
+        });
+
+        // Mirror to MySQL wallet_balance so PayHero/admin panels stay in sync
         await query(
           `UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + ? WHERE id = ?`,
           [payout.amount, payout.userId]
-        );
-        // Create a transaction record
+        ).catch(() => {}); // non-critical if column missing
+
+        // Transaction history record
         await query(
           `INSERT INTO transactions (user_id, type, amount, description, status, created_at)
            VALUES (?, 'competition_prize', ?, ?, 'completed', NOW())`,
           [payout.userId, payout.amount, `${buildPlaceLabel(payout.rank)} place in ${comp.name}`]
-        ).catch(() => {}); // non-critical
+        ).catch(() => {});
       } catch {
-        // DB might not have wallet_balance — skip silently
+        // Non-critical — wallet-store credit already applied above
       }
     }
 
@@ -260,9 +302,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 5. RESTART if league is still active and competition type is recurring
+    // 5. RESTART if recurring and league is active.
+    //    Round-scoped competitions (matchKickoffFrom/To set) are one-off —
+    //    the admin sets the next round manually, so never auto-restart them.
     let restarted = false;
-    if (comp.type !== 'special' && isLeagueActive(comp.sportFocus)) {
+    if (!isRoundScoped && comp.type !== 'special' && isLeagueActive(comp.sportFocus)) {
       const { startDate, endDate: baseEndDate } = nextPeriodDates(comp);
 
       // For round-based league competitions: auto-detect the new round's end date
@@ -294,6 +338,8 @@ export async function GET(req: NextRequest) {
         leagueId: comp.leagueId ?? null,
         leagueName: comp.leagueName ?? null,
         roundBased: newRoundBased ?? false,
+        // Note: matchKickoffFrom/To are intentionally NOT copied — each round
+        // gets its own window set manually by the admin.
       });
       restarted = true;
     }
@@ -301,10 +347,10 @@ export async function GET(req: NextRequest) {
     results.push({
       id: comp.id,
       name: comp.name,
-      action: restarted ? 'settled+restarted' : 'settled',
+      action: restarted ? 'settled+restarted' : isRoundScoped ? 'round-settled' : 'settled',
     });
 
-    console.log(`[cron] competition-settle: "${comp.name}" settled. Winners: ${winnersStr}. Restarted: ${restarted}`);
+    console.log(`[cron] competition-settle: "${comp.name}" ${isRoundScoped ? 'round-scoped ' : ''}settled. Winners: ${winnersStr}. Restarted: ${restarted}`);
   }
 
   return NextResponse.json({ processed: results.length, competitions: results });
