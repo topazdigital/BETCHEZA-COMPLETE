@@ -143,14 +143,20 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
     isFake: r.isFake,
   }));
 
+  // For league-specific or round-scoped competitions, ONLY show tipsters who
+  // have actually posted tips on those fixtures — never show pre-seeded stats
+  // that ignore the league/date filter entirely.
+  const isLeagueScoped = !!(comp.leagueId || comp.leagueName || comp.matchKickoffFrom);
   const participants = ranked.length > 0
     ? ranked
-    : comp.participants.map(p => ({
-        ...p,
-        lost: Math.max(0, p.tips - p.won),
-        pending: 0,
-        isFake: p.tipsterId >= 1000,
-      }));
+    : isLeagueScoped
+      ? [] // no qualifying tips yet — show empty leaderboard
+      : comp.participants.map(p => ({
+          ...p,
+          lost: Math.max(0, p.tips - p.won),
+          pending: 0,
+          isFake: p.tipsterId >= 1000,
+        }));
 
   const totalParticipants = participants.length;
   const fillPct = Math.min(100, Math.round((totalParticipants / comp.maxParticipants) * 100));
@@ -516,8 +522,21 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
             </div>
           )}
           {participants.length === 0 && (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              No tips posted yet — be the first to compete!
+            <div className="py-10 px-6 text-center space-y-2">
+              <Trophy className="mx-auto h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-muted-foreground">No qualifying tips yet</p>
+              {isLeagueScoped ? (
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  Only tips on{' '}
+                  <span className="font-semibold text-foreground">
+                    {comp.leagueName ?? comp.sportFocus}
+                  </span>
+                  {comp.matchKickoffFrom ? ' fixtures in the selected round' : ''} count for this competition.
+                  Be the first to post a qualifying tip!
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">No tips posted yet — be the first to compete!</p>
+              )}
             </div>
           )}
         </div>
