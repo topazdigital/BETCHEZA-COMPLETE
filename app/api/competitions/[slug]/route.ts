@@ -33,7 +33,9 @@ export async function GET(
         leagueId: comp.leagueId,
         leagueName: comp.leagueName,
         sportFocus: comp.sportFocus,
-        minTips: 1, // include everyone with at least 1 tip
+        matchKickoffFrom: comp.matchKickoffFrom,
+        matchKickoffTo: comp.matchKickoffTo,
+        minTips: 1,
         limit: 200,
       })
     : [];

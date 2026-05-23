@@ -9,7 +9,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { getFakeTipsters, type FakeTipster } from './fake-tipsters';
 
 export interface CompetitionParticipant {
   rank: number;
@@ -64,6 +63,14 @@ export interface Competition {
   leagueName?: string | null;
   /** Auto-set to true when endDate is derived from round end date */
   roundBased?: boolean;
+  /**
+   * Optional match-kickoff window filter.
+   * When set, only tips on matches whose kickoff falls within this range count.
+   * Use this to restrict a competition to a specific match round / gameweek.
+   * ISO string (e.g. "2026-05-25T15:00:00.000Z")
+   */
+  matchKickoffFrom?: string | null;
+  matchKickoffTo?: string | null;
   /** User IDs kicked for rule violations */
   kickedUsers?: number[];
 }
@@ -78,57 +85,9 @@ function slugify(s: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-function pickN<T>(arr: T[], n: number, seed: number): T[] {
-  // Deterministic pick using simple LCG
-  const out: T[] = [];
-  const used = new Set<number>();
-  let s = seed >>> 0;
-  while (out.length < n && used.size < arr.length) {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    const idx = s % arr.length;
-    if (!used.has(idx)) {
-      used.add(idx);
-      out.push(arr[idx]);
-    }
-  }
-  return out;
-}
-
-function buildParticipants(seed: number, count: number, multiplier: number): CompetitionParticipant[] {
-  const all = getFakeTipsters();
-  const picked = pickN(all, Math.min(count, all.length), seed);
-  // Sort by composite score (winRate + roi) for deterministic ranking.
-  const ranked = picked
-    .map(t => ({
-      t,
-      score: t.winRate * 1.2 + t.roi * 2 + t.streak * 0.5,
-    }))
-    .sort((a, b) => b.score - a.score);
-  return ranked.map(({ t }, i) => {
-    const tips = Math.max(3, Math.round(t.totalTips * multiplier));
-    const won = Math.round(tips * (t.winRate / 100));
-    const points = Math.round(won * 12 + (tips - won) * -3 + t.streak * 5);
-    return {
-      rank: i + 1,
-      tipsterId: t.id,
-      username: t.username,
-      displayName: t.displayName,
-      avatar: t.avatar,
-      countryCode: t.countryCode,
-      winRate: t.winRate,
-      roi: t.roi,
-      tips,
-      won,
-      points,
-      streak: t.streak,
-      isVerified: t.isVerified,
-    };
-  });
-}
-
 // ─── Persistence ──────────────────────────────────────────────────────
-// Admin-created competitions and join records persist across restarts in
-// .local/state/competitions.json (mirroring auto-tips-store).
+// Admin-created competitions persist across restarts in
+// .local/state/competitions.json
 
 const STATE_FILE = path.join(process.cwd(), '.local', 'state', 'competitions.json');
 
@@ -171,163 +130,8 @@ function persistState() {
   }
 }
 
-let _seeded: Competition[] | null = null;
-
-function seedCompetitions(): Competition[] {
-  const t0 = NOW();
-  const defs: Array<Omit<Competition, 'participants' | 'slug'> & { _seed: number; _mult: number }> = [
-    {
-      id: 1,
-      name: 'Weekly Tipster Challenge',
-      description: 'Open competition for all football tipsters. Top performers by ROI win the pot.',
-      type: 'weekly',
-      status: 'active',
-      startDate: new Date(t0 - 2 * DAY).toISOString(),
-      endDate: new Date(t0 + 5 * DAY).toISOString(),
-      prizePool: 50000,
-      currency: 'KES',
-      entryFee: 100,
-      maxParticipants: 500,
-      prizes: [
-        { place: '1st', amount: 20000 },
-        { place: '2nd', amount: 12000 },
-        { place: '3rd', amount: 8000 },
-        { place: '4-10th', amount: 1428 },
-      ],
-      rules: [
-        'Minimum 5 tips during the contest window.',
-        'Tips must be placed at least 30 minutes before kickoff.',
-        'Average odds must be ≥ 1.50.',
-      ],
-      sportFocus: 'football',
-      _seed: 17,
-      _mult: 0.18,
-    },
-    {
-      id: 2,
-      name: 'Monthly Masters League',
-      description: 'The ultimate monthly competition for serious tipsters across all sports.',
-      type: 'monthly',
-      status: 'active',
-      startDate: new Date(t0 - 5 * DAY).toISOString(),
-      endDate: new Date(t0 + 25 * DAY).toISOString(),
-      prizePool: 200000,
-      currency: 'KES',
-      entryFee: 500,
-      maxParticipants: 200,
-      prizes: [
-        { place: '1st', amount: 80000 },
-        { place: '2nd', amount: 50000 },
-        { place: '3rd', amount: 30000 },
-        { place: '4-10th', amount: 5714 },
-      ],
-      rules: [
-        'Minimum 25 tips across the month.',
-        'Tracked across football, basketball, tennis, and esports.',
-        'Verified tipsters earn a 10% point bonus.',
-      ],
-      sportFocus: 'multi-sport',
-      _seed: 91,
-      _mult: 0.55,
-    },
-    {
-      id: 3,
-      name: 'Daily Football Showdown',
-      description: 'Fast-paced 24-hour contest for football tippers. Highest win-rate takes the day.',
-      type: 'daily',
-      status: 'active',
-      startDate: new Date(t0 - 4 * 60 * 60 * 1000).toISOString(),
-      endDate: new Date(t0 + 20 * 60 * 60 * 1000).toISOString(),
-      prizePool: 10000,
-      currency: 'KES',
-      entryFee: 50,
-      maxParticipants: 250,
-      prizes: [
-        { place: '1st', amount: 5000 },
-        { place: '2nd', amount: 3000 },
-        { place: '3rd', amount: 2000 },
-        { place: '4-10th', amount: 0 },
-      ],
-      rules: [
-        'Minimum 3 tips during the 24-hour window.',
-        'No void/postponed bets count.',
-        'Tie-breaker is total ROI.',
-      ],
-      sportFocus: 'football',
-      _seed: 251,
-      _mult: 0.05,
-    },
-    {
-      id: 4,
-      name: 'Premier League Weekly',
-      description: 'EPL-only weekly competition: who can call the Big-6 fixtures best?',
-      type: 'weekly',
-      status: 'active',
-      startDate: new Date(t0 - 1 * DAY).toISOString(),
-      endDate: new Date(t0 + 6 * DAY).toISOString(),
-      prizePool: 25000,
-      currency: 'KES',
-      entryFee: 0,
-      maxParticipants: 1000,
-      prizes: [
-        { place: '1st', amount: 12000 },
-        { place: '2nd', amount: 7000 },
-        { place: '3rd', amount: 4000 },
-        { place: '4-10th', amount: 285 },
-      ],
-      rules: [
-        'Free to enter.',
-        'Only Premier League fixtures count.',
-        'Maximum 10 tips per gameweek.',
-      ],
-      sportFocus: 'football',
-      _seed: 401,
-      _mult: 0.12,
-    },
-    {
-      id: 5,
-      name: 'Champions League Outright Special',
-      description: 'Long-form contest tracking accuracy across the entire Champions League knockout phase.',
-      type: 'special',
-      status: 'upcoming',
-      startDate: new Date(t0 + 7 * DAY).toISOString(),
-      endDate: new Date(t0 + 60 * DAY).toISOString(),
-      prizePool: 150000,
-      currency: 'KES',
-      entryFee: 250,
-      maxParticipants: 500,
-      prizes: [
-        { place: '1st', amount: 75000 },
-        { place: '2nd', amount: 40000 },
-        { place: '3rd', amount: 20000 },
-        { place: '4-10th', amount: 2142 },
-      ],
-      rules: [
-        'Tips on UEFA Champions League knockout matches only.',
-        'Both team-to-win and over/under markets accepted.',
-        'Bonus 50 points for correctly calling the eventual finalists.',
-      ],
-      sportFocus: 'football',
-      _seed: 511,
-      _mult: 0.32,
-    },
-  ];
-
-  return defs.map(d => {
-    const { _seed, _mult, ...rest } = d;
-    const slug = slugify(d.name);
-    const targetParticipants = Math.min(d.maxParticipants, 75);
-    return {
-      ...rest,
-      slug,
-      participants: buildParticipants(_seed, targetParticipants, _mult),
-    } satisfies Competition;
-  });
-}
-
 export function getCompetitions(): Competition[] {
-  if (!_seeded) _seeded = seedCompetitions();
-  return [..._seeded, ...state.added];
+  return [...state.added];
 }
 
 export function getCompetitionBySlug(slug: string): Competition | undefined {
@@ -367,6 +171,13 @@ export interface NewCompetitionInput {
   leagueName?: string | null;
   /** True when the end date was auto-derived from the last match of the round */
   roundBased?: boolean;
+  /**
+   * Optional match-kickoff window: only tips on matches whose kickoff falls
+   * within [matchKickoffFrom, matchKickoffTo] contribute to scoring.
+   * Ideal for single-round / final-day competitions (e.g. GW38 only).
+   */
+  matchKickoffFrom?: string | null;
+  matchKickoffTo?: string | null;
 }
 
 export function addCompetition(input: NewCompetitionInput): Competition {
@@ -390,6 +201,8 @@ export function addCompetition(input: NewCompetitionInput): Competition {
     leagueId: input.leagueId ?? null,
     leagueName: input.leagueName ?? null,
     roundBased: input.roundBased ?? false,
+    matchKickoffFrom: input.matchKickoffFrom ?? null,
+    matchKickoffTo: input.matchKickoffTo ?? null,
     prizePool: Number(input.prizePool) || 0,
     currency: input.currency || 'KES',
     entryFee: Number(input.entryFee) || 0,
@@ -406,9 +219,7 @@ export function addCompetition(input: NewCompetitionInput): Competition {
     ],
     ruleConfig: input.ruleConfig && input.ruleConfig.length > 0 ? input.ruleConfig : undefined,
     sportFocus: input.sportFocus || 'multi-sport',
-    // Seed with a small set of fake-tipster participants so the leaderboard
-    // is never empty when admins create a brand-new competition.
-    participants: buildParticipants(id * 31 + 7, Math.min(40, Math.max(10, Math.floor((Number(input.maxParticipants) || 100) / 5))), 0.15),
+    participants: [],
   };
   state.added.push(comp);
   persistState();
@@ -417,7 +228,7 @@ export function addCompetition(input: NewCompetitionInput): Competition {
 
 export function updateCompetition(id: number, patch: Partial<NewCompetitionInput>): Competition | null {
   const idx = state.added.findIndex(c => c.id === id);
-  if (idx < 0) return null; // seeded ones aren't editable
+  if (idx < 0) return null;
   const cur = state.added[idx];
   const updated: Competition = {
     ...cur,
@@ -433,6 +244,8 @@ export function updateCompetition(id: number, patch: Partial<NewCompetitionInput
     type: (patch.type as Competition['type']) || cur.type,
     prizes: patch.prizes && patch.prizes.length > 0 ? patch.prizes : cur.prizes,
     rules: patch.rules && patch.rules.length > 0 ? patch.rules : cur.rules,
+    matchKickoffFrom: patch.matchKickoffFrom !== undefined ? (patch.matchKickoffFrom ?? null) : cur.matchKickoffFrom,
+    matchKickoffTo: patch.matchKickoffTo !== undefined ? (patch.matchKickoffTo ?? null) : cur.matchKickoffTo,
   };
   state.added[idx] = updated;
   persistState();
@@ -654,13 +467,13 @@ export function publicCompetitionSummary(c: Competition) {
     currency: c.currency,
     entryFee: c.entryFee,
     maxParticipants: c.maxParticipants,
-    // Real count is computed async in the list route from auto_tips;
-    // seeded length used only as a fallback.
     currentParticipants: c.participants.length,
     leagueId: c.leagueId ?? null,
     leagueName: c.leagueName ?? null,
     sportFocus: c.sportFocus,
     roundBased: c.roundBased ?? false,
+    matchKickoffFrom: c.matchKickoffFrom ?? null,
+    matchKickoffTo: c.matchKickoffTo ?? null,
     prizes: c.prizes,
     topThree: c.participants.slice(0, 3).map(p => ({
       rank: p.rank,

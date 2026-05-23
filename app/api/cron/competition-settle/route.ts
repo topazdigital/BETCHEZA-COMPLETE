@@ -120,6 +120,8 @@ export async function GET(req: NextRequest) {
       leagueId: comp.leagueId,
       leagueName: comp.leagueName,
       sportFocus: comp.sportFocus,
+      matchKickoffFrom: comp.matchKickoffFrom,
+      matchKickoffTo: comp.matchKickoffTo,
       minTips: 3,
       limit: 50,
     });

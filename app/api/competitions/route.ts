@@ -16,6 +16,14 @@ function buildTipFilter(comp: ReturnType<typeof publicCompetitionSummary>) {
 
   const leagueName = (comp as { leagueName?: string | null }).leagueName;
   const sportFocus = comp.sportFocus;
+  const matchKickoffFrom = (comp as { matchKickoffFrom?: string | null }).matchKickoffFrom;
+  const matchKickoffTo = (comp as { matchKickoffTo?: string | null }).matchKickoffTo;
+
+  if (matchKickoffFrom && matchKickoffTo) {
+    conditions.push('kickoff >= ?');
+    conditions.push('kickoff <= ?');
+    params.push(matchKickoffFrom, matchKickoffTo);
+  }
 
   if (leagueName) {
     conditions.push('league LIKE ?');

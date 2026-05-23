@@ -267,6 +267,20 @@ export async function getUnreadCount(userId: number): Promise<number> {
 }
 
 // ─── PUSH SUBSCRIPTIONS ──────────────────────────
+function savePushSubsToFile(subs: Map<string, PushSubscriptionRow>) {
+  try { fileStoreSet('push-subs', Object.fromEntries(subs)); } catch {}
+}
+
+// Load persisted push subs from file on startup (fallback when DB unavailable)
+{
+  const savedPushSubs = fileStoreGet<Record<string, PushSubscriptionRow>>('push-subs', {});
+  for (const [k, v] of Object.entries(savedPushSubs)) {
+    if (!stores.pushSubs.has(k)) {
+      stores.pushSubs.set(k, v);
+    }
+  }
+}
+
 export async function savePushSubscription(input: Omit<PushSubscriptionRow, 'id'>): Promise<PushSubscriptionRow> {
   const id = `ps_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const row: PushSubscriptionRow = { id, ...input };
@@ -285,6 +299,7 @@ export async function savePushSubscription(input: Omit<PushSubscriptionRow, 'id'
     if (v.endpoint === row.endpoint) { stores.pushSubs.delete(k); break; }
   }
   stores.pushSubs.set(row.endpoint, row);
+  savePushSubsToFile(stores.pushSubs);
   return row;
 }
 
@@ -321,6 +336,7 @@ export async function deletePushSubscription(endpoint: string): Promise<void> {
     } catch {}
   }
   stores.pushSubs.delete(endpoint);
+  savePushSubsToFile(stores.pushSubs);
 }
 
 // ─── EMAIL SUBSCRIBERS ───────────────────────────

@@ -117,6 +117,8 @@ export async function POST(req: NextRequest) {
     leagueId: detected?.leagueId ?? null,
     leagueName: detected?.leagueName ?? null,
     roundBased,
+    matchKickoffFrom: body.matchKickoffFrom ? String(body.matchKickoffFrom) : null,
+    matchKickoffTo: body.matchKickoffTo ? String(body.matchKickoffTo) : null,
   });
 
   // ── Persist to MySQL if DB is available ────────────────────────────
@@ -174,8 +176,10 @@ export async function PATCH(req: NextRequest) {
 
   // Mirror update to DB
   await query(
-    `UPDATE competitions SET status = ?, end_date = ?, start_date = ?, prize_pool = ?, entry_fee = ? WHERE id = ?`,
-    [updated.status, updated.endDate, updated.startDate, updated.prizePool, updated.entryFee, updated.id],
+    `UPDATE competitions SET status = ?, end_date = ?, start_date = ?, prize_pool = ?, entry_fee = ?,
+     match_kickoff_from = ?, match_kickoff_to = ? WHERE id = ?`,
+    [updated.status, updated.endDate, updated.startDate, updated.prizePool, updated.entryFee,
+     updated.matchKickoffFrom ?? null, updated.matchKickoffTo ?? null, updated.id],
   ).catch(() => {});
 
   return NextResponse.json({ success: true, competition: updated });

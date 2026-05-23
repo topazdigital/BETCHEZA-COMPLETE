@@ -68,6 +68,8 @@ interface NewCompForm {
   currency: string
   entryFee: string
   maxParticipants: string
+  matchKickoffFrom: string
+  matchKickoffTo: string
 }
 
 interface RuleItem {
@@ -112,6 +114,8 @@ const blankForm = (): NewCompForm => {
     currency: 'KES',
     entryFee: '0',
     maxParticipants: '100',
+    matchKickoffFrom: '',
+    matchKickoffTo: '',
   }
 }
 
@@ -204,6 +208,8 @@ export default function AdminCompetitionsPage() {
           maxParticipants: Number(form.maxParticipants),
           ruleConfig: ruleConfig.length > 0 ? ruleConfig : undefined,
           rules: ruleConfig.length > 0 ? ruleConfig.map(r => r.label) : undefined,
+          matchKickoffFrom: form.matchKickoffFrom ? new Date(form.matchKickoffFrom).toISOString() : null,
+          matchKickoffTo: form.matchKickoffTo ? new Date(form.matchKickoffTo).toISOString() : null,
         }),
       })
       const data = await r.json().catch(() => ({}))
@@ -389,6 +395,43 @@ export default function AdminCompetitionsPage() {
                 <Label className="text-[10px] uppercase tracking-wide">Max participants</Label>
                 <Input type="number" value={form.maxParticipants} onChange={e => setForm({ ...form, maxParticipants: e.target.value })} className="h-8 text-xs" />
               </div>
+            </div>
+
+            {/* ── Match Kickoff Window ─────────────────────────────── */}
+            <div className="space-y-1.5 pt-1 border-t border-border/50">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <Timer className="h-3 w-3 text-muted-foreground" />
+                <Label className="text-[10px] uppercase tracking-wide">Match Kickoff Window</Label>
+                <span className="text-[9px] text-muted-foreground">(optional — restricts scoring to tips on matches kicking off in this window)</span>
+              </div>
+              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-2 text-[10px] text-blue-400">
+                Use this for single-round competitions (e.g. EPL Final Day — set the window to cover only GW38 kickoffs). Only tips on matches whose kickoff falls within this range will count toward the leaderboard.
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[10px] uppercase tracking-wide">Kickoff from (local)</Label>
+                  <Input
+                    type="datetime-local"
+                    value={form.matchKickoffFrom}
+                    onChange={e => setForm({ ...form, matchKickoffFrom: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase tracking-wide">Kickoff to (local)</Label>
+                  <Input
+                    type="datetime-local"
+                    value={form.matchKickoffTo}
+                    onChange={e => setForm({ ...form, matchKickoffTo: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+              {form.matchKickoffFrom && form.matchKickoffTo && (
+                <p className="text-[9px] text-emerald-400">
+                  Only tips on matches kicking off between {new Date(form.matchKickoffFrom).toLocaleString()} and {new Date(form.matchKickoffTo).toLocaleString()} will score.
+                </p>
+              )}
             </div>
 
             {/* ── Rules Builder ────────────────────────────────────── */}

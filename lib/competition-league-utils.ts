@@ -244,8 +244,11 @@ export async function computeLeaderboard(params: {
   minTips?: number;
   limit?: number;
   allowedUserIds?: number[] | null;
+  /** Only count tips on matches whose kickoff falls within this window (e.g. GW38 only) */
+  matchKickoffFrom?: string | null;
+  matchKickoffTo?: string | null;
 }): Promise<CompetitorScore[]> {
-  const { startDate, endDate, leagueId, leagueName, sportFocus, minTips = 3, limit = 100, allowedUserIds } = params;
+  const { startDate, endDate, leagueId, leagueName, sportFocus, minTips = 3, limit = 100, allowedUserIds, matchKickoffFrom, matchKickoffTo } = params;
 
   const conditions: string[] = [
     'at.created_at >= ?',
@@ -253,6 +256,12 @@ export async function computeLeaderboard(params: {
     'at.status IN (\'won\', \'lost\', \'pending\')',
   ];
   const sqlParams: (string | number)[] = [startDate, endDate];
+
+  if (matchKickoffFrom && matchKickoffTo) {
+    conditions.push('at.kickoff >= ?');
+    conditions.push('at.kickoff <= ?');
+    sqlParams.push(matchKickoffFrom, matchKickoffTo);
+  }
 
   if (allowedUserIds !== null && allowedUserIds !== undefined) {
     if (allowedUserIds.length > 0) {
@@ -396,6 +405,8 @@ export async function migrateCompetitionsTable(): Promise<void> {
     `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS prize_breakdown JSON DEFAULT NULL`,
     `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS slug VARCHAR(200) DEFAULT NULL`,
     `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS sport_type VARCHAR(100) DEFAULT NULL`,
+    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS match_kickoff_from DATETIME DEFAULT NULL`,
+    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS match_kickoff_to DATETIME DEFAULT NULL`,
   ];
 
   for (const sql of migrations) {
