@@ -115,6 +115,8 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           leagueId: comp.leagueId,
           leagueName: comp.leagueName,
           sportFocus: comp.sportFocus,
+          matchKickoffFrom: comp.matchKickoffFrom,
+          matchKickoffTo: comp.matchKickoffTo,
           minTips: 1,
           limit: 500,
           allowedUserIds: joinedUserIds,

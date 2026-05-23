@@ -73,6 +73,9 @@ export default function AdminJackpotsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [settlingId, setSettlingId] = useState<string | null>(null);
+  const [bulkEditId, setBulkEditId] = useState<string | null>(null);
+  const [bulkPicks, setBulkPicks] = useState<string[]>([]);
+  const [predictingRow, setPredictingRow] = useState<number | null>(null);
   const [settleForm, setSettleForm] = useState<SettleForm | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,6 +179,73 @@ export default function AdminJackpotsPage() {
       const data = await res.json() as { jackpot: Jackpot };
       setJackpots(prev => prev.map(j => j.id === jackpotId ? data.jackpot : j));
     } catch { showMsg('Save failed', 'error'); }
+  }
+
+  function enterBulkEdit(jackpot: Jackpot) {
+    setBulkEditId(jackpot.id);
+    setBulkPicks(jackpot.games.map(g => g.aiPrediction || g.prediction || ''));
+  }
+
+  function exitBulkEdit() {
+    setBulkEditId(null);
+    setBulkPicks([]);
+    setPredictingRow(null);
+  }
+
+  async function saveBulkPicks(jackpot: Jackpot) {
+    setSaving(true);
+    const games = jackpot.games.map((g, i) => ({
+      ...g,
+      aiPrediction: (bulkPicks[i] && bulkPicks[i] !== '__none' ? bulkPicks[i] : undefined) as Prediction | undefined,
+    }));
+    try {
+      const res = await fetch('/api/jackpot', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: jackpot.id, games }),
+      });
+      const data = await res.json() as { jackpot: Jackpot };
+      setJackpots(prev => prev.map(j => j.id === jackpot.id ? data.jackpot : j));
+      showMsg('All picks saved');
+      exitBulkEdit();
+    } catch { showMsg('Save failed', 'error'); }
+    setSaving(false);
+  }
+
+  async function predictRowAI(jackpot: Jackpot, rowIndex: number) {
+    setPredictingRow(rowIndex);
+    try {
+      const res = await fetch('/api/jackpot/predict', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jackpotId: jackpot.id }),
+      });
+      const data = await res.json() as { jackpot: Jackpot };
+      const pick = data.jackpot?.games?.[rowIndex]?.aiPrediction;
+      if (pick) {
+        setBulkPicks(prev => prev.map((p, i) => i === rowIndex ? pick : p));
+        // Also update main state so AI badge reflects reality
+        setJackpots(prev => prev.map(j => j.id === jackpot.id ? data.jackpot : j));
+        showMsg(`AI pick for game ${rowIndex + 1}: ${pick}`);
+      }
+    } catch { showMsg('AI prediction failed', 'error'); }
+    setPredictingRow(null);
+  }
+
+  async function predictAllBulk(jackpot: Jackpot) {
+    setPredicting(jackpot.id);
+    try {
+      const res = await fetch('/api/jackpot/predict', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jackpotId: jackpot.id }),
+      });
+      const data = await res.json() as { jackpot: Jackpot };
+      const updatedJackpot = data.jackpot;
+      if (updatedJackpot) {
+        setBulkPicks(updatedJackpot.games.map(g => g.aiPrediction || g.prediction || ''));
+        setJackpots(prev => prev.map(j => j.id === jackpot.id ? updatedJackpot : j));
+        showMsg('AI predictions filled — review and save');
+      }
+    } catch { showMsg('AI prediction failed', 'error'); }
+    setPredicting(null);
   }
 
   async function updateJackpotField(id: string, patch: Partial<Jackpot>) {
@@ -671,45 +741,128 @@ export default function AdminJackpotsPage() {
 
                       {isExpanded && (
                         <div className="mt-4 border-t pt-4">
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Edit Games &amp; Picks</p>
-                            <Button size="sm" variant="ghost" className="h-6 text-[10px]"
-                              onClick={async () => { await updateJackpotField(jackpot.id, { status: 'closed' }); showMsg('Jackpot closed'); }}>
-                              Close Jackpot
-                            </Button>
+                            <div className="flex items-center gap-1.5">
+                              <Button size="sm" variant={bulkEditId === jackpot.id ? 'default' : 'outline'} className="h-6 text-[10px] gap-1"
+                                onClick={() => bulkEditId === jackpot.id ? exitBulkEdit() : enterBulkEdit(jackpot)}>
+                                <RowsIcon className="h-3 w-3" />
+                                {bulkEditId === jackpot.id ? 'Exit Bulk Edit' : 'Bulk Edit Picks'}
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-6 text-[10px]"
+                                onClick={async () => { await updateJackpotField(jackpot.id, { status: 'closed' }); showMsg('Jackpot closed'); }}>
+                                Close Jackpot
+                              </Button>
+                            </div>
                           </div>
-                          {/* Column headers for expanded game editor */}
-                          <div className="hidden sm:grid grid-cols-[24px_1fr_1fr_100px_70px] gap-1.5 px-1 mb-1">
-                            <span />
-                            <span className="text-[10px] font-semibold text-muted-foreground">Home</span>
-                            <span className="text-[10px] font-semibold text-muted-foreground">Away</span>
-                            <span className="text-[10px] font-semibold text-muted-foreground">League</span>
-                            <span className="text-[10px] font-semibold text-muted-foreground">Pick</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {jackpot.games.map((game, i) => (
-                              <div key={game.id} className="grid grid-cols-[24px_1fr_1fr_70px] sm:grid-cols-[24px_1fr_1fr_100px_70px] gap-1.5 items-center">
-                                <span className="text-xs text-muted-foreground text-center">{i + 1}</span>
-                                <Input className="h-7 text-xs" defaultValue={game.home}
-                                  onBlur={e => { if (e.target.value !== game.home) updateGame(jackpot.id, i, 'home', e.target.value); }}
-                                  placeholder="Home" />
-                                <Input className="h-7 text-xs" defaultValue={game.away}
-                                  onBlur={e => { if (e.target.value !== game.away) updateGame(jackpot.id, i, 'away', e.target.value); }}
-                                  placeholder="Away" />
-                                <Input className="h-7 text-xs hidden sm:block" defaultValue={game.league || ''}
-                                  onBlur={e => { if (e.target.value !== (game.league || '')) updateGame(jackpot.id, i, 'league', e.target.value); }}
-                                  placeholder="League" />
-                                <Select value={game.aiPrediction || game.prediction || '__none'}
-                                  onValueChange={v => updateGame(jackpot.id, i, 'aiPrediction', v === '__none' ? '' : v as Prediction)}>
-                                  <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Pick" /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="__none">—</SelectItem>
-                                    {PICKS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                                  </SelectContent>
-                                </Select>
+
+                          {bulkEditId === jackpot.id ? (
+                            /* ── Bulk Edit Picks Mode ─────────────────────────────── */
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-2 flex-wrap bg-muted/20 rounded-lg px-3 py-2">
+                                <p className="text-[10px] text-muted-foreground">
+                                  Set picks for all <span className="font-semibold text-foreground">{jackpot.games.length} games</span> then save once. AI button per row fetches a suggestion.
+                                </p>
+                                <div className="flex items-center gap-1.5">
+                                  <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => predictAllBulk(jackpot)} disabled={!!predicting}>
+                                    <Brain className={cn('h-3 w-3', predicting === jackpot.id && 'animate-pulse')} />
+                                    {predicting === jackpot.id ? 'Predicting…' : 'AI Fill All'}
+                                  </Button>
+                                  <Button size="sm" className="h-6 text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => saveBulkPicks(jackpot)} disabled={saving}>
+                                    <Save className="h-3 w-3" />{saving ? 'Saving…' : 'Save All Picks'}
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={exitBulkEdit}>Cancel</Button>
+                                </div>
                               </div>
-                            ))}
-                          </div>
+
+                              {/* Column headers */}
+                              <div className="hidden sm:grid grid-cols-[24px_1fr_1fr_90px_90px] gap-1.5 px-1">
+                                <span />
+                                <span className="text-[10px] font-semibold text-muted-foreground">Home</span>
+                                <span className="text-[10px] font-semibold text-muted-foreground">Away</span>
+                                <span className="text-[10px] font-semibold text-muted-foreground">Pick</span>
+                                <span className="text-[10px] font-semibold text-muted-foreground text-center">AI</span>
+                              </div>
+
+                              <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1">
+                                {jackpot.games.map((game, i) => (
+                                  <div key={game.id || i} className="grid grid-cols-[24px_1fr_1fr_80px_72px] sm:grid-cols-[24px_1fr_1fr_90px_90px] gap-1.5 items-center bg-background rounded-md border border-border/40 px-2 py-1">
+                                    <span className="text-[10px] text-muted-foreground text-center">{i + 1}</span>
+                                    <span className="text-xs truncate font-medium">{game.home}</span>
+                                    <span className="text-xs truncate text-muted-foreground">{game.away}</span>
+                                    <Select
+                                      value={bulkPicks[i] || '__none'}
+                                      onValueChange={v => setBulkPicks(prev => prev.map((p, idx) => idx === i ? (v === '__none' ? '' : v) : p))}
+                                    >
+                                      <SelectTrigger className={cn('h-7 text-xs font-bold', bulkPicks[i] && bulkPicks[i] !== '__none' ? PICK_COLORS[bulkPicks[i]] : '')}>
+                                        <SelectValue placeholder="—" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__none">—</SelectItem>
+                                        {PICKS.map(p => (
+                                          <SelectItem key={p} value={p}>
+                                            <span className={cn('px-1.5 py-0.5 rounded text-xs font-bold', PICK_COLORS[p])}>{p}</span>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-[10px] gap-1 w-full"
+                                      onClick={() => predictRowAI(jackpot, i)}
+                                      disabled={predictingRow === i || !!predicting}
+                                    >
+                                      <Sparkles className={cn('h-3 w-3', predictingRow === i && 'animate-spin')} />
+                                      {predictingRow === i ? '…' : 'AI Pick'}
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="flex gap-1.5 pt-1 border-t">
+                                <Button size="sm" className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => saveBulkPicks(jackpot)} disabled={saving}>
+                                  <Save className="h-3.5 w-3.5" />{saving ? 'Saving…' : `Save All ${jackpot.games.length} Picks`}
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={exitBulkEdit}>Cancel</Button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* ── Per-game inline editor (original) ────────────────── */
+                            <>
+                              <div className="hidden sm:grid grid-cols-[24px_1fr_1fr_100px_70px] gap-1.5 px-1 mb-1">
+                                <span />
+                                <span className="text-[10px] font-semibold text-muted-foreground">Home</span>
+                                <span className="text-[10px] font-semibold text-muted-foreground">Away</span>
+                                <span className="text-[10px] font-semibold text-muted-foreground">League</span>
+                                <span className="text-[10px] font-semibold text-muted-foreground">Pick</span>
+                              </div>
+                              <div className="space-y-1.5">
+                                {jackpot.games.map((game, i) => (
+                                  <div key={game.id} className="grid grid-cols-[24px_1fr_1fr_70px] sm:grid-cols-[24px_1fr_1fr_100px_70px] gap-1.5 items-center">
+                                    <span className="text-xs text-muted-foreground text-center">{i + 1}</span>
+                                    <Input className="h-7 text-xs" defaultValue={game.home}
+                                      onBlur={e => { if (e.target.value !== game.home) updateGame(jackpot.id, i, 'home', e.target.value); }}
+                                      placeholder="Home" />
+                                    <Input className="h-7 text-xs" defaultValue={game.away}
+                                      onBlur={e => { if (e.target.value !== game.away) updateGame(jackpot.id, i, 'away', e.target.value); }}
+                                      placeholder="Away" />
+                                    <Input className="h-7 text-xs hidden sm:block" defaultValue={game.league || ''}
+                                      onBlur={e => { if (e.target.value !== (game.league || '')) updateGame(jackpot.id, i, 'league', e.target.value); }}
+                                      placeholder="League" />
+                                    <Select value={game.aiPrediction || game.prediction || '__none'}
+                                      onValueChange={v => updateGame(jackpot.id, i, 'aiPrediction', v === '__none' ? '' : v as Prediction)}>
+                                      <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Pick" /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__none">—</SelectItem>
+                                        {PICKS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

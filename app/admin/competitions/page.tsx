@@ -22,6 +22,7 @@ interface AdminCompetition {
   type: string
   status: 'upcoming' | 'active' | 'completed'
   endDate: string
+  startDate: string
   prizePool: number
   currency: string
   entryFee: number
@@ -31,6 +32,8 @@ interface AdminCompetition {
   leagueId?: number | null
   leagueName?: string | null
   roundBased?: boolean
+  matchKickoffFrom?: string | null
+  matchKickoffTo?: string | null
 }
 
 interface CompResponse {
@@ -132,6 +135,42 @@ export default function AdminCompetitionsPage() {
   const [validation, setValidation] = useState<LeagueValidation | null>(null)
   const [validating, setValidating] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Kickoff window editor ───────────────────────────────────────────
+  const [editKickoffId, setEditKickoffId] = useState<number | null>(null)
+  const [kickoffForm, setKickoffForm] = useState({ from: '', to: '' })
+  const [savingKickoff, setSavingKickoff] = useState(false)
+
+  const openKickoffEdit = (c: AdminCompetition) => {
+    const toLocal = (iso: string | null | undefined) =>
+      iso ? new Date(iso).toISOString().slice(0, 16) : ''
+    setKickoffForm({ from: toLocal(c.matchKickoffFrom), to: toLocal(c.matchKickoffTo) })
+    setEditKickoffId(c.id)
+  }
+
+  const saveKickoff = async (id: number) => {
+    setSavingKickoff(true)
+    try {
+      const r = await fetch('/api/admin/competitions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          matchKickoffFrom: kickoffForm.from ? new Date(kickoffForm.from).toISOString() : null,
+          matchKickoffTo: kickoffForm.to ? new Date(kickoffForm.to).toISOString() : null,
+        }),
+      })
+      if (r.ok) {
+        setEditKickoffId(null)
+        mutate()
+        globalMutate('/api/competitions')
+      } else {
+        const d = await r.json().catch(() => ({}))
+        alert(d.error || 'Save failed')
+      }
+    } catch { alert('Network error') }
+    setSavingKickoff(false)
+  }
 
   // ── Rule builder state ─────────────────────────────────────────────
   const [ruleConfig, setRuleConfig] = useState<RuleItem[]>([])
@@ -557,7 +596,8 @@ export default function AdminCompetitionsPage() {
             </thead>
             <tbody>
               {comps.map(c => (
-                <tr key={c.id} className="border-b border-border hover:bg-muted/30">
+                <React.Fragment key={c.id}>
+                <tr className="border-b border-border hover:bg-muted/30">
                   <td className="px-2.5 py-1.5 max-w-[180px]">
                     <div className="truncate font-medium">{c.name}</div>
                     {c.leagueName && (
@@ -565,6 +605,11 @@ export default function AdminCompetitionsPage() {
                     )}
                     {c.roundBased && (
                       <div className="text-[9px] text-blue-400">Round-based end</div>
+                    )}
+                    {c.matchKickoffFrom && c.matchKickoffTo && (
+                      <div className="text-[9px] text-amber-400 truncate" title={`Kickoff: ${new Date(c.matchKickoffFrom).toLocaleString()} – ${new Date(c.matchKickoffTo).toLocaleString()}`}>
+                        ⏱ Round filter active
+                      </div>
                     )}
                   </td>
                   <td className="px-2 py-1.5 capitalize text-muted-foreground">{c.type}</td>
@@ -588,6 +633,15 @@ export default function AdminCompetitionsPage() {
                   <td className="px-2 py-1.5 text-right text-muted-foreground">{fmtTimeLeft(c.endDate)}</td>
                   <td className="px-2 py-1.5 text-right">
                     <div className="flex items-center justify-end gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn('h-6 w-6', editKickoffId === c.id ? 'text-amber-400' : 'text-muted-foreground')}
+                        title="Set match round / kickoff window filter"
+                        onClick={() => editKickoffId === c.id ? setEditKickoffId(null) : openKickoffEdit(c)}
+                      >
+                        <Timer className="h-3.5 w-3.5" />
+                      </Button>
                       <Button asChild variant="ghost" size="icon" className="h-6 w-6">
                         <Link href={`/competitions/${c.slug}`} target="_blank">
                           <ChevronRight className="h-3.5 w-3.5" />
@@ -599,13 +653,54 @@ export default function AdminCompetitionsPage() {
                         className="h-6 w-6 text-rose-500 hover:bg-rose-500/10"
                         onClick={() => deleteComp(c.id)}
                         disabled={deleting === c.id}
-                        title="Delete (built-ins cannot be deleted)"
+                        title="Delete competition"
                       >
                         {deleting === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
                   </td>
                 </tr>
+                {editKickoffId === c.id && (
+                  <tr className="bg-amber-500/5 border-b border-amber-500/20">
+                    <td colSpan={8} className="px-3 py-2.5">
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div>
+                          <p className="text-[10px] text-amber-400 font-semibold mb-1 flex items-center gap-1">
+                            <Timer className="h-3 w-3" />
+                            Match Round / Kickoff Window — only tips on matches kicking off in this window will count
+                          </p>
+                          <div className="flex flex-wrap gap-2 items-center">
+                            <div>
+                              <Label className="text-[10px] text-muted-foreground">From (local time)</Label>
+                              <Input type="datetime-local" value={kickoffForm.from} onChange={e => setKickoffForm(f => ({ ...f, from: e.target.value }))} className="h-7 text-xs w-44 mt-0.5" />
+                            </div>
+                            <div>
+                              <Label className="text-[10px] text-muted-foreground">To (local time)</Label>
+                              <Input type="datetime-local" value={kickoffForm.to} onChange={e => setKickoffForm(f => ({ ...f, to: e.target.value }))} className="h-7 text-xs w-44 mt-0.5" />
+                            </div>
+                            <div className="flex gap-1.5 self-end">
+                              <Button size="sm" className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white" onClick={() => saveKickoff(c.id)} disabled={savingKickoff}>
+                                {savingKickoff ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Saving…</> : 'Save Filter'}
+                              </Button>
+                              {(kickoffForm.from || kickoffForm.to) && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-rose-500 border-rose-500/30" onClick={() => { setKickoffForm({ from: '', to: '' }); saveKickoff(c.id); }}>
+                                  Clear
+                                </Button>
+                              )}
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditKickoffId(null)}>Cancel</Button>
+                            </div>
+                          </div>
+                          {kickoffForm.from && kickoffForm.to && (
+                            <p className="text-[9px] text-amber-300 mt-1">
+                              Window: {new Date(kickoffForm.from).toLocaleString()} → {new Date(kickoffForm.to).toLocaleString()} (your local timezone)
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
