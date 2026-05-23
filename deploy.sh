@@ -160,7 +160,12 @@ fi
 echo -e "${YELLOW}[5/5] Restarting server...${NC}"
 fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
 sleep 1
-pm2 restart betcheza --update-env 2>/dev/null || pm2 start npm --name "betcheza" -- start
+# Use ecosystem config if available; fall back to bare pm2 restart
+if [ -f "$APP_DIR/ecosystem.config.js" ]; then
+  pm2 startOrRestart "$APP_DIR/ecosystem.config.js" --update-env
+else
+  pm2 restart betcheza --update-env 2>/dev/null || pm2 start npm --name "betcheza" -- start
+fi
 pm2 save
 
 echo -e "${YELLOW}[6/6] Verifying app is healthy...${NC}"
