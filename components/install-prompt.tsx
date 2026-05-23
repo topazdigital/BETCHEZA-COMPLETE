@@ -191,46 +191,34 @@ export function InstallPrompt() {
                 </div>
 
                 {isIOS ? (
-                  <div className="mt-3 space-y-1.5">
+                  <div className="mt-3 space-y-2">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      To install on iPhone/iPad, use <strong>Safari</strong> then:
+                    </p>
                     <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                       <span className="font-semibold text-foreground">1.</span>
-                      Tap <Share className="inline h-3.5 w-3.5 text-sky-400" />
-                      in Safari&apos;s toolbar
+                      Tap <Share className="inline h-3.5 w-3.5 text-sky-400 mx-0.5" />
+                      in the toolbar
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      <span className="font-semibold text-foreground">2.</span> Choose <strong>Add to Home Screen</strong>
+                      <span className="font-semibold text-foreground">2.</span> Tap <strong>Add to Home Screen</strong>
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      <span className="font-semibold text-foreground">3.</span> Tap <strong>Add</strong> — it works just like an app!
+                      <span className="font-semibold text-foreground">3.</span> Tap <strong>Add</strong> — done!
                     </p>
-                    <a
-                      href="https://betcheza.co.ke"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[11px] font-semibold h-8 px-3 hover:from-emerald-600 hover:to-teal-600 transition-colors"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Download Betcheza App
-                    </a>
                   </div>
                 ) : isAndroid && !deferred ? (
                   <div className="mt-3 space-y-2">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Open this page in <strong>Chrome</strong>, then:
+                    </p>
                     <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                       <Smartphone className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                      <span>In Chrome, tap the <strong>⋮</strong> menu (top-right)</span>
+                      Tap the <strong>⋮</strong> menu (top-right of Chrome)
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       Then tap <strong>Add to Home screen</strong> or <strong>Install app</strong>
                     </p>
-                    <a
-                      href="https://betcheza.co.ke"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 w-full flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[11px] font-semibold h-8 px-3 hover:from-emerald-600 hover:to-teal-600 transition-colors"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Download Betcheza App
-                    </a>
                   </div>
                 ) : (
                   <div className="mt-3 flex gap-2">
