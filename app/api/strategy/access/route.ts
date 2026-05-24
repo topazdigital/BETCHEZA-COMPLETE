@@ -3,6 +3,9 @@ import { getCurrentUser } from '@/lib/auth';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { initiateStkPush, checkTransactionStatus } from '@/lib/payhero';
 import { getBalance, debit } from '@/lib/wallet-store';
+import { queryOne } from '@/lib/db';
+import { sendMail } from '@/lib/mailer';
+import { strategyAccessEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,6 +145,29 @@ export async function POST(req: NextRequest) {
       }
       grantStrategyAccess(user.userId, 'wallet', result.txn.reference || 'wallet');
       const access = checkStrategyAccess(user.userId);
+
+      // Send confirmation email (non-blocking)
+      try {
+        const userRow = await queryOne<{ email: string; username: string; display_name: string | null }>(
+          `SELECT u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
+           FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
+           WHERE u.id = ? LIMIT 1`,
+          [user.userId]
+        );
+        if (userRow?.email && access.expiresAt) {
+          const tpl = strategyAccessEmail({
+            subscriberName: userRow.display_name || userRow.username,
+            subscriberEmail: userRow.email,
+            price: SUBSCRIPTION_COST,
+            currency: 'KES',
+            expiresAt: access.expiresAt,
+            daysRemaining: access.daysRemaining ?? SUBSCRIPTION_DAYS,
+            reference: result.txn.reference || 'wallet',
+          });
+          sendMail({ to: userRow.email, subject: tpl.subject, html: tpl.html, text: tpl.text }).catch(() => {});
+        }
+      } catch { /* never block the response */ }
+
       return NextResponse.json({ hasAccess: true, paidVia: 'wallet', newBalance: result.newBalance, ...access });
     }
 

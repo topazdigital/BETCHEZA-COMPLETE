@@ -409,6 +409,23 @@ export default function TipsterProfilePage({ params }: PageProps) {
     fetcher,
   )
 
+  const { data: subscribersData } = useSWR<{
+    subscribers: Array<{
+      name: string
+      username: string
+      email: string
+      price: number
+      currency: string
+      status: string
+      startDate: string
+      expiresAt: string
+      daysLeft: number
+    }>
+  }>(
+    activeTab === "earnings" && isOwnProfile ? `/api/tipsters/${id}/subscribers` : null,
+    fetcher,
+  )
+
   if (isLoading) {
     return (
       <div className="flex-1 flex h-96 items-center justify-center">
@@ -1347,6 +1364,79 @@ export default function TipsterProfilePage({ params }: PageProps) {
                       <p className="text-[10px] text-muted-foreground">
                         Set a subscription price in your profile settings to start earning from subscribers.
                       </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Subscriber History Table */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <Users className="h-4 w-4 text-primary" />
+                    Subscriber History
+                  </CardTitle>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    All subscribers — track churn by comparing start and expiry dates
+                  </p>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {!subscribersData ? (
+                    <div className="space-y-2">
+                      {[1,2,3].map(i => (
+                        <div key={i} className="h-10 rounded bg-muted animate-pulse" />
+                      ))}
+                    </div>
+                  ) : subscribersData.subscribers.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      No subscribers yet. Share your profile to start earning!
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto -mx-4 px-4">
+                      <table className="w-full min-w-[480px] text-xs">
+                        <thead>
+                          <tr className="border-b border-border">
+                            <th className="text-left py-2 font-medium text-muted-foreground">Subscriber</th>
+                            <th className="text-center py-2 font-medium text-muted-foreground">Paid</th>
+                            <th className="text-center py-2 font-medium text-muted-foreground">Subscribed</th>
+                            <th className="text-center py-2 font-medium text-muted-foreground">Expires</th>
+                            <th className="text-right py-2 font-medium text-muted-foreground">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {subscribersData.subscribers.map((sub, i) => {
+                            const isActive = sub.status === 'active' && sub.daysLeft > 0
+                            return (
+                              <tr key={i} className="border-b border-border/50 last:border-0">
+                                <td className="py-2.5">
+                                  <div className="font-medium text-foreground">{sub.name}</div>
+                                  <div className="text-[10px] text-muted-foreground">@{sub.username}</div>
+                                </td>
+                                <td className="py-2.5 text-center font-medium">
+                                  {sub.currency} {sub.price.toLocaleString()}
+                                </td>
+                                <td className="py-2.5 text-center text-muted-foreground">
+                                  {new Date(sub.startDate).toLocaleDateString('en-KE', { day:'numeric', month:'short', year:'2-digit' })}
+                                </td>
+                                <td className="py-2.5 text-center text-muted-foreground">
+                                  {new Date(sub.expiresAt).toLocaleDateString('en-KE', { day:'numeric', month:'short', year:'2-digit' })}
+                                </td>
+                                <td className="py-2.5 text-right">
+                                  {isActive ? (
+                                    <Badge variant="default" className="text-[10px] bg-success/15 text-success border-0">
+                                      {sub.daysLeft}d left
+                                    </Badge>
+                                  ) : sub.status === 'cancelled' ? (
+                                    <Badge variant="secondary" className="text-[10px]">Cancelled</Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="text-[10px] bg-destructive/10 text-destructive border-0">Expired</Badge>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </CardContent>

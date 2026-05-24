@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getCurrentUser } from '@/lib/auth';
 import { query, execute } from '@/lib/db';
+import { sendMail } from '@/lib/mailer';
+import { strategyPicksEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -876,6 +878,48 @@ export async function POST(req: NextRequest) {
           [targetDate, weekId, dayData.day, dayData.stake, dayData.save, dayData.targetWin, dayData.combinedOdds, targetStatus, JSON.stringify(body.picks), isManual ? 1 : 0, scheduledFor]
         );
       } catch { }
+
+      // Email all active strategy subscribers (non-blocking)
+      if (targetStatus === 'active' && body.picks?.length > 0) {
+        const emailDay = dayData;
+        setImmediate(async () => {
+          try {
+            type AccessRecord = { userId: number; expiresAt: string };
+            const accessRecords = fileStoreGet<AccessRecord[]>('strategy-access', []);
+            const now = Date.now();
+            const activeUserIds = accessRecords
+              .filter(r => new Date(r.expiresAt).getTime() > now)
+              .map(r => r.userId);
+
+            if (activeUserIds.length === 0) return;
+
+            const placeholders = activeUserIds.map(() => '?').join(',');
+            const usersRes = await query<{ id: number; email: string; username: string; display_name: string | null }>(
+              `SELECT u.id, u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
+               FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
+               WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
+              activeUserIds
+            );
+
+            for (const u of usersRes.rows) {
+              try {
+                const tpl = strategyPicksEmail({
+                  subscriberName: u.display_name || u.username,
+                  day: emailDay.day,
+                  date: emailDay.date,
+                  stake: emailDay.stake,
+                  targetWin: emailDay.targetWin,
+                  picks: body.picks,
+                  combinedOdds: emailDay.combinedOdds,
+                });
+                await sendMail({ to: u.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+              } catch { /* skip one failed recipient */ }
+            }
+          } catch (e) {
+            console.error('[strategy] picks email blast failed:', e);
+          }
+        });
+      }
     }
     fileStoreSet(`strategy-week-${weekId}`, current);
     return NextResponse.json({ success: true, week: current });

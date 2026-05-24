@@ -661,7 +661,8 @@ function computeSmartPick(
     const pAwaySc = 1 - Math.exp(-awayXG);
     const bttsYes = pHomeSc * pAwaySc;
     const bttsConf = Math.round(Math.max(bttsYes, 1 - bttsYes) * 100);
-    if (bttsConf >= 52) {
+    // Only suggest BTTS when genuinely high confidence — avoid it on one-sided matches
+    if (bttsConf >= 63) {
       const bttsName = bttsYes >= 0.5 ? 'Yes' : 'No';
       candidates.push({ pick: bttsName, label: `BTTS ${bttsName}`, market: 'BTTS', confidence: bttsConf });
     }
@@ -672,19 +673,19 @@ function computeSmartPick(
     const pUnder = p0 + p1 + p2;
     const pOver = 1 - pUnder;
     const ouConf = Math.round(Math.max(pOver, pUnder) * 100);
-    if (ouConf >= 52) {
+    if (ouConf >= 61) {
       const ouName = pOver >= pUnder ? 'Over 2.5' : 'Under 2.5';
       candidates.push({ pick: ouName, label: ouName, market: 'O/U 2.5', confidence: ouConf });
     }
 
-    // Double Chance from form-adjusted probs
+    // Double Chance from form-adjusted probs — only when no clear directional winner
     if (odds.draw) {
       const hd = h + d;
       const ad = a + d;
       const dcBest = hd >= ad
         ? { pick: '1X', label: `${homeTeam.split(' ')[0]} or Draw`, conf: Math.round(hd * 100) }
         : { pick: 'X2', label: `Draw or ${awayTeam.split(' ')[0]}`, conf: Math.round(ad * 100) };
-      if (dcBest.conf >= 55) {
+      if (dcBest.conf >= 68) {
         candidates.push({ pick: dcBest.pick, label: dcBest.label, market: 'DC', confidence: dcBest.conf });
       }
     }
@@ -732,14 +733,27 @@ function computeSmartPick(
 
   candidates.sort((a, b) => b.confidence - a.confidence);
 
-  const bestNonDC = candidates.find(c => c.market !== 'DC');
+  const best1X2 = candidates.find(c => c.market === '1X2');
   const bestDC = candidates.find(c => c.market === 'DC');
+  const bestAlt = candidates.find(c => c.market !== 'DC' && c.market !== '1X2');
 
-  // DC is analytically low-value — only show it when it leads the best directional
-  // pick by 10+ confidence points. Otherwise let the highest-confidence market win.
-  if (bestDC && bestNonDC && (bestDC.confidence - bestNonDC.confidence) < 10) {
-    return bestNonDC;
+  // Prefer directional 1X2 pick unless an alternative beats it by 12+ points.
+  // This ensures we recommend "Man City to Win" rather than "BTTS Yes" on one-sided matches.
+  if (best1X2) {
+    const altEdge = bestAlt ? bestAlt.confidence - best1X2.confidence : 0;
+    if (altEdge < 12) {
+      // 1X2 wins unless DC or alternative market has a clear edge
+      if (bestDC && !bestAlt && bestDC.confidence - best1X2.confidence >= 12) return bestDC;
+      return best1X2;
+    }
+    // Alternative market has a meaningful edge — use it, unless it's DC
+    if (bestAlt && bestAlt.market === 'DC') return best1X2;
+    return bestAlt ?? best1X2;
   }
+
+  // No 1X2 candidate (shouldn't happen, but fallback)
+  const bestNonDC = candidates.find(c => c.market !== 'DC');
+  if (bestDC && bestNonDC && bestDC.confidence - bestNonDC.confidence < 12) return bestNonDC;
   return candidates[0];
 }
 

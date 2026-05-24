@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { getBalance } from '@/lib/wallet-store';
 import {
   checkSubscription,
@@ -10,6 +10,8 @@ import {
   TIPSTER_SHARE,
 } from '@/lib/subscription-store';
 import { initiateStkPush, isConfigured as payHeroConfigured, normalizeKenyanPhone, storePending } from '@/lib/payhero';
+import { sendMail } from '@/lib/mailer';
+import { tipsterSubscriptionEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,6 +122,28 @@ export async function POST(req: NextRequest, context: RouteContext) {
     });
 
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+
+    // Send confirmation email to subscriber (non-blocking)
+    try {
+      const userRow = await queryOne<{ email: string; username: string; display_name: string | null }>(
+        `SELECT u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
+         FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
+         WHERE u.id = ? LIMIT 1`,
+        [user.userId]
+      );
+      if (userRow?.email) {
+        const tpl = tipsterSubscriptionEmail({
+          subscriberName: userRow.display_name || userRow.username,
+          tipsterName: tipsterDisplayName,
+          tipsterUsername,
+          price,
+          currency,
+          expiresAt: result.subscription.expiresAt,
+          daysLeft: result.subscription.daysLeft,
+        });
+        sendMail({ to: userRow.email, subject: tpl.subject, html: tpl.html, text: tpl.text }).catch(() => {});
+      }
+    } catch { /* email errors must never block the subscription response */ }
 
     return NextResponse.json({
       success: true,

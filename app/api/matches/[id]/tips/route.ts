@@ -5,6 +5,9 @@ import { seedTipsForMatch, listTipsForMatch, settleTipWithResult, settleTipsByTe
 import { getFakeTipsterById, getFakeTipsters } from '@/lib/fake-tipsters';
 import { getMatchById } from '@/lib/api/unified-sports-api';
 import { setBaselineLikes, getLikeCount, getCommentCount } from '@/lib/tip-engagement-store';
+import { query } from '@/lib/db';
+import { sendMail } from '@/lib/mailer';
+import { tipsterNewTipsEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 
@@ -266,6 +269,67 @@ export async function POST(
 
   // Track first bet for referral system (fire-and-forget)
   onReferralFirstBet(user.userId).catch(() => {});
+
+  // Email all active subscribers of this tipster (non-blocking)
+  setImmediate(async () => {
+    try {
+      const tipsterRow = await query<{ email: string; username: string; display_name: string | null }>(
+        `SELECT u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
+         FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
+         WHERE u.id = ? LIMIT 1`,
+        [user.userId]
+      );
+      const tipster = tipsterRow.rows[0];
+      if (!tipster) return;
+
+      const subsRes = await query<{ email: string; username: string; display_name: string | null }>(
+        `SELECT u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
+         FROM tipster_subscriptions ts
+         JOIN users u ON u.id = ts.user_id
+         LEFT JOIN user_profiles up ON up.user_id = ts.user_id
+         WHERE ts.tipster_id = ? AND ts.status = 'active' AND ts.expires_at > NOW()
+           AND u.email IS NOT NULL AND u.email != ''`,
+        [user.userId]
+      );
+
+      if (subsRes.rows.length === 0) return;
+
+      // Resolve match details for the email
+      let homeTeam = 'Home Team';
+      let awayTeam = 'Away Team';
+      let league = '';
+      try {
+        const match = await getMatchById(matchId);
+        if (match) {
+          homeTeam = match.homeTeam;
+          awayTeam = match.awayTeam;
+          league = match.league || '';
+        }
+      } catch { /* use defaults */ }
+
+      for (const sub of subsRes.rows) {
+        try {
+          const tpl = tipsterNewTipsEmail({
+            subscriberName: sub.display_name || sub.username,
+            tipsterName: tipster.display_name || tipster.username,
+            tipsterUsername: tipster.username,
+            tips: [{
+              homeTeam,
+              awayTeam,
+              league,
+              pick: newTip.prediction,
+              market: newTip.market,
+              odds: newTip.odds,
+              reasoning: newTip.analysis,
+            }],
+          });
+          await sendMail({ to: sub.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+        } catch { /* skip one failed recipient */ }
+      }
+    } catch (e) {
+      console.error('[tips] subscriber email blast failed:', e);
+    }
+  });
 
   return NextResponse.json({ tip: newTip, ok: true });
 }
