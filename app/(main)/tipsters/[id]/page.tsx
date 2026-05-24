@@ -7,7 +7,8 @@ import { format } from "date-fns"
 import { 
   ArrowLeft, Check, Star, Users, TrendingUp, Target, Flame, 
   Calendar, MapPin, Trophy, ChevronRight, ExternalLink,
-  BarChart3, Activity, Clock, BadgeCheck, MinusCircle, Zap, Award, ShieldCheck, Medal
+  BarChart3, Activity, Clock, BadgeCheck, MinusCircle, Zap, Award, ShieldCheck, Medal,
+  DollarSign, TrendingDown, UserCheck, Banknote, ArrowRightLeft
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -360,7 +361,7 @@ const fetcher = async (url: string) => {
 
 export default function TipsterProfilePage({ params }: PageProps) {
   const { id } = use(params)
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user: authUser } = useAuth()
   const [isFollowing, setIsFollowing] = useState(false)
   const [activeTab, setActiveTab] = useState("tips")
   const [followerDelta, setFollowerDelta] = useState(0)
@@ -392,7 +393,22 @@ export default function TipsterProfilePage({ params }: PageProps) {
     activeTab === "competitions" ? `/api/tipsters/${id}/competitions` : null,
     fetcher,
   )
-  
+
+  const isOwnProfile = !!(authUser && data?.tipster && authUser.id === data.tipster.id)
+
+  const { data: earningsData } = useSWR<{
+    tipsterId: number
+    totalSubscribers: number
+    walletBalance: number
+    monthlyRevenue: number
+    allTimeRevenue: number
+    currency: string
+    shareRate: number
+  }>(
+    activeTab === "earnings" && isOwnProfile ? `/api/tipsters/${id}/earnings` : null,
+    fetcher,
+  )
+
   if (isLoading) {
     return (
       <div className="flex-1 flex h-96 items-center justify-center">
@@ -722,11 +738,17 @@ export default function TipsterProfilePage({ params }: PageProps) {
         
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 h-8">
-            <TabsTrigger value="tips" className="text-xs px-1">Recent Tips</TabsTrigger>
-            <TabsTrigger value="stats" className="text-xs px-1">Statistics</TabsTrigger>
+          <TabsList className={`grid w-full h-8 ${isOwnProfile ? 'grid-cols-5' : 'grid-cols-4'}`}>
+            <TabsTrigger value="tips" className="text-xs px-1">Tips</TabsTrigger>
+            <TabsTrigger value="stats" className="text-xs px-1">Stats</TabsTrigger>
             <TabsTrigger value="performance" className="text-xs px-1">Performance</TabsTrigger>
-            <TabsTrigger value="competitions" className="text-xs px-1">Competitions</TabsTrigger>
+            <TabsTrigger value="competitions" className="text-xs px-1">Comps</TabsTrigger>
+            {isOwnProfile && (
+              <TabsTrigger value="earnings" className="text-xs px-1">
+                <DollarSign className="h-3 w-3 mr-0.5" />
+                Earnings
+              </TabsTrigger>
+            )}
           </TabsList>
           
           {/* Tips Tab */}
@@ -1204,6 +1226,157 @@ export default function TipsterProfilePage({ params }: PageProps) {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Earnings Tab — only visible to the tipster themselves */}
+          {isOwnProfile && (
+            <TabsContent value="earnings" className="space-y-3">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
+                        <UserCheck className="h-4 w-4 text-primary" />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">Active Subscribers</span>
+                    </div>
+                    {earningsData ? (
+                      <p className="text-2xl font-bold">{earningsData.totalSubscribers}</p>
+                    ) : (
+                      <div className="h-7 w-12 rounded bg-muted animate-pulse" />
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">current paying members</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-success/10">
+                        <Banknote className="h-4 w-4 text-success" />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">Wallet Balance</span>
+                    </div>
+                    {earningsData ? (
+                      <p className="text-2xl font-bold">
+                        {earningsData.currency} {earningsData.walletBalance.toLocaleString()}
+                      </p>
+                    ) : (
+                      <div className="h-7 w-24 rounded bg-muted animate-pulse" />
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">available to withdraw</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-warning/10">
+                        <TrendingUp className="h-4 w-4 text-warning" />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">This Month</span>
+                    </div>
+                    {earningsData ? (
+                      <p className="text-2xl font-bold">
+                        {earningsData.currency} {earningsData.monthlyRevenue.toLocaleString()}
+                      </p>
+                    ) : (
+                      <div className="h-7 w-20 rounded bg-muted animate-pulse" />
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">30-day subscription revenue</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
+                        <DollarSign className="h-4 w-4 text-primary" />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">All-Time Earned</span>
+                    </div>
+                    {earningsData ? (
+                      <p className="text-2xl font-bold">
+                        {earningsData.currency} {earningsData.allTimeRevenue.toLocaleString()}
+                      </p>
+                    ) : (
+                      <div className="h-7 w-24 rounded bg-muted animate-pulse" />
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">total lifetime earnings</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Revenue Share Info */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                    <ArrowRightLeft className="h-4 w-4 text-primary" />
+                    Revenue Share
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                  <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-medium">Your share per subscription</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">80% of each subscriber's fee goes to you</p>
+                    </div>
+                    <span className="text-lg font-bold text-success">80%</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-medium">Platform fee</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">20% retained for platform maintenance</p>
+                    </div>
+                    <span className="text-lg font-bold text-muted-foreground">20%</span>
+                  </div>
+                  {tipster.subscriptionPrice && tipster.subscriptionPrice > 0 ? (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5">
+                      <p className="text-xs font-medium text-primary mb-0.5">Your subscription price</p>
+                      <p className="text-sm font-bold">
+                        KES {tipster.subscriptionPrice.toLocaleString()}
+                        <span className="text-xs font-normal text-muted-foreground"> / 30 days</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        You earn KES {(tipster.subscriptionPrice * 0.80).toFixed(0)} per subscriber per month
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5">
+                      <p className="text-xs font-medium text-warning mb-0.5">No subscription price set</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Set a subscription price in your profile settings to start earning from subscribers.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Withdraw CTA */}
+              {earningsData && earningsData.walletBalance > 0 && (
+                <Card className="border-success/30 bg-success/5">
+                  <CardContent className="p-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">Ready to withdraw</p>
+                      <p className="text-xs text-muted-foreground">
+                        {earningsData.currency} {earningsData.walletBalance.toLocaleString()} available via M-Pesa
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-success hover:bg-success/90 text-success-foreground shrink-0"
+                      asChild
+                    >
+                      <Link href="/dashboard/wallet">
+                        <Banknote className="mr-1.5 h-3.5 w-3.5" />
+                        Withdraw
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>
