@@ -21,6 +21,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (content.length > 1000) return NextResponse.json({ error: 'Comment too long (max 1000 chars).' }, { status: 400 });
   const u = user as unknown as { username?: string; email?: string };
   const authorName = u.username || (u.email ? u.email.split('@')[0] : `user_${user.userId}`);
-  const comment = await addComment({ tipId: id, userId: user.userId, authorName, content });
+  const comment = await addComment(id, user.userId, authorName, content);
   return NextResponse.json({ ok: true, comment });
 }

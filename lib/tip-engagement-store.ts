@@ -271,7 +271,6 @@ function hashStr(str: string): number {
 }
 
 export async function seedTipEngagement(tipId: string, ctx: SeedContext | number = 3): Promise<void> {
-  if (hasDb()) return;
   const existing = s.likes.get(tipId);
   if (existing && existing.size > 0) return;
 

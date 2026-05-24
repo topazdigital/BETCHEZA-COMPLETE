@@ -1546,8 +1546,26 @@ export function extractEspnOdds(rawOddsList: ESPNOddsRaw[] | undefined, hasDraw:
   // them deterministically (with a small house margin baked in via the 1X2 vig
   // we already inherited from the source). Punters get the variety of markets
   // they expect; we never invent prices that aren't grounded in real odds.
-  if (hasDraw && draw) {
-    deriveSoccerMarkets(home, draw, away).forEach(m => markets.push(m));
+  if (hasDraw) {
+    // Some US-facing providers (e.g. DraftKings via ESPN pickcenter) don't
+    // include a draw moneyline even for soccer. When that happens we estimate
+    // the draw probability from the home/away implied probs so the full suite
+    // of derived markets (Double Chance, BTTS, Correct Score, etc.) is still
+    // available — exactly as it is for leagues where only basic 1X2 data is
+    // returned. The estimate is grounded in the real home/away odds; no random
+    // values are introduced.
+    let drawForDerivation = draw;
+    if (!drawForDerivation) {
+      const pH = 1 / home;
+      const pA = 1 / away;
+      // Typical ESPN 2-way market has ~5% overround on each side.
+      // Strip it and treat the residual as the fair draw probability.
+      const fairH = pH / 1.05;
+      const fairA = pA / 1.05;
+      const drawProb = Math.max(0.15, Math.min(0.40, 1 - fairH - fairA));
+      drawForDerivation = Math.round((1 / drawProb) * 100) / 100;
+    }
+    deriveSoccerMarkets(home, drawForDerivation, away).forEach(m => markets.push(m));
   }
 
   return { odds, markets };
