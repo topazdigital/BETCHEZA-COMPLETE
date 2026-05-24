@@ -40,51 +40,67 @@ export interface FakeTipster {
   lastSeen: string;
 }
 
-const FIRST_NAMES = [
+// ~75% male names, ~25% female names — Kenyan focus
+const MALE_NAMES = [
   'Brian', 'Kevin', 'James', 'Daniel', 'Samuel', 'David', 'John', 'Peter', 'Mark', 'Joseph',
-  'Michael', 'Anthony', 'Patrick', 'Stephen', 'Charles', 'Felix', 'Victor', 'Emmanuel', 'George', 'Dennis',
-  'Eric', 'Ian', 'Collins', 'Frank', 'Henry', 'Edwin', 'Vincent', 'Hassan', 'Ali', 'Omar',
-  'Ibrahim', 'Yusuf', 'Mohammed', 'Tunde', 'Chinedu', 'Kwame', 'Kofi', 'Tomas', 'Diego', 'Carlos',
-  'Sofia', 'Maria', 'Aisha', 'Wanjiru', 'Fatuma', 'Akinyi', 'Cynthia', 'Linda', 'Joy', 'Grace',
-  'Mercy', 'Faith', 'Ruth', 'Rebecca', 'Amina', 'Zara', 'Esther', 'Anita', 'Brenda',
+  'Michael', 'Patrick', 'Stephen', 'Charles', 'Felix', 'Victor', 'Emmanuel', 'George', 'Dennis',
+  'Eric', 'Ian', 'Collins', 'Frank', 'Henry', 'Edwin', 'Vincent', 'Hassan', 'Omar', 'Yusuf',
+  'Otieno', 'Kamau', 'Njoroge', 'Kipchoge', 'Mutua', 'Waweru', 'Karanja', 'Kiprotich', 'Barasa',
+  'Clinton', 'Calvin', 'Trevor', 'Elijah', 'Moses', 'Joshua', 'Aaron', 'Simon', 'Nelson', 'Paul',
+  'Tobias', 'Boniface', 'Festus', 'Gideon', 'Sammy', 'Kelvin', 'Lawrence', 'Martin', 'Chris',
+];
+
+const FEMALE_NAMES = [
+  'Wanjiru', 'Akinyi', 'Cynthia', 'Linda', 'Joy', 'Grace', 'Mercy', 'Faith',
+  'Ruth', 'Rebecca', 'Esther', 'Anita', 'Brenda', 'Vivian', 'Sharon',
+];
+
+// Build a weighted first-names array: 3 male entries per 1 female (75/25 split)
+const FIRST_NAMES = [
+  ...MALE_NAMES, ...MALE_NAMES, ...MALE_NAMES,
+  ...FEMALE_NAMES,
 ];
 
 const LAST_NAMES = [
   'Otieno', 'Mwangi', 'Kimani', 'Kamau', 'Wanjiru', 'Njoroge', 'Achieng', 'Owino', 'Kiprop', 'Kipchoge',
-  'Mensah', 'Asante', 'Owusu', 'Boateng', 'Sarpong', 'Adedayo', 'Adekunle', 'Okafor', 'Eze', 'Onyeka',
-  'Banda', 'Phiri', 'Mhlanga', 'Dlamini', 'Khoza', 'Sithole', 'Mabhena', 'Hassan', 'Salim', 'Said',
-  'Mohamed', 'El-Sayed', 'Mahmoud', 'Silva', 'Santos', 'Rodriguez', 'Gomes', 'Pereira', 'Costa', 'Ferreira',
-  'Smith', 'Brown', 'Walker', 'Taylor', 'Wilson', 'Harris', 'Lewis', 'Hall', 'Young', 'King',
+  'Mutua', 'Waweru', 'Karanja', 'Omondi', 'Odhiambo', 'Nyambura', 'Gitau', 'Gicheru', 'Kariuki', 'Ndung\'u',
+  'Njenga', 'Muigai', 'Kinyua', 'Mbugua', 'Muthoni', 'Gathoni', 'Kiprotich', 'Cheruiyot', 'Korir', 'Rotich',
+  'Barasa', 'Wekesa', 'Simiyu', 'Namwamba', 'Muliro', 'Ayieko', 'Apiyo', 'Ogola', 'Odongo', 'Okello',
+  'Hassan', 'Salim', 'Mohamed', 'Abdi', 'Guyo', 'Dida', 'Roba', 'Wako', 'Galgalo', 'Tiren',
 ];
 
-const HANDLE_SUFFIXES = ['254', '256', '255', 'ke', 'gh', 'ng', 'tips', 'bet', 'pro', 'x', '_', '254', '7', '10'];
+const HANDLE_SUFFIXES = ['254', 'ke', 'tips', 'bet', 'pro', 'x', '254', '7', '10', 'KE', 'nairobi', 'mombasa'];
 
 const HANDLE_PREFIXES = [
-  'GoalMachine', 'AceTips', 'CornerKing', 'OverGuru', 'BTTSPro', 'AHSniper', 'KPLProphet',
-  'EPLOracle', 'LaLigaLab', 'SerieAStats', 'BundesData', 'CAFInsider', 'CombosKing',
-  'SafeBets', 'ValueHunter', 'FormReader', 'StatsBoss', 'PicksGod', 'OddsScout',
-  'TipsmanPro', 'BankrollKing', 'SteamMover', 'LineHunter', 'FixtureKing', 'DerbyExpert',
-  'TopTipper', 'WinningEdge', 'SharpEye', 'PunterPro', 'DraftKing',
+  'GoalMachine', 'AceTips', 'CornerKing', 'OverGuru', 'BTTSPro', 'KPLProphet',
+  'EPLOracle', 'CAFInsider', 'CombosKing', 'SafeBets', 'ValueHunter', 'FormReader',
+  'StatsBoss', 'PicksGod', 'OddsScout', 'TipsmanPro', 'BankrollKing', 'SharpEye',
+  'PunterPro', 'NairobiTips', 'KenyaTips', 'AfricaBets', 'KPLExpert', 'MasaiTips',
+  'SavannaTips', 'RiftValleyBets', 'NakuruTips', 'KisumuTips', 'MombasaTips',
 ];
 
-const COUNTRIES = ['KE', 'NG', 'GH', 'TZ', 'UG', 'ZA', 'GB', 'ES', 'DE', 'IT', 'FR', 'BR', 'AR', 'PT'];
+// Always Kenya — site is Kenyan
+const COUNTRIES = ['KE'];
 
 const BIOS = [
-  'EPL & La Liga focus. Value over volume. 1–2% bankroll only.',
-  'BTTS & Over 2.5 specialist. Charts > vibes.',
-  'African football insider — KPL, GPL, NPFL. Local angles.',
+  'KPL & EPL focus. Value over volume. 1–2% bankroll only.',
+  'BTTS & Over 2.5 specialist. Stats-driven, no guesswork.',
+  'Kenyan football insider — KPL, NSL. Local angles that pay.',
   'Asian Handicap diehard. Closing-line value beats win rate.',
   'Corners & cards markets. Referee profiles + tempo data.',
   'HT/FT and combo lover. Higher variance, bigger pots.',
   'Bankroll-first tipster. No martingale, no chasing.',
   'Data > narratives. xG-driven Over/Under picks.',
-  'Mid-week European football — Conference & Europa.',
+  'EPL & Champions League specialist. Nairobi-based analyst.',
   'Derby & rivalry games — discipline + cards angles.',
   'CAF Champions League / Confederation Cup specialist.',
-  'Lower-league value hunter — Serie B, Championship, Bundesliga 2.',
-  'NBA & NCAAB props on the side. Football is the bread.',
-  'Outright markets, futures and player specials.',
-  'Live in-play tipster. Pre-match angles, in-play execution.',
+  'KPL value hunter — knowing the local game pays dividends.',
+  'Weekend accumulators. Football is the bread, KPL is the butter.',
+  'In-play tipster operating from Nairobi. Pre-match setups, live execution.',
+  'Serie A & La Liga. 5+ years analysing European football from Kenya.',
+  'Premier League tips backed by data. Based in Mombasa.',
+  'Afcon & WCQ specialist. African football runs in my blood.',
+  'Strict bankroll management. 3% max stake per tip. Long-term profit.',
 ];
 
 const SPECIALTIES_POOL = [

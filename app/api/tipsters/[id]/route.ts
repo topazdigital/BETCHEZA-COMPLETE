@@ -434,14 +434,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // actual score-line into the profile UI.
     const matchIndex = new Map(allMatchesCached.map(m => [String(m.id), m]));
 
-    const tips = listTipsForTipster(tipsterId, 25).map(t =>
+    const tips = listTipsForTipster(tipsterId, 50).map(t =>
       autoTipToRecent(t, matchIndex.get(String(t.matchId))),
     );
     response.recentTips = tips;
+  }
 
-    // Always layer in REAL stats from the settled tip ledger.
-    // ROI and streak are never faked — they are 0 when no tips are settled yet.
-    // Win rate / tip counts are updated as soon as there is at least 1 settled tip.
+  // Always layer in REAL stats from the settled tip ledger — even when tips
+  // are not returned (e.g. SEO metadata fetch with includeTips=false).
+  // This ensures the SEO title/description always reflects the correct tip count.
+  {
     const real = computeRealTipsterStats(tipsterId);
     const realRoi = computeRealRoi(tipsterId);
     const realStreak = computeRealStreak(tipsterId);

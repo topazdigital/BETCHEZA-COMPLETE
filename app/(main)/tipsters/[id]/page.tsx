@@ -359,11 +359,14 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
+type TipFilter = 'all' | 'pending' | 'won' | 'lost'
+
 export default function TipsterProfilePage({ params }: PageProps) {
   const { id } = use(params)
   const { isAuthenticated, user: authUser } = useAuth()
   const [isFollowing, setIsFollowing] = useState(false)
   const [activeTab, setActiveTab] = useState("tips")
+  const [tipFilter, setTipFilter] = useState<TipFilter>('all')
   const [followerDelta, setFollowerDelta] = useState(0)
   
   const { data, error, isLoading, mutate } = useSWR(
@@ -770,100 +773,149 @@ export default function TipsterProfilePage({ params }: PageProps) {
           
           {/* Tips Tab */}
           <TabsContent value="tips" className="space-y-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Target className="h-4 w-4 text-primary" />
-                  Recent Predictions
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-0">
-                {recentTips?.map((tip: {
-                  id: number;
-                  settledByProb?: boolean;
-                  match: {
-                    homeTeam: string;
-                    awayTeam: string;
-                    kickoffTime: string;
-                    league: string;
-                    homeScore: number | null;
-                    awayScore: number | null;
-                  };
-                  market: string;
-                  selection: string;
-                  odds: number;
-                  stake: number;
-                  analysis: string;
-                  status: 'won' | 'lost' | 'pending' | 'void';
-                  confidence: number;
-                  likes: number;
-                  createdAt: string;
-                }) => {
-                  // Wrap the tip card in a Link to the match detail page when
-                  // the API surfaced a usable match id (skip mock placeholder ids).
-                  const rawId = (tip.match as { id?: string }).id ?? null
-                  const isReal = !!rawId && !rawId.startsWith('match_')
-                  const matchHref = isReal ? `/matches/${matchToSlug(rawId!, tip.match.homeTeam, tip.match.awayTeam)}` : null
-                  const Wrapper: React.ElementType = matchHref ? Link : 'div'
-                  const wrapperProps = matchHref ? { href: matchHref } : {}
-                  return (
-                  <Wrapper
-                    key={tip.id}
-                    {...(wrapperProps as Record<string, unknown>)}
-                    className={cn(
-                      "block rounded-lg border px-3 py-2 transition-colors",
-                      tip.status === 'won' && "border-success/30 bg-success/5",
-                      tip.status === 'lost' && "border-destructive/30 bg-destructive/5",
-                      tip.status === 'pending' && "border-warning/20 bg-warning/3",
-                      tip.status === 'void' && "border-muted-foreground/20 bg-muted/20",
-                      matchHref && "hover:border-primary/40 hover:shadow-sm cursor-pointer",
+            {(() => {
+              type TipItem = {
+                id: number;
+                settledByProb?: boolean;
+                match: {
+                  id?: string;
+                  homeTeam: string;
+                  awayTeam: string;
+                  kickoffTime: string;
+                  league: string;
+                  homeScore: number | null;
+                  awayScore: number | null;
+                };
+                market: string;
+                selection: string;
+                odds: number;
+                stake: number;
+                analysis: string;
+                status: 'won' | 'lost' | 'pending' | 'void';
+                confidence: number;
+                likes: number;
+                createdAt: string;
+              }
+              const allTips = (recentTips ?? []) as TipItem[]
+              const wonCount = allTips.filter(t => t.status === 'won').length
+              const lostCount = allTips.filter(t => t.status === 'lost').length
+              const pendingCount = allTips.filter(t => t.status === 'pending').length
+
+              const filtered = tipFilter === 'all' ? allTips
+                : allTips.filter(t => t.status === tipFilter)
+
+              const filterBtns: { key: TipFilter; label: string; count: number; activeClass: string }[] = [
+                { key: 'all', label: 'All', count: allTips.length, activeClass: 'bg-primary text-primary-foreground' },
+                { key: 'pending', label: 'Pending', count: pendingCount, activeClass: 'bg-amber-500 text-white' },
+                { key: 'won', label: 'Won', count: wonCount, activeClass: 'bg-emerald-500 text-white' },
+                { key: 'lost', label: 'Lost', count: lostCount, activeClass: 'bg-rose-500 text-white' },
+              ]
+
+              return (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                      <Target className="h-4 w-4 text-primary" />
+                      Predictions
+                    </CardTitle>
+                    {/* Filter buttons */}
+                    <div className="flex gap-1.5 flex-wrap mt-2">
+                      {filterBtns.map(btn => (
+                        <button
+                          key={btn.key}
+                          onClick={() => setTipFilter(btn.key)}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors border",
+                            tipFilter === btn.key
+                              ? btn.activeClass + " border-transparent"
+                              : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
+                          )}
+                        >
+                          {btn.label}
+                          <span className={cn(
+                            "rounded-full px-1 py-0 text-[10px] font-bold leading-none",
+                            tipFilter === btn.key ? "bg-white/20" : "bg-muted text-foreground"
+                          )}>
+                            {btn.count}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2 pt-0">
+                    {filtered.length === 0 && (
+                      <div className="py-8 text-center text-xs text-muted-foreground">
+                        No {tipFilter === 'all' ? '' : tipFilter + ' '}tips yet.
+                      </div>
                     )}
-                  >
-                    {/* Row 1: teams + status badge */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={cn("font-semibold text-xs truncate", matchHref && "group-hover:text-primary")}>
-                        {tip.match.homeTeam} vs {tip.match.awayTeam}
-                      </span>
-                      <Badge 
-                        variant={tip.status === 'won' ? 'default' : tip.status === 'lost' ? 'destructive' : 'secondary'}
-                        className={cn(
-                          "shrink-0 text-[10px] px-1.5 py-0 h-4",
-                          tip.status === 'won' && "bg-success text-success-foreground",
-                          tip.status === 'void' && "bg-muted text-muted-foreground border border-border"
-                        )}
-                      >
-                        {tip.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                    {/* Row 2: league + date */}
-                    <div className="text-[10px] text-muted-foreground mb-1">
-                      {tip.match.league} · {format(new Date(tip.match.kickoffTime), "dd MMM HH:mm")}
-                    </div>
-                    {/* Row 3: market + pick + odds + score */}
-                    <div className="flex items-center gap-1.5 flex-wrap text-xs mb-1">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{tip.market}</Badge>
-                      <span className="font-medium">{tip.selection}</span>
-                      <span className="font-mono text-primary font-bold">@{tip.odds}</span>
-                      {tip.status !== 'pending' && !tip.settledByProb && tip.match.homeScore !== null && (
-                        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-                          Final: <strong>{tip.match.homeScore}–{tip.match.awayScore}</strong>
-                        </span>
-                      )}
-                    </div>
-                    {/* Row 4: analysis (1 line) + open link */}
-                    <div className="flex items-center gap-2">
-                      <p className="text-[10px] text-muted-foreground line-clamp-1 flex-1">{tip.analysis}</p>
-                      {matchHref && (
-                        <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-primary">
-                          Open <ChevronRight className="h-2.5 w-2.5" />
-                        </span>
-                      )}
-                    </div>
-                  </Wrapper>
-                  )
-                })}
-              </CardContent>
-            </Card>
+                    {filtered.map((tip) => {
+                      const rawId = tip.match?.id ?? null
+                      const isReal = !!rawId && !rawId.startsWith('match_')
+                      const matchHref = isReal ? `/matches/${matchToSlug(rawId!, tip.match.homeTeam, tip.match.awayTeam)}` : null
+                      const Wrapper: React.ElementType = matchHref ? Link : 'div'
+                      const wrapperProps = matchHref ? { href: matchHref } : {}
+                      return (
+                        <Wrapper
+                          key={tip.id}
+                          {...(wrapperProps as Record<string, unknown>)}
+                          className={cn(
+                            "block rounded-lg border px-3 py-2 transition-colors",
+                            tip.status === 'won' && "border-emerald-500/30 bg-emerald-500/5",
+                            tip.status === 'lost' && "border-rose-500/30 bg-rose-500/5",
+                            tip.status === 'pending' && "border-amber-400/30 bg-amber-400/5",
+                            tip.status === 'void' && "border-muted-foreground/20 bg-muted/20",
+                            matchHref && "hover:border-primary/40 hover:shadow-sm cursor-pointer",
+                          )}
+                        >
+                          {/* Row 1: teams + status badge */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-xs truncate">
+                              {tip.match.homeTeam} vs {tip.match.awayTeam}
+                            </span>
+                            <Badge
+                              variant={tip.status === 'won' ? 'default' : tip.status === 'lost' ? 'destructive' : 'secondary'}
+                              className={cn(
+                                "shrink-0 text-[10px] px-1.5 py-0 h-4 font-bold",
+                                tip.status === 'won' && "bg-emerald-500 text-white border-0",
+                                tip.status === 'lost' && "bg-rose-500 text-white border-0",
+                                tip.status === 'pending' && "bg-amber-500 text-white border-0",
+                                tip.status === 'void' && "bg-muted text-muted-foreground border border-border"
+                              )}
+                            >
+                              {tip.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                          {/* Row 2: league + date */}
+                          <div className="text-[10px] text-muted-foreground mb-1">
+                            {tip.match.league} · {format(new Date(tip.match.kickoffTime), "dd MMM HH:mm")}
+                          </div>
+                          {/* Row 3: market + pick + odds + score */}
+                          <div className="flex items-center gap-1.5 flex-wrap text-xs mb-1">
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{tip.market}</Badge>
+                            <span className="font-medium">{tip.selection}</span>
+                            <span className="font-mono text-primary font-bold">@{tip.odds}</span>
+                            {tip.status !== 'pending' && !tip.settledByProb && tip.match.homeScore !== null && (
+                              <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                                Final: <strong>{tip.match.homeScore}–{tip.match.awayScore}</strong>
+                              </span>
+                            )}
+                          </div>
+                          {/* Row 4: analysis + open link */}
+                          <div className="flex items-center gap-2">
+                            <p className="text-[10px] text-muted-foreground line-clamp-1 flex-1">{tip.analysis}</p>
+                            {matchHref && (
+                              <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-primary">
+                                Open <ChevronRight className="h-2.5 w-2.5" />
+                              </span>
+                            )}
+                          </div>
+                        </Wrapper>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              )
+            })()}
           </TabsContent>
           
           {/* Stats Tab */}
