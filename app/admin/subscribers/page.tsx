@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import useSWR from 'swr';
-import { Mail, Download, RefreshCw, CheckCircle2, XCircle, Send, X, Loader2 } from 'lucide-react';
+import { Mail, Download, RefreshCw, CheckCircle2, XCircle, Send, X, Loader2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -202,8 +202,152 @@ function EmailModal({
   );
 }
 
+interface TipsterSub {
+  id: number;
+  subscriber_name: string;
+  subscriber_username: string;
+  subscriber_email: string;
+  tipster_name: string;
+  tipster_username: string;
+  price: number;
+  currency: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+}
+
+/* ─── Tipster Subscriptions Panel ──────────────────────────────────── */
+function TipsterSubscriptionsPanel() {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search]);
+
+  const params = new URLSearchParams({ status: statusFilter });
+  if (debouncedSearch) params.set('search', debouncedSearch);
+
+  const { data, isLoading, mutate } = useSWR<{ subscriptions: TipsterSub[]; total: number }>(
+    `/api/admin/tipster-subscriptions?${params}`,
+    fetcher,
+    { refreshInterval: 30000 },
+  );
+
+  const subs = data?.subscriptions ?? [];
+
+  function fmtDate(d: string) {
+    return new Date(d).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: '2-digit' });
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <input
+          className="h-7 rounded-md border border-input bg-background px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring w-48"
+          placeholder="Search subscriber or tipster…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {['all', 'active', 'expired', 'cancelled'].map(s => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={cn(
+              'h-7 rounded-md px-3 text-xs font-medium capitalize border transition-colors',
+              statusFilter === s
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background border-border text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {s}
+          </button>
+        ))}
+        <Button variant="outline" size="sm" className="h-7 text-xs px-2 ml-auto" onClick={() => mutate()}>
+          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
+        </Button>
+      </div>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <p className="text-xs text-muted-foreground p-8 text-center">Loading…</p>
+          ) : subs.length === 0 ? (
+            <p className="text-xs text-muted-foreground p-8 text-center">No tipster subscriptions found.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-left text-[11px] uppercase text-muted-foreground border-b bg-muted/30">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Subscriber</th>
+                    <th className="px-3 py-2 font-medium">Tipster</th>
+                    <th className="px-3 py-2 font-medium text-right">Paid</th>
+                    <th className="px-3 py-2 font-medium">Subscribed</th>
+                    <th className="px-3 py-2 font-medium">Expires</th>
+                    <th className="px-3 py-2 font-medium text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {subs.map(s => {
+                    const now = Date.now();
+                    const expires = new Date(s.expires_at).getTime();
+                    const daysLeft = Math.ceil((expires - now) / 86400000);
+                    const isActive = s.status === 'active' && daysLeft > 0;
+                    return (
+                      <tr key={s.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-foreground">{s.subscriber_name}</div>
+                          <div className="text-[10px] text-muted-foreground">@{s.subscriber_username}</div>
+                          <div className="text-[10px] text-muted-foreground">{s.subscriber_email}</div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{s.tipster_name}</div>
+                          <div className="text-[10px] text-muted-foreground">@{s.tipster_username}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                          {s.currency} {Number(s.price).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{fmtDate(s.created_at)}</td>
+                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{fmtDate(s.expires_at)}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {isActive ? (
+                            <Badge className="text-[9px] h-4 px-1.5 bg-emerald-500/15 text-emerald-600 border-0">
+                              {daysLeft}d left
+                            </Badge>
+                          ) : s.status === 'cancelled' ? (
+                            <Badge variant="secondary" className="text-[9px] h-4 px-1.5">Cancelled</Badge>
+                          ) : (
+                            <Badge variant="destructive" className="text-[9px] h-4 px-1.5 bg-destructive/10 text-destructive border-0">Expired</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {data && data.total > subs.length && (
+                <p className="text-[10px] text-muted-foreground text-center py-2">
+                  Showing {subs.length} of {data.total} records
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 /* ─── Main Page ────────────────────────────────────────────────────── */
 export default function AdminSubscribersPage() {
+  const [tab, setTab] = useState<'newsletter' | 'tipsters'>('newsletter');
+
   const { data, isLoading, mutate } = useSWR<{ subscribers: Subscriber[] }>(
     '/api/admin/subscribers',
     fetcher,
@@ -272,24 +416,52 @@ export default function AdminSubscribersPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h1 className="text-lg font-bold">Email Subscribers</h1>
-          <p className="text-xs text-muted-foreground">Newsletter signups and event notification opt-ins.</p>
+          <h1 className="text-lg font-bold">Subscribers</h1>
+          <p className="text-xs text-muted-foreground">Newsletter signups and paid tipster subscriptions.</p>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => mutate()}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Refresh
-          </Button>
-          <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={exportCsv}>
-            <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
-          </Button>
-          <Button size="sm" className="h-7 text-xs px-2"
-            onClick={() => setEmailTarget({ emails: activeEmails, label: 'Email All Active Subscribers' })}
-            disabled={active.length === 0}>
-            <Mail className="mr-1.5 h-3.5 w-3.5" /> Email All Active
-          </Button>
-        </div>
+        {tab === 'newsletter' && (
+          <div className="flex gap-1.5 flex-wrap">
+            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => mutate()}>
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Refresh
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={exportCsv}>
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
+            </Button>
+            <Button size="sm" className="h-7 text-xs px-2"
+              onClick={() => setEmailTarget({ emails: activeEmails, label: 'Email All Active Subscribers' })}
+              disabled={active.length === 0}>
+              <Mail className="mr-1.5 h-3.5 w-3.5" /> Email All Active
+            </Button>
+          </div>
+        )}
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex gap-1 border-b border-border">
+        {([
+          { key: 'newsletter', label: 'Newsletter', icon: <Mail className="h-3.5 w-3.5" /> },
+          { key: 'tipsters',   label: 'Tipster Subscriptions', icon: <Users className="h-3.5 w-3.5" /> },
+        ] as const).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors -mb-px',
+              tab === t.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tipster subscriptions panel */}
+      {tab === 'tipsters' && <TipsterSubscriptionsPanel />}
+
+      {/* Newsletter section (hidden when tipsters tab active) */}
+      {tab === 'newsletter' && <>
       {/* Stats */}
       <div className="grid gap-2.5 md:grid-cols-3">
         <StatItem label="Total" value={subscribers.length} />
@@ -402,6 +574,7 @@ export default function AdminSubscribersPage() {
           )}
         </CardContent>
       </Card>
+      </>}
     </div>
   );
 }

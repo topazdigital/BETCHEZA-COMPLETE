@@ -583,10 +583,10 @@ function parseFormScore(form: string | undefined): number {
 }
 
 /**
- * Evaluate ALL available markets and return the single highest-value pick.
- * Factors in: recent team form, home advantage, Poisson xG model, and API markets.
- * Avoids reflexively picking Double Chance — prefers directional picks when form justifies it.
- * Even a high-odds away team can be the pick when form strongly favours them.
+ * Evaluate ALL available API markets and return the highest-confidence pick.
+ * No bias toward any particular market — corners, HT result, O/U at any line,
+ * BTTS & Result, Asian Handicap, DNB, etc. all compete on equal footing.
+ * Trivial picks (any outcome < 1.12 odds) are filtered out as uninteresting.
  */
 function computeSmartPick(
   odds: { home: number; draw?: number; away: number },
@@ -596,165 +596,124 @@ function computeSmartPick(
   homeForm?: string,
   awayForm?: string,
 ): SmartPick | null {
-  const candidates: SmartPick[] = [];
-
-  const homeFormScore = parseFormScore(homeForm);
-  const awayFormScore = parseFormScore(awayForm);
-  const hasFormData = !!(homeForm || awayForm);
-
-  // ── Base implied probabilities (bookmaker margin removed) ────────────────
-  const rawH = 1 / Math.max(odds.home, 1.01);
-  const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
-  const rawA = 1 / Math.max(odds.away, 1.01);
-  const rawTotal = rawH + rawD + rawA;
-  const baseH = rawH / rawTotal;
-  const baseD = rawD / rawTotal;
-  const baseA = rawA / rawTotal;
-
-  // ── Apply form & home advantage ──────────────────────────────────────────
-  // Home advantage adds ~6% to home win probability in real-world data.
-  // Form modifier: 0 wins (score=0) → 0.75×, neutral (0.5) → 1.0×, 5 wins (1.0) → 1.25×
-  const HOME_ADV = 0.06;
-  const fScale = (s: number) => 0.75 + 0.5 * s;
-
-  const adjH = baseH * fScale(homeFormScore) + HOME_ADV;
-  const adjA = baseA * fScale(awayFormScore);
-  const adjD = baseD * 0.90;
-  const adjTotal = adjH + adjA + adjD;
-  const h = adjH / adjTotal;
-  const a = adjA / adjTotal;
-  const d = adjD / adjTotal;
-
-  // ── 1X2 (form + home-advantage adjusted) ────────────────────────────────
-  {
-    const max = Math.max(h, d, a);
-    const conf = Math.round(max * 100);
-    if (h === max) {
-      candidates.push({ pick: '1', label: homeTeam.split(' ')[0], market: '1X2', confidence: conf });
-    } else if (d === max && odds.draw) {
-      candidates.push({ pick: 'X', label: 'Draw', market: '1X2', confidence: conf });
-    } else {
-      candidates.push({ pick: '2', label: awayTeam.split(' ')[0], market: '1X2', confidence: conf });
-    }
-
-    // Value detection: strong form divergence even when odds are tight.
-    // A team on 5/5 wins vs an opponent on 5/5 losses is a value pick regardless of odds.
-    if (hasFormData) {
-      const formDiff = homeFormScore - awayFormScore;
-      if (formDiff > 0.38 && conf < 62) {
-        const vConf = Math.min(Math.round(h * 100) + 8, 73);
-        if (vConf > conf) candidates.push({ pick: '1', label: homeTeam.split(' ')[0], market: '1X2', confidence: vConf });
-      } else if (formDiff < -0.38 && conf < 60) {
-        const vConf = Math.min(Math.round(a * 100) + 8, 70);
-        if (vConf > conf) candidates.push({ pick: '2', label: awayTeam.split(' ')[0], market: '1X2', confidence: vConf });
-      }
-    }
+  // Remove bookmaker margin and return normalised per-outcome probabilities
+  function marginFreeProbs(outcomes: MarketOutcome[]): Array<MarketOutcome & { prob: number }> {
+    const valid = outcomes.filter(o => o.price > 1.01);
+    if (valid.length < 2) return [];
+    const vig = valid.reduce((s, o) => s + 1 / o.price, 0);
+    return valid.map(o => ({ ...o, prob: (1 / o.price) / vig }));
   }
 
-  // ── BTTS & O/U 2.5 via Poisson xG model (form-adjusted probabilities) ───
-  {
-    const homeXG = 0.85 + 1.4 * h;
-    const awayXG = 0.85 + 1.4 * a;
-    const totalXG = homeXG + awayXG;
-
-    const pHomeSc = 1 - Math.exp(-homeXG);
-    const pAwaySc = 1 - Math.exp(-awayXG);
-    const bttsYes = pHomeSc * pAwaySc;
-    const bttsConf = Math.round(Math.max(bttsYes, 1 - bttsYes) * 100);
-    // Only suggest BTTS when genuinely high confidence — avoid it on one-sided matches
-    if (bttsConf >= 63) {
-      const bttsName = bttsYes >= 0.5 ? 'Yes' : 'No';
-      candidates.push({ pick: bttsName, label: `BTTS ${bttsName}`, market: 'BTTS', confidence: bttsConf });
-    }
-
-    const p0 = Math.exp(-totalXG);
-    const p1 = totalXG * Math.exp(-totalXG);
-    const p2 = (totalXG * totalXG / 2) * Math.exp(-totalXG);
-    const pUnder = p0 + p1 + p2;
-    const pOver = 1 - pUnder;
-    const ouConf = Math.round(Math.max(pOver, pUnder) * 100);
-    if (ouConf >= 61) {
-      const ouName = pOver >= pUnder ? 'Over 2.5' : 'Under 2.5';
-      candidates.push({ pick: ouName, label: ouName, market: 'O/U 2.5', confidence: ouConf });
-    }
-
-    // Double Chance from form-adjusted probs — only when no clear directional winner
-    if (odds.draw) {
-      const hd = h + d;
-      const ad = a + d;
-      const dcBest = hd >= ad
-        ? { pick: '1X', label: `${homeTeam.split(' ')[0]} or Draw`, conf: Math.round(hd * 100) }
-        : { pick: 'X2', label: `Draw or ${awayTeam.split(' ')[0]}`, conf: Math.round(ad * 100) };
-      if (dcBest.conf >= 68) {
-        candidates.push({ pick: dcBest.pick, label: dcBest.label, market: 'DC', confidence: dcBest.conf });
-      }
-    }
+  // Map API market key → human-readable category label
+  function mktCategory(key: string, name: string): string {
+    const k = key.toLowerCase();
+    if (k === 'h2h') return 'Match Winner';
+    if (k === 'spreads') return 'Asian Handicap';
+    if (k === 'double_chance') return 'Double Chance';
+    if (k === 'dnb') return 'Draw No Bet';
+    if (k === 'btts') return 'BTTS';
+    if (k === 'btts_and_result') return 'BTTS & Result';
+    if (k === 'ht_ft') return 'HT/FT';
+    if (k === 'h2h_1h' || k === 'h2h_ht') return 'HT Result';
+    if (k === 'h2h_regulation') return 'Regulation Result';
+    if (/totals_1[_-]5/.test(k) || (k === 'totals' && name.includes('1.5'))) return 'O/U 1.5 Goals';
+    if (/totals_2[_-]5/.test(k) || (k === 'totals' && name.includes('2.5'))) return 'O/U 2.5 Goals';
+    if (/totals_3[_-]5/.test(k) || (k === 'totals' && name.includes('3.5'))) return 'O/U 3.5 Goals';
+    if (/totals_4[_-]5/.test(k) || (k === 'totals' && name.includes('4.5'))) return 'O/U 4.5 Goals';
+    if (k === 'totals_1h' || k === 'totals_h1') return '1st Half Goals';
+    if (k === 'totals_2h' || k === 'totals_h2') return '2nd Half Goals';
+    if (k.startsWith('corners_total') || k === 'corners') return 'Corners';
+    if (k.startsWith('race_corners')) return 'Corners Race';
+    if (k.startsWith('totals_1q')) return '1st Qtr Goals';
+    if (k.startsWith('totals_')) return 'Total Goals';
+    if (k === 'totals') return 'Total Goals';
+    return name || key;
   }
 
-  // ── Additional markets from the API feed ─────────────────────────────────
+  // Normalise generic "Home"/"Away" outcome names to team names
+  function outcomeLabel(name: string): string {
+    const n = name.toLowerCase().trim();
+    if (n === 'home') return homeTeam.split(' ')[0];
+    if (n === 'away') return awayTeam.split(' ')[0];
+    return name;
+  }
+
+  interface Candidate extends SmartPick { price: number }
+  const candidates: Candidate[] = [];
+
+  // ── 1. Scan EVERY market the API provided ───────────────────────────────
   if (markets && markets.length > 0) {
     for (const mkt of markets) {
       const key = (mkt.key || '').toLowerCase();
       const outcomes = mkt.outcomes || [];
       if (outcomes.length < 2) continue;
 
-      if (key === 'btts' || key.includes('both_teams') || mkt.name.toLowerCase().includes('both teams')) {
-        const yesOut = outcomes.find(o => o.name.toLowerCase().includes('yes'));
-        const noOut = outcomes.find(o => o.name.toLowerCase().includes('no'));
-        if (yesOut && noOut && yesOut.price > 1 && noOut.price > 1) {
-          const yp = 1 / yesOut.price; const np = 1 / noOut.price; const tot = yp + np;
-          const best = yp > np ? { name: 'Yes', prob: yp / tot } : { name: 'No', prob: np / tot };
-          candidates.push({ pick: best.name, label: `BTTS ${best.name}`, market: 'BTTS', confidence: Math.round(best.prob * 100) });
-        }
-      }
+      // Skip markets where ANY outcome has odds below 1.12 — those are near-certainties
+      // that provide no betting value and are boring to display (e.g. Over 0.5 goals at 1.02)
+      if (outcomes.some(o => o.price < 1.12)) continue;
 
-      if ((key === 'totals' || key.includes('totals_2_5') || key.includes('over_under')) && mkt.name.toLowerCase().includes('2.5')) {
-        const overOut = outcomes.find(o => o.name.toLowerCase().includes('over'));
-        const underOut = outcomes.find(o => o.name.toLowerCase().includes('under'));
-        if (overOut && underOut && overOut.price > 1 && underOut.price > 1) {
-          const op = 1 / overOut.price; const up = 1 / underOut.price; const tot = op + up;
-          const best = op > up ? { name: 'Over 2.5', prob: op / tot } : { name: 'Under 2.5', prob: up / tot };
-          candidates.push({ pick: best.name, label: best.name, market: 'O/U 2.5', confidence: Math.round(best.prob * 100) });
-        }
-      }
+      const probs = marginFreeProbs(outcomes);
+      if (probs.length < 2) continue;
 
-      if (key === 'dc' || key === 'double_chance' || mkt.name.toLowerCase().includes('double chance')) {
-        const sorted = [...outcomes].sort((a, b) => (1 / a.price) - (1 / b.price)).reverse();
-        if (sorted[0] && sorted[0].price > 1) {
-          const tot = outcomes.reduce((s, o) => s + 1 / o.price, 0);
-          const conf = Math.round((1 / sorted[0].price) / tot * 100);
-          candidates.push({ pick: sorted[0].name, label: sorted[0].name, market: 'DC', confidence: conf });
-        }
+      // Best outcome = highest margin-free implied probability
+      const best = probs.reduce((a, b) => b.prob > a.prob ? b : a);
+      const conf = Math.round(best.prob * 100);
+      if (conf < 53) continue; // too close to coin-flip
+
+      const category = mktCategory(key, mkt.name);
+      const label = outcomeLabel(best.name);
+
+      // De-duplicate: keep only the best candidate per category
+      const idx = candidates.findIndex(c => c.market === category);
+      const entry: Candidate = { pick: best.name, label, market: category, confidence: conf, price: best.price };
+      if (idx >= 0) {
+        if (conf > candidates[idx].confidence) candidates[idx] = entry;
+      } else {
+        candidates.push(entry);
       }
+    }
+  }
+
+  // ── 2. Form-adjusted 1X2 fallback — always computed from main odds ───────
+  // Only replaces "Match Winner" if we don't have a better one from API markets
+  {
+    const hFS = parseFormScore(homeForm);
+    const aFS = parseFormScore(awayForm);
+    const rawH = 1 / Math.max(odds.home, 1.01);
+    const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
+    const rawA = 1 / Math.max(odds.away, 1.01);
+    const rawTotal = rawH + rawD + rawA;
+    const adj = (base: number, fs: number, adv = 0) => (base / rawTotal) * (0.80 + 0.4 * fs) + adv;
+    const adjH = adj(rawH, hFS, 0.05);
+    const adjA = adj(rawA, aFS);
+    const adjD = (rawD / rawTotal) * 0.90;
+    const adjT = adjH + adjA + adjD;
+    const h = adjH / adjT, a = adjA / adjT, d = adjD / adjT;
+    const max = Math.max(h, d, a);
+    const conf = Math.round(max * 100);
+
+    const existing = candidates.findIndex(c => c.market === 'Match Winner');
+    if (existing < 0 || candidates[existing].confidence < conf) {
+      const entry: Candidate =
+        h === max ? { pick: '1', label: `${homeTeam.split(' ')[0]} to Win`, market: 'Match Winner', confidence: conf, price: odds.home }
+        : d === max && odds.draw ? { pick: 'X', label: 'Draw', market: 'Match Winner', confidence: conf, price: odds.draw ?? 3 }
+        : { pick: '2', label: `${awayTeam.split(' ')[0]} to Win`, market: 'Match Winner', confidence: conf, price: odds.away };
+      if (existing >= 0) candidates[existing] = entry;
+      else candidates.push(entry);
     }
   }
 
   if (candidates.length === 0) return null;
 
-  candidates.sort((a, b) => b.confidence - a.confidence);
+  // ── 3. Rank: highest confidence first; within equal confidence prefer odds ≥ 1.20
+  candidates.sort((a, b) =>
+    b.confidence !== a.confidence ? b.confidence - a.confidence : b.price - a.price,
+  );
 
-  const best1X2 = candidates.find(c => c.market === '1X2');
-  const bestDC = candidates.find(c => c.market === 'DC');
-  const bestAlt = candidates.find(c => c.market !== 'DC' && c.market !== '1X2');
-
-  // Prefer directional 1X2 pick unless an alternative beats it by 12+ points.
-  // This ensures we recommend "Man City to Win" rather than "BTTS Yes" on one-sided matches.
-  if (best1X2) {
-    const altEdge = bestAlt ? bestAlt.confidence - best1X2.confidence : 0;
-    if (altEdge < 12) {
-      // 1X2 wins unless DC or alternative market has a clear edge
-      if (bestDC && !bestAlt && bestDC.confidence - best1X2.confidence >= 12) return bestDC;
-      return best1X2;
-    }
-    // Alternative market has a meaningful edge — use it, unless it's DC
-    if (bestAlt && bestAlt.market === 'DC') return best1X2;
-    return bestAlt ?? best1X2;
-  }
-
-  // No 1X2 candidate (shouldn't happen, but fallback)
-  const bestNonDC = candidates.find(c => c.market !== 'DC');
-  if (bestDC && bestNonDC && bestDC.confidence - bestNonDC.confidence < 12) return bestNonDC;
-  return candidates[0];
+  // Return highest-confidence pick; soft-prefer picks with odds ≥ 1.20 (some betting value)
+  const interesting = candidates.filter(c => c.price >= 1.20);
+  const picked = interesting.length > 0 ? interesting[0] : candidates[0];
+  return { pick: picked.pick, label: picked.label, market: picked.market, confidence: picked.confidence };
 }
 
 function SmartBetBadge({
@@ -784,12 +743,9 @@ function SmartBetBadge({
     >
       <Sparkles className="h-3 w-3 shrink-0 text-primary" />
       <span className="font-semibold text-primary">AI Pick</span>
-      {sp.market !== '1X2' && (
-        <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary">{sp.market}</span>
-      )}
+      <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary">{sp.market}</span>
       <span className="text-muted-foreground">·</span>
-      <span className="font-bold text-foreground">{sp.pick}</span>
-      <span className="truncate text-muted-foreground">{sp.label}</span>
+      <span className="truncate font-bold text-foreground">{sp.label}</span>
       <span className="ml-auto font-semibold text-primary">{sp.confidence}%</span>
     </Link>
   );
