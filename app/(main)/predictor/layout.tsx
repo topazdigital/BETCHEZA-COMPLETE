@@ -1,14 +1,20 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'AI Football Predictor | Free Match Predictions Kenya | Betcheza',
-  description: "Free AI-powered football predictions for today's matches. Get accurate win probability, correct score predictions and betting tips for SportPesa, Betika and all Kenyan bookmakers.",
+  title: 'Best AI Football Predictor in Kenya | Free Match Predictions | Betcheza',
+  description: "Betcheza's AI football predictor is the best in Kenya — get free accurate win probability, correct score predictions and sure betting tips for SportPesa, Betika, Odibets and all Kenyan bookmakers. Which AI is best for football prediction? Betcheza.",
   keywords: [
-    'AI football predictor Kenya', 'free football predictions today', 'football prediction AI',
-    'match prediction tool Kenya', 'AI betting tips Kenya', 'football win probability',
+    'AI football predictor Kenya', 'best AI football predictor Kenya',
+    'which AI is best for football prediction', 'AI football prediction site Kenya',
+    'best prediction site Kenya', 'most accurate prediction site Kenya',
+    'free football predictions today', 'football prediction AI Kenya',
+    'match prediction tool Kenya', 'AI betting tips Kenya', 'football win probability Kenya',
     'correct score prediction AI', 'AI sports predictor Kenya', 'free match predictions Kenya',
     'AI SportPesa tips', 'machine learning football tips', 'best football predictor Kenya',
     'AI betting predictions Africa', 'football probability calculator Kenya',
+    'artificial intelligence football tips Kenya', 'high accuracy football predictions Kenya',
+    'prediction site with 90 accuracy Kenya', 'most trusted prediction site Kenya',
+    'free AI football tips Kenya', 'AI jackpot predictor Kenya',
   ],
   openGraph: {
     title: 'AI Football Predictor | Free Predictions | Betcheza Kenya',

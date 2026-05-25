@@ -24,8 +24,32 @@ const geist = Geist({
 
 // Module-level constant — built once at startup, not on every request
 const DEFAULT_KEYWORDS = [
+  // ── Brand ──────────────────────────────────────────────────────────────
   'Betcheza', 'betcheza.co.ke', 'Betcheza tips', 'Betcheza predictions',
   'Betcheza Kenya', 'Betcheza jackpot', 'Betcheza AI predictor',
+  'Betcheza free tips', 'Betcheza betting community', 'Betcheza strategy',
+
+  // ── Primary target keywords ─────────────────────────────────────────────
+  'best betting tips in Kenya', 'best betting tips Kenya',
+  'best football tips in Kenya', 'best football predictions in Kenya',
+  'best prediction site Kenya', 'best sports prediction site Kenya',
+  'best tipster site Kenya', 'best sports betting site Kenya',
+  'top betting tips Kenya', 'top prediction site Kenya',
+  'number 1 betting tips Kenya', '#1 betting tips Kenya',
+  'most accurate betting tips Kenya', 'most trusted betting tips Kenya',
+  'most trusted prediction site Kenya', 'most reliable tips Kenya',
+  'winning tips Kenya', 'winning football predictions Kenya',
+  'high accuracy tips Kenya', '90 percent accuracy prediction Kenya',
+  'prediction site with highest accuracy Kenya',
+  'which prediction site has 90 accuracy Kenya',
+  'which is the best prediction site in Kenya',
+  'which AI is best for football prediction',
+  'best AI football predictor Kenya', 'AI football prediction site Kenya',
+  'what is the most trusted betting tips site',
+  'what is the best strategy to win betting',
+  'how to win sports betting Kenya',
+
+  // ── SportPesa ───────────────────────────────────────────────────────────
   'SportPesa', 'SportPesa tips', 'SportPesa predictions',
   'SportPesa mega jackpot', 'SportPesa mega jackpot predictions',
   'SportPesa mega jackpot tips this week', 'SportPesa jackpot this week',
@@ -34,15 +58,25 @@ const DEFAULT_KEYWORDS = [
   'SportPesa jackpot results', 'SportPesa jackpot analysis',
   'SportPesa tips today', 'SportPesa free tips', 'win SportPesa jackpot',
   'SportPesa jackpot 13/13', 'SportPesa jackpot winners',
+  'SportPesa jackpot bonus', 'SportPesa tips free today',
+  'SportPesa sure tips', 'SportPesa winning picks',
+
+  // ── Betika ──────────────────────────────────────────────────────────────
   'Betika', 'Betika tips', 'Betika tips today', 'Betika predictions',
   'Betika grand jackpot', 'Betika grand jackpot tips',
   'Betika grand jackpot predictions', 'Betika jackpot analysis',
   'Betika jackpot banker today', 'Betika midweek jackpot tips',
   'Betika free tips', 'Betika winning tips', 'Betika jackpot results',
   'how to win Betika jackpot', 'Betika jackpot 17/17',
+  'Betika sure tips', 'Betika jackpot bonus', 'Betika sure wins',
+
+  // ── Odibets ─────────────────────────────────────────────────────────────
   'Odibets', 'Odibets tips', 'Odibets tips today', 'Odibets predictions',
   'Odibets jackpot tips', 'Odibets free tips', 'Odibets winning tips',
   'Odibets jackpot predictions', 'Odibets jackpot banker',
+  'Odibets sure tips', 'Odibets accumulator tips',
+
+  // ── Other bookmakers ────────────────────────────────────────────────────
   'Betway Kenya', 'Betway Kenya tips', 'Betway Kenya predictions',
   'Betway tips today Kenya', 'Betway free tips Kenya',
   'Betway jackpot Kenya', 'Betway Kenya free bets',
@@ -60,19 +94,28 @@ const DEFAULT_KEYWORDS = [
   'Betin Kenya', 'Betin tips', 'MyBet Kenya', 'MyBet tips',
   'Bamboo Bet Kenya', 'Bamboo Bet tips', 'Chezacash Kenya', 'Chezacash tips',
   'Tempobet Kenya', 'Kenya betting site',
+
+  // ── Free tips (high-volume queries) ────────────────────────────────────
   'free betting tips Kenya', 'free football tips today Kenya',
   'free soccer tips Kenya today', 'free tips Kenya today',
   'free football predictions Kenya', 'free sports predictions Kenya',
   'today free tips Kenya', 'free sure tips Kenya',
   'genuine free tips Kenya', 'legit betting tips Kenya',
+  'free tips today', 'free football tips today',
+  'free sure football predictions today', 'free football tips that win',
+  'best free football tips Kenya', 'best free betting tips in Kenya today',
+
+  // ── General Kenya betting ────────────────────────────────────────────────
   'sports betting Kenya', 'online betting Kenya', 'football betting Kenya',
   'betting tips Kenya today', 'betting predictions Kenya',
   'football tips today Kenya', 'football tips Kenya',
   'football predictions today Kenya', 'soccer tips Kenya',
   'soccer predictions Kenya', 'betting advice Kenya',
-  'best betting tips Kenya', 'winning betting tips Kenya',
   'safe betting tips Kenya', 'sure betting tips Kenya',
   'value betting Kenya', 'smart betting Kenya',
+  'betting tips site Kenya', 'sports betting tips Africa',
+
+  // ── Kenya Premier League & African football ─────────────────────────────
   'Kenya Premier League tips', 'KPL predictions', 'KPL tips today',
   'KPL tips', 'KPL free tips', 'Kenya Premier League predictions',
   'KPL match predictions', 'KPL results today', 'KPL standings',
@@ -83,17 +126,26 @@ const DEFAULT_KEYWORDS = [
   'Ghana Premier League tips', 'AFCON tips', 'CAF tips',
   'South Africa PSL tips', 'Tanzania Premier League tips',
   'Uganda Premier League tips', 'African football tips',
+  'FKF Premier League tips', 'FKF Premier League predictions',
+
+  // ── European leagues ────────────────────────────────────────────────────
   'Premier League tips Kenya', 'EPL tips Kenya', 'EPL predictions Kenya',
   'Champions League predictions Kenya', 'UCL tips Kenya',
   'La Liga tips Kenya', 'Serie A tips Kenya', 'Bundesliga tips Kenya',
   'Ligue 1 tips Kenya', 'Europa League tips', 'Conference League tips',
   'FA Cup tips', 'Carabao Cup tips', 'Copa del Rey tips',
+
+  // ── Jackpot ─────────────────────────────────────────────────────────────
   'jackpot predictions Kenya', 'jackpot tips Kenya', 'jackpot tips today Kenya',
   'jackpot banker today', 'jackpot banker Kenya', 'jackpot analysis Kenya',
   'mega jackpot predictions', 'mega jackpot tips', 'grand jackpot tips',
   'jackpot tips free Kenya', 'jackpot winners Kenya', 'jackpot strategies Kenya',
   'how to win jackpot Kenya', 'jackpot accumulator Kenya',
   'SportPesa jackpot 13 games', 'Betika jackpot 17 games',
+  'jackpot banker this week Kenya', 'sure jackpot prediction Kenya',
+  'jackpot free picks Kenya', 'grand jackpot analysis Kenya',
+
+  // ── Accumulator / odds types ─────────────────────────────────────────────
   'accumulator tips today Kenya', 'acca tips Kenya', 'combo tips Kenya',
   'double tips Kenya', 'treble tips Kenya', 'multi tips Kenya',
   'parlay tips Kenya', '3 odds tips Kenya', '5 odds tips Kenya',
@@ -107,32 +159,65 @@ const DEFAULT_KEYWORDS = [
   'draw tips Kenya', 'home win tips', 'away win tips Kenya',
   'half time full time tips', 'HT FT tips Kenya',
   'anytime scorer tips', 'first goal scorer tips',
+  'first team to score tips Kenya', 'correct score free tips Kenya',
+
+  // ── Daily / time-specific ────────────────────────────────────────────────
   'bet of the day Kenya', 'banker of the day Kenya',
   'daily banker Kenya', 'sure bet Kenya', 'sure odds Kenya',
   'daily tips Kenya', 'weekend tips Kenya', 'midweek tips Kenya',
   'Saturday tips Kenya', 'Sunday tips Kenya',
+  'today sure tips Kenya', 'tomorrow betting tips Kenya',
+  'tonight football tips Kenya', 'this weekend tips Kenya',
+  'this week betting tips Kenya',
+
+  // ── M-Pesa & mobile ─────────────────────────────────────────────────────
   'M-Pesa betting Kenya', 'bet with M-Pesa Kenya',
   'M-Pesa sports betting', 'online betting M-Pesa Kenya',
   'deposit via M-Pesa betting', 'withdraw betting winnings M-Pesa',
+  'M-Pesa jackpot Kenya', 'Safaricom betting Kenya',
+
+  // ── AI & technology ──────────────────────────────────────────────────────
   'AI football predictions', 'AI betting tips Kenya',
   'AI sports predictor Kenya', 'machine learning football tips',
   'data-driven betting tips', 'statistical football predictions Kenya',
   'xG predictions Kenya', 'form-based tips Kenya',
+  'AI prediction site Kenya', 'artificial intelligence football tips',
+  'best AI predictor football Kenya', 'AI jackpot predictions Kenya',
+  'computer football predictions Kenya', 'algorithm betting tips Kenya',
+
+  // ── Tipster community ────────────────────────────────────────────────────
   'tipster community Kenya', 'best tipsters Kenya',
   'top football tipsters Kenya', 'tipster leaderboard Kenya',
   'follow tipsters Kenya', 'free tipster Kenya', 'pro tipster Kenya',
   'verified tipster Kenya', 'expert betting advice Kenya',
   'betting community Kenya', 'sports tips community Kenya',
-  'best betting site Kenya', 'top betting site Kenya',
-  'betting tips site Kenya', 'sports betting tips Africa',
-  'football tips Africa', 'free tips Africa',
+  'become a tipster Kenya', 'share betting tips Kenya',
+  'tipster ROI Kenya', 'best win rate tipster Kenya',
+  'professional sports tipster Kenya',
+
+  // ── Trust & accuracy signals ─────────────────────────────────────────────
+  'trusted prediction site Kenya', 'verified tips Kenya',
+  'accurate football predictions Kenya', 'high win rate tips Kenya',
+  'which site gives correct football predictions Kenya',
+  'best site for betting tips in Kenya',
+  'legit prediction site Kenya', 'genuine tips Kenya',
+  'real football tips Kenya', 'honest tipster Kenya',
+
+  // ── App & platform ───────────────────────────────────────────────────────
   'Kenya betting app', 'betting predictions app Kenya',
   'football tips app Kenya', 'live scores Kenya betting',
   'football results Kenya', 'live football scores Kenya',
   'odds comparison Kenya', 'best odds Kenya',
+  'football tips Africa', 'free tips Africa',
+
+  // ── Strategy & education ─────────────────────────────────────────────────
   'responsible gambling Kenya', 'betting strategy Kenya',
   'bankroll management Kenya', '3 daily odds strategy Kenya',
   'compounding strategy betting Kenya',
+  'how to bet and win Kenya', 'football betting guide Kenya',
+  'betting tips for beginners Kenya', 'sports betting strategy Kenya',
+  'how to make money betting Kenya', 'profitable betting strategy Kenya',
+  'best strategy for sports betting', 'betting system Kenya',
 ];
 
 /**
@@ -148,10 +233,10 @@ export async function generateMetadata(): Promise<Metadata> {
   // Per-path title/description improvements for pages without admin SEO overrides
   const isHomePage = pathname === '/';
   const fallbackTitle = isHomePage
-    ? `${settings.site_name} — #1 Sports Betting Tips Community | Free Expert Predictions`
-    : `${settings.site_name} - Expert Betting Tips & Predictions`;
+    ? `${settings.site_name} — Best Betting Tips in Kenya | Free AI Football Predictions`
+    : `${settings.site_name} - Best Betting Tips & Predictions Kenya`;
   const fallbackDescription = isHomePage
-    ? `Join ${settings.site_name}, the #1 platform for free sports betting tips and expert predictions. Get AI-powered forecasts, track tipster performance, and beat the bookmakers across football, basketball, tennis and 35+ sports.`
+    ? `${settings.site_name} is Kenya's most trusted betting tips site. Get the best free AI-powered football predictions, SportPesa jackpot tips, Betika grand jackpot picks, and daily sure odds. Join 50,000+ bettors who trust Betcheza for the most accurate tips in Kenya.`
     : settings.site_description;
 
   const title = seoEntry?.title || fallbackTitle;
@@ -224,9 +309,9 @@ const websiteJsonLd = {
   '@type': 'WebSite',
   '@id': 'https://betcheza.co.ke/#website',
   name: 'Betcheza',
-  alternateName: ['Betcheza Kenya', 'Betcheza Tips', 'betcheza.co.ke'],
+  alternateName: ['Betcheza Kenya', 'Best Betting Tips Kenya', 'Betcheza Tips', 'betcheza.co.ke'],
   url: 'https://betcheza.co.ke',
-  description: "Kenya's #1 sports betting tips community. AI-powered predictions, SportPesa jackpot tips, tipster leaderboard and community.",
+  description: "Betcheza is Kenya's most trusted betting tips site — the best free AI football predictions, SportPesa jackpot tips, Betika grand jackpot picks, and daily sure odds.",
   inLanguage: 'en',
   publisher: { '@id': 'https://betcheza.co.ke/#organization' },
   potentialAction: {
@@ -369,6 +454,54 @@ const faqJsonLd = {
       acceptedAnswer: {
         '@type': 'Answer',
         text: 'Yes. Betcheza covers Betika Grand Jackpot with AI-powered selections for all 17 games, plus tipster community picks. Visit betcheza.co.ke/jackpots/betika for the latest Betika jackpot tips and banker selections.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Which prediction site has 90% accuracy?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Betcheza is consistently rated among the highest-accuracy prediction sites in Kenya. Our AI analyses team form, head-to-head records, expected goals (xG), and odds movement to deliver high-confidence predictions. Top verified tipsters on Betcheza regularly achieve win rates above 70%, and AI-selected banker picks reach accuracy rates exceeding 80% on low-risk markets such as Over 1.5 goals and Double Chance.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'What is the best strategy to win betting?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'The most reliable strategy to win betting consistently in Kenya is the 3 Daily Odds compounding method: stake on 3 combined odds per day, save a portion of each win, and let your bankroll grow over a 7-day cycle. Combine this with value betting — only pick markets where the odds are higher than the true probability — and always use AI predictions to filter high-risk selections. Betcheza\'s Strategy page (betcheza.co.ke/strategy) explains the full 7-day compounding plan step by step.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'What is the most trusted betting tips site?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Betcheza (betcheza.co.ke) is the most trusted betting tips site in Kenya. Every tipster is verified, all results are recorded publicly, and no tips are altered after events start. The AI predictor is powered by real match data, and win rates are calculated transparently from settled picks only. Betcheza is free to use and has been trusted by over 50,000 Kenyan bettors.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Which AI is best for football prediction?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Betcheza\'s AI football predictor is one of the best in Kenya for football predictions. It uses machine learning models trained on match statistics, team form, injuries, head-to-head records, and real-time odds data. The AI generates win probability percentages and recommends the best market for each match — available free at betcheza.co.ke/predictor.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Which is the best prediction site in Kenya?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Betcheza is widely considered the best prediction site in Kenya. It combines an AI football predictor, a leaderboard of verified expert tipsters, free jackpot predictions for SportPesa and Betika, and a community feed where bettors share and discuss tips. All predictions are free, transparent, and updated daily.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How do I get free football predictions in Kenya today?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Visit betcheza.co.ke to get free football predictions in Kenya today. The Matches page shows AI-powered tips for every fixture, including Over/Under, BTTS, Correct Score and 1X2 markets. The Strategy page gives you 3 daily sure odds picks updated every morning. No login required to browse free tips.',
       },
     },
   ],

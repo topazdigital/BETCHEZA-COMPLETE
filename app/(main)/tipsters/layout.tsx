@@ -1,15 +1,20 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Best Tipsters in Kenya | Top Football Predictors | Betcheza',
-  description: 'Follow the best football tipsters in Kenya with verified win rates. Compare top predictors for SportPesa, Betika, Odibets and more. Free tips from expert tipsters updated daily.',
+  title: 'Best Tipsters in Kenya | Most Trusted Betting Tips | Betcheza',
+  description: 'Find the most trusted betting tipsters in Kenya with verified win rates and transparent records. Follow the best prediction experts for SportPesa, Betika, Odibets and more — all free on Betcheza.',
   keywords: [
-    'best tipsters Kenya', 'top football predictors Kenya', 'free tipsters Kenya',
-    'SportPesa tipster', 'Betika tipster', 'football tipster Kenya',
-    'verified tipsters Kenya', 'highest win rate tipsters', 'tipster leaderboard Kenya',
-    'football prediction experts Kenya', 'best football predictions today',
-    'follow tipster Kenya', 'top betting experts Kenya', 'tipster ROI Kenya',
-    'free football tips experts', 'tipster community Kenya', 'best betting tipsters Africa',
+    'best tipsters Kenya', 'most trusted tipsters Kenya', 'top football predictors Kenya',
+    'free tipsters Kenya', 'verified tipsters Kenya', 'highest win rate tipsters Kenya',
+    'SportPesa tipster Kenya', 'Betika tipster Kenya', 'football tipster Kenya',
+    'tipster leaderboard Kenya', 'football prediction experts Kenya',
+    'best football predictions today Kenya', 'follow tipster Kenya',
+    'top betting experts Kenya', 'tipster ROI Kenya', 'trusted prediction experts Kenya',
+    'free football tips experts Kenya', 'tipster community Kenya',
+    'best betting tipsters Africa', 'most accurate tipster Kenya',
+    'which prediction site has 90 accuracy Kenya', 'genuine tipsters Kenya',
+    'legit tipsters Kenya', 'verified win rate tipster Kenya',
+    'best free tipster Kenya', 'professional sports tipster Kenya',
   ],
   openGraph: {
     title: 'Best Tipsters in Kenya | Top Football Predictors | Betcheza',
