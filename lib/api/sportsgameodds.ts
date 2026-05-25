@@ -280,6 +280,123 @@ export async function getSgoBookmakerLines(
   return lines;
 }
 
+// ─── Bulk match odds for the match list ───────────────────────────────
+
+/**
+ * Simple per-match normalization that matches `normalizeTeamName()` in
+ * unified-sports-api.ts so index keys are compatible.
+ */
+function normalizeForIndex(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .replace(/\b(fc|cf|sc|afc|cfc|acf|ac|as|ss|bsc|fk|sk|rc|club|the)\b/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+export interface SgoMatchOddsEntry {
+  homeNorm: string;
+  awayNorm: string;
+  /** YYYY-MM-DD */
+  dateKey: string;
+  home: number;
+  draw?: number;
+  away: number;
+  bookmaker: string;
+}
+
+/**
+ * Bulk-fetch upcoming events from SGO for the given date window and extract
+ * 1X2 / moneyline odds for each fixture.  Uses the best price available
+ * across all bookmakers (or `closeBookOdds` when present).
+ *
+ * Called by `buildRealOddsIndex()` in unified-sports-api.ts when The Odds
+ * API key is not configured — this is the primary source of match-list odds.
+ */
+export async function fetchSgoBulkMatchOdds(
+  startsAfter: string,
+  startsBefore: string,
+): Promise<SgoMatchOddsEntry[]> {
+  const data = await sgoFetch('/events', {
+    startsAfter,
+    startsBefore,
+    limit: '200',
+    includeOpposingTeam: 'true',
+  }) as { data?: SgoEvent[] } | null;
+
+  if (!data?.data || !Array.isArray(data.data)) return [];
+
+  const result: SgoMatchOddsEntry[] = [];
+
+  for (const ev of data.data) {
+    if (!ev.odds || !ev.teams?.home || !ev.teams?.away) continue;
+    if (!ev.startsAt) continue;
+
+    const homeName = ev.teams.home.names?.long || ev.teams.home.names?.medium || ev.teams.home.names?.short || '';
+    const awayName = ev.teams.away.names?.long || ev.teams.away.names?.medium || ev.teams.away.names?.short || '';
+    if (!homeName || !awayName) continue;
+
+    const homeNorm = normalizeForIndex(homeName);
+    const awayNorm = normalizeForIndex(awayName);
+    if (!homeNorm || !awayNorm) continue;
+
+    const dateKey = ev.startsAt.slice(0, 10);
+
+    // Find the canonical 1X2 / moneyline odds entries
+    const oddsValues = Object.values(ev.odds);
+    const homeOdd = oddsValues.find(o =>
+      o.sideID === 'home' &&
+      (o.statID === 'points' || o.statID === 'reg' || /moneyline|match.?winner|1x2/i.test(o.marketName || '')),
+    );
+    const awayOdd = oddsValues.find(o =>
+      o.sideID === 'away' &&
+      (o.statID === 'points' || o.statID === 'reg' || /moneyline|match.?winner|1x2/i.test(o.marketName || '')),
+    );
+    const drawOdd = oddsValues.find(o =>
+      o.sideID === 'draw' &&
+      (o.statID === 'points' || o.statID === 'reg' || /moneyline|match.?winner|1x2/i.test(o.marketName || '')),
+    );
+
+    if (!homeOdd || !awayOdd) continue;
+
+    // Best price across bookmakers, or fall back to closeBookOdds
+    const bestPrice = (odd: SgoOdd): number | null => {
+      if (typeof odd.closeBookOdds === 'number' && odd.closeBookOdds > 1) {
+        return Math.round(odd.closeBookOdds * 100) / 100;
+      }
+      if (!odd.byBookmaker) return null;
+      let best = 0;
+      for (const offer of Object.values(odd.byBookmaker)) {
+        const p = offerPrice(offer);
+        if (p && p > best) best = p;
+      }
+      return best > 1 ? Math.round(best * 100) / 100 : null;
+    };
+
+    const hp = bestPrice(homeOdd);
+    const ap = bestPrice(awayOdd);
+    const dp = drawOdd ? bestPrice(drawOdd) : null;
+    if (!hp || !ap) continue;
+
+    // Pick a display bookmaker name from whatever books quoted the home side
+    const topBook = homeOdd.byBookmaker
+      ? (Object.keys(homeOdd.byBookmaker)[0] ?? 'SportsGameOdds')
+      : 'SportsGameOdds';
+
+    result.push({
+      homeNorm,
+      awayNorm,
+      dateKey,
+      home: hp,
+      draw: dp ?? undefined,
+      away: ap,
+      bookmaker: prettyBookName(topBook),
+    });
+  }
+
+  return result;
+}
+
 // ─── Outright winners via SGO ──────────────────────────────────────────
 
 export interface SgoOutright {

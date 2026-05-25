@@ -3700,11 +3700,66 @@ async function fetchOddsForSport(sportKey: string): Promise<TheOddsApiEvent[]> {
   return data;
 }
 
-// Build a lookup of real odds keyed by normalized team pair
+/**
+ * Build an odds index from SportsGameOdds bulk /events fetch.
+ * Used when The Odds API key is not configured.
+ * Fetches upcoming events for today + next 3 days and extracts 1X2 odds.
+ */
+async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
+  try {
+    const { fetchSgoBulkMatchOdds } = await import('@/lib/api/sportsgameodds');
+    const now = new Date();
+    // today from midnight UTC
+    const startsAfter = now.toISOString().split('T')[0] + 'T00:00:00Z';
+    // 3 days ahead end of day
+    const endDate = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const startsBefore = endDate.toISOString().split('T')[0] + 'T23:59:59Z';
+
+    const entries = await fetchSgoBulkMatchOdds(startsAfter, startsBefore);
+    const index = new Map<string, { odds: MatchOdds; markets: Market[] }>();
+
+    for (const entry of entries) {
+      const odds: MatchOdds = {
+        home: entry.home,
+        draw: entry.draw,
+        away: entry.away,
+        bookmaker: entry.bookmaker,
+        lastUpdate: new Date(),
+      };
+      const markets: Market[] = [{
+        key: 'h2h',
+        name: 'Match Result',
+        outcomes: [
+          { name: 'Home', price: entry.home },
+          ...(entry.draw !== undefined ? [{ name: 'Draw', price: entry.draw }] : []),
+          { name: 'Away', price: entry.away },
+        ],
+      }];
+      // Index both orderings so ESPN home/away flips are caught
+      index.set(`${entry.homeNorm}_${entry.awayNorm}_${entry.dateKey}`, { odds, markets });
+      index.set(`${entry.awayNorm}_${entry.homeNorm}_${entry.dateKey}`, { odds, markets });
+    }
+
+    if (index.size > 0) {
+      console.log(`[SGO] Bulk odds index built: ${entries.length} fixtures`);
+    }
+    return index;
+  } catch (err) {
+    console.warn('[SGO] buildSgoOddsIndexFallback failed:', err);
+    return new Map();
+  }
+}
+
+// Build a lookup of real odds keyed by normalized team pair.
+// Primary source: The Odds API (when key is configured).
+// Fallback source: SportsGameOdds bulk /events fetch (always attempted).
 async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
   const { getApiKey } = await import('@/lib/api-keys');
   const apiKey = await getApiKey('the_odds_api_key');
-  if (!apiKey || apiKey === 'your_api_key_here') return new Map();
+  if (!apiKey || apiKey === 'your_api_key_here') {
+    // No Odds API key — fall back to SportsGameOdds bulk match odds
+    return buildSgoOddsIndexFallback();
+  }
 
   const sportKeys = Object.keys(THE_ODDS_API_SPORTS);
 
