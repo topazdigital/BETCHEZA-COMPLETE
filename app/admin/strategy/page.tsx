@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { TrendingUp, RefreshCw, CheckCircle2, XCircle, Circle, Save, Loader2, Plus, Trash2, Calendar, Clock, PenLine, Bot, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, RefreshCw, CheckCircle2, XCircle, Circle, Save, Loader2, Plus, Trash2, Calendar, Clock, PenLine, Bot, ChevronDown, ChevronUp, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '@/app/api/strategy/predictions/route';
@@ -418,6 +418,84 @@ function DayPanel({ day, weekId, onRefresh }: { day: DayPrediction; weekId: stri
   );
 }
 
+interface ResettleResult {
+  success: boolean;
+  summary?: {
+    correctedFromStoredScore: number;
+    settledFromSportsAPI: number;
+    totalFixed: number;
+    daysUpdated: number;
+  };
+  corrections?: Array<{ date: string; match: string; pick: string; score: string; was: string; now: string }>;
+  error?: string;
+}
+
+function ResettleButton({ onDone }: { onDone: () => void }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<ResettleResult | null>(null);
+
+  const run = async () => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch('/api/admin/strategy/resettle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: false }),
+      });
+      const data: ResettleResult = await res.json();
+      setResult(data);
+      if (data.success) onDone();
+    } catch {
+      setResult({ success: false, error: 'Network error' });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <Wrench className="h-3.5 w-3.5 text-amber-600" />
+          <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Fix Past Results</span>
+        </div>
+        <Button size="sm" variant="outline" onClick={run} disabled={running} className="h-7 gap-1 text-xs border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10">
+          {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          {running ? 'Re-settling…' : 'Re-settle All Past Picks'}
+        </Button>
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        Scans all historical picks and corrects any wrong WON/LOST labels using the stored final score.
+        Safe to run multiple times — only changes picks that are currently wrong.
+      </p>
+      {result && (
+        <div className={cn('rounded px-2.5 py-2 text-xs space-y-1', result.success ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'bg-red-500/10 text-red-600')}>
+          {result.success ? (
+            <>
+              <p className="font-semibold">
+                {result.summary?.totalFixed === 0
+                  ? 'All picks already correct — nothing changed.'
+                  : `Fixed ${result.summary?.totalFixed} pick${result.summary?.totalFixed !== 1 ? 's' : ''} across ${result.summary?.daysUpdated} day${result.summary?.daysUpdated !== 1 ? 's' : ''}.`}
+              </p>
+              {(result.corrections || []).slice(0, 6).map((c, i) => (
+                <p key={i} className="text-[10px] font-mono">
+                  {c.date} · {c.match} · <span className="font-bold">{c.pick}</span> · score {c.score} → <span className={c.now === 'win' ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>{c.now}</span> <span className="opacity-60">(was {c.was})</span>
+                </p>
+              ))}
+              {(result.corrections?.length || 0) > 6 && (
+                <p className="text-[10px] opacity-60">…and {result.corrections!.length - 6} more</p>
+              )}
+            </>
+          ) : (
+            <p>{result.error || 'Re-settlement failed'}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminStrategyPage() {
   const { data, mutate, isLoading } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
     '/api/strategy/predictions',
@@ -446,6 +524,10 @@ export default function AdminStrategyPage() {
         <p><strong>Schedule:</strong> Set picks for tomorrow or any future date — they&apos;ll be live that day.</p>
         <p><strong>AI Generate:</strong> Let the AI create picks from live match data (only if no manual picks exist).</p>
         <p><strong>Record Results:</strong> Mark each pick and the overall day as win/loss after matches finish.</p>
+      </div>
+
+      <div className="mb-4">
+        <ResettleButton onDone={mutate} />
       </div>
 
       {isLoading ? (

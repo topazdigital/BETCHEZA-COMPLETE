@@ -8,6 +8,7 @@ import {
   type TipMatchData,
 } from '@/lib/auto-tips-store';
 import { getMatchById, getAllMatches } from '@/lib/api/unified-sports-api';
+import { resettleStrategyPicksFromResults } from '@/lib/strategy-settle';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,6 +127,24 @@ export async function GET(req: Request) {
     console.log(`[settle-tips] bulk-resettle corrected: ${corrected} tips`);
     // Also pass the full real results to stale-settle for any edge cases
     settleStaleAutoTips(now, fullRealResults);
+
+    // Re-settle strategy picks using the same real-scores map.
+    // This corrects any wrongly-settled WON/LOST strategy picks automatically.
+    const strategyRealScores = new Map<string, { homeScore: number; awayScore: number; homeTeam: string; awayTeam: string }>();
+    for (const m of allCachedMatches) {
+      if (m.status !== 'finished' || typeof m.homeScore !== 'number' || typeof m.awayScore !== 'number') continue;
+      if (!m.homeTeam?.name || !m.awayTeam?.name) continue;
+      strategyRealScores.set(`${m.homeTeam.name}_${m.awayTeam.name}`, {
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        homeTeam: m.homeTeam.name,
+        awayTeam: m.awayTeam.name,
+      });
+    }
+    const strategyFixed = await resettleStrategyPicksFromResults(strategyRealScores, now);
+    if (strategyFixed > 0) {
+      console.log(`[settle-tips] strategy picks corrected: ${strategyFixed}`);
+    }
   } catch (e) {
     console.error('[settle-tips] secondary pass error:', e);
     // For any remaining pending tips, fall back to probabilistic settlement
