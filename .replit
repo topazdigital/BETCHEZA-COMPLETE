@@ -28,7 +28,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev"
+args = "bash -c 'while true; do NODE_OPTIONS=\"--max-old-space-size=4096\" npm run dev; echo \"[restart] Server crashed — restarting in 3s...\"; sleep 3; done'"
 waitForPort = 5000
 
 [[ports]]
