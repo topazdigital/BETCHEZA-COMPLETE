@@ -53,66 +53,133 @@ function getOpenAI(): OpenAI | null {
   try { return new OpenAI({ apiKey, baseURL }); } catch { return null; }
 }
 
+/**
+ * Top-tier leagues we actively PREFER for the strategy.
+ * Scores: 1 = elite, 2 = top, 3 = good, 4 = acceptable.
+ * Leagues NOT on this list get score 5 (acceptable but lower priority).
+ */
+const LEAGUE_QUALITY: Record<string, number> = {
+  // Elite (score 1)
+  'premier league': 1, 'english premier league': 1, 'epl': 1,
+  'la liga': 1, 'laliga': 1, 'serie a': 1, 'bundesliga': 1,
+  'ligue 1': 1, 'champions league': 1, 'uefa champions league': 1,
+  'english premier': 1,
+
+  // Top (score 2)
+  'eredivisie': 2, 'primeira liga': 2, 'super lig': 2, 'premier league (scotland)': 2,
+  'championship': 2, 'english championship': 2, 'serie b': 2, 'liga mx': 2,
+  'major league soccer': 2, 'mls': 2, 'a-league': 2, 'argentina primera': 2,
+  'brasileirao': 2, 'brasileiro': 2, 'belgian pro league': 2, 'jupiler pro league': 2,
+  'russian premier league': 2, 'ukraine premier league': 2, 'europa league': 2,
+  'uefa europa league': 2, 'conference league': 2, 'coppa italia': 2, 'dfb-pokal': 2,
+  'fa cup': 2, 'efl cup': 2, 'coupe de france': 2, 'copa del rey': 2,
+  'saudi pro league': 2, 'chinese super league': 2, 'j1 league': 2,
+
+  // Good (score 3)
+  'nwsl': 3, 'süper lig': 3, 'czech first league': 3, 'swiss super league': 3,
+  'austrian bundesliga': 3, 'danish superliga': 3, 'norwegian eliteserien': 3,
+  'eliteserien': 3, 'allsvenskan': 3, 'ekstraklasa': 3,
+  'liga nos': 3, 'scottish premiership': 3, 'greek super league': 3,
+  'romanian liga 1': 3, 'south african premier': 3, 'hungarian otp bank liga': 3,
+  'league one': 3, 'league two': 3, 'efl league one': 3, 'efl league two': 3,
+};
+
+function leagueScore(leagueName: string): number {
+  const norm = (leagueName || '').toLowerCase().trim();
+  for (const [key, score] of Object.entries(LEAGUE_QUALITY)) {
+    if (norm.includes(key)) return score;
+  }
+  return 5; // acceptable fallback
+}
+
 /** Score how "safe" a set of bookmaker odds is. Higher = safer bet. */
 function oddsToSafetyScore(odds: number): number {
-  if (odds >= 1.20 && odds <= 1.50) return 100; // very strong favourite — safest
-  if (odds >  1.50 && odds <= 1.80) return 90;  // strong favourite
-  if (odds >  1.80 && odds <= 2.10) return 75;  // slight favourite
-  if (odds >  2.10 && odds <= 2.50) return 55;  // near-evens
-  if (odds >  2.50 && odds <= 3.20) return 35;  // underdog territory
-  return 20;                                      // big underdog / long shot
+  if (odds >= 1.15 && odds <= 1.40) return 100;
+  if (odds >  1.40 && odds <= 1.60) return 92;
+  if (odds >  1.60 && odds <= 1.85) return 80;
+  if (odds >  1.85 && odds <= 2.10) return 65;
+  if (odds >  2.10 && odds <= 2.50) return 45;
+  if (odds >  2.50 && odds <= 3.20) return 28;
+  return 12;
 }
 
 /**
  * Given a match with real odds, return the SAFEST single pick from it.
- * Priority order: Double Chance (1X/X2) → Outright favourite → BTTS/O2.5 proxy.
- * Returns the pick along with its safety score so the greedy loop can sort candidates.
+ * Priority: Double Chance (1X/X2) → outright favourite.
  */
 function safestPick(
-  match: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date; odds?: { home: number; draw: number; away: number } | null },
+  match: {
+    homeTeam: { name: string };
+    awayTeam: { name: string };
+    league: { name: string };
+    kickoffTime: Date;
+    odds?: { home: number; draw: number; away: number } | null
+  },
   idx: number,
-): StrategyPick & { safetyScore: number } {
+): StrategyPick & { safetyScore: number; leagueScore: number } {
   let odds = 1.65;
   let pick = match.homeTeam.name;
   let market = '1X2';
   let safetyScore = 50;
+  const lScore = leagueScore(match.league.name);
 
   if (match.odds) {
     const { home, draw, away } = match.odds;
 
-    // Option A: Double Chance covers 2 of 3 outcomes — inherently safer
-    // Approximate DC odds using devig of 1X (home win or draw)
-    const totalInv = (1 / home) + (1 / draw) + (1 / away);
-    const dc1xFair = ((1 / home) + (1 / draw)) / totalInv;
-    const dcX2Fair = ((1 / away) + (1 / draw)) / totalInv;
-    const dc1xOdds = parseFloat((1 / dc1xFair).toFixed(2));
-    const dcX2Odds = parseFloat((1 / dcX2Fair).toFixed(2));
-    const bestDcOdds = dc1xOdds <= dcX2Odds ? dc1xOdds : dcX2Odds;
-    const bestDcPick = dc1xOdds <= dcX2Odds
-      ? `${match.homeTeam.name} or Draw`
-      : `${match.awayTeam.name} or Draw`;
-
-    // Option B: straight win on the favourite
-    const favOdds = home <= away ? home : away;
-    const favPick = home <= away ? match.homeTeam.name : match.awayTeam.name;
-
-    // Prefer DC if it lands in 1.15–1.85 (good safe range)
-    if (bestDcOdds >= 1.15 && bestDcOdds <= 1.90) {
-      odds = bestDcOdds;
-      pick = bestDcPick;
-      market = 'Double Chance';
-      safetyScore = oddsToSafetyScore(odds) + 10; // bonus for DC
-    } else if (favOdds >= 1.25 && favOdds <= 2.50) {
-      odds = favOdds;
-      pick = favPick;
-      market = '1X2';
-      safetyScore = oddsToSafetyScore(odds);
-    } else {
-      // Fallback: take the lower of the two outright odds
-      odds = parseFloat(Math.min(home, away).toFixed(2));
+    // Validate odds are real (bookmakers don't give odds below 1.01 or above 100)
+    if (home < 1.01 || away < 1.01 || draw < 1.01) {
+      odds = Math.min(home, away);
       pick = home <= away ? match.homeTeam.name : match.awayTeam.name;
       market = '1X2';
       safetyScore = oddsToSafetyScore(odds);
+    } else {
+      // Derive fair Double Chance odds using devig
+      const totalInv = (1 / home) + (1 / draw) + (1 / away);
+      const dc1xFair = ((1 / home) + (1 / draw)) / totalInv;
+      const dcX2Fair = ((1 / away) + (1 / draw)) / totalInv;
+      const dc1xOdds = parseFloat((1 / dc1xFair).toFixed(2));
+      const dcX2Odds = parseFloat((1 / dcX2Fair).toFixed(2));
+
+      // Pick the lower DC odds (safer side)
+      const bestDcOdds = dc1xOdds <= dcX2Odds ? dc1xOdds : dcX2Odds;
+      const bestDcPick = dc1xOdds <= dcX2Odds
+        ? `${match.homeTeam.name} or Draw`
+        : `${match.awayTeam.name} or Draw`;
+      const bestDcType = dc1xOdds <= dcX2Odds ? '1X' : 'X2';
+
+      // Favourite outright odds
+      const favOdds = home <= away ? home : away;
+      const favPick = home <= away ? match.homeTeam.name : match.awayTeam.name;
+      const underdogOdds = home <= away ? away : home;
+
+      // Only use a match if there's a clear favourite (avoid coin-flips)
+      const clearFavourite = favOdds <= 2.20 || bestDcOdds <= 1.65;
+
+      if (!clearFavourite) {
+        // Very even match — skip if odds are wide open (low value for strategy)
+        safetyScore = 15;
+        odds = bestDcOdds;
+        pick = bestDcPick;
+        market = 'Double Chance';
+      } else if (bestDcOdds >= 1.10 && bestDcOdds <= 1.75) {
+        // Good DC range
+        odds = bestDcOdds;
+        pick = bestDcPick;
+        market = 'Double Chance';
+        safetyScore = oddsToSafetyScore(odds) + 12; // DC bonus
+      } else if (favOdds >= 1.15 && favOdds <= 1.85) {
+        // Clear outright favourite
+        odds = favOdds;
+        pick = favPick;
+        market = '1X2';
+        safetyScore = oddsToSafetyScore(odds);
+      } else {
+        // Fallback: use DC anyway
+        odds = bestDcOdds;
+        pick = bestDcPick;
+        market = 'Double Chance';
+        safetyScore = oddsToSafetyScore(odds) + 8;
+      }
     }
   }
 
@@ -128,17 +195,32 @@ function safestPick(
     pick,
     market,
     odds,
-    confidence: odds <= 1.50 ? 'High' : odds <= 1.85 ? 'Medium' : 'Low',
-    reasoning: `${pick} selected from ${market} market at real bookmaker odds ${odds}. Pick prioritises low-risk selection to keep combined accumulator in the 3.0–4.0 range.`,
+    confidence: odds <= 1.45 ? 'High' : odds <= 1.75 ? 'Medium' : 'Low',
+    reasoning: buildReasoning(match.homeTeam.name, match.awayTeam.name, match.league.name, pick, market, odds),
     result: 'pending',
     safetyScore,
-  } as StrategyPick & { safetyScore: number };
+    leagueScore: lScore,
+  } as StrategyPick & { safetyScore: number; leagueScore: number };
+}
+
+function buildReasoning(home: string, away: string, league: string, pick: string, market: string, odds: number): string {
+  const leagueTier = leagueScore(league);
+  const tierLabel = leagueTier === 1 ? 'elite' : leagueTier === 2 ? 'top-flight' : 'professional';
+  if (market === 'Double Chance') {
+    const side = pick.includes('or Draw') ? (pick.startsWith(home) ? 'home' : 'away') : '';
+    if (side === 'home') {
+      return `${home} backed with Double Chance (1X) at ${tierLabel}-level odds ${odds}. Covers a home win or draw — two of three possible outcomes — making this a high-probability selection for the accumulator.`;
+    } else {
+      return `${away} Double Chance (X2) at ${odds} in ${league}. Away win or draw both pay, covering a dominant two-thirds probability. Low-risk anchor for the accumulator.`;
+    }
+  }
+  return `${pick} selected at ${odds} from ${league} (${tierLabel}). Bookmaker odds reflect a clear probability edge. Single-selection keeps the accumulator risk controlled.`;
 }
 
 /**
- * Greedy accumulator builder.
- * Picks the SAFEST legs from the candidate pool and keeps adding until the
- * combined odds land in [minTarget, maxTarget].  Works with 1–10+ games.
+ * Greedy accumulator builder — safety + league quality sorted.
+ * Only uses matches with real bookmaker odds when possible.
+ * Combines safety score with league quality to rank candidates.
  */
 function buildGreedyAccumulator(
   pool: Parameters<typeof safestPick>[0][],
@@ -148,24 +230,34 @@ function buildGreedyAccumulator(
 ): StrategyPick[] {
   if (pool.length === 0) return [];
 
-  // Score every candidate and sort safest-first
-  const candidates = pool
+  // Prefer matches WITH real bookmaker odds
+  const withOdds = pool.filter(m => m.odds && m.odds.home > 1.05 && m.odds.away > 1.05);
+  const workingPool = withOdds.length >= 3 ? withOdds : pool;
+
+  // Score every candidate — combine safety + league quality (lower leagueScore = better)
+  const candidates = workingPool
     .map((m, i) => ({ m, pick: safestPick(m, i) }))
-    .sort((a, b) => b.pick.safetyScore - a.pick.safetyScore);
+    .sort((a, b) => {
+      // Primary: safety score (higher = better)
+      const safetyDiff = b.pick.safetyScore - a.pick.safetyScore;
+      if (Math.abs(safetyDiff) > 8) return safetyDiff;
+      // Secondary: league quality (lower = better)
+      return a.pick.leagueScore - b.pick.leagueScore;
+    });
 
   const chosen: (StrategyPick & { safetyScore: number })[] = [];
   let combined = 1.0;
 
   for (const { pick } of candidates) {
-    if (combined >= minTarget) break;          // target reached — stop adding
+    if (combined >= minTarget) break;
     const projected = combined * pick.odds;
-    if (projected > maxTarget + 0.30) continue; // would overshoot — skip this leg
+    // More conservative overshoot check
+    if (projected > maxTarget + 0.15) continue;
     chosen.push(pick);
     combined = projected;
-    if (chosen.length >= 10) break;            // hard cap
+    if (chosen.length >= 8) break;
   }
 
-  // If we still haven't hit the floor, just return what we have (better than nothing)
   if (chosen.length === 0 && candidates.length > 0) {
     chosen.push(candidates[0].pick);
   }
@@ -207,29 +299,41 @@ async function ensureTable(): Promise<void> {
 }
 
 function buildFallbackPicks(targetDate: Date, dateStr: string): StrategyPick[] {
-  // Last-resort fallback with realistic static odds that combine to ~3.36.
-  // These odds are based on historical averages for these markets, NOT random.
-  // Combined: 1.68 × 2.00 = 3.36 (inside the 3.00–4.00 target).
-  const hardcoded = [
-    { home: 'Home Team', away: 'Away Team', league: 'Top League', pick: 'Home Win or Draw', market: 'Double Chance', odds: 1.68 },
-    { home: 'Home Team B', away: 'Away Team B', league: 'Top League', pick: 'Over 2.5 Goals', market: 'Over/Under', odds: 2.00 },
+  return [
+    {
+      id: `${dateStr}-hc-0`,
+      homeTeam: 'Home Team',
+      awayTeam: 'Away Team',
+      league: 'Top European League',
+      matchTime: new Date(new Date(targetDate).setHours(17, 0, 0, 0)).toISOString(),
+      pick: 'Home or Draw',
+      market: 'Double Chance',
+      odds: 1.55,
+      confidence: 'High' as const,
+      reasoning: 'Picks loading — real match data will replace these once today\'s fixtures are confirmed by the sports feed.',
+      result: 'pending' as const,
+    },
+    {
+      id: `${dateStr}-hc-1`,
+      homeTeam: 'Home Team B',
+      awayTeam: 'Away Team B',
+      league: 'Top European League',
+      matchTime: new Date(new Date(targetDate).setHours(19, 0, 0, 0)).toISOString(),
+      pick: 'Away or Draw',
+      market: 'Double Chance',
+      odds: 1.85,
+      confidence: 'Medium' as const,
+      reasoning: 'Picks loading — real match data will replace these once today\'s fixtures are confirmed by the sports feed.',
+      result: 'pending' as const,
+    },
   ];
-  return hardcoded.map((h, i) => ({
-    id: `${dateStr}-hc-${i}`,
-    homeTeam: h.home,
-    awayTeam: h.away,
-    league: h.league,
-    matchTime: new Date(new Date(targetDate).setHours(17, 0, 0, 0)).toISOString(),
-    pick: h.pick,
-    market: h.market,
-    odds: h.odds,
-    confidence: 'Medium' as const,
-    reasoning: 'Pending live match data. Picks will update when today\'s fixtures are confirmed.',
-    result: 'pending' as const,
-  }));
 }
 
-async function generatePicksForDate(targetDate: Date, dayPlan: { stake: number; save: number; targetWin: number }, dayNumber: number): Promise<StrategyPick[]> {
+async function generatePicksForDate(
+  targetDate: Date,
+  dayPlan: { stake: number; save: number; targetWin: number },
+  dayNumber: number,
+): Promise<StrategyPick[]> {
   let picks: StrategyPick[] = [];
   const dateStr = targetDate.toISOString().slice(0, 10);
 
@@ -239,90 +343,168 @@ async function generatePicksForDate(targetDate: Date, dayPlan: { stake: number; 
       (m) => m.sport.slug === 'soccer' || m.sport.slug === 'football'
     );
 
+    // Filter to matches today (EAT)
     const dayMatches = soccerMatches.filter((m) => {
-      return new Date(m.kickoffTime).toDateString() === targetDate.toDateString();
-    }).slice(0, 25);
+      const kickoffEAT = toEATDate(new Date(m.kickoffTime));
+      return kickoffEAT.toISOString().slice(0, 10) === getTodayStrEAT(targetDate);
+    });
 
-    const pool = dayMatches.length >= 2 ? dayMatches : soccerMatches.slice(0, 25);
+    // Sort by league quality — elite leagues first
+    const sortedDay = [...dayMatches].sort((a, b) =>
+      leagueScore(a.league.name) - leagueScore(b.league.name)
+    );
 
-    const matchList = pool
-      .map((m) => `${m.homeTeam.name} vs ${m.awayTeam.name} (${m.league.name}${m.odds ? `, H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''})`)
-      .join('\n');
+    // Prefer matches WITH real bookmaker odds in top leagues
+    const withOdds = sortedDay.filter(m => m.odds && m.odds.home > 1.05 && m.odds.away > 1.05);
+
+    // Build the candidate pool: prioritise today's games with real odds
+    const pool = withOdds.length >= 3
+      ? withOdds.slice(0, 30)
+      : sortedDay.length >= 2
+        ? sortedDay.slice(0, 30)
+        : soccerMatches
+            .filter(m => m.odds && m.odds.home > 1.05)
+            .sort((a, b) => leagueScore(a.league.name) - leagueScore(b.league.name))
+            .slice(0, 30);
+
+    // Build a rich match description for AI analysis
+    const matchList = pool.map((m) => {
+      const oddsStr = m.odds
+        ? `Home=${m.odds.home} Draw=${m.odds.draw} Away=${m.odds.away}`
+        : 'odds unavailable';
+      const lq = leagueScore(m.league.name);
+      const lqLabel = lq === 1 ? '★★★★★' : lq === 2 ? '★★★★' : lq === 3 ? '★★★' : '★★';
+      const kickEAT = toEATDate(new Date(m.kickoffTime));
+      const timeStr = kickEAT.toISOString().slice(11, 16) + ' EAT';
+      return `• ${m.homeTeam.name} vs ${m.awayTeam.name} | ${m.league.name} ${lqLabel} | KO: ${timeStr} | ${oddsStr}`;
+    }).join('\n');
 
     const openai = getOpenAI();
     if (openai && matchList) {
-      const dateDisplay = targetDate.toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      const prompt = `You are a professional football betting analyst for Betcheza, a Kenyan sports tipster platform.
+      const dateDisplay = targetDate.toLocaleDateString('en-KE', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
 
-Today is ${dateDisplay}. This is Day ${dayNumber} of the weekly "3 Daily Odds" compounding plan — stake KES ${dayPlan.stake.toLocaleString()}, target win KES ${dayPlan.targetWin.toLocaleString()}.
+      const prompt = `You are the head football analyst at Betcheza — Kenya's #1 tipster platform. Paying subscribers trust this "3 Daily Sure Odds" strategy completely. Getting the picks wrong damages trust, costs people money, and harms the brand. Be extremely careful and accurate.
 
-STRATEGY GOAL: Select ANY NUMBER of football picks (1, 2, 3, 4, 5, 6 — whatever works) so that ALL odds multiplied together (combined accumulator) falls between 2.90 and 4.20. The number of games does NOT matter — 1 game is fine, 10 games is fine. What matters is: combined odds 2.90–4.20.
+Date: ${dateDisplay} — Day ${dayNumber} of 7 | Stake: KES ${dayPlan.stake.toLocaleString()} → Target: KES ${dayPlan.targetWin.toLocaleString()}
 
-SAFETY FIRST — minimise risk:
-- ALWAYS prefer Double Chance (1X or X2) over outright 1X2 when the match is tight
-- Prefer lower odds (1.20–1.80) — more games with safe odds beats fewer games with risky odds
-- Where bookmaker odds are shown (H=/D=/A=), use those EXACT values — never invent odds
-- Where no odds are shown, estimate conservatively: strong favourites 1.35–1.65, slight favourites 1.70–2.10
+═══════════════════════════════════════════
+OBJECTIVE
+═══════════════════════════════════════════
+Select 2–6 football picks whose combined accumulator odds multiply to between 2.90 and 4.20.
 
-MARKET MIX — vary where suitable:
-- "1X2" for clear favourites (odds < 2.00)
-- "Double Chance" (1X or X2) when either side could win but one is favoured
-- "BTTS Yes" when both teams score regularly
-- "Over 2.5 Goals" for high-scoring matchups
-- "Under 2.5 Goals" for defensive teams
+═══════════════════════════════════════════
+STRICT RULES — MUST FOLLOW
+═══════════════════════════════════════════
+1. ONLY use matches from the list below. Never invent matches or teams.
+2. ONLY use the bookmaker odds shown (Home=/Draw=/Away=). If no odds are shown, DO NOT include that match.
+3. PREFER top-tier leagues (5-star ★★★★★ and 4-star ★★★★ ratings). Avoid 2-star leagues unless no better option exists.
+4. NEVER pick an outright winner unless their odds are ≤ 1.80. Otherwise use Double Chance.
+5. PREFER Double Chance (1X or X2) over straight 1X2 picks — covers two outcomes.
+6. AVOID coin-flip matches where home and away odds are within 0.30 of each other (balanced match, too risky).
+7. Combined odds MUST land in [2.90 – 4.20]. Recalculate before finalising.
+8. Confidence must be "High" (odds ≤ 1.45), "Medium" (1.46–1.75), or "Low" (1.76+).
+9. The "reasoning" field MUST include: (a) why this team is favoured, (b) what the odds tell you, (c) which market you chose and why.
 
-ANALYSIS: mention actual form factors in reasoning (home record, head-to-head, goals scored/conceded etc.)
+═══════════════════════════════════════════
+DEEP ANALYSIS CHECKLIST (for each pick)
+═══════════════════════════════════════════
+Consider and mention in reasoning where relevant:
+• Home vs away record (home advantage is real in football)
+• Recent form — are they on a winning streak or struggling?
+• Head-to-head pattern — who dominates historically?
+• Bookmaker implied probability — does the price reflect the true risk?
+• League position / stakes — is this a must-win? End of season pressure?
+• Squad strength — is this a top-tier team vs a weaker opponent?
+• Market selection — why Double Chance over 1X2? Why this side and not the other?
 
-Available matches (with bookmaker odds where available):
+═══════════════════════════════════════════
+AVAILABLE MATCHES
+═══════════════════════════════════════════
 ${matchList}
 
-Return ONLY valid JSON array. Any number of picks is allowed as long as the combined product of all odds is between 2.90 and 4.20:
-[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"Double Chance","odds":1.45,"confidence":"High","reasoning":"..."}]`;
+═══════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════
+Return ONLY a valid JSON array. No markdown, no commentary, just the JSON:
+[
+  {
+    "homeTeam": "...",
+    "awayTeam": "...",
+    "league": "...",
+    "matchTime": "ISO-8601 string",
+    "pick": "Team Name or Draw",
+    "market": "Double Chance",
+    "odds": 1.45,
+    "confidence": "High",
+    "reasoning": "Detailed 2-3 sentence analysis covering form, odds value, and market choice..."
+  }
+]
+
+Double-check: multiply all odds together. Result MUST be between 2.90 and 4.20.`;
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 2000,
+        max_completion_tokens: 3000,
+        temperature: 0.3, // Lower temp = more conservative, consistent picks
       });
 
       const raw = completion.choices?.[0]?.message?.content || '[]';
       try {
         const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-        const parsed = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
+        const jsonStr = cleaned.startsWith('[') ? cleaned : `[${cleaned}]`;
+        const parsed = JSON.parse(jsonStr);
         const arr = Array.isArray(parsed) ? parsed : [];
+
         if (arr.length >= 1) {
-          const candidates: StrategyPick[] = arr.slice(0, 10).map((p: StrategyPick, i: number) => ({
-            ...p,
-            id: `${dateStr}-${i}`,
-            odds: Math.max(1.05, parseFloat(String(p.odds)) || 1.5),
-            result: 'pending' as const,
-          }));
+          const candidates: StrategyPick[] = arr.slice(0, 8).map((p: StrategyPick, i: number) => {
+            const rawOdds = parseFloat(String(p.odds));
+            // Reject obviously wrong odds (invented, not from bookmaker list)
+            const validOdds = rawOdds >= 1.05 && rawOdds <= 20 ? rawOdds : 1.50;
+            return {
+              ...p,
+              id: `${dateStr}-${i}`,
+              odds: validOdds,
+              confidence: p.confidence || (validOdds <= 1.45 ? 'High' : validOdds <= 1.75 ? 'Medium' : 'Low'),
+              result: 'pending' as const,
+              reasoning: p.reasoning || buildReasoning(p.homeTeam, p.awayTeam, p.league, p.pick, p.market, validOdds),
+            };
+          });
+
           const combined = candidates.reduce((acc, p) => acc * p.odds, 1);
-          // Accept if combined odds are comfortably within target (2.80–4.50 is fine)
-          if (combined >= 2.80 && combined <= 4.50) {
+
+          // Accept if AI got the combined odds right
+          if (combined >= 2.70 && combined <= 4.50) {
             picks = candidates;
+            console.log(`[daily-strategy] AI picks accepted: ${picks.length} legs, combined=${combined.toFixed(2)}`);
+          } else {
+            console.warn(`[daily-strategy] AI picks rejected — combined=${combined.toFixed(2)} outside [2.70–4.50]. Using greedy fallback.`);
           }
         }
-      } catch { }
+      } catch (parseErr) {
+        console.warn('[daily-strategy] AI JSON parse error:', parseErr);
+      }
     }
 
-    // Fallback: greedy safety-first accumulator from real bookmaker odds.
-    // Works with any number of games (1–10+) — always tries to hit 2.90–4.20.
+    // Fallback: greedy safety-first accumulator from real bookmaker odds
     if (picks.length === 0 && pool.length > 0) {
-      const oddsPool = pool.filter(m => m.odds && m.odds.home > 1).slice(0, 25);
-      if (oddsPool.length > 0) {
+      const oddsPool = pool.filter(m => m.odds && m.odds.home > 1.05 && m.odds.away > 1.05);
+      if (oddsPool.length >= 2) {
         picks = buildGreedyAccumulator(oddsPool, dateStr, 2.90, 4.20);
+        console.log(`[daily-strategy] Greedy picks: ${picks.length} legs`);
       }
-      // If still no picks (no real odds available), use any available matches
+      // If still no picks — use any matches, odds optional
       if (picks.length === 0 && pool.length > 0) {
-        picks = buildGreedyAccumulator(pool.slice(0, 10), dateStr, 2.90, 4.20);
+        picks = buildGreedyAccumulator(pool.slice(0, 15), dateStr, 2.90, 4.20);
       }
     }
   } catch (e: unknown) {
     const err = e as { status?: number; code?: string; message?: string };
     const isQuota = err?.status === 429 || err?.code === 'insufficient_quota';
     if (isQuota) {
-      console.warn('[daily-strategy] OpenAI quota exhausted — using odds-based fallback picks');
+      console.warn('[daily-strategy] OpenAI quota exhausted — using greedy fallback');
     } else {
       console.error('[daily-strategy] generate error:', err?.message ?? e);
     }
@@ -364,6 +546,8 @@ export async function GET(req: NextRequest) {
     const picks = await generatePicksForDate(now, plan, dayNumber);
     const combinedOdds = picks.reduce((acc, p) => acc * p.odds, 1);
 
+    console.log(`[daily-strategy] Final: ${picks.length} picks, combined=${combinedOdds.toFixed(2)}, leagues=${picks.map(p => p.league).join(' | ')}`);
+
     if (existing.rows.length > 0) {
       await execute(
         `UPDATE daily_strategy SET picks = ?, combined_odds = ?, generated_at = NOW(), posted_at = NOW(), status = 'active' WHERE date = ?`,
@@ -379,7 +563,7 @@ export async function GET(req: NextRequest) {
 
     const stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
     if (stored) {
-      const idx = stored.days.findIndex(d => d.date === todayStr);
+      const idx = stored.days.findIndex((d: DayPrediction) => d.date === todayStr);
       if (idx >= 0) {
         stored.days[idx].picks = picks;
         stored.days[idx].combinedOdds = parseFloat(combinedOdds.toFixed(2));
@@ -388,7 +572,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    console.log(`[daily-strategy] Posted ${picks.length} picks for ${todayStr} (combined odds: ${combinedOdds.toFixed(2)})`);
     return NextResponse.json({ success: true, date: todayStr, picks, combinedOdds: parseFloat(combinedOdds.toFixed(2)) });
   } catch (e: unknown) {
     const err = e as { message?: string };
@@ -398,7 +581,7 @@ export async function GET(req: NextRequest) {
 
     const stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
     if (stored) {
-      const idx = stored.days.findIndex(d => d.date === todayStr);
+      const idx = stored.days.findIndex((d: DayPrediction) => d.date === todayStr);
       if (idx >= 0) {
         stored.days[idx].picks = picks;
         stored.days[idx].combinedOdds = parseFloat(combinedOdds.toFixed(2));
