@@ -28,8 +28,12 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash -c 'while true; do NODE_OPTIONS=\"--max-old-space-size=4096\" npm run dev; echo \"[restart] Server crashed — restarting in 3s...\"; sleep 3; done'"
+args = "bash -c 'while true; do if [ ! -d \".next\" ]; then echo \"[build] No build found, building...\"; NODE_OPTIONS=\"--max-old-space-size=4096\" npm run build; fi; echo \"[start] Starting production server...\"; NODE_OPTIONS=\"--max-old-space-size=4096\" npm run start; EXIT=$?; echo \"[restart] Server exited ($EXIT) — restarting in 5s...\"; rm -rf .next; sleep 5; done'"
 waitForPort = 5000
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
 
 [[ports]]
 localPort = 5000
