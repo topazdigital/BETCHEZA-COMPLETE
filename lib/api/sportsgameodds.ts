@@ -36,13 +36,18 @@ function setCached<T>(key: string, value: T): void {
   sgoCache.set(key, { value, ts: Date.now() });
 }
 
-let backoffUntil = 0;
-const BACKOFF_MS = 30 * 60 * 1000;
+// Auth failures (401/403) back off for 30 min — key is invalid/suspended.
+// Rate-limit hits (429) back off for only 5 min — quota refreshes quickly.
+let authBackoffUntil = 0;
+let rateLimitBackoffUntil = 0;
+const AUTH_BACKOFF_MS  = 30 * 60 * 1000;
+const RATE_BACKOFF_MS  =  5 * 60 * 1000;
 
 async function sgoFetch(path: string, params: Record<string, string> = {}): Promise<unknown | null> {
   const apiKey = await getApiKey('sportsgameodds_api_key');
   if (!apiKey) return null;
-  if (Date.now() < backoffUntil) return null;
+  if (Date.now() < authBackoffUntil) return null;
+  if (Date.now() < rateLimitBackoffUntil) return null;
 
   const url = new URL(`${BASE}${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -62,10 +67,12 @@ async function sgoFetch(path: string, params: Record<string, string> = {}): Prom
       next: { revalidate: 60 },
     });
     if (!res.ok) {
-      // Auth or quota failure — back off so we don't burn the budget.
-      if (res.status === 401 || res.status === 403 || res.status === 429) {
-        backoffUntil = Date.now() + BACKOFF_MS;
-        console.warn(`[SGO] HTTP ${res.status} — backing off for 30 min`);
+      if (res.status === 401 || res.status === 403) {
+        authBackoffUntil = Date.now() + AUTH_BACKOFF_MS;
+        console.warn(`[SGO] HTTP ${res.status} — auth error, backing off for 30 min`);
+      } else if (res.status === 429) {
+        rateLimitBackoffUntil = Date.now() + RATE_BACKOFF_MS;
+        console.warn('[SGO] HTTP 429 — rate limited, backing off for 5 min');
       }
       return null;
     }

@@ -13,6 +13,7 @@ import { getBrowserTimezone, formatTime, formatDate, isToday, isTomorrow } from 
 import { liveStatusLabel, isMinuteTickingSport } from '@/lib/utils/live-status';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { getTeamCategoryBadge } from '@/lib/utils/team-category';
+import { BookmakerOddsStrip } from '@/components/matches/bookmaker-odds-strip';
 
 /**
  * Ticking live-minute hook for match cards.
@@ -366,6 +367,15 @@ export function MatchCardNew({
             <span className="ml-auto font-semibold text-primary">{aiPick.confidence}%</span>
           </Link>
         )}
+
+        {/* Bookmaker odds comparison strip */}
+        {match.odds && !isFinished && !isLive && (
+          <BookmakerOddsStrip
+            matchId={match.id}
+            matchSlug={slug}
+            hasDraw={!isTwoWay}
+          />
+        )}
       </div>
     );
   }
@@ -528,6 +538,15 @@ export function MatchCardNew({
             marketName={marketName}
           />
         </div>
+      )}
+
+      {/* Bookmaker odds comparison strip — only for scheduled (upcoming) matches */}
+      {match.odds && !isFinished && !isLive && (
+        <BookmakerOddsStrip
+          matchId={match.id}
+          matchSlug={slug}
+          hasDraw={!isTwoWay}
+        />
       )}
 
       {/* SmartBet AI pick — default/featured variant, only for scheduled matches with odds */}
