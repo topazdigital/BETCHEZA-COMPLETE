@@ -38,6 +38,10 @@ export async function GET(
     joinedUserIds = [];
   }
 
+  // Extract minimum tips requirement from competition rule config
+  const minTipsRule = (comp.ruleConfig ?? []).find(r => r.type === 'min_tips');
+  const minTipsRequired = minTipsRule ? Number(minTipsRule.value ?? 1) : 1;
+
   const leaderboard = started
     ? await computeLeaderboard({
         startDate: comp.startDate,
@@ -47,7 +51,7 @@ export async function GET(
         sportFocus: comp.sportFocus,
         matchKickoffFrom: comp.matchKickoffFrom,
         matchKickoffTo: comp.matchKickoffTo,
-        minTips: 1,
+        minTips: minTipsRequired,
         limit: 200,
         // Pass joined real-user IDs — fakes always included inside computeLeaderboard
         allowedUserIds: joinedUserIds,
@@ -101,7 +105,7 @@ export async function GET(
     scoring: {
       formula: 'wins × 10 + avg-win-odds bonus − losses × 5',
       scope: scopeLabel,
-      minimumTips: 1,
+      minimumTips: minTipsRequired,
     },
     isRealData: actualParticipants > 0,
   });

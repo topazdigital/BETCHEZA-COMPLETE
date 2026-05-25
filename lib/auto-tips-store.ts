@@ -811,6 +811,13 @@ function determineTipOutcome(
   ) {
     return homeScore !== awayScore ? 'won' : 'lost';
   }
+  // Catch-all for "{Team Name} or Draw" / "Draw or {Team Name}" in Double Chance market.
+  // Team names replace "home"/"away" so the checks above won't match.
+  // "or Draw" at end → treat as 1X (home or draw); "Draw or" at start → treat as X2 (draw or away).
+  if (mkt.includes('double chance') && (pred.includes('or draw') || pred.includes('draw or'))) {
+    if (pred.includes('draw or')) return awayScore >= homeScore ? 'won' : 'lost'; // X2-style
+    return homeScore >= awayScore ? 'won' : 'lost'; // 1X-style (most common)
+  }
 
   // ── 1X2 / Match Result ───────────────────────────────────────────────────
   // Home win

@@ -44,6 +44,24 @@ function checkPickResult(
     const is1X = pickValue.includes('1x') || (pickValue.includes('home') && (pickValue.includes('draw') || pickValue.includes('or')));
     if (isX2) return awayScore >= homeScore ? 'win' : 'loss';
     if (is1X) return homeScore >= awayScore ? 'win' : 'loss';
+
+    // Handle "{Team Name} or Draw" / "Draw or {Team Name}" format where team name
+    // replaces "home"/"away" — e.g. "FC Motagua or Draw"
+    if (pickValue.includes('or draw') || pickValue.includes('draw or')) {
+      const homeNormCheck = normalizeTeam(pick.homeTeam);
+      const awayNormCheck = normalizeTeam(pick.awayTeam);
+      // If home team name appears in the normalised pick → 1X (home or draw)
+      if (homeNormCheck && homeNormCheck.length > 2 && pickNorm.includes(homeNormCheck)) {
+        return homeScore >= awayScore ? 'win' : 'loss';
+      }
+      // If away team name appears in the normalised pick → X2 (away or draw)
+      if (awayNormCheck && awayNormCheck.length > 2 && pickNorm.includes(awayNormCheck)) {
+        return awayScore >= homeScore ? 'win' : 'loss';
+      }
+      // Unknown team — a draw should always win a "? or Draw" pick
+      return homeScore >= awayScore ? 'win' : 'loss';
+    }
+
     // 12 = Home or Away: wins when either team wins (no draw)
     return homeScore !== awayScore ? 'win' : 'loss';
   }
