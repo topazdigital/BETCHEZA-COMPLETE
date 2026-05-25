@@ -186,14 +186,16 @@ async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
       [cutoff, getWeekId(new Date())]
     );
 
-    // Normalize week_id: if a row's week_id is not a Monday (e.g. a Sunday was
-    // accidentally stored), remap it to the correct ISO Monday-based week ID.
-    // This prevents the same real week from appearing twice in the past weeks list.
+    // Normalize week_id: the production DB stores weeks starting on Sunday
+    // (Sun–Sat layout). Remap any non-Monday week_id to the Monday that falls
+    // inside that same week, so weeks never appear twice in the past list.
     const normalizeWeekId = (wid: string): string => {
       const d = new Date(wid);
       const day = d.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
-      if (day === 1) return wid; // already a Monday
-      const diff = day === 0 ? -6 : 1 - day; // shift back to Monday
+      if (day === 1) return wid; // already a Monday — no change
+      // Sunday start → +1 day = Monday (the Monday within that Sun–Sat week)
+      // Any other non-Monday → shift back to Monday of the same ISO week
+      const diff = day === 0 ? 1 : 1 - day;
       d.setUTCDate(d.getUTCDate() + diff);
       return d.toISOString().slice(0, 10);
     };
@@ -716,6 +718,37 @@ function checkPickResultLocal(
       if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
       if (under) return total < parseFloat(under[1]) ? 'win' : 'loss';
     }
+  }
+
+  // ── First Team to Score ─────────────────────────────────────────────────
+  if (market.includes('first team to score') || market.includes('first goal') || market.includes('first scorer')) {
+    // If only one side scored, that side definitely scored first.
+    if (homeScore > 0 && awayScore === 0) {
+      const wantHome = pickValue.includes('home') || pickNorm === homeNorm;
+      return wantHome ? 'win' : 'loss';
+    }
+    if (awayScore > 0 && homeScore === 0) {
+      const wantAway = pickValue.includes('away') || pickNorm === awayNorm;
+      return wantAway ? 'win' : 'loss';
+    }
+    if (homeScore === 0 && awayScore === 0) {
+      // No goal scored — "No Goal" / "No scorer" bet wins; team bets lose
+      const wantNone = pickValue.includes('no goal') || pickValue.includes('no scorer') || pickValue === 'no';
+      return wantNone ? 'win' : 'loss';
+    }
+    // Both teams scored — use HT score to infer who scored first if available
+    if (htHomeScore != null && htAwayScore != null) {
+      if (htHomeScore > 0 && htAwayScore === 0) {
+        const wantHome = pickValue.includes('home') || pickNorm === homeNorm;
+        return wantHome ? 'win' : 'loss';
+      }
+      if (htAwayScore > 0 && htHomeScore === 0) {
+        const wantAway = pickValue.includes('away') || pickNorm === awayNorm;
+        return wantAway ? 'win' : 'loss';
+      }
+    }
+    // Can't determine first scorer from final score alone — leave pending
+    return null;
   }
 
   // ── BTTS ────────────────────────────────────────────────────────────────
