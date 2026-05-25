@@ -12,72 +12,110 @@
  * Key resolution order:
  *   1. site_settings.sportsgameodds_api_key (admin panel)
  *   2. process.env.SPORTSGAMEODDS_API_KEY
+ *
+ * Caching strategy (two layers):
+ *   1. In-memory Map  — fastest; cleared on restart (5-min TTL)
+ *   2. File cache     — survives restarts (.local/data/sgo-cache/); 2-hour TTL
+ * The file cache is the key protection against wasting daily quota on restarts.
  */
+import fs from 'fs';
+import path from 'path';
 import { getApiKey } from '@/lib/api-keys';
 
 const BASE = 'https://api.sportsgameodds.com/v2';
 
-// Cache wrapper — kept tiny so we don't hammer their amateur tier
-// (50k req/hr / 500k/day / 10/min).
+// ─── In-memory cache ────────────────────────────────────────────────────
 type CacheEntry<T> = { value: T; ts: number };
 const sgoCache = new Map<string, CacheEntry<unknown>>();
-const SGO_CACHE_TTL_MS = 5 * 60 * 1000;
+const SGO_MEM_TTL_MS  = 5 * 60 * 1000;   // 5 min — hot data
 
-function getCached<T>(key: string): T | null {
+function getMemCached<T>(key: string): T | null {
   const e = sgoCache.get(key) as CacheEntry<T> | undefined;
   if (!e) return null;
-  if (Date.now() - e.ts > SGO_CACHE_TTL_MS) {
-    sgoCache.delete(key);
-    return null;
-  }
+  if (Date.now() - e.ts > SGO_MEM_TTL_MS) { sgoCache.delete(key); return null; }
   return e.value;
 }
-function setCached<T>(key: string, value: T): void {
+function setMemCached<T>(key: string, value: T): void {
   sgoCache.set(key, { value, ts: Date.now() });
 }
 
+// ─── File cache — survives restarts ────────────────────────────────────
+const SGO_FILE_CACHE_DIR = path.join(process.cwd(), '.local', 'data', 'sgo-cache');
+const SGO_FILE_TTL_MS    = 2 * 60 * 60 * 1000; // 2 hours
+
+/** Stable filename from URL — base64url, max 80 chars. */
+function urlToFilename(url: string): string {
+  const b64 = Buffer.from(url).toString('base64url');
+  return b64.slice(0, 80) + '.json';
+}
+
+function getFileCache<T>(url: string): T | null {
+  try {
+    const fp = path.join(SGO_FILE_CACHE_DIR, urlToFilename(url));
+    if (!fs.existsSync(fp)) return null;
+    const raw = JSON.parse(fs.readFileSync(fp, 'utf8')) as CacheEntry<T>;
+    if (Date.now() - raw.ts > SGO_FILE_TTL_MS) { fs.unlinkSync(fp); return null; }
+    return raw.value;
+  } catch { return null; }
+}
+
+function setFileCache<T>(url: string, value: T): void {
+  try {
+    fs.mkdirSync(SGO_FILE_CACHE_DIR, { recursive: true });
+    const fp = path.join(SGO_FILE_CACHE_DIR, urlToFilename(url));
+    fs.writeFileSync(fp, JSON.stringify({ value, ts: Date.now() }));
+  } catch { /* ignore write errors */ }
+}
+
+// ─── Rate-limit / auth backoff ──────────────────────────────────────────
 // Auth failures (401/403) back off for 30 min — key is invalid/suspended.
 // Rate-limit hits (429) back off for only 5 min — quota refreshes quickly.
 let authBackoffUntil = 0;
 let rateLimitBackoffUntil = 0;
-const AUTH_BACKOFF_MS  = 30 * 60 * 1000;
-const RATE_BACKOFF_MS  =  5 * 60 * 1000;
+const AUTH_BACKOFF_MS = 30 * 60 * 1000;
+const RATE_BACKOFF_MS =  5 * 60 * 1000;
 
-async function sgoFetch(path: string, params: Record<string, string> = {}): Promise<unknown | null> {
+async function sgoFetch(path_: string, params: Record<string, string> = {}): Promise<unknown | null> {
   const apiKey = await getApiKey('sportsgameodds_api_key');
   if (!apiKey) return null;
+
+  const url = new URL(`${BASE}${path_}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const urlStr = url.toString();
+
+  // 1. In-memory cache hit
+  const memHit = getMemCached<unknown>(urlStr);
+  if (memHit !== null) return memHit;
+
+  // 2. File cache hit — warm in-memory too so subsequent calls are fast
+  const fileHit = getFileCache<unknown>(urlStr);
+  if (fileHit !== null) {
+    setMemCached(urlStr, fileHit);
+    return fileHit;
+  }
+
+  // 3. Backoff guards (only checked when we'd actually hit the network)
   if (Date.now() < authBackoffUntil) return null;
   if (Date.now() < rateLimitBackoffUntil) return null;
 
-  const url = new URL(`${BASE}${path}`);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-
-  const cacheKey = url.toString();
-  const cached = getCached<unknown>(cacheKey);
-  if (cached !== null) return cached;
-
   try {
-    const res = await fetch(url.toString(), {
-      headers: {
-        'X-Api-Key': apiKey,
-        Accept: 'application/json',
-      },
-      // Their data updates every few seconds for live, but we cache 5m so
-      // 60s revalidation here is fine.
+    const res = await fetch(urlStr, {
+      headers: { 'X-Api-Key': apiKey, Accept: 'application/json' },
       next: { revalidate: 60 },
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         authBackoffUntil = Date.now() + AUTH_BACKOFF_MS;
-        console.warn(`[SGO] HTTP ${res.status} — auth error, backing off for 30 min`);
+        console.warn(`[SGO] HTTP ${res.status} — auth error, backing off 30 min`);
       } else if (res.status === 429) {
         rateLimitBackoffUntil = Date.now() + RATE_BACKOFF_MS;
-        console.warn('[SGO] HTTP 429 — rate limited, backing off for 5 min');
+        console.warn('[SGO] HTTP 429 — rate limited, backing off 5 min');
       }
       return null;
     }
     const json = await res.json();
-    setCached(cacheKey, json);
+    setMemCached(urlStr, json);
+    setFileCache(urlStr, json);   // persist so restarts reuse this data
     return json;
   } catch (err) {
     console.warn('[SGO] fetch failed:', err);
@@ -221,6 +259,12 @@ function offerPrice(offer: SgoBookmakerOffer): number | null {
 
 /**
  * Public: return per-bookmaker 1X2 / moneyline prices for a fixture.
+ *
+ * Resolution order:
+ *   1. `_bulkBookmakerLines` — already extracted from the 30-min bulk fetch,
+ *      no extra API call needed.
+ *   2. Per-match SGO `/events` lookup — only when bulk data is absent.
+ *
  * Returns [] if SGO has nothing or the fixture can't be matched.
  */
 export async function getSgoBookmakerLines(
@@ -229,6 +273,10 @@ export async function getSgoBookmakerLines(
   startsAtIso: string,
   hasDraw: boolean,
 ): Promise<SgoBookmakerLine[]> {
+  // Fast path: use per-bookmaker data already extracted from bulk fetch
+  const bulkLines = getBulkBookmakerLines(homeTeam, awayTeam, startsAtIso);
+  if (bulkLines && bulkLines.length > 0) return bulkLines;
+
   const ev = await findSgoEvent(homeTeam, awayTeam, startsAtIso);
   if (!ev?.odds) return [];
 
@@ -317,9 +365,32 @@ export interface SgoMatchOddsEntry {
  * 1X2 / moneyline odds for each fixture.  Uses the best price available
  * across all bookmakers (or `closeBookOdds` when present).
  *
+ * Side effect: populates `_bulkBookmakerLines` so that
+ * `getSgoBookmakerLines()` can answer comparison-widget requests from this
+ * single bulk payload without extra per-match API calls.
+ *
  * Called by `buildRealOddsIndex()` in unified-sports-api.ts when The Odds
  * API key is not configured — this is the primary source of match-list odds.
  */
+
+/**
+ * In-process store: team-pair key → per-bookmaker lines.
+ * Populated as a by-product of `fetchSgoBulkMatchOdds` so the comparison
+ * widget gets real bookmaker data without additional SGO requests.
+ */
+const _bulkBookmakerLines = new Map<string, SgoBookmakerLine[]>();
+
+export function getBulkBookmakerLines(homeTeam: string, awayTeam: string, dateIso: string): SgoBookmakerLine[] | null {
+  const dateKey = (dateIso || '').slice(0, 10);
+  const hn = normalizeForIndex(homeTeam);
+  const an = normalizeForIndex(awayTeam);
+  return (
+    _bulkBookmakerLines.get(`${hn}_${an}_${dateKey}`) ??
+    _bulkBookmakerLines.get(`${an}_${hn}_${dateKey}`) ??
+    null
+  );
+}
+
 export async function fetchSgoBulkMatchOdds(
   startsAfter: string,
   startsBefore: string,
@@ -399,6 +470,44 @@ export async function fetchSgoBulkMatchOdds(
       away: ap,
       bookmaker: prettyBookName(topBook),
     });
+
+    // ── Side-effect: build per-bookmaker comparison lines from bulk payload ──
+    // Collect every bookmaker that has both home and away prices.
+    const hasDraw = !!drawOdd;
+    const bookIds = new Set<string>(Object.keys(homeOdd.byBookmaker ?? {}));
+    const lines: SgoBookmakerLine[] = [];
+    for (const bookId of bookIds) {
+      const ho = homeOdd.byBookmaker?.[bookId];
+      const ao = awayOdd.byBookmaker?.[bookId];
+      const dro = drawOdd?.byBookmaker?.[bookId];
+      if (!ho || !ao) continue;
+      const hpb = offerPrice(ho);
+      const apb = offerPrice(ao);
+      if (!hpb || !apb) continue;
+      const dpb = dro ? offerPrice(dro) : null;
+      lines.push({
+        bookmaker: bookId,
+        display: prettyBookName(bookId),
+        home: hpb,
+        draw: hasDraw && dpb ? dpb : undefined,
+        away: apb,
+        links: { home: ho.link, draw: dro?.link, away: ao.link },
+      });
+    }
+    if (lines.length > 0) {
+      // Sort: books with draw first (soccer), then alpha
+      lines.sort((a, b) => {
+        if (hasDraw) {
+          const ad = a.draw ? 0 : 1, bd = b.draw ? 0 : 1;
+          if (ad !== bd) return ad - bd;
+        }
+        return a.display.localeCompare(b.display);
+      });
+      const key1 = `${homeNorm}_${awayNorm}_${dateKey}`;
+      const key2 = `${awayNorm}_${homeNorm}_${dateKey}`;
+      _bulkBookmakerLines.set(key1, lines);
+      _bulkBookmakerLines.set(key2, lines);
+    }
   }
 
   return result;

@@ -3704,8 +3704,21 @@ async function fetchOddsForSport(sportKey: string): Promise<TheOddsApiEvent[]> {
  * Build an odds index from SportsGameOdds bulk /events fetch.
  * Used when The Odds API key is not configured.
  * Fetches upcoming events for today + next 3 days and extracts 1X2 odds.
+ *
+ * Module-level result cache (30 min) prevents the 5-min live-scores cron
+ * from hammering SGO on every tick, which exhausts daily/hourly quotas.
+ * Stale index is preserved when SGO returns nothing (rate-limited).
  */
+let _sgoIndexCache: Map<string, { odds: MatchOdds; markets: Market[] }> | null = null;
+let _sgoIndexCachedAt = 0;
+const SGO_INDEX_CACHE_MS = 30 * 60 * 1000; // rebuild at most once per 30 min
+
 async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
+  // Return cached index if it's still fresh — protects against cron thrashing
+  if (_sgoIndexCache && Date.now() - _sgoIndexCachedAt < SGO_INDEX_CACHE_MS) {
+    return _sgoIndexCache;
+  }
+
   try {
     const { fetchSgoBulkMatchOdds } = await import('@/lib/api/sportsgameodds');
     const now = new Date();
@@ -3742,11 +3755,19 @@ async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdd
 
     if (index.size > 0) {
       console.log(`[SGO] Bulk odds index built: ${entries.length} fixtures`);
+      _sgoIndexCache = index;
+      _sgoIndexCachedAt = Date.now();
+    } else if (_sgoIndexCache) {
+      // API returned nothing (likely rate-limited) — keep stale cache so
+      // match cards don't lose their odds display
+      console.log('[SGO] Bulk fetch empty — reusing stale odds index');
+      // Refresh timestamp so we don't retry immediately
+      _sgoIndexCachedAt = Date.now();
     }
-    return index;
+    return _sgoIndexCache ?? new Map();
   } catch (err) {
     console.warn('[SGO] buildSgoOddsIndexFallback failed:', err);
-    return new Map();
+    return _sgoIndexCache ?? new Map();
   }
 }
 

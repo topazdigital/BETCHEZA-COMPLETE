@@ -28,12 +28,27 @@ export async function GET(
         ? match.kickoffTime.toISOString()
         : new Date().toISOString();
 
-    const lines = await getSgoBookmakerLines(
+    // Primary: SGO per-bookmaker lines (uses bulk cache first, then live lookup)
+    let lines = await getSgoBookmakerLines(
       match.homeTeam.name,
       match.awayTeam.name,
       isoKickoff,
       hasDraw,
     );
+
+    // Secondary: ESPN-sourced bookmaker odds already embedded in the match.
+    // ESPN's scoreboard attributes odds to a real bookmaker (DraftKings,
+    // FanDuel, etc.) — use it as a single guaranteed line when SGO is empty.
+    if (lines.length === 0 && match.odds && match.odds.bookmaker &&
+        typeof match.odds.home === 'number' && typeof match.odds.away === 'number') {
+      lines = [{
+        bookmaker: match.odds.bookmaker.toLowerCase().replace(/\s+/g, ''),
+        display: match.odds.bookmaker,
+        home: match.odds.home,
+        draw: hasDraw && typeof match.odds.draw === 'number' ? match.odds.draw : undefined,
+        away: match.odds.away,
+      }];
+    }
 
     return NextResponse.json(
       { lines, hasDraw },

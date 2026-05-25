@@ -74,7 +74,10 @@ function UserSettingsInner({ children }: { children: ReactNode }) {
         timezone: settings.timezone,
       }));
     } catch { /* ignore */ }
-    window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+    // NOTE: do NOT dispatch a synthetic StorageEvent here — that would
+    // re-trigger our own storage handler below, causing an infinite
+    // re-render loop.  Native cross-tab sync works automatically because
+    // localStorage.setItem() already fires 'storage' in OTHER tabs.
   }, [settings, isLoaded]);
 
   useEffect(() => {
