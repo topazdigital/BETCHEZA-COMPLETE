@@ -132,10 +132,10 @@ async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
   }
 }
 
-// Manual override: week of 11 May 2026 — all 7 days confirmed as wins
-// (results were not recorded in the DB; this preserves the correct record)
+// Manual override: week of 12 May 2025 — all 7 days confirmed as wins
+// (results were recorded with a wrong Sunday week_id in the DB; this corrects the display)
 const MANUAL_WIN_WEEKS: Record<string, 'all'> = {
-  '2026-05-11': 'all',
+  '2025-05-12': 'all',
 };
 
 // Manual day overrides are no longer needed — corrections are applied directly
@@ -186,9 +186,21 @@ async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
       [cutoff, getWeekId(new Date())]
     );
 
+    // Normalize week_id: if a row's week_id is not a Monday (e.g. a Sunday was
+    // accidentally stored), remap it to the correct ISO Monday-based week ID.
+    // This prevents the same real week from appearing twice in the past weeks list.
+    const normalizeWeekId = (wid: string): string => {
+      const d = new Date(wid);
+      const day = d.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
+      if (day === 1) return wid; // already a Monday
+      const diff = day === 0 ? -6 : 1 - day; // shift back to Monday
+      d.setUTCDate(d.getUTCDate() + diff);
+      return d.toISOString().slice(0, 10);
+    };
+
     const byWeek = new Map<string, DbRow[]>();
     for (const row of result.rows) {
-      const wid = row.week_id;
+      const wid = normalizeWeekId(row.week_id);
       if (!byWeek.has(wid)) byWeek.set(wid, []);
       byWeek.get(wid)!.push(row);
     }
@@ -202,7 +214,19 @@ async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
       const weekStart = new Date(wid);
       const weekEnd = new Date(wid);
       weekEnd.setDate(weekEnd.getDate() + 6);
-      const days: DayPrediction[] = rows.map((row) => {
+      // Deduplicate rows by date — when weeks were merged (e.g. Sunday week_id
+      // normalised into its Monday), prefer the row with an actual result set.
+      const uniqueByDate = new Map<string, DbRow>();
+      for (const row of rows) {
+        const dateStr = typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0, 10);
+        const existing = uniqueByDate.get(dateStr);
+        if (!existing || (!existing.result && row.result)) {
+          uniqueByDate.set(dateStr, row);
+        }
+      }
+      const days: DayPrediction[] = Array.from(uniqueByDate.values())
+        .sort((a, b) => (a.date > b.date ? 1 : -1))
+        .map((row) => {
         const dateStr = typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0, 10);
         const override = MANUAL_DAY_OVERRIDES[dateStr];
         const picks: StrategyPick[] = row.picks ? JSON.parse(row.picks) as StrategyPick[] : [];
