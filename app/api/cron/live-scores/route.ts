@@ -207,17 +207,17 @@ async function updateStrategyPickLiveScores(
 
     // Only process pending picks for real-time settlement
     if (pick.result === 'pending') {
-      // Check for mathematically certain loss mid-game (e.g. Under line blown).
-      // Losses are irreversible — even if a goal is disallowed, we already
-      // had more goals than the line at that point so the pick was already dead.
+      // Settle immediately when outcome is mathematically certain mid-game.
+      //  • LOSS certain: Under line blown, opponent scored enough — can never recover.
+      //  • WIN certain:  Over line cleared, BTTS Yes after both scored, etc.
+      // VAR can only disallow a goal that was just scored; once play resumes from
+      // kick-off the review window is closed — same logic bookmakers use to pay out.
       const earlyResult = checkPickResult(pick, hs, as_);
-      if (earlyResult === 'loss') {
+      if (earlyResult === 'loss' || earlyResult === 'win') {
         changed = true;
-        console.log(`[live-scores] Early LOSS settled: ${pick.homeTeam} vs ${pick.awayTeam} | ${pick.market} ${pick.pick} @ ${scoreStr}`);
-        return { ...pick, result: 'loss' as const, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+        console.log(`[live-scores] Early ${earlyResult.toUpperCase()} settled: ${pick.homeTeam} vs ${pick.awayTeam} | ${pick.market} ${pick.pick} @ ${scoreStr}`);
+        return { ...pick, result: earlyResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
       }
-      // For wins: don't settle mid-game — wait for FT to avoid VAR revocals.
-      // Just annotate with the live score so the UI shows progress.
     }
 
     // Update liveScore even for already-settled picks (FT score display)

@@ -963,14 +963,17 @@ async function overlayLiveScores(days: DayPrediction[]): Promise<DayPrediction[]
         const scoreStr = `${hs}-${as_}`;
         const liveStatus: 'live' | 'finished' = match.status === 'live' || match.status === 'inprogress' ? 'live' : 'finished';
 
-        // For pending picks: check if outcome is already mathematically certain
-        // (e.g. Under line blown mid-game — that's a guaranteed loss, no VAR can fix it)
+        // For pending picks: check if outcome is already mathematically certain mid-game.
+        // Both wins and losses can be certain before FT:
+        //   LOSS certain: Under line blown (can never recover)
+        //   WIN certain:  Over line already cleared, BTTS Yes after both teams scored, etc.
+        // VAR can disallow a single goal but once play resumes from kick-off the review
+        // window is closed. We settle immediately — identical to how bookmakers pay out.
         if (pick.result === 'pending') {
           const earlyResult = checkPickResultLocal(pick, hs, as_);
-          const certainLoss = earlyResult === 'loss'; // loss is irreversible
-          if (certainLoss) {
+          if (earlyResult === 'loss' || earlyResult === 'win') {
             dayChanged = true;
-            return { ...pick, result: 'loss' as const, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+            return { ...pick, result: earlyResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
           }
         }
 

@@ -349,10 +349,19 @@ async function generatePicksForDate(
       return kickoffEAT.toISOString().slice(0, 10) === getTodayStrEAT(targetDate);
     });
 
-    // Sort by league quality — elite leagues first
-    const sortedDay = [...dayMatches].sort((a, b) =>
-      leagueScore(a.league.name) - leagueScore(b.league.name)
-    );
+    // Sort by league quality first, then prefer afternoon/evening kickoffs (12:00–22:00 EAT).
+    // This prevents the algorithm leaning on early-morning games just because they happen
+    // to be in a top league — subscribers should get picks they can watch live.
+    const sortedDay = [...dayMatches].sort((a, b) => {
+      const lqDiff = leagueScore(a.league.name) - leagueScore(b.league.name);
+      if (lqDiff !== 0) return lqDiff; // primary: league quality
+      // Secondary: within the same quality tier, prefer afternoon/evening kickoffs
+      const aHour = toEATDate(new Date(a.kickoffTime)).getUTCHours();
+      const bHour = toEATDate(new Date(b.kickoffTime)).getUTCHours();
+      const aIsAfternoon = aHour >= 12 && aHour <= 22 ? 0 : 1; // 0 = preferred
+      const bIsAfternoon = bHour >= 12 && bHour <= 22 ? 0 : 1;
+      return aIsAfternoon - bIsAfternoon;
+    });
 
     // Prefer matches WITH real bookmaker odds in top leagues
     const withOdds = sortedDay.filter(m => m.odds && m.odds.home > 1.05 && m.odds.away > 1.05);
@@ -404,8 +413,9 @@ STRICT RULES — MUST FOLLOW
 5. PREFER Double Chance (1X or X2) over straight 1X2 picks — covers two outcomes.
 6. AVOID coin-flip matches where home and away odds are within 0.30 of each other (balanced match, too risky).
 7. Combined odds MUST land in [2.90 – 4.20]. Recalculate before finalising.
-8. Confidence must be "High" (odds ≤ 1.45), "Medium" (1.46–1.75), or "Low" (1.76+).
-9. The "reasoning" field MUST include: (a) why this team is favoured, (b) what the odds tell you, (c) which market you chose and why.
+8. KICK-OFF VARIETY: Picks can come from ANY time of day. Actively prefer matches kicking off in the afternoon or evening (12:00–23:00 EAT) where the value is comparable — subscribers want picks they can watch live. Only use early morning kick-offs (00:00–11:59 EAT) when afternoon/evening options have poor value, no odds, or are clearly inferior.
+9. Confidence must be "High" (odds ≤ 1.45), "Medium" (1.46–1.75), or "Low" (1.76+).
+10. The "reasoning" field MUST include: (a) why this team is favoured, (b) what the odds tell you, (c) which market you chose and why.
 
 ═══════════════════════════════════════════
 DEEP ANALYSIS CHECKLIST (for each pick)

@@ -3,45 +3,111 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { 
-  LayoutDashboard, Users, Trophy, Calendar, Settings, 
-  Bell, LogOut, Menu, X, Shield, MessageSquare, Newspaper, Wallet, Mail, Rss, KeyRound, Star, CreditCard, Database, FileText, BarChart3, Wand2, UserPlus, Globe, MousePointerClick, Gem, TrendingUp, Megaphone, Activity, DoorOpen,
+import {
+  LayoutDashboard, Users, Trophy, Calendar, Settings,
+  Bell, LogOut, Menu, X, Shield, MessageSquare, Newspaper, Wallet, Mail,
+  Rss, KeyRound, Star, CreditCard, Database, FileText, BarChart3, Wand2,
+  UserPlus, Globe, MousePointerClick, Gem, TrendingUp, Megaphone, Activity,
+  DoorOpen, ChevronDown, ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
 import { cn } from "@/lib/utils"
 
-const adminNavItems = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/tipsters", label: "Tipsters", icon: Trophy },
-  { href: "/admin/tipster-applications", label: "Applications", icon: UserPlus },
-  { href: "/admin/bookmakers", label: "Bookmakers", icon: Globe },
-  { href: "/admin/affiliate-clicks", label: "Affiliate Clicks", icon: MousePointerClick },
-  { href: "/admin/matches", label: "Matches", icon: Calendar },
-  { href: "/admin/predictions", label: "Predictions", icon: BarChart3 },
-  { href: "/admin/auto-tips", label: "Auto-Tip Generator", icon: Wand2 },
-  { href: "/admin/strategy", label: "Daily Odds Strategy", icon: TrendingUp },
-  { href: "/admin/jackpots", label: "Jackpots", icon: Gem },
-  { href: "/admin/competitions", label: "Competitions", icon: Shield },
-  { href: "/admin/comments", label: "Comments", icon: MessageSquare },
-  { href: "/admin/feed", label: "Community Feed", icon: Rss },
-  { href: "/admin/rooms", label: "Rooms", icon: DoorOpen },
-  { href: "/admin/news", label: "News", icon: Newspaper },
-  { href: "/admin/payments", label: "Payments", icon: Wallet },
-  { href: "/admin/transactions", label: "Transactions", icon: BarChart3 },
-  { href: "/admin/payment-gateways", label: "Gateways", icon: CreditCard },
-  { href: "/admin/subscribers", label: "Subscribers", icon: Mail },
-  { href: "/admin/notifications", label: "Notifications", icon: Bell },
-  { href: "/admin/featured", label: "Featured Tips", icon: Star },
-  { href: "/admin/email-config", label: "Email Setup", icon: Mail },
-  { href: "/admin/email-templates", label: "Email Templates", icon: Mail },
-  { href: "/admin/social-login", label: "Social Login", icon: KeyRound },
-  { href: "/admin/database", label: "Database", icon: Database },
-  { href: "/admin/static-pages", label: "Static Pages", icon: FileText },
-  { href: "/admin/ads", label: "Ads Management", icon: Megaphone },
-  { href: "/admin/api-status", label: "API Status", icon: Activity },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
+type NavItem = { href: string; label: string; icon: React.ElementType }
+type NavGroup = {
+  id: string
+  label: string | null
+  icon?: React.ElementType
+  items: NavItem[]
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: "overview",
+    label: null,
+    items: [
+      { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    id: "people",
+    label: "People",
+    icon: Users,
+    items: [
+      { href: "/admin/users", label: "Users", icon: Users },
+      { href: "/admin/tipsters", label: "Tipsters", icon: Trophy },
+      { href: "/admin/tipster-applications", label: "Applications", icon: UserPlus },
+    ],
+  },
+  {
+    id: "tips",
+    label: "Tips & Strategy",
+    icon: TrendingUp,
+    items: [
+      { href: "/admin/predictions", label: "AI Predictions", icon: BarChart3 },
+      { href: "/admin/auto-tips", label: "Auto-Tips", icon: Wand2 },
+      { href: "/admin/strategy", label: "Daily Strategy", icon: TrendingUp },
+      { href: "/admin/featured", label: "Featured Tips", icon: Star },
+    ],
+  },
+  {
+    id: "sports",
+    label: "Sports Content",
+    icon: Calendar,
+    items: [
+      { href: "/admin/matches", label: "Matches", icon: Calendar },
+      { href: "/admin/jackpots", label: "Jackpots", icon: Gem },
+      { href: "/admin/competitions", label: "Competitions", icon: Shield },
+      { href: "/admin/news", label: "News", icon: Newspaper },
+    ],
+  },
+  {
+    id: "community",
+    label: "Community",
+    icon: Rss,
+    items: [
+      { href: "/admin/feed", label: "Feed", icon: Rss },
+      { href: "/admin/rooms", label: "Rooms", icon: DoorOpen },
+      { href: "/admin/comments", label: "Comments", icon: MessageSquare },
+    ],
+  },
+  {
+    id: "finance",
+    label: "Finance",
+    icon: Wallet,
+    items: [
+      { href: "/admin/payments", label: "Payments", icon: Wallet },
+      { href: "/admin/transactions", label: "Transactions", icon: BarChart3 },
+      { href: "/admin/payment-gateways", label: "Gateways", icon: CreditCard },
+    ],
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    icon: Megaphone,
+    items: [
+      { href: "/admin/bookmakers", label: "Bookmakers", icon: Globe },
+      { href: "/admin/affiliate-clicks", label: "Affiliates", icon: MousePointerClick },
+      { href: "/admin/subscribers", label: "Subscribers", icon: Mail },
+      { href: "/admin/notifications", label: "Notifications", icon: Bell },
+      { href: "/admin/ads", label: "Ads", icon: Megaphone },
+    ],
+  },
+  {
+    id: "config",
+    label: "Config",
+    icon: Settings,
+    items: [
+      { href: "/admin/email-config", label: "Email Setup", icon: Mail },
+      { href: "/admin/email-templates", label: "Email Templates", icon: FileText },
+      { href: "/admin/social-login", label: "Social Login", icon: KeyRound },
+      { href: "/admin/static-pages", label: "Static Pages", icon: FileText },
+      { href: "/admin/database", label: "Database", icon: Database },
+      { href: "/admin/api-status", label: "API Status", icon: Activity },
+      { href: "/admin/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ]
 
 interface AdminShellProps {
@@ -49,21 +115,119 @@ interface AdminShellProps {
   user: { displayName: string; username: string; role: string }
 }
 
-export function AdminShell({ children, user }: AdminShellProps) {
+function SidebarNav({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
+
+  // Auto-expand the group that contains the active route
+  const activeGroupId = NAV_GROUPS.find(g =>
+    g.items.some(item => item.href === pathname || (item.href !== "/admin" && pathname.startsWith(item.href)))
+  )?.id ?? "overview"
+
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {}
+    for (const g of NAV_GROUPS) {
+      init[g.id] = g.label === null || g.id === activeGroupId
+    }
+    return init
+  })
+
+  const toggle = (id: string) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
+
+  return (
+    <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      {NAV_GROUPS.map((group) => {
+        if (group.label === null) {
+          return group.items.map(item => {
+            const Icon = item.icon
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </Link>
+            )
+          })
+        }
+
+        const GroupIcon = group.icon!
+        const isOpen = expanded[group.id]
+        const hasActive = group.items.some(
+          item => item.href === pathname || (item.href !== "/admin" && pathname.startsWith(item.href))
+        )
+
+        return (
+          <div key={group.id}>
+            <button
+              onClick={() => toggle(group.id)}
+              className={cn(
+                "w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+                hasActive
+                  ? "text-primary bg-primary/8"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <GroupIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1 text-left truncate">{group.label}</span>
+              {isOpen
+                ? <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+                : <ChevronRight className="h-3 w-3 shrink-0 opacity-60" />
+              }
+            </button>
+
+            {isOpen && (
+              <div className="mt-0.5 ml-3 pl-2 border-l border-border space-y-0.5">
+                {group.items.map(item => {
+                  const Icon = item.icon
+                  const isActive = item.href === pathname ||
+                    (item.href !== "/admin" && pathname.startsWith(item.href))
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={onClose}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </nav>
+  )
+}
+
+export function AdminShell({ children, user }: AdminShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar — narrower & denser */}
       <aside className={cn(
         "fixed inset-y-0 left-0 z-50 flex w-56 transform flex-col border-r border-border bg-card transition-transform lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -75,9 +239,9 @@ export function AdminShell({ children, user }: AdminShellProps) {
             </div>
             <span className="text-sm font-bold">Admin Panel</span>
           </Link>
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-7 w-7 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
@@ -85,30 +249,10 @@ export function AdminShell({ children, user }: AdminShellProps) {
           </Button>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {adminNavItems.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                  isActive 
-                    ? "bg-primary text-primary-foreground" 
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <item.icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </Link>
-            )
-          })}
-        </nav>
+        <SidebarNav onClose={() => setSidebarOpen(false)} />
 
         <div className="border-t border-border p-2">
-          <Link 
+          <Link
             href="/"
             className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -118,13 +262,11 @@ export function AdminShell({ children, user }: AdminShellProps) {
         </div>
       </aside>
 
-      {/* Main Content */}
       <div className="lg:pl-56">
-        {/* Top Header — slimmer */}
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-card px-3">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-8 w-8 lg:hidden"
             onClick={() => setSidebarOpen(true)}
           >
@@ -156,7 +298,6 @@ export function AdminShell({ children, user }: AdminShellProps) {
           </div>
         </header>
 
-        {/* Page Content — denser default padding */}
         <main className="p-3 md:p-4">
           {children}
         </main>
