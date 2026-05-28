@@ -510,8 +510,10 @@ Double-check: multiply all odds together. Result MUST be between 2.90 and 4.20.`
     }
   }
 
+  // Never return placeholder picks — return empty so the caller knows
+  // to skip persisting and try again later when real data is available.
   if (picks.length === 0) {
-    picks = buildFallbackPicks(targetDate, dateStr);
+    console.warn(`[daily-strategy] No real picks available for ${dateStr} — skipping fallback placeholder save`);
   }
 
   return picks;
@@ -539,11 +541,29 @@ export async function GET(req: NextRequest) {
       [todayStr]
     );
 
-    if (existing.rows.length > 0 && existing.rows[0].picks) {
+    // Skip only if real (non-placeholder) picks already exist
+    const isPlaceholder = (picksJson: string | null): boolean => {
+      if (!picksJson) return false;
+      try {
+        const arr = JSON.parse(picksJson) as Array<{ homeTeam?: string; reasoning?: string }>;
+        return Array.isArray(arr) && arr.length > 0 && arr.every(
+          (p) => p.homeTeam === 'Home Team' || p.homeTeam === 'Home Team B' ||
+                  (p.reasoning || '').includes('Picks loading')
+        );
+      } catch { return false; }
+    };
+
+    if (existing.rows.length > 0 && existing.rows[0].picks && !isPlaceholder(existing.rows[0].picks)) {
       return NextResponse.json({ success: true, message: 'Already posted for today', date: todayStr });
     }
 
     const picks = await generatePicksForDate(now, plan, dayNumber);
+
+    // Don't persist if we got nothing real — try again on next cron run
+    if (picks.length === 0) {
+      return NextResponse.json({ success: false, message: 'No real picks available yet — will retry', date: todayStr });
+    }
+
     const combinedOdds = picks.reduce((acc, p) => acc * p.odds, 1);
 
     console.log(`[daily-strategy] Final: ${picks.length} picks, combined=${combinedOdds.toFixed(2)}, leagues=${picks.map(p => p.league).join(' | ')}`);

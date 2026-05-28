@@ -307,6 +307,13 @@ function buildAutoFallbackPicks(_dateStr: string): StrategyPick[] {
   return [];
 }
 
+function isPlaceholderPicks(picks: StrategyPick[]): boolean {
+  return picks.length > 0 && picks.every(
+    (p) => p.homeTeam === 'Home Team' || p.homeTeam === 'Home Team B' ||
+            (p.reasoning || '').includes('Picks loading')
+  );
+}
+
 async function autoGenerateTodayPicks(weekId: string, todayStr: string, dayNumber: number): Promise<StrategyPick[]> {
   const planIdx = Math.max(0, dayNumber - 1);
   const plan = WEEK_PLAN[planIdx] || WEEK_PLAN[0];
@@ -516,9 +523,11 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
     return { ...base, status, day: d.day, stake: d.stake, save: d.save, targetWin: d.targetWin };
     });
 
-    // Auto-generate today's picks if today is active but has no picks AND not manually posted
+    // Auto-generate today's picks if today is active but has no picks (or only
+    // placeholder picks from an early cron run) AND not manually posted
     const todayIdx = merged.findIndex((d) => d.date === todayStr);
-    if (todayIdx >= 0 && merged[todayIdx].picks.length === 0 && !merged[todayIdx].isManual) {
+    if (todayIdx >= 0 && !merged[todayIdx].isManual &&
+        (merged[todayIdx].picks.length === 0 || isPlaceholderPicks(merged[todayIdx].picks))) {
       try {
         const autoPicks = await autoGenerateTodayPicks(weekId, todayStr, dayNumber);
         const combined = autoPicks.reduce((acc, p) => acc * p.odds, 1);
@@ -543,9 +552,9 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
   // File store fallback
   const stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
   if (stored && stored.weekId === weekId) {
-    // Auto-generate for today if empty
+    // Auto-generate for today if empty or only has placeholder picks
     const todayIdx = stored.days.findIndex((d) => d.date === todayStr);
-    if (todayIdx >= 0 && stored.days[todayIdx].picks.length === 0) {
+    if (todayIdx >= 0 && (stored.days[todayIdx].picks.length === 0 || isPlaceholderPicks(stored.days[todayIdx].picks))) {
       try {
         const autoPicks = await autoGenerateTodayPicks(weekId, todayStr, dayNumber);
         const combined = autoPicks.reduce((acc, p) => acc * p.odds, 1);
