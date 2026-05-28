@@ -1,13 +1,17 @@
 /**
  * Live score change tracker — runs every 2 minutes via cron.ts.
- * Detects goal/score changes in live matches and pushes browser notifications
- * to users who have opted in to live score alerts.
+ * Detects goal/score changes in live matches and:
+ *  1. Pushes browser notifications to users opted into live-score alerts.
+ *  2. Updates strategy pick liveScores and immediately settles any picks
+ *     whose outcome is now mathematically certain (e.g. Under line blown).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getLiveMatches } from '@/lib/api/unified-sports-api';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
-import { query } from '@/lib/db';
+import { query, execute } from '@/lib/db';
+import { checkPickResult, normalizeTeam, matchTeamWords } from '@/lib/strategy-settle';
+import type { StrategyPick } from '@/app/api/strategy/predictions/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,6 +143,14 @@ export async function GET(req: NextRequest) {
       console.log(`[live-scores] Goal detected: ${goal.title}`);
     }
 
+    // ── Real-time strategy pick settlement ──────────────────────────────────
+    // Every time a score changes, refresh liveScore on today's strategy picks and
+    // immediately settle any picks that are now mathematically decided
+    // (e.g. Under line blown = LOSS that can never recover regardless of VAR).
+    await updateStrategyPickLiveScores(matches).catch(e =>
+      console.warn('[live-scores] strategy live-score update failed:', e?.message ?? e)
+    );
+
     return NextResponse.json({ ok: true, live: matches.length, goals: goals.length, pushed });
   } catch (e) {
     console.warn('[cron/live-scores] error:', e instanceof Error ? e.message : e);
@@ -146,4 +158,90 @@ export async function GET(req: NextRequest) {
   } finally {
     g.__liveScoreCronBusy = false;
   }
+}
+
+/**
+ * For each live match, find today's strategy picks that reference the same fixture
+ * and update their liveScore field.  Picks whose outcome is already mathematically
+ * decided (Under line blown, etc.) are settled immediately.
+ */
+async function updateStrategyPickLiveScores(
+  liveMatches: Awaited<ReturnType<typeof getLiveMatches>>
+) {
+  if (!liveMatches.length) return;
+
+  // Fetch today's strategy row
+  const todayStr = new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }).split(',')[0];
+  const [m, d, y] = todayStr.split('/');
+  const todayISO = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+
+  const rows = await query<{ id: number; picks: string; status: string }>(
+    `SELECT id, picks, status FROM daily_strategy WHERE date = ? AND status = 'active' LIMIT 1`,
+    [todayISO]
+  );
+  if (!rows.rows.length) return;
+
+  const row = rows.rows[0];
+  let picks: StrategyPick[] = [];
+  try { picks = JSON.parse(row.picks || '[]'); } catch { return; }
+  if (!picks.length) return;
+
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  let changed = false;
+
+  const updatedPicks = picks.map(pick => {
+    const ph = norm(pick.homeTeam);
+    const pa = norm(pick.awayTeam);
+    const lm = liveMatches.find(m => {
+      const mh = norm(m.homeTeam?.name || '');
+      const ma = norm(m.awayTeam?.name || '');
+      return (mh === ph || mh.includes(ph) || ph.includes(mh)) &&
+             (ma === pa || ma.includes(pa) || pa.includes(ma));
+    });
+    if (!lm) return pick;
+
+    const hs = lm.homeScore ?? 0;
+    const as_ = lm.awayScore ?? 0;
+    const scoreStr = `${hs}-${as_}`;
+    const liveStatus: 'live' | 'finished' = lm.status === 'live' || lm.status === 'inprogress' ? 'live' : 'finished';
+
+    // Only process pending picks for real-time settlement
+    if (pick.result === 'pending') {
+      // Check for mathematically certain loss mid-game (e.g. Under line blown).
+      // Losses are irreversible — even if a goal is disallowed, we already
+      // had more goals than the line at that point so the pick was already dead.
+      const earlyResult = checkPickResult(pick, hs, as_);
+      if (earlyResult === 'loss') {
+        changed = true;
+        console.log(`[live-scores] Early LOSS settled: ${pick.homeTeam} vs ${pick.awayTeam} | ${pick.market} ${pick.pick} @ ${scoreStr}`);
+        return { ...pick, result: 'loss' as const, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+      }
+      // For wins: don't settle mid-game — wait for FT to avoid VAR revocals.
+      // Just annotate with the live score so the UI shows progress.
+    }
+
+    // Update liveScore even for already-settled picks (FT score display)
+    const liveScoreChanged = pick.liveScore !== scoreStr || pick.liveStatus !== liveStatus;
+    if (liveScoreChanged) {
+      changed = true;
+      return { ...pick, liveScore: scoreStr, liveStatus };
+    }
+    return pick;
+  });
+
+  if (!changed) return;
+
+  const allSettled = updatedPicks.every(p => p.result !== 'pending');
+  const allWon = allSettled && updatedPicks.every(p => p.result === 'win');
+
+  await execute(
+    `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = IF(?, NOW(), settled_at) WHERE id = ?`,
+    [
+      JSON.stringify(updatedPicks),
+      allSettled ? (allWon ? 'win' : 'loss') : null,
+      allSettled ? 'completed' : 'active',
+      allSettled ? 1 : 0,
+      row.id,
+    ]
+  );
 }

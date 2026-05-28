@@ -177,6 +177,19 @@ export function checkPickResult(
     if (overMatch)  return total > parseFloat(overMatch[1])  ? 'win' : 'loss';
     if (underMatch) return total < parseFloat(underMatch[1]) ? 'win' : 'loss';
 
+    // Bare "under" / "over" with no line number — infer from the final total
+    // Standard football lines are 1.5–4.5, so we can be definitive at the extremes
+    if (pickRaw === 'under') {
+      if (total >= 5) return 'loss'; // impossible to get under any standard line with 5+ goals
+      if (total <= 1) return 'win';  // 0–1 goals beats any standard Under line (≥1.5)
+      return null;                   // 2–4 goals: line is unknown, keep pending
+    }
+    if (pickRaw === 'over') {
+      if (total >= 4) return 'win';  // 4+ goals beats any standard Over line (≤3.5)
+      if (total === 0) return 'loss';// 0 goals loses any Over
+      return null;
+    }
+
     if (pickRaw.includes('over 0.5'))  return total > 0.5  ? 'win' : 'loss';
     if (pickRaw.includes('under 0.5')) return total < 0.5  ? 'win' : 'loss';
     if (pickRaw.includes('over 1.5'))  return total > 1.5  ? 'win' : 'loss';

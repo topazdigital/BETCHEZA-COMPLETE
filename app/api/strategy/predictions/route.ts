@@ -21,6 +21,8 @@ export interface StrategyPick {
   reasoning: string;
   result?: 'win' | 'loss' | 'pending';
   actualScore?: string;
+  liveScore?: string;
+  liveStatus?: 'live' | 'finished';
 }
 
 export interface DayPrediction {
@@ -727,6 +729,17 @@ function checkPickResultLocal(
       if (over) return total > parseFloat(over[1]) ? 'win' : 'loss';
       if (under) return total < parseFloat(under[1]) ? 'win' : 'loss';
     }
+    // Bare "under" / "over" with no line number
+    if (pickValue === 'under') {
+      if (total >= 5) return 'loss';
+      if (total <= 1) return 'win';
+      return null;
+    }
+    if (pickValue === 'over') {
+      if (total >= 4) return 'win';
+      if (total === 0) return 'loss';
+      return null;
+    }
   }
 
   // ── First Team to Score ─────────────────────────────────────────────────
@@ -903,9 +916,86 @@ async function autoSettleCompletedPicks(days: DayPrediction[]): Promise<DayPredi
   return updated;
 }
 
+/**
+ * Overlays real-time live scores onto today's pending picks.
+ * Does NOT settle — just annotates picks with liveScore/liveStatus so the
+ * UI can show the current score while the match is in progress.
+ * Also immediately settles picks whose outcome is mathematically certain
+ * mid-game (e.g. Under line already blown).
+ */
+async function overlayLiveScores(days: DayPrediction[]): Promise<DayPrediction[]> {
+  const todayStr = getTodayStrEAT(new Date());
+  const todayDay = days.find(d => d.date === todayStr);
+  if (!todayDay || !todayDay.picks.some(p => p.result === 'pending')) return days;
+
+  try {
+    const { getLiveMatches } = await import('@/lib/api/unified-sports-api');
+    const live = await getLiveMatches();
+    if (!live.length) return days;
+
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    return days.map(day => {
+      if (day.date !== todayStr) return day;
+
+      let dayChanged = false;
+      const updatedPicks = day.picks.map(pick => {
+        const ph = norm(pick.homeTeam);
+        const pa = norm(pick.awayTeam);
+        interface LiveMatch {
+          homeTeam: { name: string };
+          awayTeam: { name: string };
+          homeScore: number | null;
+          awayScore: number | null;
+          status: string;
+          minute?: number | null;
+        }
+        const match = (live as LiveMatch[]).find(m => {
+          const mh = norm(m.homeTeam?.name || '');
+          const ma = norm(m.awayTeam?.name || '');
+          return (mh === ph || mh.includes(ph) || ph.includes(mh)) &&
+                 (ma === pa || ma.includes(pa) || pa.includes(ma));
+        });
+        if (!match) return pick;
+
+        const hs = match.homeScore ?? 0;
+        const as_ = match.awayScore ?? 0;
+        const scoreStr = `${hs}-${as_}`;
+        const liveStatus: 'live' | 'finished' = match.status === 'live' || match.status === 'inprogress' ? 'live' : 'finished';
+
+        // For pending picks: check if outcome is already mathematically certain
+        // (e.g. Under line blown mid-game — that's a guaranteed loss, no VAR can fix it)
+        if (pick.result === 'pending') {
+          const earlyResult = checkPickResultLocal(pick, hs, as_);
+          const certainLoss = earlyResult === 'loss'; // loss is irreversible
+          if (certainLoss) {
+            dayChanged = true;
+            return { ...pick, result: 'loss' as const, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+          }
+        }
+
+        return { ...pick, liveScore: scoreStr, liveStatus };
+      });
+
+      if (!dayChanged) return { ...day, picks: updatedPicks };
+
+      // Persist early settlements (certain losses) to DB so all users see it
+      const allSettled = updatedPicks.every(p => p.result !== 'pending');
+      const allWon = allSettled && updatedPicks.every(p => p.result === 'win');
+      execute(
+        `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = NOW() WHERE date = ?`,
+        [JSON.stringify(updatedPicks), allSettled ? (allWon ? 'win' : 'loss') : null, allSettled ? 'completed' : 'active', todayStr]
+      ).catch(() => undefined);
+
+      return { ...day, picks: updatedPicks, ...(allSettled ? { result: allWon ? 'win' as const : 'loss' as const, status: 'completed' as const } : {}) };
+    });
+  } catch { return days; }
+}
+
 export async function GET() {
   const current = await loadCurrentWeek();
   current.days = await autoSettleCompletedPicks(current.days);
+  current.days = await overlayLiveScores(current.days);
   const past = await loadPastWeeks();
   return NextResponse.json({ current, past });
 }

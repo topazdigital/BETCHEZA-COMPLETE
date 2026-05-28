@@ -31,11 +31,15 @@ function PickResultIcon({ result }: { result?: string }) {
 }
 
 function PickCard({ pick }: { pick: StrategyPick }) {
+  const isLive = pick.liveStatus === 'live';
+  const scoreDisplay = pick.actualScore || pick.liveScore;
+
   return (
     <div className={cn(
-      'rounded-lg border p-3 text-sm',
+      'rounded-lg border p-3 text-sm transition-colors',
       pick.result === 'win' ? 'border-green-500/30 bg-green-500/5' :
       pick.result === 'loss' ? 'border-red-500/30 bg-red-500/5' :
+      isLive ? 'border-red-500/20 bg-red-500/3' :
       'border-border bg-muted/30'
     )}>
       <div className="flex items-start justify-between gap-2">
@@ -48,16 +52,24 @@ function PickCard({ pick }: { pick: StrategyPick }) {
         </div>
         <div className="shrink-0 text-right">
           <span className="font-mono font-bold text-primary">@{pick.odds.toFixed(2)}</span>
-          {pick.actualScore && (
-            <p className="text-[10px] text-muted-foreground">{pick.actualScore}</p>
-          )}
+          {isLive && pick.liveScore ? (
+            <div className="flex items-center justify-end gap-1 mt-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+              <span className="text-[11px] font-bold text-red-600">{pick.liveScore}</span>
+            </div>
+          ) : scoreDisplay ? (
+            <p className="text-[10px] text-muted-foreground">{scoreDisplay}</p>
+          ) : null}
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{pick.market}</span>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
-          {pick.pick}
-        </span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{pick.pick}</span>
+        {isLive && pick.result === 'pending' && (
+          <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-600 animate-pulse">
+            🔴 LIVE
+          </span>
+        )}
         {pick.result === 'win' && <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-[11px] font-bold text-green-600">WON ✓</span>}
         {pick.result === 'loss' && <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-bold text-red-600">LOST ✗</span>}
       </div>
@@ -770,8 +782,25 @@ export default function StrategyPage() {
   const { data, isLoading } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
     '/api/strategy/predictions',
     fetcher,
-    { revalidateOnFocus: false }
+    {
+      revalidateOnFocus: false,
+      // Poll every 30 s when today has pending picks — shows live scores and catches
+      // early settlements (e.g. Under blown mid-game) without a page reload.
+      refreshInterval: () => {
+        const todayDay = (window as { __strategyData?: { current?: WeeklyStrategy } }).__strategyData?.current?.days?.find(
+          (d) => d.status === 'active'
+        );
+        return todayDay?.picks.some((p) => p.result === 'pending') ? 30_000 : 0;
+      },
+    }
   );
+
+  // Expose data to the refreshInterval closure
+  useEffect(() => {
+    if (data) {
+      (window as { __strategyData?: unknown }).__strategyData = data;
+    }
+  }, [data]);
 
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
