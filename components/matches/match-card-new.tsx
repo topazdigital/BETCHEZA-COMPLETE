@@ -580,6 +580,7 @@ interface SmartPick {
   label: string;
   market: string;
   confidence: number;
+  rationale: string;
 }
 
 /**
@@ -865,7 +866,54 @@ function computeSmartPick(
   // Prefer picks with real betting value (odds ≥ 1.22)
   const interesting = candidates.filter(c => c.price >= 1.22);
   const picked = interesting.length > 0 ? interesting[0] : candidates[0];
-  return { pick: picked.pick, label: picked.label, market: picked.market, confidence: Math.min(picked.confidence, 95) };
+
+  // ── Build "Why this pick?" rationale ─────────────────────────────────────
+  const domName  = nH > nA ? homeTeam.split(' ')[0] : awayTeam.split(' ')[0];
+  const domProb  = Math.round(Math.max(nH, nA) * 100);
+  const eg       = expectedGoals.toFixed(1);
+  const m        = picked.market;
+  let rationale: string;
+
+  if (m === 'Asian Handicap') {
+    rationale = veryStrongFav
+      ? `${domName} are heavy favourites (${domProb}%) — the handicap line levels the field while keeping them likely to cover at ${picked.confidence}%.`
+      : `The handicap balances the field — ${domName} should cover at ${picked.confidence}% probability.`;
+  } else if (m === 'Draw No Bet') {
+    rationale = `${domName} are the more likely winner but the game is competitive enough to risk a draw. Draw No Bet removes that risk while keeping solid value.`;
+  } else if (m === 'BTTS') {
+    rationale = highGoals
+      ? `Both sides have been scoring freely — ${eg} goals projected in this one. Both to Score is the smart play.`
+      : `Both teams carry a goal threat and have been finding the net recently. Both to Score offers good value.`;
+  } else if (m.includes('O/U') && picked.pick.toLowerCase().startsWith('under')) {
+    rationale = `Defensively disciplined teams on both sides — only ${eg} goals projected, making the Under the value pick here.`;
+  } else if (m.includes('O/U') && picked.pick.toLowerCase().startsWith('over')) {
+    rationale = highGoals
+      ? `Both attacks are in form — ${eg} goals expected, favouring the Over.`
+      : `Both teams need a result — expect an open game with ${eg} goals projected.`;
+  } else if (m === 'Match Winner') {
+    if (veryStrongFav)  rationale = `${domName} are a heavy favourite at ${domProb}% win probability — clear market edge.`;
+    else if (strongFav) rationale = `${domName} hold a clear advantage at ${domProb}% — Match Winner is the most efficient market here.`;
+    else if (tightMatch) rationale = `Closely matched sides — the draw is the most likely single outcome at ${picked.confidence}%.`;
+    else                rationale = `${domName} have a ${domProb}% edge — Match Winner is the best available pick.`;
+  } else if (m === 'Double Chance') {
+    rationale = `Tight contest — Double Chance covers two of the three outcomes, giving protection on the draw.`;
+  } else if (m === 'Win to Nil') {
+    rationale = `${domName} are dominant with a solid defence — a clean-sheet victory is the pick.`;
+  } else if (m === 'Clean Sheet') {
+    rationale = `${domName} have been keeping clean sheets recently and face a low-threat attack.`;
+  } else if (m === 'HT Result') {
+    rationale = `Teams tend to be most active early — first-half result carries good value for this fixture.`;
+  } else if (m === 'Corners') {
+    rationale = tightMatch
+      ? `Tight match with both sides pressing forward — corners market is live.`
+      : `${domName} likely to dominate possession and win the set-piece battle.`;
+  } else {
+    rationale = veryStrongFav
+      ? `${domName} are heavily favoured (${domProb}%) — this market reflects their clear edge.`
+      : `This market offers the best risk-adjusted value at ${picked.confidence}% probability.`;
+  }
+
+  return { pick: picked.pick, label: picked.label, market: picked.market, confidence: Math.min(picked.confidence, 95), rationale };
 }
 
 function SmartBetBadge({
@@ -888,18 +936,29 @@ function SmartBetBadge({
   const sp = computeSmartPick(odds, homeTeam, awayTeam, markets, homeForm, awayForm);
   if (!sp) return null;
   return (
-    <Link
-      href={`/matches/${matchSlug}#prediction`}
-      onClick={(e) => e.stopPropagation()}
-      className="flex items-center gap-1.5 rounded-md bg-primary/8 px-2 py-1 text-[10px] hover:bg-primary/15 transition-colors"
-    >
-      <Sparkles className="h-3 w-3 shrink-0 text-primary" />
-      <span className="font-semibold text-primary">AI Pick</span>
-      <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary">{sp.market}</span>
-      <span className="text-muted-foreground">·</span>
-      <span className="truncate font-bold text-foreground">{sp.label}</span>
-      <span className="ml-auto font-semibold text-primary">{sp.confidence}%</span>
-    </Link>
+    <div className="group/aibadge relative">
+      <Link
+        href={`/matches/${matchSlug}#prediction`}
+        onClick={(e) => e.stopPropagation()}
+        className="flex items-center gap-1.5 rounded-md bg-primary/8 px-2 py-1 text-[10px] hover:bg-primary/15 transition-colors"
+      >
+        <Sparkles className="h-3 w-3 shrink-0 text-primary" />
+        <span className="font-semibold text-primary">AI Pick</span>
+        <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary">{sp.market}</span>
+        <span className="text-muted-foreground">·</span>
+        <span className="truncate font-bold text-foreground">{sp.label}</span>
+        <span className="ml-auto font-semibold text-primary">{sp.confidence}%</span>
+      </Link>
+      {/* "Why this pick?" tooltip — appears on hover */}
+      <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-64 opacity-0 scale-95 transition-all duration-150 group-hover/aibadge:opacity-100 group-hover/aibadge:scale-100">
+        <div className="rounded-lg border border-border bg-popover p-3 shadow-lg">
+          <p className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-primary">
+            <Sparkles className="h-3 w-3" /> Why this pick?
+          </p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{sp.rationale}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -543,7 +543,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={geist.variable} suppressHydrationWarning>
       <head />
-      <body className="min-h-screen bg-background font-sans antialiased">
+      <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
