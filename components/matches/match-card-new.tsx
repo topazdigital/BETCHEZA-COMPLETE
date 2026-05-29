@@ -602,10 +602,16 @@ function parseFormScore(form: string | undefined): number {
 }
 
 /**
- * Evaluate ALL available API markets and return the highest-confidence pick.
- * No bias toward any particular market — corners, HT result, O/U at any line,
- * BTTS & Result, Asian Handicap, DNB, etc. all compete on equal footing.
- * Trivial picks (any outcome < 1.12 odds) are filtered out as uninteresting.
+ * Evaluate ALL available API markets and return the best pick for THIS specific
+ * match profile. The algorithm:
+ *  1. Scans every market the API provides
+ *  2. Computes margin-free implied probabilities for each outcome
+ *  3. Applies a match-profile bonus/penalty so the market shown is actually
+ *     interesting for the match type (strong fav → Match Winner / Handicap;
+ *     low-scoring expectation → Under; high-scoring → BTTS / Over 2.5;
+ *     tight match → Corners / HT Result). Over 1.5, DC and generic markets
+ *     are demoted so they only appear when genuinely the best choice.
+ *  4. Falls back to a form-adjusted 1X2 when no API markets are present.
  */
 function computeSmartPick(
   odds: { home: number; draw?: number; away: number },
@@ -615,6 +621,29 @@ function computeSmartPick(
   homeForm?: string,
   awayForm?: string,
 ): SmartPick | null {
+  // ── Shared probability decomposition ─────────────────────────────────────
+  const rawH = 1 / Math.max(odds.home, 1.01);
+  const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
+  const rawA = 1 / Math.max(odds.away, 1.01);
+  const rawTotal = rawH + rawD + rawA || 1;
+  const nH = rawH / rawTotal;
+  const nA = rawA / rawTotal;
+
+  // Form-adjusted expected goals — drives the "low/high scoring" profile flag
+  const hFS = parseFormScore(homeForm);
+  const aFS = parseFormScore(awayForm);
+  const homeGoalShare = Math.min(0.80, Math.max(0.35, 0.50 + (nH - 0.33) * 0.65));
+  const λH = 2.65 * homeGoalShare * (0.82 + 0.36 * hFS);
+  const λA = 2.65 * (1 - homeGoalShare) * (0.82 + 0.36 * aFS);
+  const expectedGoals = λH + λA;
+
+  // Match profile flags
+  const strongFav    = Math.max(nH, nA) > 0.57;
+  const veryStrongFav = Math.max(nH, nA) > 0.66;
+  const tightMatch   = Math.abs(nH - nA) < 0.13;
+  const lowGoals     = expectedGoals < 2.05;
+  const highGoals    = expectedGoals > 3.05;
+
   // Remove bookmaker margin and return normalised per-outcome probabilities
   function marginFreeProbs(outcomes: MarketOutcome[]): Array<MarketOutcome & { prob: number }> {
     const valid = outcomes.filter(o => o.price > 1.01);
@@ -627,20 +656,29 @@ function computeSmartPick(
   function mktCategory(key: string, name: string): string {
     const k = key.toLowerCase();
     if (k === 'h2h') return 'Match Winner';
-    if (k === 'spreads') return 'Asian Handicap';
+    if (k === 'spreads' || k === 'asian_handicap') return 'Asian Handicap';
     if (k === 'double_chance') return 'Double Chance';
-    if (k === 'dnb') return 'Draw No Bet';
+    if (k === 'dnb' || k === 'draw_no_bet') return 'Draw No Bet';
     if (k === 'btts') return 'BTTS';
     if (k === 'btts_and_result') return 'BTTS & Result';
     if (k === 'ht_ft') return 'HT/FT';
-    if (k === 'h2h_1h' || k === 'h2h_ht') return 'HT Result';
+    if (k === 'h2h_1h' || k === 'h2h_ht' || k === 'ht_result') return 'HT Result';
     if (k === 'h2h_regulation') return 'Regulation Result';
+    if (k === 'odd_even_goals') return 'Odd/Even Goals';
+    if (k === 'exact_goals') return 'Exact Goals';
+    if (k === 'correct_score') return 'Correct Score';
+    if (k === 'win_to_nil') return 'Win to Nil';
+    if (k === 'first_team_to_score') return 'First to Score';
+    if (k === 'goal_first_half') return '1st Half Goal';
+    if (k.startsWith('clean_sheet')) return 'Clean Sheet';
+    if (/totals_0[_-]5/.test(k) || (k === 'totals' && name.includes('0.5'))) return 'O/U 0.5 Goals';
     if (/totals_1[_-]5/.test(k) || (k === 'totals' && name.includes('1.5'))) return 'O/U 1.5 Goals';
     if (/totals_2[_-]5/.test(k) || (k === 'totals' && name.includes('2.5'))) return 'O/U 2.5 Goals';
     if (/totals_3[_-]5/.test(k) || (k === 'totals' && name.includes('3.5'))) return 'O/U 3.5 Goals';
     if (/totals_4[_-]5/.test(k) || (k === 'totals' && name.includes('4.5'))) return 'O/U 4.5 Goals';
     if (k === 'totals_1h' || k === 'totals_h1') return '1st Half Goals';
     if (k === 'totals_2h' || k === 'totals_h2') return '2nd Half Goals';
+    if (k.startsWith('corners_')) return 'Corners';
     if (k.startsWith('corners_total') || k === 'corners') return 'Corners';
     if (k.startsWith('race_corners')) return 'Corners Race';
     if (k.startsWith('totals_1q')) return '1st Qtr Goals';
@@ -667,8 +705,7 @@ function computeSmartPick(
       const outcomes = mkt.outcomes || [];
       if (outcomes.length < 2) continue;
 
-      // Skip markets where ANY outcome has odds below 1.12 — those are near-certainties
-      // that provide no betting value and are boring to display (e.g. Over 0.5 goals at 1.02)
+      // Skip near-certainty markets (any outcome below 1.12 is boring)
       if (outcomes.some(o => o.price < 1.12)) continue;
 
       const probs = marginFreeProbs(outcomes);
@@ -677,7 +714,7 @@ function computeSmartPick(
       // Best outcome = highest margin-free implied probability
       const best = probs.reduce((a, b) => b.prob > a.prob ? b : a);
       const conf = Math.round(best.prob * 100);
-      if (conf < 53) continue; // too close to coin-flip
+      if (conf < 52) continue; // too close to coin-flip
 
       const category = mktCategory(key, mkt.name);
       const label = outcomeLabel(best.name);
@@ -694,18 +731,11 @@ function computeSmartPick(
   }
 
   // ── 2. Form-adjusted 1X2 fallback — always computed from main odds ───────
-  // Only replaces "Match Winner" if we don't have a better one from API markets
   {
-    const hFS = parseFormScore(homeForm);
-    const aFS = parseFormScore(awayForm);
-    const rawH = 1 / Math.max(odds.home, 1.01);
-    const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
-    const rawA = 1 / Math.max(odds.away, 1.01);
-    const rawTotal = rawH + rawD + rawA;
     const adj = (base: number, fs: number, adv = 0) => (base / rawTotal) * (0.80 + 0.4 * fs) + adv;
     const adjH = adj(rawH, hFS, 0.05);
     const adjA = adj(rawA, aFS);
-    const adjD = (rawD / rawTotal) * 0.90;
+    const adjD = rawD > 0 ? (rawD / rawTotal) * 0.90 : 0;
     const adjT = adjH + adjA + adjD;
     const h = adjH / adjT, a = adjA / adjT, d = adjD / adjT;
     const max = Math.max(h, d, a);
@@ -724,15 +754,69 @@ function computeSmartPick(
 
   if (candidates.length === 0) return null;
 
-  // ── 3. Rank: highest confidence first; within equal confidence prefer odds ≥ 1.20
-  candidates.sort((a, b) =>
-    b.confidence !== a.confidence ? b.confidence - a.confidence : b.price - a.price,
-  );
+  // ── 3. Profile-based scoring — surface the most relevant market ──────────
+  // Rather than always picking the highest raw confidence (which would always
+  // surface OV 1.5 at ~75% for average soccer), we add a match-profile bonus
+  // so the pick reflects what's actually interesting about this specific game.
+  function profileBonus(c: Candidate): number {
+    const m = c.market;
+    const pickLower = c.pick.toLowerCase();
 
-  // Return highest-confidence pick; soft-prefer picks with odds ≥ 1.20 (some betting value)
+    // Very strong favourite → Handicap or Match Winner is the value play
+    if (veryStrongFav && (m === 'Asian Handicap' || m === 'Draw No Bet')) return 20;
+    if (veryStrongFav && m === 'Match Winner') return 15;
+
+    // Strong favourite → prefer Match Winner over generic markets
+    if (strongFav && m === 'Match Winner') return 12;
+    if (strongFav && m === 'Draw No Bet') return 8;
+
+    // Low-scoring expectation → surface Under markets
+    if (lowGoals && pickLower.startsWith('under')) return 16;
+    if (lowGoals && m === 'BTTS' && pickLower === 'no') return 10;
+
+    // High-scoring expectation → surface Over 2.5 or BTTS Yes
+    if (highGoals && m === 'O/U 2.5 Goals' && pickLower.startsWith('over')) return 14;
+    if (highGoals && m === 'BTTS' && pickLower === 'yes') return 12;
+    if (highGoals && m === 'O/U 3.5 Goals' && pickLower.startsWith('over')) return 8;
+
+    // Tight match → variety via Corners, HT Result, or BTTS
+    if (tightMatch && m === 'Corners') return 10;
+    if (tightMatch && m === 'HT Result') return 8;
+    if (tightMatch && m === 'BTTS' && pickLower === 'yes') return 6;
+    if (tightMatch && m === 'Draw No Bet') return 5;
+
+    // Asian Handicap is generally more interesting than DC for moderate favourites
+    if (!veryStrongFav && !tightMatch && m === 'Asian Handicap') return 6;
+
+    // ── Demote always-generic markets that dominate regardless of match ──
+    // Over 1.5: true for ~80% of soccer matches — only show when low-goals
+    if (m === 'O/U 1.5 Goals') return lowGoals ? 4 : -14;
+    // Double Chance: only relevant for tight matches
+    if (m === 'Double Chance') return tightMatch ? 2 : -8;
+    // Clean Sheet / Win to Nil: relevant for dominant home favourites
+    if (m === 'Clean Sheet' || m === 'Win to Nil') return veryStrongFav ? 4 : -8;
+    // 1st Half Goal / Odd-Even / Exact Goals / Correct Score: low-value for top pick
+    if (m === '1st Half Goal' || m === 'Odd/Even Goals') return -6;
+    if (m === 'Exact Goals' || m === 'Correct Score') return -10;
+    // BTTS & Result combos are exotic; only show for high-scoring
+    if (m === 'BTTS & Result') return highGoals ? 0 : -8;
+    // Over 0.5 is a near-certainty in almost all matches
+    if (m === 'O/U 0.5 Goals') return -25;
+
+    return 0;
+  }
+
+  // Sort by profile-adjusted score; break ties by odds value
+  candidates.sort((a, b) => {
+    const sa = a.confidence + profileBonus(a);
+    const sb = b.confidence + profileBonus(b);
+    return sb !== sa ? sb - sa : b.price - a.price;
+  });
+
+  // Prefer picks with real betting value (odds ≥ 1.20)
   const interesting = candidates.filter(c => c.price >= 1.20);
   const picked = interesting.length > 0 ? interesting[0] : candidates[0];
-  return { pick: picked.pick, label: picked.label, market: picked.market, confidence: picked.confidence };
+  return { pick: picked.pick, label: picked.label, market: picked.market, confidence: Math.min(picked.confidence, 95) };
 }
 
 function SmartBetBadge({

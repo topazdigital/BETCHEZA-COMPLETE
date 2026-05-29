@@ -9,15 +9,27 @@ import { TeamLogo } from "@/components/ui/team-logo"
 import { FlagIcon } from "@/components/ui/flag-icon"
 import { matchToSlug } from "@/lib/utils/match-url"
 
+interface MatchMarketOutcome {
+  name: string
+  price: number
+  point?: number
+}
+interface MatchMarket {
+  key?: string
+  name: string
+  outcomes: MatchMarketOutcome[]
+}
+
 interface MatchLite {
   id: string
-  homeTeam: { name: string; logo?: string }
-  awayTeam: { name: string; logo?: string }
+  homeTeam: { name: string; logo?: string; form?: string }
+  awayTeam: { name: string; logo?: string; form?: string }
   league: { name: string; countryCode: string }
   sport: { slug: string; icon?: string }
   status: string
   kickoffTime: Date | string
   odds?: { home: number; draw?: number; away: number }
+  markets?: MatchMarket[]
 }
 
 interface BestBetsPanelProps {
@@ -239,13 +251,66 @@ function ConfidenceStars({ n }: { n: number }) {
 }
 
 // ───────────────────────────────────────────────
-// Pick generator — uses ONLY real odds, no randomness
+// Pick generator — scans ALL available markets, picks best fit per match
 // ───────────────────────────────────────────────
+
+/** Parse a form string like "WWDLW" into a 0–1 score (most-recent weighted). */
+function parseFormScore(form: string | undefined): number {
+  if (!form) return 0.5
+  const chars = form.replace(/[^WwDdLl]/g, '').slice(-5).toUpperCase().split('')
+  if (chars.length === 0) return 0.5
+  let pts = 0, maxPts = 0
+  chars.forEach((c, i) => {
+    const w = 1 + i * 0.3
+    maxPts += 3 * w
+    if (c === 'W') pts += 3 * w
+    else if (c === 'D') pts += 1 * w
+  })
+  return maxPts > 0 ? Math.min(pts / maxPts, 1) : 0.5
+}
+
+/** Remove bookmaker margin and return normalised per-outcome probabilities. */
+function marginFreeProbs(outcomes: MatchMarketOutcome[]): Array<MatchMarketOutcome & { prob: number }> {
+  const valid = outcomes.filter(o => o.price > 1.01)
+  if (valid.length < 2) return []
+  const vig = valid.reduce((s, o) => s + 1 / o.price, 0)
+  return valid.map(o => ({ ...o, prob: (1 / o.price) / vig }))
+}
+
+/** Map API market key to a normalised category label. */
+function mktCategory(key: string, name: string): string {
+  const k = key.toLowerCase()
+  if (k === 'h2h') return 'Match Winner'
+  if (k === 'spreads' || k === 'asian_handicap') return 'Asian Handicap'
+  if (k === 'double_chance') return 'Double Chance'
+  if (k === 'dnb' || k === 'draw_no_bet') return 'Draw No Bet'
+  if (k === 'btts') return 'BTTS'
+  if (k === 'btts_and_result') return 'BTTS & Result'
+  if (k === 'ht_ft') return 'HT/FT'
+  if (k === 'h2h_1h' || k === 'h2h_ht' || k === 'ht_result') return 'HT Result'
+  if (k === 'odd_even_goals') return 'Odd/Even Goals'
+  if (k === 'exact_goals') return 'Exact Goals'
+  if (k === 'correct_score') return 'Correct Score'
+  if (k === 'win_to_nil') return 'Win to Nil'
+  if (k === 'first_team_to_score') return 'First to Score'
+  if (k === 'goal_first_half') return '1st Half Goal'
+  if (k.startsWith('clean_sheet')) return 'Clean Sheet'
+  if (/totals_0[_-]5/.test(k) || (k === 'totals' && name.includes('0.5'))) return 'O/U 0.5 Goals'
+  if (/totals_1[_-]5/.test(k) || (k === 'totals' && name.includes('1.5'))) return 'O/U 1.5 Goals'
+  if (/totals_2[_-]5/.test(k) || (k === 'totals' && name.includes('2.5'))) return 'O/U 2.5 Goals'
+  if (/totals_3[_-]5/.test(k) || (k === 'totals' && name.includes('3.5'))) return 'O/U 3.5 Goals'
+  if (/totals_4[_-]5/.test(k) || (k === 'totals' && name.includes('4.5'))) return 'O/U 4.5 Goals'
+  if (k === 'totals_1h' || k === 'totals_h1') return '1st Half Goals'
+  if (k === 'totals_2h' || k === 'totals_h2') return '2nd Half Goals'
+  if (k.startsWith('corners_')) return 'Corners'
+  if (k.startsWith('totals_')) return 'Total Goals'
+  if (k === 'totals') return 'Total Goals'
+  return name || key
+}
+
 function buildBestBets(matches: MatchLite[]): Pick[] {
   const todayDate = new Date()
   const today = todayDate.toDateString()
-  // End of TODAY in the user's local timezone — anything scheduled after
-  // midnight should fall under tomorrow's panel, not today's.
   const endOfToday = new Date(todayDate)
   endOfToday.setHours(23, 59, 59, 999)
   const endTs = endOfToday.getTime()
@@ -254,67 +319,145 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
 
   for (const m of matches) {
     if (!m.odds) continue
-    // Skip hash-derived fake odds — they differ from real odds on match detail page
-    if (m.odds.bookmaker === 'Computed' || m.odds.bookmaker === 'Estimated' || m.odds.bookmaker === 'computed') continue
+    // Skip computed/estimated odds
+    if ((m.odds as Record<string, unknown>).bookmaker === 'Computed' ||
+        (m.odds as Record<string, unknown>).bookmaker === 'Estimated' ||
+        (m.odds as Record<string, unknown>).bookmaker === 'computed') continue
+
     const status = (m.status || '').toLowerCase()
-    // Only true "scheduled / not started" matches are eligible — anything that
-    // has kicked off, ended, was postponed, or is otherwise settled is dropped.
-    // This is what previously caused yesterday's games to leak into Consensus
-    // Picks when their status hadn't been flipped to "finished" yet.
     if (status && status !== 'scheduled' && status !== 'upcoming' && status !== 'ns') continue
 
     const ko = new Date(m.kickoffTime).getTime()
     if (Number.isNaN(ko)) continue
+    if (new Date(ko).toDateString() !== today) continue
+    if (ko <= now || ko > endTs) continue
 
-    const koDate = new Date(ko).toDateString()
-    if (koDate !== today) continue
-    // Strictly future kickoffs only — no in-progress games, no recently-started
-    // games. This is the panel's whole point: tips you can still bet on.
-    if (ko <= now) continue
-    if (ko > endTs) continue
+    // ── Fair probability decomposition ──────────────────────────────────────
+    const rawH = 1 / Math.max(m.odds.home, 1.01)
+    const rawD = m.odds.draw ? 1 / Math.max(m.odds.draw, 1.01) : 0
+    const rawA = 1 / Math.max(m.odds.away, 1.01)
+    const rawT = rawH + rawD + rawA || 1
+    const nH = rawH / rawT
+    const nA = rawA / rawT
 
-    // Implied probabilities
-    const hp = 1 / m.odds.home
-    const ap = 1 / m.odds.away
-    const dp = m.odds.draw ? 1 / m.odds.draw : 0
-    const total = hp + ap + dp || 1
-    const homeP = hp / total
-    const awayP = ap / total
-    const drawP = dp / total
+    // Match profile
+    const hFS = parseFormScore(m.homeTeam.form)
+    const aFS = parseFormScore(m.awayTeam.form)
+    const homeGoalShare = Math.min(0.80, Math.max(0.35, 0.50 + (nH - 0.33) * 0.65))
+    const λH = 2.65 * homeGoalShare * (0.82 + 0.36 * hFS)
+    const λA = 2.65 * (1 - homeGoalShare) * (0.82 + 0.36 * aFS)
+    const expectedGoals = λH + λA
 
-    // Featured pick: strongest single outcome OR a strong double-chance
-    const winner = homeP >= awayP ? "home" : "away"
-    const winnerP = Math.max(homeP, awayP)
-    const winnerOdds = winner === "home" ? m.odds.home : m.odds.away
-    const winnerName = winner === "home" ? m.homeTeam.name : m.awayTeam.name
+    const strongFav    = Math.max(nH, nA) > 0.57
+    const veryStrongFav = Math.max(nH, nA) > 0.66
+    const tightMatch   = Math.abs(nH - nA) < 0.13
+    const lowGoals     = expectedGoals < 2.05
+    const highGoals    = expectedGoals > 3.05
 
-    // Only highlight clear edges
-    if (winnerP < 0.45) continue
-
-    // If draw is also likely, prefer Double Chance for safer pick
-    if (m.odds.draw && drawP > 0.27 && winnerP < 0.6) {
-      const dcPrice = 1 / (winnerP + drawP)
-      candidates.push({
-        match: m,
-        market: "Double Chance",
-        selection: `${winnerName} or Draw`,
-        odds: Math.round(dcPrice * 100) / 100,
-        confidence: Math.round((winnerP + drawP) * 100),
-        rationale: `${winnerName} favoured but draw is in play.`,
-      })
-    } else {
-      candidates.push({
-        match: m,
-        market: "Match Winner",
-        selection: `${winnerName} to win`,
-        odds: winnerOdds,
-        confidence: Math.round(winnerP * 100),
-        rationale: `Bookmaker favourite at ${winnerOdds.toFixed(2)}.`,
-      })
+    // Profile bonus (same logic as match card)
+    const profileBonus = (market: string, pick: string, price: number): number => {
+      const pickLower = pick.toLowerCase()
+      if (veryStrongFav && (market === 'Asian Handicap' || market === 'Draw No Bet')) return 20
+      if (veryStrongFav && market === 'Match Winner') return 15
+      if (strongFav && market === 'Match Winner') return 12
+      if (strongFav && market === 'Draw No Bet') return 8
+      if (lowGoals && pickLower.startsWith('under')) return 16
+      if (lowGoals && market === 'BTTS' && pickLower === 'no') return 10
+      if (highGoals && market === 'O/U 2.5 Goals' && pickLower.startsWith('over')) return 14
+      if (highGoals && market === 'BTTS' && pickLower === 'yes') return 12
+      if (highGoals && market === 'O/U 3.5 Goals' && pickLower.startsWith('over')) return 8
+      if (tightMatch && market === 'Corners') return 10
+      if (tightMatch && market === 'HT Result') return 8
+      if (tightMatch && market === 'BTTS' && pickLower === 'yes') return 6
+      if (!veryStrongFav && !tightMatch && market === 'Asian Handicap') return 6
+      if (market === 'O/U 1.5 Goals') return lowGoals ? 4 : -14
+      if (market === 'Double Chance') return tightMatch ? 2 : -8
+      if (market === 'Clean Sheet' || market === 'Win to Nil') return veryStrongFav ? 4 : -8
+      if (market === '1st Half Goal' || market === 'Odd/Even Goals') return -6
+      if (market === 'Exact Goals' || market === 'Correct Score') return -10
+      if (market === 'BTTS & Result') return highGoals ? 0 : -8
+      if (market === 'O/U 0.5 Goals') return -25
+      if (price >= 1.20 && price <= 2.50) return 2  // mild reward for decent odds
+      return 0
     }
+
+    // ── Scan all available markets ───────────────────────────────────────────
+    interface MarketCandidate { market: string; selection: string; odds: number; confidence: number; score: number }
+    const mktCandidates: MarketCandidate[] = []
+
+    if (m.markets && m.markets.length > 0) {
+      for (const mkt of m.markets) {
+        const key = (mkt.key || '').toLowerCase()
+        const outcomes = mkt.outcomes || []
+        if (outcomes.length < 2) continue
+        if (outcomes.some(o => o.price < 1.12)) continue
+        const probs = marginFreeProbs(outcomes)
+        if (probs.length < 2) continue
+        const best = probs.reduce((a, b) => b.prob > a.prob ? b : a)
+        const conf = Math.round(best.prob * 100)
+        if (conf < 52) continue
+        const category = mktCategory(key, mkt.name)
+        const score = conf + profileBonus(category, best.name, best.price)
+        const existing = mktCandidates.findIndex(c => c.market === category)
+        const entry: MarketCandidate = { market: category, selection: best.name, odds: best.price, confidence: conf, score }
+        if (existing >= 0) { if (score > mktCandidates[existing].score) mktCandidates[existing] = entry }
+        else mktCandidates.push(entry)
+      }
+    }
+
+    // ── Fallback: compute from h2h odds if no markets present ───────────────
+    if (mktCandidates.length === 0) {
+      const homeP = nH, awayP = nA
+      const drawP = rawD / rawT
+      const winner = homeP >= awayP ? "home" : "away"
+      const winnerP = Math.max(homeP, awayP)
+      const winnerOdds = winner === "home" ? m.odds.home : m.odds.away
+      const winnerName = winner === "home" ? m.homeTeam.name : m.awayTeam.name
+      if (winnerP >= 0.45) {
+        if (m.odds.draw && drawP > 0.27 && winnerP < 0.6) {
+          const dcPrice = 1 / (winnerP + drawP)
+          mktCandidates.push({
+            market: "Double Chance", selection: `${winnerName} or Draw`,
+            odds: Math.round(dcPrice * 100) / 100,
+            confidence: Math.round((winnerP + drawP) * 100),
+            score: Math.round((winnerP + drawP) * 100) - 8,
+          })
+        } else {
+          mktCandidates.push({
+            market: "Match Winner", selection: `${winnerName} to win`,
+            odds: winnerOdds, confidence: Math.round(winnerP * 100),
+            score: Math.round(winnerP * 100) + (strongFav ? 12 : 0),
+          })
+        }
+      }
+    }
+
+    if (mktCandidates.length === 0) continue
+
+    // Best candidate for this match
+    mktCandidates.sort((a, b) => b.score !== a.score ? b.score - a.score : b.odds - a.odds)
+    const best = mktCandidates.find(c => c.odds >= 1.20) ?? mktCandidates[0]
+    if (best.confidence < 50) continue
+
+    // Human-readable selection label
+    const hn = m.homeTeam.name, an = m.awayTeam.name
+    let selectionLabel = best.selection
+    if (best.selection === 'Home') selectionLabel = `${hn} to Win`
+    else if (best.selection === 'Away') selectionLabel = `${an} to Win`
+    else if (best.selection === '1') selectionLabel = `${hn} to Win`
+    else if (best.selection === '2') selectionLabel = `${an} to Win`
+    else if (best.selection === 'X') selectionLabel = 'Draw'
+
+    candidates.push({
+      match: m,
+      market: best.market,
+      selection: selectionLabel,
+      odds: best.odds,
+      confidence: Math.min(best.confidence, 95),
+      rationale: `${best.market} — ${best.confidence}% confidence.`,
+    })
   }
 
-  // Sort by confidence desc, take top 6, but require at least 50%
   return candidates
     .filter(p => p.confidence >= 50)
     .sort((a, b) => b.confidence - a.confidence)

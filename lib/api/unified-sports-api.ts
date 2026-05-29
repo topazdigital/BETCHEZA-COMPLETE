@@ -1581,7 +1581,11 @@ export function extractEspnOdds(rawOddsList: ESPNOddsRaw[] | undefined, hasDraw:
  * (Home/Away), Win to Nil, Correct Score (top 12), First Team to Score,
  * Goal in 1st Half, Asian Handicap (±1), Total Corners O/U.
  */
-export function deriveSoccerMarkets(home: number, draw: number, away: number, homeTeam = 'Home', awayTeam = 'Away'): Market[] {
+export function deriveSoccerMarkets(
+  home: number, draw: number, away: number,
+  homeTeam = 'Home', awayTeam = 'Away',
+  homeForm?: string, awayForm?: string,
+): Market[] {
   if (!home || !draw || !away) return [];
   const pH = 1 / home, pD = 1 / draw, pA = 1 / away;
   const total = pH + pD + pA;
@@ -1596,9 +1600,21 @@ export function deriveSoccerMarkets(home: number, draw: number, away: number, ho
 
   // ── Poisson model ────────────────────────────────────────────────────────
   // Calibrated from observed data: avg 2.65 goals / match, home scores ~55 %
+  // Form-adjusted: a team on a hot streak (WWWWW) gets ~15% more goals;
+  // a team on a cold streak (LLLLL) gets ~15% fewer. This ensures markets
+  // like Over/Under and BTTS actually vary meaningfully between matches.
+  function parseForm(f: string | undefined): number {
+    if (!f) return 0.5;
+    const chars = f.replace(/[^WwDdLl]/g, '').slice(-5).toUpperCase().split('');
+    if (!chars.length) return 0.5;
+    let pts = 0, maxPts = 0;
+    chars.forEach((c, i) => { const w = 1 + i * 0.3; maxPts += 3 * w; if (c === 'W') pts += 3 * w; else if (c === 'D') pts += w; });
+    return maxPts > 0 ? Math.min(pts / maxPts, 1) : 0.5;
+  }
+  const hFS = parseForm(homeForm), aFS = parseForm(awayForm);
   const homeGoalShare = Math.min(0.80, Math.max(0.35, 0.50 + (nH - 0.33) * 0.65));
-  const λH = Math.max(0.20, Math.min(4.0, 2.65 * homeGoalShare));
-  const λA = Math.max(0.20, Math.min(4.0, 2.65 * (1 - homeGoalShare)));
+  const λH = Math.max(0.20, Math.min(4.0, 2.65 * homeGoalShare * (0.82 + 0.36 * hFS)));
+  const λA = Math.max(0.20, Math.min(4.0, 2.65 * (1 - homeGoalShare) * (0.82 + 0.36 * aFS)));
 
   const poisson = (λ: number, k: number): number => {
     let f = 1; for (let i = 1; i <= k; i++) f *= i;
@@ -1812,8 +1828,10 @@ export function deriveSoccerMarkets(home: number, draw: number, away: number, ho
     ],
   });
 
-  // ── Total Corners O/U (λ_corners ≈ 10) ──────────────────────────────────
-  const λC = 10;
+  // ── Total Corners O/U — match-specific (attacking teams → more corners) ──
+  // λC varies from ~8 (defensive match) to ~12 (open, attacking) based on
+  // the same Poisson lambdas that drive the goals model.
+  const λC = Math.max(7, Math.min(13, 7.5 + (λH + λA) * 0.95));
   for (const cLine of [8.5, 9.5, 10.5, 11.5]) {
     let pCUnder = 0;
     for (let c = 0; c <= Math.floor(cLine); c++) pCUnder += poisson(λC, c);
