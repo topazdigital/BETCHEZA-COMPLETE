@@ -1809,8 +1809,30 @@ export function deriveSoccerMarkets(
     ],
   });
 
-  // ── Asian Handicap ±1 ────────────────────────────────────────────────────
-  const ahLine = nH > nA ? -1 : 1;
+  // ── Asian Handicap — smartly-chosen line ─────────────────────────────────
+  // Scan lines ±0.5 … ±2.5; pick the one where the favoured side covers at
+  // ~55% probability. This means a dominant favourite gets -1.5 or -2 while
+  // an even match gets -0.5 — far more match-specific than a fixed ±1.
+  const favHome = nH >= nA;
+  let bestAHLineAbs = 1.0;
+  let bestAHDiff = 999;
+  for (const lineAbs of [0.5, 1.0, 1.5, 2.0, 2.5]) {
+    const ahL = favHome ? -lineAbs : lineAbs;
+    let favCover = 0, pushL = 0, favFail = 0;
+    for (let h = 0; h <= 7; h++) {
+      for (let a = 0; a <= 7; a++) {
+        const p = poisson(λH, h) * poisson(λA, a);
+        const diff = (h + ahL) - a;
+        if (diff > 0) { if (favHome) favCover += p; else favFail += p; }
+        else if (diff === 0) { pushL += p; }
+        else { if (favHome) favFail += p; else favCover += p; }
+      }
+    }
+    const pFavAdj = (favCover + pushL * 0.5) / Math.max(favCover + favFail + pushL, 0.001);
+    const diff = Math.abs(pFavAdj - 0.55);
+    if (diff < bestAHDiff) { bestAHDiff = diff; bestAHLineAbs = lineAbs; }
+  }
+  const ahLine = favHome ? -bestAHLineAbs : bestAHLineAbs;
   let pAHHome = 0, pAHAway = 0, pAHPush = 0;
   for (let h = 0; h <= 7; h++) {
     for (let a = 0; a <= 7; a++) {
@@ -1820,11 +1842,13 @@ export function deriveSoccerMarkets(
     }
   }
   const ahT = pAHHome + pAHAway + pAHPush;
+  const ahHomeSign = ahLine > 0 ? '+' : '';
+  const ahAwaySign = -ahLine > 0 ? '+' : '';
   markets.push({
-    key: 'asian_handicap', name: `Asian Handicap (${ahLine > 0 ? '+' : ''}${ahLine})`,
+    key: 'asian_handicap', name: `Asian Handicap (${ahHomeSign}${ahLine})`,
     outcomes: [
-      { name: `${homeTeam} ${ahLine > 0 ? '+' : ''}${ahLine}`, price: price((pAHHome + pAHPush * 0.5) / ahT), point: ahLine },
-      { name: `${awayTeam} ${-ahLine > 0 ? '+' : ''}${-ahLine}`, price: price((pAHAway + pAHPush * 0.5) / ahT), point: -ahLine },
+      { name: `${homeTeam} ${ahHomeSign}${ahLine}`, price: price((pAHHome + pAHPush * 0.5) / Math.max(ahT, 0.001)), point: ahLine },
+      { name: `${awayTeam} ${ahAwaySign}${-ahLine}`, price: price((pAHAway + pAHPush * 0.5) / Math.max(ahT, 0.001)), point: -ahLine },
     ],
   });
 

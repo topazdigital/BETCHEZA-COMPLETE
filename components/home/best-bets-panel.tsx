@@ -354,31 +354,73 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
     const lowGoals     = expectedGoals < 2.05
     const highGoals    = expectedGoals > 3.05
 
-    // Profile bonus (same logic as match card)
-    const profileBonus = (market: string, pick: string, price: number): number => {
+    // Multiplier-based scoring (same engine as match card computeSmartPick)
+    const INTEREST: Record<string, number> = {
+      'Win to Nil':     1.28,
+      'Asian Handicap': 1.22,
+      'Clean Sheet':    1.20,
+      'Draw No Bet':    1.16,
+      'First to Score': 1.12,
+      'O/U 3.5 Goals':  1.10,
+      'O/U 2.5 Goals':  1.06,
+      'BTTS':           1.04,
+      'Match Winner':   1.00,
+      'HT Result':      0.95,
+      'Corners':        0.94,
+      'Corners Race':   0.88,
+      '1st Half Goals': 0.86,
+      '2nd Half Goals': 0.86,
+      'O/U 4.5 Goals':  0.94,
+      'Total Goals':    0.90,
+      'Regulation Result': 0.90,
+      'BTTS & Result':  0.80,
+      'HT/FT':          0.76,
+      'Correct Score':  0.74,
+      'Double Chance':  0.70,
+      'Exact Goals':    0.68,
+      '1st Half Goal':  0.65,
+      'O/U 1.5 Goals':  0.50,
+      'O/U 0.5 Goals':  0.28,
+      'Odd/Even Goals': 0.32,
+    }
+    // marketScore(conf, market, pick, price) → full score for ranking candidates
+    const marketScore = (conf: number, market: string, pick: string, price: number): number => {
       const pickLower = pick.toLowerCase()
-      if (veryStrongFav && (market === 'Asian Handicap' || market === 'Draw No Bet')) return 20
-      if (veryStrongFav && market === 'Match Winner') return 15
-      if (strongFav && market === 'Match Winner') return 12
-      if (strongFav && market === 'Draw No Bet') return 8
-      if (lowGoals && pickLower.startsWith('under')) return 16
-      if (lowGoals && market === 'BTTS' && pickLower === 'no') return 10
-      if (highGoals && market === 'O/U 2.5 Goals' && pickLower.startsWith('over')) return 14
-      if (highGoals && market === 'BTTS' && pickLower === 'yes') return 12
-      if (highGoals && market === 'O/U 3.5 Goals' && pickLower.startsWith('over')) return 8
-      if (tightMatch && market === 'Corners') return 10
-      if (tightMatch && market === 'HT Result') return 8
-      if (tightMatch && market === 'BTTS' && pickLower === 'yes') return 6
-      if (!veryStrongFav && !tightMatch && market === 'Asian Handicap') return 6
-      if (market === 'O/U 1.5 Goals') return lowGoals ? 4 : -14
-      if (market === 'Double Chance') return tightMatch ? 2 : -8
-      if (market === 'Clean Sheet' || market === 'Win to Nil') return veryStrongFav ? 4 : -8
-      if (market === '1st Half Goal' || market === 'Odd/Even Goals') return -6
-      if (market === 'Exact Goals' || market === 'Correct Score') return -10
-      if (market === 'BTTS & Result') return highGoals ? 0 : -8
-      if (market === 'O/U 0.5 Goals') return -25
-      if (price >= 1.20 && price <= 2.50) return 2  // mild reward for decent odds
-      return 0
+      const multiplier = INTEREST[market] ?? 1.00
+      let fit = 0
+      if (market === 'Win to Nil') {
+        const isCleanSweep = pickLower !== 'neither' && pickLower !== 'no' && pickLower !== 'neither team'
+        if (isCleanSweep && veryStrongFav) fit = 20
+        else if (isCleanSweep && strongFav) fit = 9
+        else if (!isCleanSweep) fit = -8
+        else fit = -10
+      } else if (market === 'Clean Sheet') {
+        const isYes = pickLower === 'yes'
+        if (isYes && veryStrongFav) fit = 20
+        else if (isYes && strongFav) fit = 9
+        else if (!isYes) fit = -6
+        else fit = -10
+      } else if (market === 'Asian Handicap') {
+        fit = veryStrongFav ? 16 : strongFav ? 9 : tightMatch ? -4 : 4
+      } else if (market === 'Draw No Bet') {
+        fit = strongFav ? 9 : 6
+      } else if (market === 'First to Score') {
+        fit = highGoals ? 10 : 5
+      } else if (market === 'Match Winner') {
+        fit = veryStrongFav ? 12 : strongFav ? 7 : 0
+      } else if (market === 'BTTS') {
+        if (pickLower === 'yes' && highGoals) fit = 12
+        else if (pickLower === 'yes') fit = 4
+        else if (pickLower === 'no' && (lowGoals || veryStrongFav)) fit = 10
+      } else if (pickLower.startsWith('under')) {
+        fit = lowGoals ? 16 : !highGoals ? 4 : -4
+      } else if (pickLower.startsWith('over') && (market === 'O/U 2.5 Goals' || market === 'O/U 3.5 Goals')) {
+        fit = highGoals ? 14 : 3
+      } else if (market === 'Corners' || market === 'HT Result') {
+        if (tightMatch) fit = 8
+      }
+      const oddsBonus = price >= 1.25 && price <= 2.80 ? 6 : price > 2.80 && price <= 4.00 ? 2 : 0
+      return conf * multiplier + fit + oddsBonus
     }
 
     // ── Scan all available markets ───────────────────────────────────────────
@@ -390,14 +432,14 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
         const key = (mkt.key || '').toLowerCase()
         const outcomes = mkt.outcomes || []
         if (outcomes.length < 2) continue
-        if (outcomes.some(o => o.price < 1.12)) continue
+        if (outcomes.some(o => o.price < 1.10)) continue
         const probs = marginFreeProbs(outcomes)
         if (probs.length < 2) continue
         const best = probs.reduce((a, b) => b.prob > a.prob ? b : a)
         const conf = Math.round(best.prob * 100)
-        if (conf < 52) continue
+        if (conf < 50) continue
         const category = mktCategory(key, mkt.name)
-        const score = conf + profileBonus(category, best.name, best.price)
+        const score = marketScore(conf, category, best.name, best.price)
         const existing = mktCandidates.findIndex(c => c.market === category)
         const entry: MarketCandidate = { market: category, selection: best.name, odds: best.price, confidence: conf, score }
         if (existing >= 0) { if (score > mktCandidates[existing].score) mktCandidates[existing] = entry }

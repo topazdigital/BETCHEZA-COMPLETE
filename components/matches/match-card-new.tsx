@@ -705,8 +705,8 @@ function computeSmartPick(
       const outcomes = mkt.outcomes || [];
       if (outcomes.length < 2) continue;
 
-      // Skip near-certainty markets (any outcome below 1.12 is boring)
-      if (outcomes.some(o => o.price < 1.12)) continue;
+      // Skip near-certainty markets (any outcome priced below 1.10 is trivial)
+      if (outcomes.some(o => o.price < 1.10)) continue;
 
       const probs = marginFreeProbs(outcomes);
       if (probs.length < 2) continue;
@@ -714,12 +714,12 @@ function computeSmartPick(
       // Best outcome = highest margin-free implied probability
       const best = probs.reduce((a, b) => b.prob > a.prob ? b : a);
       const conf = Math.round(best.prob * 100);
-      if (conf < 52) continue; // too close to coin-flip
+      if (conf < 50) continue; // below coin-flip — not a pick
 
       const category = mktCategory(key, mkt.name);
       const label = outcomeLabel(best.name);
 
-      // De-duplicate: keep only the best candidate per category
+      // De-duplicate: keep only the highest-confidence candidate per category
       const idx = candidates.findIndex(c => c.market === category);
       const entry: Candidate = { pick: best.name, label, market: category, confidence: conf, price: best.price };
       if (idx >= 0) {
@@ -754,67 +754,116 @@ function computeSmartPick(
 
   if (candidates.length === 0) return null;
 
-  // ── 3. Profile-based scoring — surface the most relevant market ──────────
-  // Rather than always picking the highest raw confidence (which would always
-  // surface OV 1.5 at ~75% for average soccer), we add a match-profile bonus
-  // so the pick reflects what's actually interesting about this specific game.
-  function profileBonus(c: Candidate): number {
+  // ── 3. Multiplier-based scoring — surfaces the genuinely best market ──────
+  //
+  // Problem with additive bonuses: OV 1.5 at 80% conf + (-14) = 66, which still
+  // beats most interesting markets. A multiplier fixes this: OV 1.5 at 80% × 0.52
+  // = 41.6 and can NEVER win. Win to Nil at 55% × 1.25 + 18 (strong fav) + 5
+  // (odds) = 91.75, correctly surfacing a match-specific, engaging market.
+  //
+  // INTEREST multipliers encode "how engaging/specific is this market type?"
+  const INTEREST: Record<string, number> = {
+    'Win to Nil':     1.28,  // match-specific, compelling
+    'Asian Handicap': 1.22,  // shows the handicap line the model chose
+    'Clean Sheet':    1.20,  // team-specific proposition
+    'Draw No Bet':    1.16,  // protects against draw — better than DC
+    'First to Score': 1.12,  // engaging in-game narrative
+    'O/U 3.5 Goals':  1.10,  // rarer line — more signal when it fires
+    'O/U 2.5 Goals':  1.06,  // standard but match-specific
+    'BTTS':           1.04,  // depends on expected goals model
+    'Match Winner':   1.00,  // baseline
+    'HT Result':      0.95,
+    'Corners':        0.94,
+    'Corners Race':   0.88,
+    '1st Half Goals': 0.86,
+    '2nd Half Goals': 0.86,
+    'O/U 4.5 Goals':  0.94,
+    'Total Goals':    0.90,
+    'Regulation Result': 0.90,
+    'BTTS & Result':  0.80,
+    'HT/FT':          0.76,
+    'Correct Score':  0.74,  // usually low-confidence, but interesting when it isn't
+    'Double Chance':  0.70,  // boring — offers no real value over DNB
+    'Exact Goals':    0.68,
+    '1st Half Goal':  0.65,
+    'O/U 1.5 Goals':  0.50,  // true for ~80% of soccer — almost no signal
+    'O/U 0.5 Goals':  0.28,  // near-certainty — meaningless as a tip
+    'Odd/Even Goals': 0.32,  // permanently ~50/50 — no edge ever
+  };
+
+  function pickScore(c: Candidate): number {
     const m = c.market;
-    const pickLower = c.pick.toLowerCase();
+    const p = c.pick.toLowerCase();
+    const multiplier = INTEREST[m] ?? 1.00;
 
-    // Very strong favourite → Handicap or Match Winner is the value play
-    if (veryStrongFav && (m === 'Asian Handicap' || m === 'Draw No Bet')) return 20;
-    if (veryStrongFav && m === 'Match Winner') return 15;
+    // Match-fit bonus: extra points when this market is particularly relevant
+    // to what makes this specific game interesting.
+    let fit = 0;
 
-    // Strong favourite → prefer Match Winner over generic markets
-    if (strongFav && m === 'Match Winner') return 12;
-    if (strongFav && m === 'Draw No Bet') return 8;
+    if (m === 'Win to Nil') {
+      // Compelling only when a real team wins to nil — not when "Neither" wins
+      const isCleanSweep = p !== 'neither' && p !== 'no' && p !== 'neither team';
+      if (isCleanSweep && veryStrongFav) fit = 20;
+      else if (isCleanSweep && strongFav)  fit = 9;
+      else if (!isCleanSweep)              fit = -8; // "Neither" = underdog scores — not a clean sheet story
+      else                                 fit = -10;
+    } else if (m === 'Clean Sheet') {
+      // "Yes" = home/away keeps clean sheet; "No" is the opposite
+      const isYes = p === 'yes';
+      if (isYes && veryStrongFav) fit = 20;
+      else if (isYes && strongFav)  fit = 9;
+      else if (!isYes)              fit = -6; // "No clean sheet" is not a specific story
+      else                          fit = -10;
+    } else if (m === 'Asian Handicap') {
+      // Best when there is a clear favourite; handicap line is already match-specific
+      if (veryStrongFav) fit = 16;
+      else if (strongFav)  fit = 9;
+      else if (tightMatch) fit = -4;
+      else                 fit = 4;
+    } else if (m === 'Draw No Bet') {
+      // Useful in any match with a meaningful favourite
+      if (strongFav) fit = 9;
+      else           fit = 6;
+    } else if (m === 'First to Score') {
+      // Better signal in high-scoring, open games
+      if (highGoals) fit = 10;
+      else            fit = 5;
+    } else if (m === 'Match Winner') {
+      // Stronger for clear results; for tight matches other markets are better
+      if (veryStrongFav) fit = 12;
+      else if (strongFav)  fit = 7;
+    } else if (m === 'BTTS') {
+      if (p === 'yes' && highGoals)                 fit = 12;
+      else if (p === 'yes')                          fit = 4;
+      else if (p === 'no' && (lowGoals || veryStrongFav)) fit = 10;
+    } else if (p.startsWith('under')) {
+      if (lowGoals)       fit = 16;
+      else if (!highGoals) fit = 4;
+      else                 fit = -4; // under in a high-scoring game is a bad tip
+    } else if (p.startsWith('over') && (m === 'O/U 2.5 Goals' || m === 'O/U 3.5 Goals')) {
+      if (highGoals) fit = 14;
+      else            fit = 3;
+    } else if (m === 'Corners' || m === 'HT Result') {
+      if (tightMatch) fit = 8;
+    }
 
-    // Low-scoring expectation → surface Under markets
-    if (lowGoals && pickLower.startsWith('under')) return 16;
-    if (lowGoals && m === 'BTTS' && pickLower === 'no') return 10;
+    // Odds bonus: reward picks in the 1.25–2.80 "value" window
+    // (not too short to be boring, not so long it's a lottery)
+    const oddsBonus = c.price >= 1.25 && c.price <= 2.80 ? 6
+                    : c.price > 2.80 && c.price <= 4.00 ? 2
+                    : 0;
 
-    // High-scoring expectation → surface Over 2.5 or BTTS Yes
-    if (highGoals && m === 'O/U 2.5 Goals' && pickLower.startsWith('over')) return 14;
-    if (highGoals && m === 'BTTS' && pickLower === 'yes') return 12;
-    if (highGoals && m === 'O/U 3.5 Goals' && pickLower.startsWith('over')) return 8;
-
-    // Tight match → variety via Corners, HT Result, or BTTS
-    if (tightMatch && m === 'Corners') return 10;
-    if (tightMatch && m === 'HT Result') return 8;
-    if (tightMatch && m === 'BTTS' && pickLower === 'yes') return 6;
-    if (tightMatch && m === 'Draw No Bet') return 5;
-
-    // Asian Handicap is generally more interesting than DC for moderate favourites
-    if (!veryStrongFav && !tightMatch && m === 'Asian Handicap') return 6;
-
-    // ── Demote always-generic markets that dominate regardless of match ──
-    // Over 1.5: true for ~80% of soccer matches — only show when low-goals
-    if (m === 'O/U 1.5 Goals') return lowGoals ? 4 : -14;
-    // Double Chance: only relevant for tight matches
-    if (m === 'Double Chance') return tightMatch ? 2 : -8;
-    // Clean Sheet / Win to Nil: relevant for dominant home favourites
-    if (m === 'Clean Sheet' || m === 'Win to Nil') return veryStrongFav ? 4 : -8;
-    // 1st Half Goal / Odd-Even / Exact Goals / Correct Score: low-value for top pick
-    if (m === '1st Half Goal' || m === 'Odd/Even Goals') return -6;
-    if (m === 'Exact Goals' || m === 'Correct Score') return -10;
-    // BTTS & Result combos are exotic; only show for high-scoring
-    if (m === 'BTTS & Result') return highGoals ? 0 : -8;
-    // Over 0.5 is a near-certainty in almost all matches
-    if (m === 'O/U 0.5 Goals') return -25;
-
-    return 0;
+    return c.confidence * multiplier + fit + oddsBonus;
   }
 
-  // Sort by profile-adjusted score; break ties by odds value
   candidates.sort((a, b) => {
-    const sa = a.confidence + profileBonus(a);
-    const sb = b.confidence + profileBonus(b);
+    const sa = pickScore(a);
+    const sb = pickScore(b);
     return sb !== sa ? sb - sa : b.price - a.price;
   });
 
-  // Prefer picks with real betting value (odds ≥ 1.20)
-  const interesting = candidates.filter(c => c.price >= 1.20);
+  // Prefer picks with real betting value (odds ≥ 1.22)
+  const interesting = candidates.filter(c => c.price >= 1.22);
   const picked = interesting.length > 0 ? interesting[0] : candidates[0];
   return { pick: picked.pick, label: picked.label, market: picked.market, confidence: Math.min(picked.confidence, 95) };
 }
