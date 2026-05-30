@@ -392,14 +392,13 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
         const isCleanSweep = pickLower !== 'neither' && pickLower !== 'no' && pickLower !== 'neither team'
         if (isCleanSweep && veryStrongFav) fit = 20
         else if (isCleanSweep && strongFav) fit = 9
-        else if (!isCleanSweep) fit = -8
-        else fit = -10
+        else fit = -18
       } else if (market === 'Clean Sheet') {
         const isYes = pickLower === 'yes'
         if (isYes && veryStrongFav) fit = 20
         else if (isYes && strongFav) fit = 9
-        else if (!isYes) fit = -6
-        else fit = -10
+        else if (isYes) fit = 0
+        else fit = -20
       } else if (market === 'Asian Handicap') {
         fit = veryStrongFav ? 16 : strongFav ? 9 : tightMatch ? -4 : 4
       } else if (market === 'Draw No Bet') {
@@ -413,7 +412,13 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
         else if (pickLower === 'yes') fit = 4
         else if (pickLower === 'no' && (lowGoals || veryStrongFav)) fit = 10
       } else if (pickLower.startsWith('under')) {
-        fit = lowGoals ? 16 : !highGoals ? 4 : -4
+        if (market === 'O/U 4.5 Goals' || market === 'Total Goals') {
+          fit = lowGoals ? 2 : -18
+        } else if (market === 'O/U 3.5 Goals') {
+          fit = lowGoals ? 6 : -16
+        } else {
+          fit = lowGoals ? 16 : !highGoals ? 4 : -4
+        }
       } else if (pickLower.startsWith('over') && (market === 'O/U 2.5 Goals' || market === 'O/U 3.5 Goals')) {
         fit = highGoals ? 14 : 3
       } else if (market === 'Corners' || market === 'HT Result') {

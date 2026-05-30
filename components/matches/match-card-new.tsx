@@ -806,15 +806,16 @@ function computeSmartPick(
       const isCleanSweep = p !== 'neither' && p !== 'no' && p !== 'neither team';
       if (isCleanSweep && veryStrongFav) fit = 20;
       else if (isCleanSweep && strongFav)  fit = 9;
-      else if (!isCleanSweep)              fit = -8; // "Neither" = underdog scores — not a clean sheet story
-      else                                 fit = -10;
+      else if (!isCleanSweep)              fit = -18; // "Neither" fires in most matches — suppress
+      else                                 fit = -18;
     } else if (m === 'Clean Sheet') {
-      // "Yes" = home/away keeps clean sheet; "No" is the opposite
+      // "Yes" = specific team keeps a clean sheet — match-specific story
+      // "No"  = at least one team concedes — true in ~75% of matches, near useless
       const isYes = p === 'yes';
       if (isYes && veryStrongFav) fit = 20;
       else if (isYes && strongFav)  fit = 9;
-      else if (!isYes)              fit = -6; // "No clean sheet" is not a specific story
-      else                          fit = -10;
+      else if (isYes)               fit = 0;
+      else                          fit = -20; // "No clean sheet" is as common as Under 3.5
     } else if (m === 'Asian Handicap') {
       // Best when there is a clear favourite; handicap line is already match-specific
       if (veryStrongFav) fit = 16;
@@ -838,9 +839,19 @@ function computeSmartPick(
       else if (p === 'yes')                          fit = 4;
       else if (p === 'no' && (lowGoals || veryStrongFav)) fit = 10;
     } else if (p.startsWith('under')) {
-      if (lowGoals)       fit = 16;
-      else if (!highGoals) fit = 4;
-      else                 fit = -4; // under in a high-scoring game is a bad tip
+      // Under lines: penalise by how commonly they occur.
+      // Under 4.5 fires ~85% of games, Under 3.5 ~70% — near meaningless.
+      // Only Under 2.5 (fires ~52%) carries real predictive value.
+      if (m === 'O/U 4.5 Goals' || m === 'Total Goals') {
+        fit = lowGoals ? 2 : -18; // almost always true — suppress heavily
+      } else if (m === 'O/U 3.5 Goals') {
+        fit = lowGoals ? 6 : -16; // fires 70% of games — suppress unless genuinely low-scoring
+      } else {
+        // Under 2.5, Under 1.5, etc. — meaningful lines
+        if (lowGoals)        fit = 16;
+        else if (!highGoals) fit = 4;
+        else                 fit = -4;
+      }
     } else if (p.startsWith('over') && (m === 'O/U 2.5 Goals' || m === 'O/U 3.5 Goals')) {
       if (highGoals) fit = 14;
       else            fit = 3;
