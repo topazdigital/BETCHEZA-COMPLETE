@@ -19,6 +19,8 @@ import {
   Sparkles,
   ShieldCheck,
   Medal,
+  PenLine,
+  LayoutDashboard,
 } from 'lucide-react';
 const BetchezaBackBanner = dynamic(
   () => import('@/components/home/betcheza-back-banner').then(m => ({ default: m.BetchezaBackBanner })),
@@ -36,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { ALL_SPORTS, getSportIcon } from '@/lib/sports-data';
 import { FavoritedTipMarqueeCard, MyTipsPanel, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
 import { useAuthModal } from '@/contexts/auth-modal-context';
+import { useAuth } from '@/contexts/auth-context';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { liveStatusLabel } from '@/lib/utils/live-status';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -103,6 +106,7 @@ const homeFetcher = (url: string) => fetch(url).then((r) => r.json());
 export default function HomePage() {
   const [selectedSportId, setSelectedSportId] = useState<number | null>(null);
   const { open: openAuthModal } = useAuthModal();
+  const { user, isAuthenticated } = useAuth();
   const { mutate } = useSWRConfig();
 
   // ── Single consolidated fetch: replaces 5 separate API calls ──────────────
@@ -225,17 +229,39 @@ export default function HomePage() {
                 <p className="mb-3 text-pretty text-sm text-muted-foreground">
                   Expert predictions across 35+ sports — track performance and compete worldwide.
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => openAuthModal('register')}>
-                    Get Started Free
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href="/matches">
-                      Browse Matches
-                    </Link>
-                  </Button>
-                </div>
+                {isAuthenticated && user ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Welcome back, <span className="font-semibold text-foreground">{user.displayName || user.username}</span> 👋
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" asChild>
+                        <Link href="/feed">
+                          <PenLine className="mr-2 h-4 w-4" />
+                          Post a Tip
+                        </Link>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/dashboard">
+                          <LayoutDashboard className="mr-2 h-4 w-4" />
+                          My Dashboard
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => openAuthModal('register')}>
+                      Get Started Free
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href="/matches">
+                        Browse Matches
+                      </Link>
+                    </Button>
+                  </div>
+                )}
 
                 {/* Quick Stats — each tile links somewhere relevant so the
                     "they look clickable" promise is honoured. */}
