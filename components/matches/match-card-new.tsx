@@ -231,7 +231,7 @@ export function MatchCardNew({
             ) : (
               <div className="leading-tight text-muted-foreground">
                 <div className="text-[11px] font-semibold tabular-nums text-foreground">{timeStr}</div>
-                <div className="text-[9px]">{dateStr === 'Today' ? '' : dateStr}</div>
+                <div className={cn('text-[9px]', (dateStr === 'Today' || dateStr === 'Tomorrow') && 'font-medium text-primary/70')}>{dateStr}</div>
               </div>
             )}
           </div>

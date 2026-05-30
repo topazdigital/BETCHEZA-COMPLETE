@@ -12,7 +12,7 @@ import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button
 import {
   Heart, MessageCircle, Send, Sparkles, Loader2, Flame, TrendingUp, Users, Lock,
   Crown, Trophy, Star, BarChart3, Activity, Zap, RefreshCcw, WifiOff, Megaphone, Hash, X, Trash2,
-  DoorOpen, ChevronRight,
+  DoorOpen, ChevronRight, Link2, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
@@ -337,6 +337,24 @@ function PostCard({ post, initialFollowing = false, currentUserId, isCurrentUser
   const [likes, setLikes] = useState(post.likes);
   const [busy, setBusy] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = () => {
+    const url = `${window.location.origin}/feed#post-${post.id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      const el = document.createElement('textarea');
+      el.value = url;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const isAdmin = post.authorRole === 'admin';
   const isOwnPost = currentUserId != null && post.userId === currentUserId;
@@ -471,6 +489,17 @@ function PostCard({ post, initialFollowing = false, currentUserId, isCurrentUser
           >
             <MessageCircle className="h-3.5 w-3.5" />
             <span className="font-medium">{post.commentCount}</span>
+          </button>
+          <button
+            onClick={copyLink}
+            title="Copy link to this post"
+            className={cn(
+              'flex items-center gap-1 rounded-full px-2 py-1 text-xs transition-colors ml-auto',
+              copied ? 'text-emerald-500' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+            <span className="font-medium">{copied ? 'Copied!' : 'Copy link'}</span>
           </button>
         </div>
 

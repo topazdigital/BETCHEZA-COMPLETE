@@ -1,0 +1,4 @@
+- [Stack & run config](stack-run.md) — Next.js 16 App Router, Tailwind v4, MySQL2, custom JWT; must `rm -rf .next` before rebuild
+- [DB & fallback stores](db-fallback.md) — remote MySQL at 157.250.205.180; app runs on file/memory fallback when secrets missing
+- [Notification bell components](notif-bells.md) — two separate bell components; both must be updated together
+- [Match card date labels](match-card-dates.md) — compact variant hid "Today" intentionally; fixed to show with styled label
