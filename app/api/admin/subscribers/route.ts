@@ -43,7 +43,7 @@ export async function GET() {
         isVerified: !!r.is_verified,
         unsubscribedAt: r.unsubscribed_at
           ? new Date(r.unsubscribed_at).toISOString()
-          : (!r.active ? new Date(0).toISOString() : null),
+          : null,
         createdAt: r.created_at
           ? new Date(r.created_at).toISOString()
           : null,
@@ -66,7 +66,7 @@ export async function GET() {
     topics: s.topics,
     isVerified: false,
     unsubscribedAt: null,
-    createdAt: null,
+    createdAt: s.createdAt ?? null,
     active: s.active,
   }));
   return NextResponse.json({ subscribers: mapped });

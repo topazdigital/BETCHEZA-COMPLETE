@@ -39,9 +39,19 @@ export default function AdminFeedPage() {
     if (!confirm('Delete this post permanently?')) return
     setBusyId(id)
     try {
-      await fetch(`/api/admin/feed/${id}`, { method: 'DELETE' })
-      setPosts(posts.filter(p => p.id !== id))
-    } finally { setBusyId(null) }
+      const res = await fetch(`/api/admin/feed/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setPosts(prev => prev.filter(p => p.id !== id))
+      } else {
+        console.error('[admin/feed] delete failed:', await res.text())
+        alert('Failed to delete post. Please try again.')
+      }
+    } catch (err) {
+      console.error('[admin/feed] delete error:', err)
+      alert('Network error while deleting post.')
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const totalLikes = posts.reduce((s, p) => s + p.likes, 0)

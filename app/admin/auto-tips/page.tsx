@@ -328,7 +328,7 @@ export default function AdminAutoTipsPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-xs leading-snug">{a.message}</p>
                         <p className="text-[10px] text-muted-foreground">
-                          {format(new Date(a.ts), 'HH:mm:ss')}
+                          {a.ts && !isNaN(new Date(a.ts).getTime()) ? format(new Date(a.ts), 'HH:mm:ss') : '—'}
                         </p>
                       </div>
                     </li>

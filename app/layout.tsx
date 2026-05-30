@@ -565,7 +565,7 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         <ThemeProvider
           attribute="class"
-          defaultTheme="light"
+          defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >

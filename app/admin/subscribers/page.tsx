@@ -552,8 +552,15 @@ export default function AdminSubscribersPage() {
                             ? <Badge variant="destructive" className="h-4 text-[9px] px-1.5">Unsubscribed</Badge>
                             : <Badge variant="default" className="h-4 text-[9px] px-1.5 bg-emerald-500 hover:bg-emerald-600">Active</Badge>}
                         </td>
-                        <td className="px-3 py-1.5 text-muted-foreground">
-                          {s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}
+                        <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">
+                          {s.createdAt ? (
+                            <span title={new Date(s.createdAt).toLocaleString()}>
+                              {new Date(s.createdAt).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              <span className="block text-[10px]">
+                                {new Date(s.createdAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </span>
+                          ) : '—'}
                         </td>
                         <td className="px-3 py-1.5">
                           {isActive && (

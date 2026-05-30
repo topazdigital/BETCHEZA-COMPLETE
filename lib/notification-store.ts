@@ -43,6 +43,7 @@ export interface EmailSubscriberRow {
   countryCode: string | null;
   unsubscribeToken: string;
   active: boolean;
+  createdAt?: string;
 }
 
 // ─── STATE ────────────────────────────────────────
@@ -368,7 +369,7 @@ export async function saveEmailSubscriber(input: Omit<EmailSubscriberRow, 'id'>)
   // Auto-generate unsubscribeToken if the caller didn't supply one (prevents DB NOT NULL failure)
   const unsubscribeToken = (input as { unsubscribeToken?: string }).unsubscribeToken ||
     `ut_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 16)}`;
-  const row: EmailSubscriberRow = { id, active: true, ...input, unsubscribeToken };
+  const row: EmailSubscriberRow = { id, active: true, createdAt: new Date().toISOString(), ...input, unsubscribeToken };
   if (hasDb()) {
     try {
       await query(
@@ -397,7 +398,7 @@ export async function listEmailSubscribers(topic?: string): Promise<EmailSubscri
         ? `SELECT * FROM email_subscribers WHERE active = 1 AND topics LIKE ?`
         : `SELECT * FROM email_subscribers WHERE active = 1`;
       const params = topic ? [`%${topic}%`] : [];
-      const r = await query<{ id: string; email: string; topics: string; country_code: string | null; unsubscribe_token: string; active: number }>(sql, params);
+      const r = await query<{ id: string; email: string; topics: string; country_code: string | null; unsubscribe_token: string; active: number; created_at?: string }>(sql, params);
       if (r.rows.length > 0) {
         return r.rows.map(x => ({
           id: x.id,
@@ -406,6 +407,7 @@ export async function listEmailSubscribers(topic?: string): Promise<EmailSubscri
           countryCode: x.country_code,
           unsubscribeToken: x.unsubscribe_token,
           active: !!x.active,
+          createdAt: x.created_at ? new Date(x.created_at).toISOString() : undefined,
         }));
       }
     } catch {}

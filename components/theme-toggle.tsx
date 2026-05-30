@@ -1,6 +1,6 @@
 "use client"
 
-import { Moon, Sun } from "lucide-react"
+import { Moon, Sun, Monitor } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -25,24 +25,24 @@ export function ThemeToggle() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
-          onSelect={(e) => { e.preventDefault(); setTheme("light"); }}
+          onSelect={() => setTheme("light")}
           className={theme === "light" ? "bg-accent" : ""}
         >
           <Sun className="mr-2 h-4 w-4" />
           Light
         </DropdownMenuItem>
         <DropdownMenuItem
-          onSelect={(e) => { e.preventDefault(); setTheme("dark"); }}
+          onSelect={() => setTheme("dark")}
           className={theme === "dark" ? "bg-accent" : ""}
         >
           <Moon className="mr-2 h-4 w-4" />
           Dark
         </DropdownMenuItem>
         <DropdownMenuItem
-          onSelect={(e) => { e.preventDefault(); setTheme("system"); }}
+          onSelect={() => setTheme("system")}
           className={theme === "system" ? "bg-accent" : ""}
         >
-          <span className="mr-2">💻</span>
+          <Monitor className="mr-2 h-4 w-4" />
           System
         </DropdownMenuItem>
       </DropdownMenuContent>

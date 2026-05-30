@@ -173,9 +173,14 @@ export default function AdminSettingsPage() {
         if (response.ok) {
           const data = await response.json()
           setSettings({ ...defaultSettings, ...data.settings })
+        } else {
+          setSaveStatus('error')
+          setErrorMessage('Failed to load settings — server returned an error. Showing defaults.')
         }
       } catch (error) {
         console.error('Failed to load settings:', error)
+        setSaveStatus('error')
+        setErrorMessage('Could not reach the server. Check your connection and refresh.')
       } finally {
         setIsLoading(false)
       }

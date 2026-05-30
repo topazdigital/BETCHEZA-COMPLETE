@@ -408,32 +408,55 @@ export default function PaymentGatewaysPage() {
 
   const handleToggle = async (id: string, enabled: boolean) => {
     setGateways((prev) => prev.map((g) => g.id === id ? { ...g, enabled } : g))
-    await fetch('/api/admin/payment-gateways', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, enabled }),
-    })
+    try {
+      const res = await fetch('/api/admin/payment-gateways', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, enabled }),
+      })
+      if (!res.ok) {
+        // Revert optimistic update on failure
+        setGateways((prev) => prev.map((g) => g.id === id ? { ...g, enabled: !enabled } : g))
+        console.error('[payment-gateways] toggle failed:', await res.text())
+      }
+    } catch (err) {
+      setGateways((prev) => prev.map((g) => g.id === id ? { ...g, enabled: !enabled } : g))
+      console.error('[payment-gateways] toggle error:', err)
+    }
   }
 
   const handleSave = async (gateway: PaymentGateway) => {
-    await fetch('/api/admin/payment-gateways', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gateways: [gateway] }),
-    })
-    setGateways((prev) => prev.map((g) => g.id === gateway.id ? gateway : g))
+    try {
+      const res = await fetch('/api/admin/payment-gateways', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gateways: [gateway] }),
+      })
+      if (res.ok) {
+        setGateways((prev) => prev.map((g) => g.id === gateway.id ? gateway : g))
+      } else {
+        console.error('[payment-gateways] save failed:', await res.text())
+      }
+    } catch (err) {
+      console.error('[payment-gateways] save error:', err)
+    }
   }
 
   const handleSavePayoutSettings = async () => {
     setSavingPayout(true)
-    await fetch('/api/admin/payment-gateways', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payoutSettings }),
-    })
-    setSavingPayout(false)
-    setPayoutSaved(true)
-    setTimeout(() => setPayoutSaved(false), 2000)
+    try {
+      await fetch('/api/admin/payment-gateways', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payoutSettings }),
+      })
+      setPayoutSaved(true)
+      setTimeout(() => setPayoutSaved(false), 2000)
+    } catch (err) {
+      console.error('[payment-gateways] payout save error:', err)
+    } finally {
+      setSavingPayout(false)
+    }
   }
 
   const byType = (type: GatewayType) => gateways.filter((g) => g.type === type)
