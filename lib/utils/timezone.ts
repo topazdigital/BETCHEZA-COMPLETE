@@ -113,26 +113,23 @@ export function formatRelativeTime(date: Date | string): string {
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''} ago`;
 }
 
+/** Format a Date as "YYYY-MM-DD" in the given timezone — date-only, no time. */
+function dateOnlyString(date: Date, timezone: string): string {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return fmt.format(date);
+}
+
 /**
  * Check if a date is today
  */
 export function isToday(date: Date | string, timezone: string): boolean {
   const dateObj = typeof date === 'string' ? new Date(date) : date;
-  const now = new Date();
-  
-  const dateStr = formatInTimezone(dateObj, timezone, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  
-  const todayStr = formatInTimezone(now, timezone, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  
-  return dateStr === todayStr;
+  return dateOnlyString(dateObj, timezone) === dateOnlyString(new Date(), timezone);
 }
 
 /**
@@ -142,20 +139,7 @@ export function isTomorrow(date: Date | string, timezone: string): boolean {
   const dateObj = typeof date === 'string' ? new Date(date) : date;
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  
-  const dateStr = formatInTimezone(dateObj, timezone, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  
-  const tomorrowStr = formatInTimezone(tomorrow, timezone, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  
-  return dateStr === tomorrowStr;
+  return dateOnlyString(dateObj, timezone) === dateOnlyString(tomorrow, timezone);
 }
 
 /**

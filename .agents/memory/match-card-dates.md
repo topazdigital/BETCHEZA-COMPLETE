@@ -15,6 +15,11 @@ Never show "Today" as a date label on match cards or match details. "Today" is r
 - `app/(main)/page.tsx` — "Up Next" mini-grid: `const day = isMatchToday ? null : formattedDate`
 - `components/home/favorited-tips-panel.tsx` — marquee card: same null pattern, render as `{time}{day ? ` · ${day}` : ''}`
 
+## Root cause of the isToday bug (now fixed)
+`isToday` originally called `formatInTimezone(date, tz, { year, month, day })`. But `formatInTimezone` has default options `{ hour: '2-digit', minute: '2-digit' }` which the spread does NOT remove — so the final format included time. Two dates on the same day at different times produced different strings and never compared equal. `isToday` always returned `false`, so every match showed its actual date ("May 30") instead of "Today".
+
+**Fix**: replaced `isToday` and `isTomorrow` with a private `dateOnlyString(date, tz)` helper that creates a FRESH `Intl.DateTimeFormat('en-CA', { year, month, day })` (no hour/minute at all). `en-CA` produces ISO-format "YYYY-MM-DD" strings that compare correctly.
+
 ## getDayLabel vs formatDate
 `getDayLabel` (in `lib/utils/timezone.ts`) returns "Today" / "Tomorrow" / formatted date.
 `formatDate` always returns the real date like "May 30".
