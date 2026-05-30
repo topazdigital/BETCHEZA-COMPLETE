@@ -199,9 +199,10 @@ export function MatchCardNew({
   const marketName = isTwoWay ? 'Match Winner' : '1X2';
 
   if (variant === 'compact') {
-    const aiPick = (match.odds && !isFinished && !isLive)
+    const aiPickArr = (match.odds && !isFinished && !isLive)
       ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name, match.markets, match.homeTeam.form, match.awayTeam.form)
-      : null;
+      : [];
+    const aiPick = aiPickArr[0] ?? null;
 
     return (
       <div className={cn(

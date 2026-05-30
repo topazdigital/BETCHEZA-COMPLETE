@@ -24,15 +24,24 @@ export function ThemeToggle() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme("light")} className={theme === "light" ? "bg-accent" : ""}>
+        <DropdownMenuItem
+          onSelect={(e) => { e.preventDefault(); setTheme("light"); }}
+          className={theme === "light" ? "bg-accent" : ""}
+        >
           <Sun className="mr-2 h-4 w-4" />
           Light
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")} className={theme === "dark" ? "bg-accent" : ""}>
+        <DropdownMenuItem
+          onSelect={(e) => { e.preventDefault(); setTheme("dark"); }}
+          className={theme === "dark" ? "bg-accent" : ""}
+        >
           <Moon className="mr-2 h-4 w-4" />
           Dark
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")} className={theme === "system" ? "bg-accent" : ""}>
+        <DropdownMenuItem
+          onSelect={(e) => { e.preventDefault(); setTheme("system"); }}
+          className={theme === "system" ? "bg-accent" : ""}
+        >
           <span className="mr-2">💻</span>
           System
         </DropdownMenuItem>
