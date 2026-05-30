@@ -417,8 +417,9 @@ export default function HomePage() {
                         {upcomingMatches.slice(0, 6).map((m) => {
                           const t = new Date(m.kickoffTime);
                           const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                          const day = t.toDateString() === new Date().toDateString()
-                            ? 'Today'
+                          const isMatchToday = t.toDateString() === new Date().toDateString();
+                          const day = isMatchToday
+                            ? null
                             : t.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
                           return (
                             <Link
@@ -445,7 +446,7 @@ export default function HomePage() {
                               </div>
                               <div className="shrink-0 text-right">
                                 <p className="text-[11px] font-semibold text-foreground">{time}</p>
-                                <p className="text-[9px] text-muted-foreground">{day}</p>
+                                {day && <p className="text-[9px] text-muted-foreground">{day}</p>}
                               </div>
                             </Link>
                           );

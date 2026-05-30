@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { useUserSettings } from '@/contexts/user-settings-context';
-import { formatTime, formatDate, getDayLabel } from '@/lib/utils/timezone';
+import { formatTime, formatDate } from '@/lib/utils/timezone';
 import { LiveIndicator } from './live-indicator';
 import type { MatchWithDetails } from '@/lib/types';
 
@@ -42,7 +42,7 @@ export function MatchHeader({ match }: MatchHeaderProps) {
           </span>
         ) : (
           <span className="text-sm text-muted-foreground">
-            {getDayLabel(kickoffTime, settings.timezone)} at {formatTime(kickoffTime, settings.timezone)}
+            {formatDate(kickoffTime, settings.timezone)} at {formatTime(kickoffTime, settings.timezone)}
           </span>
         )}
       </div>
@@ -90,7 +90,7 @@ export function MatchHeader({ match }: MatchHeaderProps) {
                 {formatTime(kickoffTime, settings.timezone)}
               </div>
               <div className="mt-1 text-sm text-muted-foreground">
-                {getDayLabel(kickoffTime, settings.timezone)}
+                {formatDate(kickoffTime, settings.timezone)}
               </div>
             </div>
           )}

@@ -274,8 +274,9 @@ export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
   const { match, tip, pinned } = item
   const t = new Date(match.kickoffTime)
   const time = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  const day = t.toDateString() === new Date().toDateString()
-    ? "Today"
+  const isMatchToday = t.toDateString() === new Date().toDateString()
+  const day = isMatchToday
+    ? null
     : t.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
 
   const confColor =
@@ -297,7 +298,7 @@ export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
         </Badge>
         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
           {pinned && <Pin className="h-3 w-3 text-amber-500" />}
-          {time} · {day}
+          {time}{day ? ` · ${day}` : ''}
         </span>
       </div>
       <p className="mb-2 truncate text-[11px] text-muted-foreground">{match.league.name}</p>

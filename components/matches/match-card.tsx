@@ -48,17 +48,24 @@ export function MatchCard({ match, odds, compact = false }: MatchCardProps) {
               <span className="text-xs font-bold tabular-nums text-foreground">
                 {formatTime(kickoffTime, settings.timezone)}
               </span>
-              <span className="text-[10px] text-muted-foreground">
-                {(() => {
-                  const now = new Date();
-                  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                  const tomorrow = new Date(today.getTime() + 86_400_000);
-                  const matchDay = new Date(kickoffTime.getFullYear(), kickoffTime.getMonth(), kickoffTime.getDate());
-                  if (matchDay.getTime() === today.getTime()) return 'Today';
-                  if (matchDay.getTime() === tomorrow.getTime()) return 'Tomorrow';
-                  return kickoffTime.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                })()}
-              </span>
+              {(() => {
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const tomorrow = new Date(today.getTime() + 86_400_000);
+                const matchDay = new Date(kickoffTime.getFullYear(), kickoffTime.getMonth(), kickoffTime.getDate());
+                if (matchDay.getTime() === today.getTime()) return null;
+                const label = matchDay.getTime() === tomorrow.getTime()
+                  ? 'Tomorrow'
+                  : kickoffTime.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                return (
+                  <span className={cn(
+                    'text-[10px]',
+                    matchDay.getTime() === tomorrow.getTime()
+                      ? 'font-medium text-primary/70'
+                      : 'text-muted-foreground'
+                  )}>{label}</span>
+                );
+              })()}
             </>
           )}
         </div>

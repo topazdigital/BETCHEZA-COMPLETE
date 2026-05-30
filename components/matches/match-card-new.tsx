@@ -231,7 +231,9 @@ export function MatchCardNew({
             ) : (
               <div className="leading-tight text-muted-foreground">
                 <div className="text-[11px] font-semibold tabular-nums text-foreground">{timeStr}</div>
-                <div className={cn('text-[9px]', (dateStr === 'Today' || dateStr === 'Tomorrow') && 'font-medium text-primary/70')}>{dateStr}</div>
+                {dateStr !== 'Today' && (
+                  <div className={cn('text-[9px]', dateStr === 'Tomorrow' && 'font-medium text-primary/70')}>{dateStr}</div>
+                )}
               </div>
             )}
           </div>
@@ -427,11 +429,13 @@ export function MatchCardNew({
           ) : isFinished ? (
             <div className="text-right text-xs text-muted-foreground">
               <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">FT</span>
-              <div className="mt-0.5">{dateStr} · {timeStr}</div>
+              <div className="mt-0.5">{formatDate(kickoffTime, timezone)} · {timeStr}</div>
             </div>
           ) : (
             <div className="text-right text-xs text-muted-foreground">
-              <div className="font-medium">{dateStr}</div>
+              {dateStr !== 'Today' && (
+                <div className={cn('font-medium', dateStr === 'Tomorrow' && 'text-primary/70')}>{dateStr}</div>
+              )}
               <div>{timeStr}</div>
             </div>
           )}
