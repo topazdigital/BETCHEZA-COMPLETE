@@ -38,6 +38,7 @@ interface Tipster {
   verified: boolean;
   countryCode: string | null;
   performanceVerified?: boolean;
+  activeToday?: boolean;
 }
 
 function TipsterSparkline({ wonTips, totalTips, streak, id }: { wonTips: number; totalTips: number; streak: number; id: number }) {
@@ -178,6 +179,48 @@ export default function TipstersPage() {
             </div>
           </div>
 
+          {/* Who's Online — active in last 24 h */}
+          {(() => {
+            const active = allTipsters.filter(t => t.activeToday);
+            if (!active.length) return null;
+            return (
+              <div className="mb-3">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Active today · {active.length} tipster{active.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+                  {active.slice(0, 12).map(t => (
+                    <Link
+                      key={t.id}
+                      href={tipsterHref(t.username || t.displayName, t.username || t.id)}
+                      className="flex shrink-0 flex-col items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/50 p-2 text-center hover:bg-emerald-50 dark:border-emerald-800/40 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 transition-colors"
+                    >
+                      <div className="relative">
+                        {t.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={t.avatar} alt="" className="h-8 w-8 rounded-full bg-muted object-cover" />
+                        ) : (
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                            {t.displayName.charAt(0)}
+                          </div>
+                        )}
+                        <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-background bg-emerald-500" />
+                      </div>
+                      <span className="w-14 truncate text-[10px] font-medium text-foreground">{t.displayName}</span>
+                      <span className="text-[9px] font-semibold text-success">{t.winRate}%</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Filters */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="relative min-w-[180px] flex-1">
@@ -259,6 +302,9 @@ export default function TipstersPage() {
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                               {tipster.displayName.charAt(0)}
                             </div>
+                          )}
+                          {tipster.activeToday && globalRank > 3 && (
+                            <span className="absolute -bottom-0.5 -right-0.5 block h-3 w-3 rounded-full border-2 border-background bg-emerald-500" title="Posted tips today" />
                           )}
                           {globalRank <= 3 && (
                             <div className={cn(

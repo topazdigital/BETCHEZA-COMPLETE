@@ -3,7 +3,7 @@ import { ALL_LEAGUES, ALL_SPORTS } from '@/lib/sports-data';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getPool } from '@/lib/db';
 
-export const revalidate = 3600;
+export const revalidate = 1800;
 
 function siteUrl(): string {
   return (
@@ -144,9 +144,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         }
       } catch { /* competitions table may not exist — skip */ }
 
-      // Match pages — upcoming (next 7 days) + recently finished (last 3 days)
+      // Match pages — upcoming (next 14 days) + recently finished (last 3 days)
       // These are the most valuable for SEO: predictions before, scores after.
-      const sevenDaysAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const sevenDaysAhead = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
       try {
         const [matchRows] = await pool.query<any[]>(`

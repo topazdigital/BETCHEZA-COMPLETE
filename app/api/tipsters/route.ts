@@ -38,6 +38,7 @@ interface PublicTipster {
   streak: number; rank: number; followers: number; isPro: boolean;
   subscriptionPrice: number | null; verified: boolean; countryCode: string | null;
   joinedAt: string | null; performanceVerified: boolean;
+  activeToday?: boolean;
 }
 
 function shape(row: DbTipster): PublicTipster {
@@ -121,7 +122,18 @@ export async function GET(request: NextRequest) {
     rows = []; total = 0;
   }
 
-  let tipsters = rows.map(shape);
+  // Which tipsters posted tips in the last 24 hours?
+  const activeTodayIds = new Set<number>();
+  try {
+    const activeRows = await query<{ user_id: number }>(
+      `SELECT DISTINCT user_id FROM tips WHERE created_at >= NOW() - INTERVAL 24 HOUR`,
+      [],
+    );
+    const ar = (activeRows as unknown as { rows?: { user_id: number }[] }).rows ?? (activeRows as unknown as { user_id: number }[]);
+    for (const r of ar) activeTodayIds.add(Number(r.user_id));
+  } catch { /* tips table may not exist */ }
+
+  let tipsters = rows.map(row => ({ ...shape(row), activeToday: activeTodayIds.has(row.user_id) }));
   // Always assign ranks based on win rate + ROI for any tipster showing rank 0
   if (tipsters.length > 0) {
     const tipstersWithRank0 = tipsters.filter(t => t.rank === 0);

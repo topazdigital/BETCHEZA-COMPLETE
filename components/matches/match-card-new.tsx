@@ -583,6 +583,7 @@ interface SmartPick {
   rationale: string;
 }
 
+
 /**
  * Parse a form string like "WWDLW" into a 0–1 score.
  * Most recent result weighted highest. W=3pts, D=1pt, L=0pts.
@@ -603,8 +604,8 @@ function parseFormScore(form: string | undefined): number {
 }
 
 /**
- * Evaluate ALL available API markets and return the best pick for THIS specific
- * match profile. The algorithm:
+ * Evaluate ALL available API markets and return up to 4 ranked picks for THIS
+ * specific match profile, best pick first. The algorithm:
  *  1. Scans every market the API provides
  *  2. Computes margin-free implied probabilities for each outcome
  *  3. Applies a match-profile bonus/penalty so the market shown is actually
@@ -621,7 +622,7 @@ function computeSmartPick(
   markets?: MatchMarket[],
   homeForm?: string,
   awayForm?: string,
-): SmartPick | null {
+): SmartPick[] {
   // ── Shared probability decomposition ─────────────────────────────────────
   const rawH = 1 / Math.max(odds.home, 1.01);
   const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0;
@@ -753,7 +754,7 @@ function computeSmartPick(
     }
   }
 
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) return [];
 
   // ── 3. Multiplier-based scoring — surfaces the genuinely best market ──────
   //
@@ -767,7 +768,7 @@ function computeSmartPick(
     'Win to Nil':     1.28,  // match-specific, compelling
     'Asian Handicap': 1.22,  // shows the handicap line the model chose
     'Clean Sheet':    1.20,  // team-specific proposition
-    'Draw No Bet':    1.16,  // protects against draw — better than DC
+    'Draw No Bet':    1.06,  // useful for moderate favourites only
     'First to Score': 1.12,  // engaging in-game narrative
     'O/U 3.5 Goals':  1.10,  // rarer line — more signal when it fires
     'O/U 2.5 Goals':  1.06,  // standard but match-specific
@@ -823,9 +824,12 @@ function computeSmartPick(
       else if (tightMatch) fit = -4;
       else                 fit = 4;
     } else if (m === 'Draw No Bet') {
-      // Useful in any match with a meaningful favourite
-      if (strongFav) fit = 9;
-      else           fit = 6;
+      // Sweet-spot: moderate favourite where draw risk is real (55–65% win prob)
+      // For very strong favs, Match Winner / Asian Handicap is the better story
+      if (veryStrongFav)   fit = -8; // dominant team — draw risk is small, just back them to win
+      else if (strongFav)  fit = 16; // moderate fav (57–66%) — ideal DNB territory
+      else if (tightMatch) fit = -4; // too close to call — Corners/BTTS beat DNB here
+      else                 fit = 4;
     } else if (m === 'First to Score') {
       // Better signal in high-scoring, open games
       if (highGoals) fit = 10;
@@ -874,57 +878,59 @@ function computeSmartPick(
     return sb !== sa ? sb - sa : b.price - a.price;
   });
 
-  // Prefer picks with real betting value (odds ≥ 1.22)
+  // Prefer picks with real betting value (odds ≥ 1.22); return top 4
   const interesting = candidates.filter(c => c.price >= 1.22);
-  const picked = interesting.length > 0 ? interesting[0] : candidates[0];
+  const ranked = interesting.length > 0 ? interesting : candidates;
+  const topCandidates = ranked.slice(0, 4);
+  if (topCandidates.length === 0) return [];
 
-  // ── Build "Why this pick?" rationale ─────────────────────────────────────
+  // ── Build "Why this pick?" rationale for each candidate ───────────────────
   const domName  = nH > nA ? homeTeam.split(' ')[0] : awayTeam.split(' ')[0];
   const domProb  = Math.round(Math.max(nH, nA) * 100);
   const eg       = expectedGoals.toFixed(1);
-  const m        = picked.market;
-  let rationale: string;
 
-  if (m === 'Asian Handicap') {
-    rationale = veryStrongFav
-      ? `${domName} are heavy favourites (${domProb}%) — the handicap line levels the field while keeping them likely to cover at ${picked.confidence}%.`
-      : `The handicap balances the field — ${domName} should cover at ${picked.confidence}% probability.`;
-  } else if (m === 'Draw No Bet') {
-    rationale = `${domName} are the more likely winner but the game is competitive enough to risk a draw. Draw No Bet removes that risk while keeping solid value.`;
-  } else if (m === 'BTTS') {
-    rationale = highGoals
-      ? `Both sides have been scoring freely — ${eg} goals projected in this one. Both to Score is the smart play.`
-      : `Both teams carry a goal threat and have been finding the net recently. Both to Score offers good value.`;
-  } else if (m.includes('O/U') && picked.pick.toLowerCase().startsWith('under')) {
-    rationale = `Defensively disciplined teams on both sides — only ${eg} goals projected, making the Under the value pick here.`;
-  } else if (m.includes('O/U') && picked.pick.toLowerCase().startsWith('over')) {
-    rationale = highGoals
-      ? `Both attacks are in form — ${eg} goals expected, favouring the Over.`
+  function buildRationale(picked: Candidate): string {
+    const mk = picked.market;
+    const pl = picked.pick.toLowerCase();
+    if (mk === 'Asian Handicap') {
+      return veryStrongFav
+        ? `${domName} are heavy favourites (${domProb}%) — the handicap line levels the field while keeping them likely to cover at ${picked.confidence}%.`
+        : `The handicap balances the field — ${domName} should cover at ${picked.confidence}% probability.`;
+    }
+    if (mk === 'Draw No Bet') return `${domName} are the more likely winner but the draw is a real risk. Draw No Bet removes it while keeping solid value.`;
+    if (mk === 'BTTS') return highGoals
+      ? `Both sides scoring freely — ${eg} goals projected. Both to Score is the smart play.`
+      : `Both teams carry a goal threat. Both to Score offers good value here.`;
+    if (mk.includes('O/U') && pl.startsWith('under')) return `Defensively disciplined match — only ${eg} goals projected, making the Under the value pick.`;
+    if (mk.includes('O/U') && pl.startsWith('over')) return highGoals
+      ? `Both attacks in form — ${eg} goals expected, favouring the Over.`
       : `Both teams need a result — expect an open game with ${eg} goals projected.`;
-  } else if (m === 'Match Winner') {
-    if (veryStrongFav)  rationale = `${domName} are a heavy favourite at ${domProb}% win probability — clear market edge.`;
-    else if (strongFav) rationale = `${domName} hold a clear advantage at ${domProb}% — Match Winner is the most efficient market here.`;
-    else if (tightMatch) rationale = `Closely matched sides — the draw is the most likely single outcome at ${picked.confidence}%.`;
-    else                rationale = `${domName} have a ${domProb}% edge — Match Winner is the best available pick.`;
-  } else if (m === 'Double Chance') {
-    rationale = `Tight contest — Double Chance covers two of the three outcomes, giving protection on the draw.`;
-  } else if (m === 'Win to Nil') {
-    rationale = `${domName} are dominant with a solid defence — a clean-sheet victory is the pick.`;
-  } else if (m === 'Clean Sheet') {
-    rationale = `${domName} have been keeping clean sheets recently and face a low-threat attack.`;
-  } else if (m === 'HT Result') {
-    rationale = `Teams tend to be most active early — first-half result carries good value for this fixture.`;
-  } else if (m === 'Corners') {
-    rationale = tightMatch
+    if (mk === 'Match Winner') {
+      if (veryStrongFav) return `${domName} are a heavy favourite at ${domProb}% win probability — clear market edge.`;
+      if (strongFav) return `${domName} hold a clear advantage at ${domProb}% — Match Winner is the most efficient pick.`;
+      if (tightMatch) return `Closely matched sides — the draw is the most likely single outcome at ${picked.confidence}%.`;
+      return `${domName} have a ${domProb}% edge — Match Winner is the best available pick.`;
+    }
+    if (mk === 'Double Chance') return `Tight contest — Double Chance covers two of three outcomes, protecting against the draw.`;
+    if (mk === 'Win to Nil') return `${domName} are dominant with a solid defence — a clean-sheet victory is the pick.`;
+    if (mk === 'Clean Sheet') return `${domName} have been keeping clean sheets and face a low-threat attack.`;
+    if (mk === 'HT Result') return `Teams are most decisive early — first-half result carries good value for this fixture.`;
+    if (mk === 'First to Score') return `${domName} have been opening the scoring consistently — First to Score offers good value.`;
+    if (mk === 'Corners') return tightMatch
       ? `Tight match with both sides pressing forward — corners market is live.`
       : `${domName} likely to dominate possession and win the set-piece battle.`;
-  } else {
-    rationale = veryStrongFav
+    return veryStrongFav
       ? `${domName} are heavily favoured (${domProb}%) — this market reflects their clear edge.`
       : `This market offers the best risk-adjusted value at ${picked.confidence}% probability.`;
   }
 
-  return { pick: picked.pick, label: picked.label, market: picked.market, confidence: Math.min(picked.confidence, 95), rationale };
+  return topCandidates.map(picked => ({
+    pick: picked.pick,
+    label: picked.label,
+    market: picked.market,
+    confidence: Math.min(picked.confidence, 95),
+    rationale: buildRationale(picked),
+  }));
 }
 
 function SmartBetBadge({
@@ -944,29 +950,68 @@ function SmartBetBadge({
   homeForm?: string;
   awayForm?: string;
 }) {
-  const sp = computeSmartPick(odds, homeTeam, awayTeam, markets, homeForm, awayForm);
-  if (!sp) return null;
+  const [idx, setIdx] = useState(0);
+  const picks = computeSmartPick(odds, homeTeam, awayTeam, markets, homeForm, awayForm);
+  if (!picks.length) return null;
+  const count = picks.length;
+  const sp = picks[Math.min(idx, count - 1)];
+
+  function prev(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    setIdx(i => (i - 1 + count) % count);
+  }
+  function next(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    setIdx(i => (i + 1) % count);
+  }
+
   return (
-    <div className="group/aibadge relative">
+    <div className="group/aibadge relative flex items-center gap-0.5">
+      {/* Previous market button */}
+      {count > 1 && (
+        <button
+          onClick={prev}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          title="Previous market"
+        >‹</button>
+      )}
+
+      {/* Main badge — links to match prediction section */}
       <Link
         href={`/matches/${matchSlug}#prediction`}
         onClick={(e) => e.stopPropagation()}
-        className="flex items-center gap-1.5 rounded-md bg-primary/8 px-2 py-1 text-[10px] hover:bg-primary/15 transition-colors"
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md bg-primary/8 px-2 py-1 text-[10px] hover:bg-primary/15 transition-colors"
       >
         <Sparkles className="h-3 w-3 shrink-0 text-primary" />
-        <span className="font-semibold text-primary">AI Pick</span>
-        <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary">{sp.market}</span>
-        <span className="text-muted-foreground">·</span>
+        <span className="font-semibold text-primary shrink-0">AI</span>
+        <span className="rounded bg-primary/15 px-1 py-px font-bold text-primary shrink-0">{sp.market}</span>
+        <span className="text-muted-foreground shrink-0">·</span>
         <span className="truncate font-bold text-foreground">{sp.label}</span>
-        <span className="ml-auto font-semibold text-primary">{sp.confidence}%</span>
+        <span className="ml-auto shrink-0 font-semibold text-primary">{sp.confidence}%</span>
+        {count > 1 && (
+          <span className="shrink-0 text-[9px] text-muted-foreground tabular-nums">{idx + 1}/{count}</span>
+        )}
       </Link>
+
+      {/* Next market button */}
+      {count > 1 && (
+        <button
+          onClick={next}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          title="Next market"
+        >›</button>
+      )}
+
       {/* "Why this pick?" tooltip — appears on hover */}
-      <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-64 opacity-0 scale-95 transition-all duration-150 group-hover/aibadge:opacity-100 group-hover/aibadge:scale-100">
+      <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-72 opacity-0 scale-95 transition-all duration-150 group-hover/aibadge:opacity-100 group-hover/aibadge:scale-100">
         <div className="rounded-lg border border-border bg-popover p-3 shadow-lg">
           <p className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-primary">
             <Sparkles className="h-3 w-3" /> Why this pick?
           </p>
           <p className="text-[11px] leading-relaxed text-muted-foreground">{sp.rationale}</p>
+          {count > 1 && (
+            <p className="mt-2 text-[10px] text-muted-foreground/60">Use ‹ › to browse {count} ranked markets</p>
+          )}
         </div>
       </div>
     </div>

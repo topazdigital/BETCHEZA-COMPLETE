@@ -359,7 +359,7 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
       'Win to Nil':     1.28,
       'Asian Handicap': 1.22,
       'Clean Sheet':    1.20,
-      'Draw No Bet':    1.16,
+      'Draw No Bet':    1.06,
       'First to Score': 1.12,
       'O/U 3.5 Goals':  1.10,
       'O/U 2.5 Goals':  1.06,
@@ -402,7 +402,10 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
       } else if (market === 'Asian Handicap') {
         fit = veryStrongFav ? 16 : strongFav ? 9 : tightMatch ? -4 : 4
       } else if (market === 'Draw No Bet') {
-        fit = strongFav ? 9 : 6
+        if (veryStrongFav) fit = -8
+        else if (strongFav) fit = 16
+        else if (tightMatch) fit = -4
+        else fit = 4
       } else if (market === 'First to Score') {
         fit = highGoals ? 10 : 5
       } else if (market === 'Match Winner') {
