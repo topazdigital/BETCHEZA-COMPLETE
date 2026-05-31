@@ -756,6 +756,82 @@ const faqJsonLd = {
   ],
 };
 
+const localBusinessJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': ['LocalBusiness', 'SportsOrganization'],
+  '@id': 'https://betcheza.co.ke/#localbusiness',
+  name: 'Betcheza',
+  alternateName: 'Betcheza Kenya',
+  description: "Kenya's #1 sports betting tipster community — free AI-powered football predictions, SportPesa jackpot tips, Betika grand jackpot picks, and daily sure odds.",
+  url: 'https://betcheza.co.ke',
+  logo: 'https://betcheza.co.ke/icon-512.png',
+  image: 'https://betcheza.co.ke/og-image.png',
+  priceRange: 'Free',
+  currenciesAccepted: 'KES',
+  paymentAccepted: 'M-Pesa',
+  areaServed: [
+    { '@type': 'Country', name: 'Kenya', '@id': 'https://www.wikidata.org/wiki/Q114' },
+    { '@type': 'Country', name: 'Uganda' },
+    { '@type': 'Country', name: 'Tanzania' },
+  ],
+  address: {
+    '@type': 'PostalAddress',
+    addressCountry: 'KE',
+    addressLocality: 'Nairobi',
+  },
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'customer support',
+    url: 'https://betcheza.co.ke/contact',
+    areaServed: 'KE',
+    availableLanguage: ['English', 'Swahili'],
+  },
+  sameAs: [
+    'https://www.facebook.com/betcheza',
+    'https://twitter.com/betcheza',
+    'https://www.instagram.com/betcheza',
+  ],
+  aggregateRating: {
+    '@type': 'AggregateRating',
+    ratingValue: '4.8',
+    bestRating: '5',
+    worstRating: '1',
+    ratingCount: '2400',
+    reviewCount: '2400',
+  },
+  hasOfferCatalog: {
+    '@type': 'OfferCatalog',
+    name: 'Betcheza Betting Tips Services',
+    itemListElement: [
+      {
+        '@type': 'Offer',
+        itemOffered: { '@type': 'Service', name: 'Free Football Predictions Kenya' },
+        price: '0', priceCurrency: 'KES',
+      },
+      {
+        '@type': 'Offer',
+        itemOffered: { '@type': 'Service', name: 'SportPesa Jackpot Tips' },
+        price: '0', priceCurrency: 'KES',
+      },
+      {
+        '@type': 'Offer',
+        itemOffered: { '@type': 'Service', name: 'Betika Grand Jackpot Predictions' },
+        price: '0', priceCurrency: 'KES',
+      },
+      {
+        '@type': 'Offer',
+        itemOffered: { '@type': 'Service', name: 'AI Match Predictor' },
+        price: '0', priceCurrency: 'KES',
+      },
+      {
+        '@type': 'Offer',
+        itemOffered: { '@type': 'Service', name: 'Tipster Leaderboard & Community' },
+        price: '0', priceCurrency: 'KES',
+      },
+    ],
+  },
+};
+
 const softwareAppJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebApplication',
@@ -808,6 +884,10 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
         />
         <ClarityAnalytics />
         <NavigationProgress />

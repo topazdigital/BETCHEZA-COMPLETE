@@ -89,35 +89,59 @@ DA_CONF  = "$DA_CONF"
 DOMAIN   = "$DOMAIN"
 APP_PORT = $APP_PORT
 
-PROXY_BLOCK = (
+HTTP_PROXY_BLOCK = (
     "\n    # Node.js reverse proxy — managed by deploy.sh\n"
     "    ProxyPreserveHost On\n"
     "    ProxyRequests Off\n"
+    "    RequestHeader set X-Forwarded-Proto \"http\"\n"
     "    ProxyPass        /.well-known !\n"
     "    ProxyPass        /_next/static/ !\n"
     f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/\n"
     f"    ProxyPassReverse / http://127.0.0.1:{APP_PORT}/\n"
 )
 
+HTTPS_PROXY_BLOCK = (
+    "\n    # Node.js reverse proxy — managed by deploy.sh\n"
+    "    ProxyPreserveHost On\n"
+    "    ProxyRequests Off\n"
+    "    RequestHeader set X-Forwarded-Proto \"https\"\n"
+    "    ProxyPass        /.well-known !\n"
+    "    ProxyPass        /_next/static/ !\n"
+    f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/\n"
+    f"    ProxyPassReverse / http://127.0.0.1:{APP_PORT}/\n"
+)
+
+def is_ssl_vhost(lines, start_idx):
+    """Return True if the VirtualHost at start_idx listens on port 443."""
+    opening = lines[start_idx]
+    return bool(re.search(r":443\b", opening))
+
 with open(DA_CONF, "r") as f:
     lines = f.readlines()
 
 # ── Pass 1: update any existing ProxyPass port lines inside betcheza VHosts ───
-# DA puts ProxyPass lines BEFORE ServerName in the VirtualHost block,
-# so we detect betcheza VHosts by looking 35 lines ahead.
+# Search up to 80 lines ahead for ServerName/ServerAlias (DA configs vary).
 in_betcheza = False
-new_lines   = []
-updates     = 0
+vhost_ssl    = False
+new_lines    = []
+updates      = 0
 
 for i, line in enumerate(lines):
-    # Detect VirtualHost start — look 35 lines ahead for our domain
     if re.search(r"<VirtualHost[^>]+>", line):
-        chunk = "".join(lines[i : i + 35])
+        chunk = "".join(lines[i : i + 80])
         in_betcheza = bool(
             re.search(rf"(ServerName|ServerAlias)[^\n]*{re.escape(DOMAIN)}", chunk)
         )
+        vhost_ssl = is_ssl_vhost(lines, i)
 
-    # Update existing ProxyPass / ProxyPassReverse lines pointing to wrong port
+    if in_betcheza and re.search(r"RequestHeader\s+set\s+X-Forwarded-Proto", line):
+        expected = '"https"' if vhost_ssl else '"http"'
+        new_line = re.sub(r'"https"|"http"', expected, line)
+        if new_line != line:
+            updates += 1
+        new_lines.append(new_line)
+        continue
+
     if in_betcheza and re.search(r"ProxyPass(Reverse)?\s+/\s+http://127\.0\.0\.1:\d+/", line):
         new_line = re.sub(
             r"(ProxyPass(?:Reverse)?\s+/\s+http://127\.0\.0\.1:)\d+(/)",
@@ -131,26 +155,33 @@ for i, line in enumerate(lines):
 
     if re.match(r"\s*</VirtualHost>", line):
         in_betcheza = False
+        vhost_ssl   = False
 
     new_lines.append(line)
 
 # ── Pass 2: if no existing ProxyPass was found, inject before </VirtualHost> ──
 if updates == 0:
-    in_betcheza = False
-    patched     = 0
-    final_lines = []
+    in_betcheza  = False
+    vhost_ssl    = False
+    vhost_start  = -1
+    patched      = 0
+    final_lines  = []
     for i, line in enumerate(new_lines):
         if re.search(r"<VirtualHost[^>]+>", line):
-            chunk = "".join(new_lines[i : i + 35])
+            chunk = "".join(new_lines[i : i + 80])
             in_betcheza = bool(
                 re.search(rf"(ServerName|ServerAlias)[^\n]*{re.escape(DOMAIN)}", chunk)
             )
+            vhost_ssl   = is_ssl_vhost(new_lines, i)
+            vhost_start = i
         if in_betcheza and re.match(r"\s*</VirtualHost>", line):
-            preceding = "".join(final_lines[-30:])
+            preceding = "".join(final_lines[-50:])
             if "ProxyPass" not in preceding:
-                final_lines.append(PROXY_BLOCK)
+                block = HTTPS_PROXY_BLOCK if vhost_ssl else HTTP_PROXY_BLOCK
+                final_lines.append(block)
                 patched += 1
             in_betcheza = False
+            vhost_ssl   = False
         final_lines.append(line)
     new_lines = final_lines
     if patched > 0:
@@ -211,14 +242,36 @@ if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
-# Fallback proxy (used only if VirtualHost-level ProxyPass is absent)
+# Fallback proxy (used only if VirtualHost-level ProxyPass is absent).
+# Sets X-Forwarded-Proto so Next.js knows the original protocol — prevents
+# HTTP/HTTPS redirect loops when Apache is the SSL terminator.
 <IfModule mod_rewrite.c>
   RewriteEngine On
+
+  # Pass through ACME / Let's Encrypt challenges unchanged
+  RewriteCond %{REQUEST_URI} ^/.well-known/ [NC]
+  RewriteRule ^ - [L]
+
+  # Pass through locally served Next.js static assets unchanged
   RewriteCond %{REQUEST_URI} ^/_next/static/ [NC]
   RewriteRule ^ - [L]
+
+  # Pass through files that exist on disk (uploaded assets, etc.)
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule ^ - [L]
+
+  # Set X-Forwarded-Proto before proxying so Node.js sees the right protocol
+  RewriteCond %{HTTPS} on
+  RewriteRule ^ - [E=X_PROTO:https,NS]
+  RewriteCond %{HTTPS} !on
+  RewriteRule ^ - [E=X_PROTO:http,NS]
+
   RewriteRule ^(.*)\$ http://127.0.0.1:${APP_PORT}/\$1 [P,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Forward the original protocol to Node.js (set by RewriteRule env above)
+  RequestHeader set X-Forwarded-Proto "%{X_PROTO}e" env=X_PROTO
 </IfModule>
 HTACCESS
   echo -e "${GREEN}.htaccess written → port ${APP_PORT}${NC}"
