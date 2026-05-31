@@ -36,6 +36,7 @@ export function checkPickResult(
   pick: StrategyPick,
   homeScore: number,
   awayScore: number,
+  forceSettle = false,
 ): 'win' | 'loss' | null {
   const market  = (pick.market || '').toLowerCase().trim();
   const pickRaw = (pick.pick  || '').toLowerCase().trim();
@@ -182,11 +183,15 @@ export function checkPickResult(
     if (pickRaw === 'under') {
       if (total >= 5) return 'loss'; // impossible to get under any standard line with 5+ goals
       if (total <= 1) return 'win';  // 0–1 goals beats any standard Under line (≥1.5)
+      // forceSettle: assume Over 2.5 (most common line) → Under 2.5 wins if total ≤ 2
+      if (forceSettle) return total <= 2 ? 'win' : 'loss';
       return null;                   // 2–4 goals: line is unknown, keep pending
     }
     if (pickRaw === 'over') {
       if (total >= 4) return 'win';  // 4+ goals beats any standard Over line (≤3.5)
       if (total === 0) return 'loss';// 0 goals loses any Over
+      // forceSettle: assume Over 2.5 (most common line) — 3+ goals wins, ≤2 loses
+      if (forceSettle) return total >= 3 ? 'win' : 'loss';
       return null;
     }
 

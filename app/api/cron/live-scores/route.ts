@@ -250,6 +250,10 @@ async function settleRecentPendingStrategyPicks() {
       const pHn = normalizeTeam(pick.homeTeam);
       const pAn = normalizeTeam(pick.awayTeam);
 
+      // Force-settle bare over/under after 24h — assume Over 2.5 line
+      const TWENTY_FOUR_HOURS_MS = 24 * 3600_000;
+      const forceSettle = now - kickoff > TWENTY_FOUR_HOURS_MS;
+
       let scored: { homeScore: number; awayScore: number } | null = null;
       for (const [, v] of finishedScores) {
         const vHn = normalizeTeam(v.homeTeam);
@@ -260,7 +264,7 @@ async function settleRecentPendingStrategyPicks() {
       }
       if (!scored) return pick;
 
-      const result = checkPickResult(pick, scored.homeScore, scored.awayScore);
+      const result = checkPickResult(pick, scored.homeScore, scored.awayScore, forceSettle);
       if (!result) return pick;
 
       const scoreStr = `${scored.homeScore}-${scored.awayScore}`;

@@ -134,6 +134,54 @@ const BOOKMAKERS: Record<string, BookmakerInfo> = {
     features: ['Jackpot', 'Live Betting', 'Keno', 'Quick Games'],
     minBet: 'KES 10', mpesa: true,
   },
+  bahatibet: {
+    slug: 'bahatibet', name: 'Bahatibet', fullName: 'Bahatibet Kenya',
+    country: 'Kenya', jackpot: 'Bahatibet Jackpot',
+    description: 'Bahatibet Kenya is a popular betting site offering competitive football odds and a lucrative jackpot. Get free Bahatibet tips, jackpot predictions, and daily accumulator picks from expert tipsters.',
+    markets: ['1X2', 'Over/Under', 'BTTS', 'Double Chance', 'Correct Score', 'Jackpot'],
+    features: ['Daily Jackpot', 'Live Betting', 'Casino', 'Aviator Game'],
+    minBet: 'KES 10', bonuses: 'Welcome bonus on first deposit', mpesa: true,
+  },
+  betlion: {
+    slug: 'betlion', name: 'Betlion', fullName: 'Betlion Kenya',
+    country: 'Kenya', jackpot: 'Super Jackpot',
+    description: 'Betlion Kenya offers a Super Jackpot and great football odds. Get free Betlion predictions, jackpot banker picks, and expert accumulator tips.',
+    markets: ['1X2', 'Over/Under', 'BTTS', 'Handicap', 'Correct Score'],
+    features: ['Super Jackpot', 'Live Betting', 'Virtual Sports', 'Casino'],
+    minBet: 'KES 10', mpesa: true,
+  },
+  wazabet: {
+    slug: 'wazabet', name: 'Wazabet', fullName: 'Wazabet Kenya',
+    country: 'Kenya',
+    description: 'Wazabet Kenya is a fast-growing betting platform with competitive odds. Get free Wazabet tips, daily predictions, and expert analysis from verified tipsters.',
+    markets: ['1X2', 'Over/Under', 'BTTS', 'Double Chance'],
+    features: ['Live Betting', 'Casino', 'Daily Jackpot', 'Free Bets'],
+    minBet: 'KES 10', mpesa: true,
+  },
+  sportybet: {
+    slug: 'sportybet', name: 'Sportybet', fullName: 'Sportybet Kenya',
+    country: 'Kenya', jackpot: 'Sportybet Jackpot',
+    description: 'Sportybet Kenya offers one of the fastest bet slip processing times in Kenya. Get free Sportybet predictions, jackpot banker tips, and daily accumulator picks.',
+    markets: ['1X2', 'Over/Under', 'BTTS', 'Asian Handicap', 'Jackpot'],
+    features: ['Fast Payouts', 'Daily Jackpot', 'Live Betting', 'Free Bets'],
+    minBet: 'KES 10', mpesa: true,
+  },
+  betika24: {
+    slug: 'betika24', name: 'Betika24', fullName: 'Betika24 Kenya',
+    country: 'Kenya',
+    description: 'Betika24 Kenya is a rising platform with round-the-clock betting action. Get free Betika24 tips, predictions, and expert analysis.',
+    markets: ['1X2', 'Over/Under', 'BTTS', 'Jackpot'],
+    features: ['24/7 Betting', 'Live Betting', 'Casino', 'Jackpot'],
+    minBet: 'KES 10', mpesa: true,
+  },
+  dafabet: {
+    slug: 'dafabet', name: 'Dafabet', fullName: 'Dafabet Kenya',
+    country: 'Kenya',
+    description: 'Dafabet Kenya offers Asian handicap and European odds with a wide sports selection. Get free Dafabet tips, predictions, and expert analysis for Kenyan bettors.',
+    markets: ['1X2', 'Asian Handicap', 'Over/Under', 'BTTS', 'Player Props'],
+    features: ['Asian Handicap', 'Live Betting', 'Cash Out', 'Wide Sports Coverage'],
+    minBet: 'KES 50', mpesa: true,
+  },
 };
 
 type Props = { params: Promise<{ bookmaker: string }> };
@@ -182,6 +230,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export function generateStaticParams() {
   return Object.keys(BOOKMAKERS).map(b => ({ bookmaker: b }));
 }
+
+export const dynamicParams = true;
 
 export default async function BookmakerTipsPage({ params }: Props) {
   const { bookmaker } = await params;

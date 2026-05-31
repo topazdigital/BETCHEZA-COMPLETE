@@ -29,21 +29,17 @@ export async function generateMetadata({
   const description = `Latest ${name}${locationStr} predictions, match tips, standings, fixtures and results. Expert analysis for every ${name} match — free on ${siteName} Kenya.`;
 
   const keywords = [
-    `${name} predictions`,
-    `${name} tips`,
-    `${name} betting tips`,
-    `${name} predictions today`,
-    `${name} tips today`,
-    `${name} fixtures`,
-    `${name} standings`,
-    `${name} results`,
+    `${name} predictions`, `${name} tips`, `${name} betting tips`,
+    `${name} predictions today`, `${name} tips today`, `${name} fixtures`,
+    `${name} standings`, `${name} results`, `${name} match preview`, `${name} odds`,
     country ? `${name} ${country}` : '',
     country ? `${country} football predictions` : '',
-    `${name} match preview`,
-    `${name} odds`,
-    'football predictions Kenya',
-    'league tips Kenya',
-    `${siteName} ${name}`,
+    `${name} predictions Kenya`, `${name} tips Kenya`,
+    `${name} SportPesa tips`, `${name} Betika tips`, `${name} Odibets tips`,
+    `${name} Betway tips`, `${name} Bahatibet tips`, `${name} Mozzartbet tips`,
+    `${name} 1xBet tips`, `${name} Helabet tips`,
+    'football predictions Kenya', 'betting tips Kenya',
+    'free tips today Kenya', `${siteName} ${name}`,
   ].filter(Boolean);
 
   return {
