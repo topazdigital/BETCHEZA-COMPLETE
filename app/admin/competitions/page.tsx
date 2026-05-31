@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import useSWR, { mutate as globalMutate } from "swr"
 import Link from "next/link"
-import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X, Info, CheckCircle, AlertTriangle, ShieldAlert, Zap } from "lucide-react"
+import { Trophy, Users, Gift, Timer, ChevronRight, ExternalLink, Plus, Trash2, Loader2, X, Info, CheckCircle, AlertTriangle, ShieldAlert, Zap, Pencil } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -305,6 +305,61 @@ export default function AdminCompetitionsPage() {
     } finally {
       setDeleting(null)
     }
+  }
+
+  // ── Inline edit ──────────────────────────────────────────────────────
+  interface EditForm {
+    name: string; description: string; status: string; entryFee: string
+    prizePool: string; maxParticipants: string; startDate: string; endDate: string; currency: string
+  }
+  const [editCompId, setEditCompId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<EditForm>({ name: '', description: '', status: 'upcoming', entryFee: '0', prizePool: '0', maxParticipants: '100', startDate: '', endDate: '', currency: 'KES' })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  const openEdit = (c: AdminCompetition) => {
+    const toLocal = (iso: string | null | undefined) =>
+      iso ? new Date(iso).toISOString().slice(0, 16) : ''
+    setEditForm({
+      name: c.name, description: '',
+      status: c.status, entryFee: String(c.entryFee),
+      prizePool: String(c.prizePool), maxParticipants: String(c.maxParticipants),
+      startDate: toLocal(c.startDate), endDate: toLocal(c.endDate), currency: c.currency || 'KES',
+    })
+    setEditError(null)
+    setEditCompId(c.id)
+  }
+
+  const saveEdit = async (id: number) => {
+    if (!editForm.name.trim()) { setEditError('Name is required'); return }
+    setSavingEdit(true); setEditError(null)
+    try {
+      const r = await fetch('/api/admin/competitions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          name: editForm.name.trim(),
+          description: editForm.description,
+          status: editForm.status,
+          entryFee: Number(editForm.entryFee),
+          prizePool: Number(editForm.prizePool),
+          maxParticipants: Number(editForm.maxParticipants),
+          startDate: editForm.startDate ? new Date(editForm.startDate).toISOString() : undefined,
+          endDate: editForm.endDate ? new Date(editForm.endDate).toISOString() : undefined,
+          currency: editForm.currency,
+        }),
+      })
+      if (r.ok) {
+        setEditCompId(null)
+        mutate()
+        globalMutate('/api/competitions')
+      } else {
+        const d = await r.json().catch(() => ({}))
+        setEditError(d.error || 'Save failed')
+      }
+    } catch { setEditError('Network error') }
+    setSavingEdit(false)
   }
 
   // ── Manual settle ────────────────────────────────────────────────────
@@ -726,6 +781,16 @@ export default function AdminCompetitionsPage() {
                           {settlingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
                         </Button>
                       )}
+                      {/* Edit competition */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn('h-6 w-6', editCompId === c.id ? 'text-blue-400 bg-blue-500/10' : 'text-muted-foreground hover:text-blue-400')}
+                        title="Edit competition"
+                        onClick={() => editCompId === c.id ? setEditCompId(null) : openEdit(c)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -788,6 +853,127 @@ export default function AdminCompetitionsPage() {
                               Window: {new Date(kickoffForm.from).toLocaleString()} → {new Date(kickoffForm.to).toLocaleString()} (your local timezone)
                             </p>
                           )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {/* ── Inline edit panel ───────────────────────────── */}
+                {editCompId === c.id && (
+                  <tr className="bg-blue-500/5 border-b border-blue-500/20">
+                    <td colSpan={8} className="px-3 py-3">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Pencil className="h-3.5 w-3.5 text-blue-400" />
+                          <span className="text-[11px] font-bold text-blue-400">Edit Competition</span>
+                        </div>
+
+                        {/* Row 1: Name + Status */}
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <div className="sm:col-span-2">
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Name</Label>
+                            <Input
+                              value={editForm.name}
+                              onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                              className="h-8 text-xs mt-0.5"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Status</Label>
+                            <select
+                              className="mt-0.5 h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
+                              value={editForm.status}
+                              onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                            >
+                              <option value="upcoming">Upcoming</option>
+                              <option value="active">Active</option>
+                              <option value="completed">Completed</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Row 2: Entry fee + Prize pool + Max participants + Currency */}
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Entry Fee (KES)</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={editForm.entryFee}
+                              onChange={e => setEditForm(f => ({ ...f, entryFee: e.target.value }))}
+                              className="h-8 text-xs mt-0.5"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Prize Pool</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={editForm.prizePool}
+                              onChange={e => setEditForm(f => ({ ...f, prizePool: e.target.value }))}
+                              className="h-8 text-xs mt-0.5"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Max Participants</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={editForm.maxParticipants}
+                              onChange={e => setEditForm(f => ({ ...f, maxParticipants: e.target.value }))}
+                              className="h-8 text-xs mt-0.5"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Currency</Label>
+                            <Input
+                              value={editForm.currency}
+                              onChange={e => setEditForm(f => ({ ...f, currency: e.target.value }))}
+                              className="h-8 text-xs mt-0.5"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Row 3: Start + End dates */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Start Date</Label>
+                            <Input
+                              type="datetime-local"
+                              value={editForm.startDate}
+                              onChange={e => setEditForm(f => ({ ...f, startDate: e.target.value }))}
+                              className="h-8 text-xs mt-0.5"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">End Date</Label>
+                            <Input
+                              type="datetime-local"
+                              value={editForm.endDate}
+                              onChange={e => setEditForm(f => ({ ...f, endDate: e.target.value }))}
+                              className="h-8 text-xs mt-0.5"
+                            />
+                          </div>
+                        </div>
+
+                        {editError && (
+                          <p className="text-[11px] text-rose-500 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />{editError}
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => saveEdit(c.id)}
+                            disabled={savingEdit}
+                          >
+                            {savingEdit ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Saving…</> : <><CheckCircle className="mr-1 h-3 w-3" />Save Changes</>}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditCompId(null)}>
+                            Cancel
+                          </Button>
                         </div>
                       </div>
                     </td>

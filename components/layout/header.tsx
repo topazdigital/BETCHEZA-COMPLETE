@@ -61,7 +61,7 @@ function useCountdown(targetMs: number) {
 }
 
 function WorldCupBanner() {
-  const [dismissed, setDismissed] = useState(true); // start hidden, check localStorage
+  const [dismissed, setDismissed] = useState(true);
   const [mounted, setMounted] = useState(false);
   const { days, hours, mins, secs, done } = useCountdown(WC_START_MS);
 
@@ -82,46 +82,94 @@ function WorldCupBanner() {
 
   if (!mounted || dismissed || done) return null;
 
+  const units = [
+    { v: days,  l: 'Days' },
+    { v: hours, l: 'Hours' },
+    { v: mins,  l: 'Mins' },
+    { v: secs,  l: 'Secs' },
+  ];
+
   return (
-    <div className="relative w-full overflow-hidden bg-gradient-to-r from-[#003087] via-[#c8102e] to-[#009B3A] text-white">
-      {/* animated shimmer */}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_2.5s_infinite] pointer-events-none" />
+    <div className="relative w-full overflow-hidden text-white" style={{ background: 'linear-gradient(135deg, #001a6e 0%, #c8102e 45%, #006b3f 100%)' }}>
+      {/* Animated shimmer sweep */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: 'linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.12) 50%, transparent 65%)',
+          animation: 'wcShimmer 3s ease-in-out infinite',
+        }}
+      />
+      {/* Subtle star particles */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {[10,25,40,55,70,85].map((left, i) => (
+          <span
+            key={i}
+            className="absolute text-white/20 text-[8px]"
+            style={{ left: `${left}%`, top: `${(i % 3) * 30 + 10}%`, animationDelay: `${i * 0.4}s`, animation: 'wcTwinkle 2s ease-in-out infinite alternate' }}
+          >★</span>
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes wcShimmer { 0%,100%{transform:translateX(-100%)} 50%{transform:translateX(100%)} }
+        @keyframes wcTwinkle { from{opacity:0.1} to{opacity:0.5} }
+        @keyframes wcPulse   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+      `}</style>
+
       <Link
         href="/competitions"
-        className="mx-auto flex max-w-7xl items-center justify-center gap-3 px-4 py-1.5 text-center"
+        className="mx-auto flex max-w-7xl items-center justify-center flex-wrap gap-x-4 gap-y-1 px-6 py-2 text-center"
       >
-        <span className="text-base">🏆</span>
-        <span className="text-[11px] font-bold uppercase tracking-wider hidden xs:inline">
-          FIFA World Cup 2026
-        </span>
-        <span className="hidden sm:flex items-center gap-1 text-[11px] text-white/70">
-          <span>🇺🇸</span><span>🇲🇽</span><span>🇨🇦</span>
-        </span>
-        <span className="text-white/60 text-[10px] hidden md:inline">Kicks off in</span>
-        <div className="flex items-center gap-1">
-          {[
-            { v: days,  l: 'D' },
-            { v: hours, l: 'H' },
-            { v: mins,  l: 'M' },
-            { v: secs,  l: 'S' },
-          ].map(({ v, l }, i) => (
-            <span key={l} className="flex items-baseline gap-0.5">
-              {i > 0 && <span className="text-white/40 text-[10px] font-bold">:</span>}
-              <span className="min-w-[22px] rounded bg-black/30 px-1 py-0.5 text-center font-mono text-sm font-black tabular-nums">
-                {pad(v)}
-              </span>
-              <span className="text-[8px] font-bold uppercase text-white/60">{l}</span>
-            </span>
+        {/* Trophy + title */}
+        <div className="flex items-center gap-2">
+          <span className="text-xl drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 6px rgba(255,215,0,0.8))', animation: 'wcPulse 2s ease-in-out infinite' }}>🏆</span>
+          <div className="flex flex-col items-start leading-tight">
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-yellow-300/90">FIFA</span>
+            <span className="text-[13px] font-black uppercase tracking-wide leading-none">World Cup 2026</span>
+          </div>
+        </div>
+
+        {/* Host flags */}
+        <div className="hidden sm:flex items-center gap-1.5 text-sm">
+          <span title="USA">🇺🇸</span>
+          <span className="text-white/30 text-[10px]">·</span>
+          <span title="Mexico">🇲🇽</span>
+          <span className="text-white/30 text-[10px]">·</span>
+          <span title="Canada">🇨🇦</span>
+        </div>
+
+        {/* Countdown blocks */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-white/60 mr-1 hidden md:inline font-medium">Kicks off in</span>
+          {units.map(({ v, l }, i) => (
+            <div key={l} className="flex items-center gap-1.5">
+              {i > 0 && <span className="text-white/25 font-bold text-base leading-none mb-2">:</span>}
+              <div className="flex flex-col items-center">
+                <div
+                  className="min-w-[34px] rounded-md px-1.5 py-1 text-center font-mono text-base font-black tabular-nums leading-none"
+                  style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)', textShadow: '0 0 8px rgba(255,255,255,0.5)' }}
+                >
+                  {pad(v)}
+                </div>
+                <span className="mt-0.5 text-[7px] font-bold uppercase tracking-widest text-white/50">{l}</span>
+              </div>
+            </div>
           ))}
         </div>
-        <span className="text-[10px] font-semibold text-yellow-300 hidden lg:inline animate-pulse">
-          🎯 Join the Competition →
-        </span>
+
+        {/* CTA */}
+        <div
+          className="hidden lg:flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide text-black"
+          style={{ background: 'linear-gradient(135deg, #ffd700, #ffaa00)', boxShadow: '0 0 12px rgba(255,200,0,0.6)' }}
+        >
+          🎯 Join Free →
+        </div>
       </Link>
+
       <button
         onClick={(e) => { e.preventDefault(); dismiss(); }}
         aria-label="Dismiss World Cup banner"
-        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-white/70 hover:bg-white/20 hover:text-white transition-colors"
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-white/50 hover:bg-white/20 hover:text-white transition-colors"
       >
         <X className="h-3 w-3" />
       </button>
