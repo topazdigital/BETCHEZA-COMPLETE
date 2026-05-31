@@ -377,20 +377,28 @@ export function useUpcomingMatches(limit?: number) {
   };
 }
 
-// Hook for finished matches
+// Hook for finished matches — uses the dedicated /api/results endpoint
+// which fetches up to 30 days of historical ESPN data, not just the live cache.
+async function resultsFetcher(url: string): Promise<Match[]> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Results fetch failed: ${res.status}`);
+  const data = await res.json();
+  return (data.matches || []) as Match[];
+}
+
 export function useFinishedMatches(date?: Date) {
   const { data, error, isLoading } = useSWR<Match[]>(
-    '/api/matches?status=finished',
-    matchesFetcher,
+    '/api/results?days=30',
+    resultsFetcher,
     {
-      refreshInterval: 60000,
+      refreshInterval: 120000,
       revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      dedupingInterval: 60000,
     }
   );
 
-  let finished = data ? getFinishedMatches(data) : [];
-  
+  let finished = data || [];
+
   if (date) {
     const dateStr = date.toDateString();
     finished = finished.filter(m => new Date(m.kickoffTime).toDateString() === dateStr);

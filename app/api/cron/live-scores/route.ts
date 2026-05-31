@@ -14,6 +14,7 @@ import { query, execute } from '@/lib/db';
 import { checkPickResult, normalizeTeam, matchTeamWords } from '@/lib/strategy-settle';
 import { sendStrategyResultPush } from '@/lib/strategy-push';
 import { pingMatchResult, pingIndexNow } from '@/lib/indexnow';
+import { pingGoogleIndexingBatch } from '@/lib/google-indexing';
 import type { StrategyPick } from '@/app/api/strategy/predictions/route';
 
 export const dynamic = 'force-dynamic';
@@ -118,13 +119,19 @@ export async function GET(req: NextRequest) {
       if (!liveIds.has(key)) snap.delete(key);
     }
 
-    // IndexNow: ping for every match that just reached full-time.
+    // IndexNow + Google Indexing: ping for every match that just reached full-time.
     // This tells search engines the result page has fresh, unique content.
     if (justFinished.length > 0) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+      const finishedUrls: string[] = [];
       for (const m of justFinished) {
-        // fire-and-forget: don't await so push notification delivery isn't delayed
         pingMatchResult(m.matchId, m.homeTeam, m.awayTeam).catch(() => {});
         console.log(`[live-scores] IndexNow queued for FT result: ${m.homeTeam} vs ${m.awayTeam}`);
+        finishedUrls.push(`${siteUrl}/matches/${m.matchId}`);
+      }
+      // Also ping Google's Indexing API (direct crawl queue)
+      if (finishedUrls.length > 0) {
+        pingGoogleIndexingBatch(finishedUrls).catch(() => {});
       }
     }
 

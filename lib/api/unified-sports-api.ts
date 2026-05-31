@@ -5084,48 +5084,73 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
   // 1) Fast path — match is in the current rolling window (today/upcoming/recent).
   //    Wrapped in its own try so a transient scoreboard error doesn't kill the
   //    direct-lookup fallback below.
-  try {
-    const allMatches = await getAllMatches();
-    const found = allMatches.find(m => m.id === matchId);
-    if (found) return found;
+  // For espn_eventid_ format, skip the cache scan entirely — the suffix scan
+  // causes cross-sport collisions (e.g. soccer event 401862697 vs football event 401862697).
+  // Go straight to the parallel ESPN league lookup below.
+  const isEventIdFormat = matchId.startsWith('espn_eventid_');
 
-    // Scan by trailing numeric event ID — handles both the espn_eventid_ new-format
-    // AND legacy-format mismatches where dots were (re)introduced into the league key
-    // (e.g. looking for espn_eng.1_740936 while cache holds espn_eng1_740936).
-    const numericSuffix = matchId.match(/_(\d+)$/);
-    if (numericSuffix) {
-      const numericId = numericSuffix[1];
-      const byEventId = allMatches.find(m => m.id.endsWith(`_${numericId}`));
-      if (byEventId) return byEventId;
+  if (!isEventIdFormat) {
+    try {
+      const allMatches = await getAllMatches();
+      const found = allMatches.find(m => m.id === matchId);
+      if (found) return found;
+
+      // Scan by trailing numeric event ID — handles legacy-format mismatches where
+      // dots were (re)introduced into the league key (e.g. looking for
+      // espn_eng.1_740936 while cache holds espn_eng1_740936).
+      // ONLY used for non-eventid formats to prevent cross-sport collisions.
+      const numericSuffix = matchId.match(/^espn_[a-z0-9.]+_(\d+)$/i);
+      if (numericSuffix) {
+        const numericId = numericSuffix[1];
+        // Only scan matches from the same sport namespace to avoid cross-sport hits.
+        const srcSport = matchId.split('_')[1]?.toLowerCase() || '';
+        const byEventId = allMatches.find(m =>
+          m.id.endsWith(`_${numericId}`) &&
+          (srcSport === '' || m.id.includes(srcSport.slice(0, 4)))
+        );
+        if (byEventId) return byEventId;
+      }
+    } catch (error) {
+      console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
     }
-  } catch (error) {
-    console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
   }
 
-  // Handle new human-readable URL format (espn_eventid_NNNNN) via parallel ESPN lookup.
-  // Runs all leagues concurrently (Promise.any) with a 6-second safety timeout so
-  // a single slow/blocked league doesn't stall the whole request.
+  // Handle new human-readable URL format (espn_eventid_NNNNN) via staged ESPN lookup.
+  // Stage 1: try soccer leagues (most common on the site) with Promise.any.
+  // Stage 2: if soccer fails, try non-soccer leagues.
+  // Each stage has a 10-second timeout to avoid stalling the page.
   const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
   if (eventIdOnly) {
     const numericId = eventIdOnly[1];
-    try {
-      const resolvedId = await Promise.race([
-        Promise.any(
-          ESPN_LEAGUES.map(async cfg => {
-            const summary = await fetchESPNSummary(cfg.sport, cfg.league, numericId);
-            const competition = summary?.header?.competitions?.[0];
-            if (!competition) throw new Error('no competition');
-            const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
-            if (!homeComp) throw new Error('no home competitor');
-            return `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${numericId}`;
-          })
-        ),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000)),
-      ]);
-      return getMatchById(resolvedId as string);
-    } catch {
-      return null;
+
+    async function tryLeagues(leagues: ESPNLeagueConfig[]): Promise<string | null> {
+      try {
+        return await Promise.race([
+          Promise.any(
+            leagues.map(async cfg => {
+              const summary = await fetchESPNSummary(cfg.sport, cfg.league, numericId);
+              const competition = summary?.header?.competitions?.[0];
+              if (!competition) throw new Error('no competition');
+              const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
+              if (!homeComp) throw new Error('no home competitor');
+              return `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${numericId}`;
+            })
+          ),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+        ]);
+      } catch {
+        return null;
+      }
     }
+
+    const soccerLeagues = ESPN_LEAGUES.filter(l => l.sport === 'soccer');
+    const otherLeagues = ESPN_LEAGUES.filter(l => l.sport !== 'soccer');
+
+    let resolvedId = await tryLeagues(soccerLeagues);
+    if (!resolvedId) resolvedId = await tryLeagues(otherLeagues);
+    if (!resolvedId) return null;
+
+    return getMatchById(resolvedId);
   }
 
   try {

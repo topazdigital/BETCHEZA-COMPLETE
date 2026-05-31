@@ -835,11 +835,23 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const cacheKey = resolvedId;
     const now = Date.now();
 
+    // ── Detect stale-scheduled: past-kickoff matches cached as "scheduled" ───
+    // If the match kickoff was >2 hours ago but status is still "scheduled",
+    // skip the cache entirely so we always re-fetch fresh status from ESPN.
+    const kickoffMsEarly = new Date(
+      match.kickoffTime instanceof Date
+        ? match.kickoffTime
+        : match.kickoffTime as unknown as string
+    ).getTime();
+    const isStaleScheduled = match.status === 'scheduled' && kickoffMsEarly < now - 2 * 3_600_000;
+
     // ── Serve from in-process cache when fresh ────────────────────────────────
     const cached = g.__detailsCache!.get(cacheKey);
-    if (cached && now - cached.ts < cacheTTL) {
+    if (!isStaleScheduled && cached && now - cached.ts < cacheTTL) {
       return NextResponse.json(cached.data);
     }
+    // Bust the stale-scheduled cache entry so subsequent requests get fresh data too.
+    if (isStaleScheduled) g.__detailsCache!.delete(cacheKey);
 
     // ── Fan-out: ESPN summary + SGO bookmaker lines in parallel ───────────────
     const summaryPromise: Promise<ESPNSummaryResponse | null> = cfg && eventId
@@ -896,6 +908,44 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .catch(() => []);
 
     const [summary, sgoRaw] = await Promise.all([summaryPromise, sgoPromise]);
+
+    // ── Stale-scheduled override ──────────────────────────────────────────────
+    // If the cached match says "scheduled" but the kickoff was >2 hours ago,
+    // derive the real status (and scores) from the ESPN summary response.
+    // This handles the common case where a finished match is still cached as
+    // "scheduled" in the DB/memory cache from before the game started.
+    let resolvedStatus = match.status;
+    let resolvedHomeScore = match.homeScore;
+    let resolvedAwayScore = match.awayScore;
+    const kickoffMs = new Date(match.kickoffTime instanceof Date ? match.kickoffTime : match.kickoffTime as unknown as string).getTime();
+    const TWO_HOURS_MS = 2 * 3_600_000;
+    if (match.status === 'scheduled' && kickoffMs < now - TWO_HOURS_MS) {
+      const espnComp = summary?.header?.competitions?.[0];
+      const espnStatus = (espnComp as { status?: { type?: { completed?: boolean; state?: string; name?: string } } } | undefined)?.status;
+      if (espnStatus?.type?.completed || espnStatus?.type?.state === 'post') {
+        resolvedStatus = 'finished';
+        // Extract scores from header competitors
+        const hc = espnComp?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'home') as { score?: string } | undefined;
+        const ac = espnComp?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'away') as { score?: string } | undefined;
+        if (hc?.score !== undefined) resolvedHomeScore = parseInt(hc.score, 10) || 0;
+        if (ac?.score !== undefined) resolvedAwayScore = parseInt(ac.score, 10) || 0;
+        // Bust cache so the next request gets the corrected data
+        g.__detailsCache!.delete(cacheKey);
+        console.info(`[match details] Stale-scheduled override: ${resolvedId} → finished ${resolvedHomeScore}-${resolvedAwayScore}`);
+      } else if (!espnStatus && summary) {
+        // Summary exists but no recognizable status — assume finished for past matches
+        resolvedStatus = 'finished';
+      }
+    }
+    // Also treat ESPN "post" status that slipped through normalization
+    const FINISHED_STATUSES = new Set(['finished', 'ft', 'full-time', 'aet', 'pen', 'post', 'walkover', 'awarded', 'final']);
+    if (!FINISHED_STATUSES.has(resolvedStatus) && kickoffMs < now - 3 * 3_600_000) {
+      // 3+ hours past kickoff and not recognized as finished — mark finished defensively
+      const period = match.period || '';
+      if (/\b(ft|final|full.?time|end|game.?over|finished|over|result)\b/i.test(period)) {
+        resolvedStatus = 'finished';
+      }
+    }
 
     const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
     const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw);
@@ -1064,10 +1114,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           leagueSlug: cfg?.league?.replace(/[^a-z0-9]/gi, '') || '',
           sportTag: teamSportTag,
         },
-        kickoffTime: new Date(match.kickoffTime).toISOString(),
-        status: match.status,
-        homeScore: match.homeScore,
-        awayScore: match.awayScore,
+        kickoffTime: new Date(match.kickoffTime instanceof Date ? match.kickoffTime : match.kickoffTime as unknown as string).toISOString(),
+        status: resolvedStatus,
+        homeScore: resolvedHomeScore,
+        awayScore: resolvedAwayScore,
         minute: match.minute,
         period: match.period,
         league: match.league,

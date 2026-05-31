@@ -1122,7 +1122,8 @@ export default function MatchDetailPage({ params }: PageProps) {
   const liveClock = (match as { liveClock?: string; period?: string } | null)?.liveClock || (match as { period?: string } | null)?.period
 
   const isLive = match && isLiveMatchStatus(match.status)
-  const isFinished = match?.status === 'finished'
+  const FINISHED_STATUS_SET = new Set(['finished', 'ft', 'full-time', 'aet', 'pen', 'post', 'walkover', 'awarded', 'final'])
+  const isFinished = !!(match && FINISHED_STATUS_SET.has(match.status))
   const isHalftime = match?.status === 'halftime'
   const liveMinute = useLiveMinute(
     match?.minute,
