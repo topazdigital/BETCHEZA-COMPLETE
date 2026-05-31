@@ -11,6 +11,7 @@ import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
 import { query, execute } from '@/lib/db';
 import { checkPickResult, normalizeTeam, matchTeamWords } from '@/lib/strategy-settle';
+import { sendStrategyResultPush } from '@/lib/strategy-push';
 import type { StrategyPick } from '@/app/api/strategy/predictions/route';
 
 export const dynamic = 'force-dynamic';
@@ -190,10 +191,10 @@ async function settleRecentPendingStrategyPicks() {
   const dates = [nairobi(0), nairobi(-1), nairobi(-2)];
 
   // Check if any of the recent days have pending picks before hitting the DB
-  let rows: { id: number; date: string; picks: string; status: string }[] = [];
+  let rows: { id: number; date: string; day_number: number; picks: string; status: string }[] = [];
   try {
-    const res = await query<{ id: number; date: string; picks: string; status: string }>(
-      `SELECT id, date, picks, status FROM daily_strategy WHERE date IN (?, ?, ?) AND picks IS NOT NULL`,
+    const res = await query<{ id: number; date: string; day_number: number; picks: string; status: string }>(
+      `SELECT id, date, day_number, picks, status FROM daily_strategy WHERE date IN (?, ?, ?) AND picks IS NOT NULL`,
       dates
     );
     rows = res.rows;
@@ -264,6 +265,7 @@ async function settleRecentPendingStrategyPicks() {
 
     const allSettled = updated.every(p => p.result !== 'pending');
     const allWon = allSettled && updated.every(p => p.result === 'win');
+    const wasUnsettled = row.status !== 'completed';
     try {
       await execute(
         `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = IF(?, NOW(), settled_at) WHERE id = ?`,
@@ -277,6 +279,12 @@ async function settleRecentPendingStrategyPicks() {
       );
     } catch (e) {
       console.warn('[live-scores] past-pick DB write failed:', e instanceof Error ? e.message : e);
+    }
+
+    // Fire result push exactly once per day when it first becomes fully settled
+    if (allSettled && wasUnsettled) {
+      const finalResult = allWon ? 'win' : 'loss';
+      sendStrategyResultPush(row.date, row.day_number || 0, finalResult, updated).catch(() => {});
     }
   }
 }
@@ -296,8 +304,8 @@ async function updateStrategyPickLiveScores(
   const [m, d, y] = todayStr.split('/');
   const todayISO = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 
-  const rows = await query<{ id: number; picks: string; status: string }>(
-    `SELECT id, picks, status FROM daily_strategy WHERE date = ? AND status = 'active' LIMIT 1`,
+  const rows = await query<{ id: number; day_number: number; picks: string; status: string }>(
+    `SELECT id, day_number, picks, status FROM daily_strategy WHERE date = ? AND status = 'active' LIMIT 1`,
     [todayISO]
   );
   if (!rows.rows.length) return;
@@ -365,4 +373,10 @@ async function updateStrategyPickLiveScores(
       row.id,
     ]
   );
+
+  // Notify all push subscribers when all picks settle for the first time today
+  if (allSettled) {
+    const finalResult = allWon ? 'win' : 'loss';
+    sendStrategyResultPush(todayISO, row.day_number || 0, finalResult, updatedPicks).catch(() => {});
+  }
 }

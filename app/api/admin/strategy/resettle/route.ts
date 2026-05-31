@@ -16,6 +16,7 @@ import { query, execute } from '@/lib/db';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getMatchById, getAllMatches } from '@/lib/api/unified-sports-api';
 import { checkPickResult, parseStoredScore, normalizeTeam, matchTeamWords } from '@/lib/strategy-settle';
+import { sendStrategyResultPush } from '@/lib/strategy-push';
 import type { WeeklyStrategy, StrategyPick } from '@/app/api/strategy/predictions/route';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ export const runtime = 'nodejs';
 interface DbRow {
   id: number;
   date: string;
+  day_number: number;
   picks: string | null;
   result: string | null;
   status: string;
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
   // settlement logic which was fixed since the picks were originally settled.
   try {
     const rows = await query<DbRow>(
-      `SELECT id, date, picks, result, status FROM daily_strategy WHERE picks IS NOT NULL ORDER BY date DESC LIMIT 90`,
+      `SELECT id, date, day_number, picks, result, status FROM daily_strategy WHERE picks IS NOT NULL ORDER BY date DESC LIMIT 90`,
       []
     );
 
@@ -105,12 +107,16 @@ export async function POST(req: NextRequest) {
       });
 
       if (dayChanged && !dryRun) {
+        const wasUnsettled = row.status !== 'completed';
         const { result, status } = finalizeDay(updated);
         await execute(
           `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = NOW() WHERE id = ?`,
           [JSON.stringify(updated), result, status, row.id]
         );
         daysUpdated++;
+        if (result && wasUnsettled) {
+          sendStrategyResultPush(row.date, row.day_number || 0, result, updated).catch(() => {});
+        }
       }
     }
   } catch (e) {
@@ -140,7 +146,7 @@ export async function POST(req: NextRequest) {
     }
 
     const rows = await query<DbRow>(
-      `SELECT id, date, picks, result, status FROM daily_strategy WHERE picks IS NOT NULL ORDER BY date DESC LIMIT 90`,
+      `SELECT id, date, day_number, picks, result, status FROM daily_strategy WHERE picks IS NOT NULL ORDER BY date DESC LIMIT 90`,
       []
     );
 
@@ -206,12 +212,16 @@ export async function POST(req: NextRequest) {
       }));
 
       if (dayChanged && !dryRun) {
+        const wasUnsettled = row.status !== 'completed';
         const { result, status } = finalizeDay(updated);
         await execute(
           `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = NOW() WHERE id = ?`,
           [JSON.stringify(updated), result, status, row.id]
         );
         daysUpdated++;
+        if (result && wasUnsettled) {
+          sendStrategyResultPush(row.date, row.day_number || 0, result, updated).catch(() => {});
+        }
       }
     }
   } catch (e) {
