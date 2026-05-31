@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
+import { WorldCupBanner } from "@/components/layout/header"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -454,8 +455,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
       {/* Main content */}
       <div className="lg:pl-56">
-        {/* Header */}
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-card px-3">
+        {/* World Cup 2026 countdown banner */}
+        <div className="sticky top-0 z-40 w-full">
+          <WorldCupBanner />
+          {/* Header */}
+          <header className="flex h-12 items-center gap-2 border-b border-border bg-card px-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-4 w-4" />
           </Button>
@@ -563,6 +567,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </header>
+        </div>
 
         <main className="pb-20 md:pb-0">{children}</main>
 

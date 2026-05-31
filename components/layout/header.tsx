@@ -34,7 +34,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 const INSTALLED_KEY = 'bcz_app_installed_v1';
 const _DISMISS_KEY  = 'bcz_install_dismiss_perm_v1'; void _DISMISS_KEY;
-const WC_BANNER_DISMISSED_KEY = 'bcz_wc2026_banner_dismissed';
+const WC_BANNER_DISMISSED_KEY = 'bcz_wc2026_v2_dismissed';
 
 // FIFA World Cup 2026 opening — June 11 2026 19:00 EAT (UTC+3)
 const WC_START_MS = new Date('2026-06-11T16:00:00Z').getTime();
@@ -60,19 +60,15 @@ function useCountdown(targetMs: number) {
   return { days, hours, mins, secs, done: diff === 0 };
 }
 
-function WorldCupBanner() {
-  const [dismissed, setDismissed] = useState(true);
-  const [mounted, setMounted] = useState(false);
+export function WorldCupBanner() {
+  // Start visible — hide after mount only if user previously dismissed
+  const [dismissed, setDismissed] = useState(false);
   const { days, hours, mins, secs, done } = useCountdown(WC_START_MS);
 
   useEffect(() => {
-    setMounted(true);
     try {
-      const v = localStorage.getItem(WC_BANNER_DISMISSED_KEY);
-      if (!v) setDismissed(false);
-    } catch {
-      setDismissed(false);
-    }
+      if (localStorage.getItem(WC_BANNER_DISMISSED_KEY)) setDismissed(true);
+    } catch {}
   }, []);
 
   const dismiss = () => {
@@ -80,7 +76,7 @@ function WorldCupBanner() {
     try { localStorage.setItem(WC_BANNER_DISMISSED_KEY, '1'); } catch {}
   };
 
-  if (!mounted || dismissed || done) return null;
+  if (dismissed || done) return null;
 
   const units = [
     { v: days,  l: 'Days' },
@@ -109,12 +105,6 @@ function WorldCupBanner() {
           >★</span>
         ))}
       </div>
-
-      <style>{`
-        @keyframes wcShimmer { 0%,100%{transform:translateX(-100%)} 50%{transform:translateX(100%)} }
-        @keyframes wcTwinkle { from{opacity:0.1} to{opacity:0.5} }
-        @keyframes wcPulse   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
-      `}</style>
 
       <Link
         href="/competitions"
@@ -146,6 +136,7 @@ function WorldCupBanner() {
               {i > 0 && <span className="text-white/25 font-bold text-base leading-none mb-2">:</span>}
               <div className="flex flex-col items-center">
                 <div
+                  suppressHydrationWarning
                   className="min-w-[34px] rounded-md px-1.5 py-1 text-center font-mono text-base font-black tabular-nums leading-none"
                   style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)', textShadow: '0 0 8px rgba(255,255,255,0.5)' }}
                 >
@@ -162,7 +153,7 @@ function WorldCupBanner() {
           className="hidden lg:flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide text-black"
           style={{ background: 'linear-gradient(135deg, #ffd700, #ffaa00)', boxShadow: '0 0 12px rgba(255,200,0,0.6)' }}
         >
-          🎯 Join Free →
+          🎯 Join — KES 200 →
         </div>
       </Link>
 

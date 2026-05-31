@@ -290,14 +290,14 @@ function buildWcCompetition(): Competition {
     id: 9000,
     slug: WC_COMP_SLUG,
     name: 'FIFA World Cup 2026 — Tipster Challenge',
-    description: 'The ultimate tipster competition for the biggest football event on the planet. Predict every World Cup match from group stage to the final and top the leaderboard for a massive prize pool. Open to all Betcheza members — free to enter, tips locked at kickoff.',
+    description: 'The ultimate tipster competition for the biggest football event on the planet. Predict every World Cup match from group stage to the final and top the leaderboard for a massive prize pool. Open to all Betcheza members — KES 200 entry fee, tips locked at kickoff.',
     type: 'special',
     status: 'upcoming',
     startDate: '2026-06-11',
     endDate: '2026-07-19',
     prizePool: 50000,
     currency: 'KES',
-    entryFee: 0,
+    entryFee: 200,
     maxParticipants: 10000,
     prizes: [
       { place: '🥇 1st',      amount: 20000 },
@@ -308,7 +308,7 @@ function buildWcCompetition(): Competition {
     ],
     participants: [],
     rules: [
-      'Free entry — no deposit required. All registered Betcheza members are eligible.',
+      'Entry fee: KES 200. All registered Betcheza members are eligible.',
       'Competition covers the full FIFA World Cup 2026 tournament: Group Stage (Jun 11–Jul 2), Round of 32 (Jul 4–7), Quarter-Finals (Jul 9–10), Semi-Finals (Jul 14–15), Third Place Play-Off (Jul 18), and Final (Jul 19).',
       'Submit a 1X2 tip for each match before its kickoff time. Tips submitted after kickoff are not counted.',
       'Correct result tips earn 3 points. Tips on matches with no submission score 0 points.',
@@ -345,7 +345,18 @@ function buildWcCompetition(): Competition {
 export async function seedWorldCupCompetition(): Promise<void> {
   try {
     const existing = await getCompetitionsAsync();
-    if (existing.some(c => c.slug === WC_COMP_SLUG)) return; // already seeded
+    const alreadyExists = existing.find(c => c.slug === WC_COMP_SLUG);
+
+    // If it already exists in DB, sync the entry_fee to the current code value
+    if (alreadyExists && getPool()) {
+      if (alreadyExists.entryFee !== 200) {
+        await execute(`UPDATE competitions SET entry_fee = 200 WHERE slug = ?`, [WC_COMP_SLUG]);
+        invalidateCache();
+        console.log('[competitions] World Cup 2026 entry_fee synced to 200 KES in DB');
+      }
+      return;
+    }
+    if (alreadyExists) return; // in-memory, nothing to do
 
     const pool = getPool();
     if (pool) {
@@ -359,7 +370,7 @@ export async function seedWorldCupCompetition(): Promise<void> {
         endDate: '2026-07-19',
         prizePool: 50000,
         currency: 'KES',
-        entryFee: 0,
+        entryFee: 200,
         maxParticipants: 10000,
         prizes: buildWcCompetition().prizes,
         rules: buildWcCompetition().rules,

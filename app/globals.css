@@ -235,3 +235,8 @@ html {
     animation: none;
   }
 }
+
+/* World Cup 2026 banner animations */
+@keyframes wcShimmer { 0%,100%{transform:translateX(-100%)} 50%{transform:translateX(100%)} }
+@keyframes wcTwinkle { from{opacity:0.1} to{opacity:0.5} }
+@keyframes wcPulse   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
