@@ -779,7 +779,7 @@ interface AccessInfo {
 }
 
 export default function StrategyPage() {
-  const { data, isLoading } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
+  const { data, isLoading, mutate } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
     '/api/strategy/predictions',
     fetcher,
     {
@@ -802,8 +802,13 @@ export default function StrategyPage() {
     }
   }, [data]);
 
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [resettling, setResettling] = useState(false);
+  const [resettleResult, setResettleResult] = useState<{ totalFixed: number; daysUpdated: number } | null>(null);
 
   useEffect(() => {
     fetch('/api/strategy/access')
@@ -811,6 +816,21 @@ export default function StrategyPage() {
       .then((d: AccessInfo) => setAccess(d))
       .catch(() => setAccess({ hasAccess: false }));
   }, []);
+
+  async function handleResettle() {
+    setResettling(true);
+    setResettleResult(null);
+    try {
+      const res = await fetch('/api/admin/strategy/resettle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const json = await res.json();
+      setResettleResult(json.summary ?? { totalFixed: 0, daysUpdated: 0 });
+      mutate();
+    } catch {
+      setResettleResult({ totalFixed: 0, daysUpdated: 0 });
+    } finally {
+      setResettling(false);
+    }
+  }
 
   const hasAccess = access?.hasAccess ?? false;
   const daysRemaining = access?.daysRemaining;
@@ -840,15 +860,35 @@ export default function StrategyPage() {
 
       {/* Header */}
       <div className="mb-5">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <TrendingUp className="h-4 w-4" />
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <TrendingUp className="h-4 w-4" />
+            </div>
+            <h1 className="text-xl font-bold">3 Daily Odds Winning Strategy</h1>
           </div>
-          <h1 className="text-xl font-bold">3 Daily Odds Winning Strategy</h1>
+          {isAdmin && (
+            <button
+              onClick={handleResettle}
+              disabled={resettling}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors disabled:opacity-60"
+              title="Re-settle all pending picks from past matches"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${resettling ? 'animate-spin' : ''}`} />
+              {resettling ? 'Settling…' : 'Resettle Picks'}
+            </button>
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
           A 7-day compounding football bet strategy. Each day we publish picks whose <strong>combined odds land between 3.0–4.0</strong>. Subscribe weekly — your personal 7-day plan starts the day you join.
         </p>
+        {resettleResult !== null && (
+          <div className={`mt-2 rounded-lg px-3 py-2 text-xs font-medium ${resettleResult.totalFixed > 0 ? 'bg-green-500/10 text-green-600 border border-green-500/20' : 'bg-muted text-muted-foreground'}`}>
+            {resettleResult.totalFixed > 0
+              ? `✓ Settled ${resettleResult.totalFixed} pick${resettleResult.totalFixed !== 1 ? 's' : ''} across ${resettleResult.daysUpdated} day${resettleResult.daysUpdated !== 1 ? 's' : ''}`
+              : 'All picks already up to date — no changes needed'}
+          </div>
+        )}
       </div>
 
       {/* Active subscription badge */}

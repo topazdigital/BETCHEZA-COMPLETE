@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { TrendingUp, TrendingDown, Users, Target, BadgeCheck } from 'lucide-react';
+import { TrendingUp, TrendingDown, Users, Target, BadgeCheck, Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button';
@@ -61,11 +61,21 @@ export function TipsterCard({ user, profile, compact = false }: TipsterCardProps
 
           {/* Streak */}
           <div className={cn(
-            'flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium',
-            isPositiveStreak ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
+            'flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold',
+            isPositiveStreak
+              ? profile.streak >= 3 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-success/10 text-success'
+              : 'bg-destructive/10 text-destructive'
           )}>
-            {isPositiveStreak ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {isPositiveStreak && profile.streak >= 3
+              ? <Flame className="h-3 w-3" />
+              : isPositiveStreak
+                ? <TrendingUp className="h-3 w-3" />
+                : <TrendingDown className="h-3 w-3" />
+            }
             {Math.abs(profile.streak)}
+            {isPositiveStreak && profile.streak >= 3 && (
+              <span className="text-[9px] font-bold uppercase tracking-wide">🔥</span>
+            )}
           </div>
         </div>
       </Link>
@@ -154,14 +164,31 @@ export function TipsterCard({ user, profile, compact = false }: TipsterCardProps
       </div>
 
       {/* Streak Bar */}
-      <div className="mt-4 flex items-center justify-between rounded-lg bg-muted/50 p-2">
+      <div className={cn(
+        'mt-4 flex items-center justify-between rounded-lg p-2',
+        isPositiveStreak && profile.streak >= 3
+          ? 'bg-amber-500/10 border border-amber-500/20'
+          : 'bg-muted/50'
+      )}>
         <span className="text-xs text-muted-foreground">Current Streak</span>
         <div className={cn(
-          'flex items-center gap-1 font-semibold',
-          isPositiveStreak ? 'text-success' : 'text-destructive'
+          'flex items-center gap-1.5 font-semibold',
+          isPositiveStreak
+            ? profile.streak >= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-success'
+            : 'text-destructive'
         )}>
-          {isPositiveStreak ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+          {isPositiveStreak && profile.streak >= 3
+            ? <Flame className="h-4 w-4 fill-current opacity-80" />
+            : isPositiveStreak
+              ? <TrendingUp className="h-4 w-4" />
+              : <TrendingDown className="h-4 w-4" />
+          }
           {Math.abs(profile.streak)} {isPositiveStreak ? 'wins' : 'losses'}
+          {isPositiveStreak && profile.streak >= 5 && (
+            <span className="ml-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+              Hot 🔥
+            </span>
+          )}
         </div>
       </div>
     </div>

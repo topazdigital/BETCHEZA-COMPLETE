@@ -116,7 +116,11 @@ export default function TipstersPage() {
   const { data, isLoading } = useSWR<{
     tipsters: Tipster[];
     stats: { totalTipsters: number; proTipsters: number; avgWinRate: number; totalTips: number };
-  }>(`/api/tipsters?${params.toString()}`, fetcher);
+  }>(`/api/tipsters?${params.toString()}`, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+    keepPreviousData: true,
+  });
 
   const allTipsters = data?.tipsters ?? [];
   const stats = data?.stats ?? { totalTipsters: 0, proTipsters: 0, avgWinRate: 0, totalTips: 0 };

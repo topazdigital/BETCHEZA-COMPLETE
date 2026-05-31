@@ -44,7 +44,7 @@ export function useFavoritedTips() {
   const { data, error, isLoading } = useSWR<FeaturedResponse>(
     "/api/featured",
     fetcher,
-    { refreshInterval: 60_000, revalidateOnFocus: true },
+    { refreshInterval: 60_000, revalidateOnFocus: false, dedupingInterval: 30_000, keepPreviousData: true },
   )
   return {
     items: data?.enabled && Array.isArray(data?.items) ? data.items : [],

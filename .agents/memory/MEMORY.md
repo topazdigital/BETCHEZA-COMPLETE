@@ -2,3 +2,4 @@
 - [DB & fallback stores](db-fallback.md) — remote MySQL at 157.250.205.180; app runs on file/memory fallback when secrets missing
 - [Notification bell components](notif-bells.md) — two separate bell components; both must be updated together
 - [Match card date labels](match-card-dates.md) — compact variant hid "Today" intentionally; fixed to show with styled label
+- [Strategy pick settlement](strategy-settlement.md) — live-scores cron settles last 3 days' picks via settleRecentPendingStrategyPicks(); admin "Resettle Picks" button on /strategy page hits /api/admin/strategy/resettle

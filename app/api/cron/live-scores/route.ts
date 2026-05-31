@@ -6,7 +6,7 @@
  *     whose outcome is now mathematically certain (e.g. Under line blown).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getLiveMatches } from '@/lib/api/unified-sports-api';
+import { getLiveMatches, getAllMatches } from '@/lib/api/unified-sports-api';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
 import { query, execute } from '@/lib/db';
@@ -151,12 +151,133 @@ export async function GET(req: NextRequest) {
       console.warn('[live-scores] strategy live-score update failed:', e?.message ?? e)
     );
 
+    // ── Settle pending picks from past days ─────────────────────────────────
+    // Runs alongside live-score updates to catch yesterday's / older picks
+    // that finished after the game ended (no longer "live" so the above
+    // function misses them). Only touches picks whose kickoff was >2h ago.
+    settleRecentPendingStrategyPicks().catch(e =>
+      console.warn('[live-scores] past-pick settlement failed:', e?.message ?? e)
+    );
+
     return NextResponse.json({ ok: true, live: matches.length, goals: goals.length, pushed });
   } catch (e) {
     console.warn('[cron/live-scores] error:', e instanceof Error ? e.message : e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   } finally {
     g.__liveScoreCronBusy = false;
+  }
+}
+
+/**
+ * Settle pending strategy picks from the last 3 days whose kickoff was >2h ago.
+ * Runs every time the live-scores cron fires so that picks from finished matches
+ * (which are no longer "live" and missed by updateStrategyPickLiveScores) get
+ * settled automatically without needing an admin action.
+ *
+ * Uses the in-memory getAllMatches() cache — essentially free after the first call.
+ */
+async function settleRecentPendingStrategyPicks() {
+  const now = Date.now();
+  const TWO_HOURS_MS = 2 * 3600_000;
+
+  // Build ISO dates for today, yesterday, day before
+  const nairobi = (offsetDays: number) => {
+    const d = new Date(now + offsetDays * 86_400_000);
+    const s = d.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }).split(',')[0];
+    const [mo, dy, yr] = s.split('/');
+    return `${yr}-${mo.padStart(2, '0')}-${dy.padStart(2, '0')}`;
+  };
+  const dates = [nairobi(0), nairobi(-1), nairobi(-2)];
+
+  // Check if any of the recent days have pending picks before hitting the DB
+  let rows: { id: number; date: string; picks: string; status: string }[] = [];
+  try {
+    const res = await query<{ id: number; date: string; picks: string; status: string }>(
+      `SELECT id, date, picks, status FROM daily_strategy WHERE date IN (?, ?, ?) AND picks IS NOT NULL`,
+      dates
+    );
+    rows = res.rows;
+  } catch { return; }
+
+  const pendingRows = rows.filter(r => {
+    try {
+      const picks: StrategyPick[] = JSON.parse(r.picks || '[]');
+      return picks.some(p => p.result === 'pending');
+    } catch { return false; }
+  });
+
+  if (pendingRows.length === 0) return; // nothing to do
+
+  // Fetch the full match cache (cheap — uses in-process TTL cache)
+  let finishedScores: Map<string, { homeScore: number; awayScore: number; homeTeam: string; awayTeam: string }>;
+  try {
+    const allMatches = await getAllMatches();
+    finishedScores = new Map();
+    for (const m of allMatches) {
+      if (m.status !== 'finished') continue;
+      if (typeof m.homeScore !== 'number' || typeof m.awayScore !== 'number') continue;
+      const hn = m.homeTeam?.name || '';
+      const an = m.awayTeam?.name || '';
+      if (!hn || !an) continue;
+      finishedScores.set(`${normalizeTeam(hn)}_${normalizeTeam(an)}`, {
+        homeScore: m.homeScore, awayScore: m.awayScore,
+        homeTeam: hn, awayTeam: an,
+      });
+    }
+  } catch { return; }
+
+  for (const row of pendingRows) {
+    let picks: StrategyPick[];
+    try { picks = JSON.parse(row.picks || '[]'); } catch { continue; }
+
+    let changed = false;
+    const updated = picks.map(pick => {
+      if (pick.result !== 'pending') return pick;
+
+      // Only try to settle if kickoff is >2h in the past
+      const kickoff = pick.matchTime ? new Date(pick.matchTime).getTime() : 0;
+      if (now - kickoff < TWO_HOURS_MS) return pick;
+
+      const pHn = normalizeTeam(pick.homeTeam);
+      const pAn = normalizeTeam(pick.awayTeam);
+
+      let scored: { homeScore: number; awayScore: number } | null = null;
+      for (const [, v] of finishedScores) {
+        const vHn = normalizeTeam(v.homeTeam);
+        const vAn = normalizeTeam(v.awayTeam);
+        const homeOk = vHn === pHn || vHn.includes(pHn) || pHn.includes(vHn) || matchTeamWords(v.homeTeam, pick.homeTeam);
+        const awayOk = vAn === pAn || vAn.includes(pAn) || pAn.includes(vAn) || matchTeamWords(v.awayTeam, pick.awayTeam);
+        if (homeOk && awayOk) { scored = v; break; }
+      }
+      if (!scored) return pick;
+
+      const result = checkPickResult(pick, scored.homeScore, scored.awayScore);
+      if (!result) return pick;
+
+      const scoreStr = `${scored.homeScore}-${scored.awayScore}`;
+      console.log(`[live-scores] Past-pick settled: ${pick.homeTeam} vs ${pick.awayTeam} | ${pick.market} ${pick.pick} | ${scoreStr} → ${result}`);
+      changed = true;
+      return { ...pick, result, actualScore: scoreStr, liveScore: scoreStr, liveStatus: 'finished' as const };
+    });
+
+    if (!changed) continue;
+
+    const allSettled = updated.every(p => p.result !== 'pending');
+    const allWon = allSettled && updated.every(p => p.result === 'win');
+    try {
+      await execute(
+        `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = IF(?, NOW(), settled_at) WHERE id = ?`,
+        [
+          JSON.stringify(updated),
+          allSettled ? (allWon ? 'win' : 'loss') : null,
+          allSettled ? 'completed' : 'active',
+          allSettled ? 1 : 0,
+          row.id,
+        ]
+      );
+    } catch (e) {
+      console.warn('[live-scores] past-pick DB write failed:', e instanceof Error ? e.message : e);
+    }
   }
 }
 
