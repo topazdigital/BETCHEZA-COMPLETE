@@ -210,6 +210,16 @@ export async function register() {
     }
   }, 2000); // 2s delay — let the pool fully initialise first
 
+  // Seed the World Cup 2026 competition (no-op if already exists)
+  setTimeout(async () => {
+    try {
+      const { seedWorldCupCompetition } = await import('./lib/competitions-store');
+      await seedWorldCupCompetition();
+    } catch (e) {
+      console.warn('[instrumentation] World Cup competition seed failed:', e);
+    }
+  }, 3000);
+
   const { startCron } = await import('./lib/cron');
   startCron();
 

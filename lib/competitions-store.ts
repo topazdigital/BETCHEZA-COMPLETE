@@ -281,6 +281,115 @@ export function getCompetitionById(id: number): Competition | undefined {
   return getCompetitions().find(c => c.id === id);
 }
 
+// ─── World Cup 2026 Seed ────────────────────────────────────────────────────
+
+const WC_COMP_SLUG = 'world-cup-2026-tipster-challenge';
+
+function buildWcCompetition(): Competition {
+  return {
+    id: 9000,
+    slug: WC_COMP_SLUG,
+    name: 'FIFA World Cup 2026 — Tipster Challenge',
+    description: 'The ultimate tipster competition for the biggest football event on the planet. Predict every World Cup match from group stage to the final and top the leaderboard for a massive prize pool. Open to all Betcheza members — free to enter, tips locked at kickoff.',
+    type: 'special',
+    status: 'upcoming',
+    startDate: '2026-06-11',
+    endDate: '2026-07-19',
+    prizePool: 50000,
+    currency: 'KES',
+    entryFee: 0,
+    maxParticipants: 10000,
+    prizes: [
+      { place: '🥇 1st',      amount: 20000 },
+      { place: '🥈 2nd',      amount: 10000 },
+      { place: '🥉 3rd',      amount: 5000  },
+      { place: '4th–10th',    amount: 1500  },
+      { place: '11th–50th',   amount: 250   },
+    ],
+    participants: [],
+    rules: [
+      'Free entry — no deposit required. All registered Betcheza members are eligible.',
+      'Competition covers the full FIFA World Cup 2026 tournament: Group Stage (Jun 11–Jul 2), Round of 32 (Jul 4–7), Quarter-Finals (Jul 9–10), Semi-Finals (Jul 14–15), Third Place Play-Off (Jul 18), and Final (Jul 19).',
+      'Submit a 1X2 tip for each match before its kickoff time. Tips submitted after kickoff are not counted.',
+      'Correct result tips earn 3 points. Tips on matches with no submission score 0 points.',
+      'Bonus: correctly predicting a draw earns +1 extra point (4 total). Correctly predicting the winning team in a knockout match earns +1 extra point (4 total).',
+      'Tie-breaker 1: Total number of correct tips. Tie-breaker 2: Highest tip streak. Tie-breaker 3: Earliest registration date.',
+      'Group Stage: 48 matches. Round of 32: 8 matches. Quarter-Finals: 4 matches. Semi-Finals: 2 matches. Third-Place Play-Off: 1 match. Final: 1 match. Total: 64 matches.',
+      'Minimum 10 tips must be submitted across the tournament to qualify for prize payouts.',
+      'Prizes are credited to Betcheza wallet within 48 hours of the Final (July 19, 2026).',
+      'One account per participant. Multi-accounting or use of bots results in immediate disqualification.',
+      'Betcheza reserves the right to amend rules in case of match postponements, cancellations, or schedule changes by FIFA.',
+      'By entering, you agree to Betcheza terms and conditions and responsible gambling policy.',
+    ],
+    ruleConfig: [
+      { type: 'min_tips',      value: 10,   label: 'Minimum 10 tips required to qualify for prizes', enforceable: true },
+      { type: 'score_formula', value: '3 pts correct, +1 for draw/knockout correct pick',             label: 'Scoring: 3 pts per correct result; +1 bonus for correct draw or knockout winner', enforceable: false },
+      { type: 'tiebreaker',    value: 'tips_count,streak,registration_date',                           label: 'Tie-breakers: correct tip count → longest streak → earliest registration', enforceable: false },
+      { type: 'kickoff_only',                                                                          label: 'Tips must be placed before match kickoff', enforceable: true },
+    ],
+    sportFocus: 'football',
+    leagueId: null,
+    leagueName: 'FIFA World Cup 2026',
+    roundBased: true,
+    matchKickoffFrom: '2026-06-11T00:00:00',
+    matchKickoffTo:   '2026-07-19T23:59:59',
+    kickedUsers: [],
+  };
+}
+
+/**
+ * Seed the World Cup 2026 competition on startup.
+ * — If a DB pool is available: inserts via addCompetition (idempotent — checks slug first).
+ * — If no DB pool: injects directly into the in-memory cache so it's always visible.
+ */
+export async function seedWorldCupCompetition(): Promise<void> {
+  try {
+    const existing = await getCompetitionsAsync();
+    if (existing.some(c => c.slug === WC_COMP_SLUG)) return; // already seeded
+
+    const pool = getPool();
+    if (pool) {
+      // DB available — persist properly
+      const input: NewCompetitionInput = {
+        name: 'FIFA World Cup 2026 — Tipster Challenge',
+        description: buildWcCompetition().description,
+        type: 'special',
+        status: 'upcoming',
+        startDate: '2026-06-11',
+        endDate: '2026-07-19',
+        prizePool: 50000,
+        currency: 'KES',
+        entryFee: 0,
+        maxParticipants: 10000,
+        prizes: buildWcCompetition().prizes,
+        rules: buildWcCompetition().rules,
+        ruleConfig: buildWcCompetition().ruleConfig,
+        sportFocus: 'football',
+        leagueId: null,
+        leagueName: 'FIFA World Cup 2026',
+        roundBased: true,
+        matchKickoffFrom: '2026-06-11T00:00:00',
+        matchKickoffTo:   '2026-07-19T23:59:59',
+      };
+      // Override slug to our canonical one
+      const comp = await addCompetition(input);
+      if (comp.slug !== WC_COMP_SLUG) {
+        await execute(`UPDATE competitions SET slug = ? WHERE id = ?`, [WC_COMP_SLUG, comp.id]);
+        invalidateCache();
+      }
+      console.log('[competitions] World Cup 2026 competition seeded to DB');
+    } else {
+      // No DB — inject into in-memory cache
+      if (!g.__competitionsCache) g.__competitionsCache = [];
+      g.__competitionsCache.unshift(buildWcCompetition());
+      g.__competitionsCacheAt = Date.now();
+      console.log('[competitions] World Cup 2026 competition seeded to memory (no DB)');
+    }
+  } catch (e) {
+    console.warn('[competitions] World Cup 2026 seed failed:', e);
+  }
+}
+
 export async function getCompetitionByIdAsync(id: number): Promise<Competition | undefined> {
   const all = await getCompetitionsAsync();
   return all.find(c => c.id === id);

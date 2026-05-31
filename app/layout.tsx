@@ -88,12 +88,62 @@ const DEFAULT_KEYWORDS = [
   'Shabiki tips', 'Shabiki jackpot tips', 'Shabiki predictions',
   'Elitebet Kenya', 'Elitebet tips', 'Elitebet jackpot tips',
   'Helabet Kenya', 'Helabet tips', 'Helabet predictions',
-  'Dafabet Kenya', 'Dafabet tips', 'BetLion Kenya', 'BetLion tips',
+  'Dafabet Kenya', 'Dafabet tips',
+  'BetLion Kenya', 'BetLion tips', 'BetLion predictions', 'BetLion jackpot tips',
+  'BetLion free tips', 'BetLion super jackpot Kenya',
   'Parimatch Kenya', 'Parimatch tips', 'Bangbet Kenya', 'Bangbet tips',
   '22bet Kenya', '22bet tips Kenya', 'Msport Kenya', 'Msport tips',
   'Betin Kenya', 'Betin tips', 'MyBet Kenya', 'MyBet tips',
   'Bamboo Bet Kenya', 'Bamboo Bet tips', 'Chezacash Kenya', 'Chezacash tips',
   'Tempobet Kenya', 'Kenya betting site',
+
+  // ── Bahatibet ────────────────────────────────────────────────────────────
+  'Bahatibet', 'Bahatibet Kenya', 'Bahatibet tips', 'Bahatibet tips today',
+  'Bahatibet predictions', 'Bahatibet free tips', 'Bahatibet jackpot',
+  'Bahatibet jackpot tips', 'Bahatibet jackpot predictions',
+  'Bahatibet jackpot banker', 'Bahatibet winning tips',
+  'how to win Bahatibet jackpot', 'Bahatibet jackpot today',
+  'Bahatibet sure tips', 'Bahatibet analysis', 'best Bahatibet tips',
+  'free Bahatibet predictions', 'Bahatibet football tips',
+  'Bahatibet accumulator tips', 'Bahatibet odds Kenya',
+
+  // ── Wazabet ──────────────────────────────────────────────────────────────
+  'Wazabet', 'Wazabet Kenya', 'Wazabet tips', 'Wazabet tips today',
+  'Wazabet predictions', 'Wazabet free tips', 'Wazabet jackpot tips',
+  'Wazabet winning tips', 'Wazabet sure tips', 'best Wazabet tips',
+  'Wazabet football tips', 'Wazabet accumulator tips',
+
+  // ── Sportybet ────────────────────────────────────────────────────────────
+  'Sportybet', 'Sportybet Kenya', 'Sportybet tips', 'Sportybet tips today',
+  'Sportybet predictions', 'Sportybet free tips', 'Sportybet jackpot',
+  'Sportybet jackpot tips', 'Sportybet jackpot predictions',
+  'Sportybet sure tips', 'best Sportybet tips', 'Sportybet football tips',
+
+  // ── Betika24 ─────────────────────────────────────────────────────────────
+  'Betika24', 'Betika24 Kenya', 'Betika24 tips', 'Betika24 predictions',
+  'Betika24 jackpot tips', 'Betika24 free tips',
+
+  // ── Betlion (alternative spelling) ─────────────────────────────────────
+  'Betlion', 'Betlion tips', 'Betlion predictions', 'Betlion jackpot',
+
+  // ── Other Kenya operators ────────────────────────────────────────────────
+  'BetWinner Kenya', 'BetWinner tips', 'BetWinner predictions',
+  'Hollywoodbets Kenya', 'Hollywoodbets tips', 'Hollywoodbets free tips',
+  'Premiumbetkenya', 'PremiumBet tips', 'Bet254 Kenya', 'Bet254 tips',
+  'Betland Kenya', 'Betland tips', 'Pesabet Kenya', 'Pesabet tips',
+  'Betspot Kenya', 'Betspot tips', 'Kwikbet Kenya', 'Kwikbet tips',
+  'Supa Bets Kenya', 'Supabets tips Kenya', 'Kengen bet Kenya',
+  'Palmbet Kenya', 'Palmbet tips', 'Longbet Kenya', 'Longbet tips',
+  'McBet Kenya', 'McBet tips', 'Pointsbet Kenya', 'Pointsbet tips',
+  'Bwin Kenya', 'Bwin tips Kenya', 'bet365 Kenya', 'bet365 tips Kenya',
+  'Betfair Kenya', 'Betfair tips Kenya', 'William Hill Kenya',
+  'Unibet Kenya', 'Unibet tips', 'Pinnacle Kenya', 'Pinnacle tips',
+  'SBObet Kenya', 'SBObet tips', 'Marathon Bet Kenya',
+  'Tembo Bet Kenya', 'JBL Bet Kenya', 'Betus Kenya',
+  'Winner sports bet Kenya', 'Kibet Kenya', 'Betx Kenya',
+  'Betyetu Kenya', 'Betyetu tips', 'SBK Kenya',
+  'Meridianbet Kenya', 'Meridianbet tips',
+  'Virtual football tips Kenya', 'virtual bet Kenya',
 
   // ── Free tips (high-volume queries) ────────────────────────────────────
   'free betting tips Kenya', 'free football tips today Kenya',
