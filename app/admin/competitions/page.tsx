@@ -34,6 +34,7 @@ interface AdminCompetition {
   roundBased?: boolean
   matchKickoffFrom?: string | null
   matchKickoffTo?: string | null
+  prizes?: Array<{ place: string; amount: number }>
 }
 
 interface CompResponse {
@@ -311,9 +312,10 @@ export default function AdminCompetitionsPage() {
   interface EditForm {
     name: string; description: string; status: string; entryFee: string
     prizePool: string; maxParticipants: string; startDate: string; endDate: string; currency: string
+    prize1: string; prize2: string; prize3: string
   }
   const [editCompId, setEditCompId] = useState<number | null>(null)
-  const [editForm, setEditForm] = useState<EditForm>({ name: '', description: '', status: 'upcoming', entryFee: '0', prizePool: '0', maxParticipants: '100', startDate: '', endDate: '', currency: 'KES' })
+  const [editForm, setEditForm] = useState<EditForm>({ name: '', description: '', status: 'upcoming', entryFee: '0', prizePool: '0', maxParticipants: '100', startDate: '', endDate: '', currency: 'KES', prize1: '', prize2: '', prize3: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -325,6 +327,9 @@ export default function AdminCompetitionsPage() {
       status: c.status, entryFee: String(c.entryFee),
       prizePool: String(c.prizePool), maxParticipants: String(c.maxParticipants),
       startDate: toLocal(c.startDate), endDate: toLocal(c.endDate), currency: c.currency || 'KES',
+      prize1: String(c.prizes?.[0]?.amount ?? ''),
+      prize2: String(c.prizes?.[1]?.amount ?? ''),
+      prize3: String(c.prizes?.[2]?.amount ?? ''),
     })
     setEditError(null)
     setEditCompId(c.id)
@@ -334,6 +339,11 @@ export default function AdminCompetitionsPage() {
     if (!editForm.name.trim()) { setEditError('Name is required'); return }
     setSavingEdit(true); setEditError(null)
     try {
+      const prizes = [
+        editForm.prize1 ? { place: '🥇 1st', amount: Number(editForm.prize1) } : null,
+        editForm.prize2 ? { place: '🥈 2nd', amount: Number(editForm.prize2) } : null,
+        editForm.prize3 ? { place: '🥉 3rd', amount: Number(editForm.prize3) } : null,
+      ].filter(Boolean) as Array<{ place: string; amount: number }>
       const r = await fetch('/api/admin/competitions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -348,6 +358,7 @@ export default function AdminCompetitionsPage() {
           startDate: editForm.startDate ? new Date(editForm.startDate).toISOString() : undefined,
           endDate: editForm.endDate ? new Date(editForm.endDate).toISOString() : undefined,
           currency: editForm.currency,
+          prizes: prizes.length > 0 ? prizes : undefined,
         }),
       })
       if (r.ok) {
@@ -932,6 +943,26 @@ export default function AdminCompetitionsPage() {
                               className="h-8 text-xs mt-0.5"
                             />
                           </div>
+                        </div>
+
+                        {/* Row 2b: Prize breakdown — 1st / 2nd / 3rd */}
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Prize Breakdown (top 3 winners)</Label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-[9px] font-semibold text-yellow-500">🥇 1st Place ({editForm.currency})</Label>
+                              <Input type="number" min="0" value={editForm.prize1} onChange={e => setEditForm(f => ({ ...f, prize1: e.target.value }))} className="h-8 text-xs mt-0.5" placeholder="e.g. 20000" />
+                            </div>
+                            <div>
+                              <Label className="text-[9px] font-semibold text-gray-400">🥈 2nd Place ({editForm.currency})</Label>
+                              <Input type="number" min="0" value={editForm.prize2} onChange={e => setEditForm(f => ({ ...f, prize2: e.target.value }))} className="h-8 text-xs mt-0.5" placeholder="e.g. 10000" />
+                            </div>
+                            <div>
+                              <Label className="text-[9px] font-semibold text-amber-600">🥉 3rd Place ({editForm.currency})</Label>
+                              <Input type="number" min="0" value={editForm.prize3} onChange={e => setEditForm(f => ({ ...f, prize3: e.target.value }))} className="h-8 text-xs mt-0.5" placeholder="e.g. 5000" />
+                            </div>
+                          </div>
+                          <p className="text-[9px] text-muted-foreground">Only the top 3 tipsters receive prizes. Leave blank to hide prize breakdown.</p>
                         </div>
 
                         {/* Row 3: Start + End dates */}

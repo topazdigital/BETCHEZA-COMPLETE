@@ -61,11 +61,12 @@ function useCountdown(targetMs: number) {
 }
 
 export function WorldCupBanner() {
-  // Start visible — hide after mount only if user previously dismissed
+  const [mounted, setMounted] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const { days, hours, mins, secs, done } = useCountdown(WC_START_MS);
 
   useEffect(() => {
+    setMounted(true);
     try {
       if (localStorage.getItem(WC_BANNER_DISMISSED_KEY)) setDismissed(true);
     } catch {}
@@ -76,7 +77,7 @@ export function WorldCupBanner() {
     try { localStorage.setItem(WC_BANNER_DISMISSED_KEY, '1'); } catch {}
   };
 
-  if (dismissed || done) return null;
+  if (!mounted || dismissed || done) return null;
 
   const units = [
     { v: days,  l: 'Days' },

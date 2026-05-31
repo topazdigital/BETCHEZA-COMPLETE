@@ -389,31 +389,37 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           </div>
         )}
 
-        {/* Prizes */}
-        <div className="grid grid-cols-4 gap-1.5 mb-3">
-          {comp.prizes.map((prize, idx) => (
-            <div
-              key={idx}
-              className={cn(
-                'rounded-lg p-2 text-center border border-border',
-                idx === 0 && 'bg-yellow-500/10 border-yellow-500/30',
-                idx === 1 && 'bg-gray-300/10 border-gray-300/30',
-                idx === 2 && 'bg-amber-700/10 border-amber-700/30',
+        {/* Prizes — top 3 podium */}
+        {comp.prizes.length > 0 && (
+          <div className="mb-3">
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5 px-0.5">
+              <Trophy className="h-3 w-3 text-warning" /> Prize Breakdown
+            </h2>
+            <div className="grid grid-cols-3 gap-2">
+              {comp.prizes[1] && (
+                <div className="rounded-xl border border-gray-400/30 bg-gray-400/8 p-3 text-center flex flex-col items-center gap-0.5">
+                  <span className="text-xl leading-none">🥈</span>
+                  <div className="text-[10px] font-semibold text-gray-500 mt-1">2nd Place</div>
+                  <div className="text-base font-black text-gray-600 dark:text-gray-300 leading-tight">{comp.currency} {comp.prizes[1].amount.toLocaleString()}</div>
+                </div>
               )}
-            >
-              <div className={cn(
-                'text-[10px] font-medium uppercase tracking-wide',
-                idx === 0 && 'text-yellow-600',
-                idx === 1 && 'text-gray-500',
-                idx === 2 && 'text-amber-700',
-                idx > 2 && 'text-muted-foreground',
-              )}>
-                {prize.place}
-              </div>
-              <div className="text-sm font-bold leading-tight">{comp.currency} {prize.amount.toLocaleString()}</div>
+              {comp.prizes[0] && (
+                <div className="rounded-xl border-2 border-yellow-500/50 bg-yellow-500/10 p-3 text-center flex flex-col items-center gap-0.5 shadow-sm order-first sm:order-none">
+                  <span className="text-2xl leading-none">🥇</span>
+                  <div className="text-[10px] font-bold text-yellow-600 dark:text-yellow-400 mt-1">1st Place</div>
+                  <div className="text-lg font-black text-yellow-600 dark:text-yellow-400 leading-tight">{comp.currency} {comp.prizes[0].amount.toLocaleString()}</div>
+                </div>
+              )}
+              {comp.prizes[2] && (
+                <div className="rounded-xl border border-amber-700/30 bg-amber-700/8 p-3 text-center flex flex-col items-center gap-0.5">
+                  <span className="text-xl leading-none">🥉</span>
+                  <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-500 mt-1">3rd Place</div>
+                  <div className="text-base font-black text-amber-700 dark:text-amber-500 leading-tight">{comp.currency} {comp.prizes[2].amount.toLocaleString()}</div>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
         {/* Rules */}
         <div className="rounded-xl border border-border bg-card p-3 mb-3">
@@ -440,6 +446,8 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           sportFocus={comp.sportFocus}
           matchKickoffFrom={comp.matchKickoffFrom ?? null}
           matchKickoffTo={comp.matchKickoffTo ?? null}
+          prizes={comp.prizes}
+          currency={comp.currency}
         />
       </div>
     </div>

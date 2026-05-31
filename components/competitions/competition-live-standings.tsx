@@ -36,6 +36,8 @@ interface Props {
   sportFocus?: string | null
   matchKickoffFrom?: string | null
   matchKickoffTo?: string | null
+  prizes?: Array<{ place: string; amount: number }>
+  currency?: string
 }
 
 const POLL_INTERVAL_ACTIVE = 30_000   // 30s during active match window
@@ -52,6 +54,7 @@ function isMatchWindowActive(kickoffFrom?: string | null, kickoffTo?: string | n
 export function CompetitionLiveStandings({
   slug, initialParticipants, currentUserId, isActive,
   leagueName, sportFocus, matchKickoffFrom, matchKickoffTo,
+  prizes, currency = 'KES',
 }: Props) {
   const [participants, setParticipants] = useState<Participant[]>(initialParticipants)
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null)
@@ -94,6 +97,11 @@ export function CompetitionLiveStandings({
 
   const inWindow  = isMatchWindowActive(matchKickoffFrom, matchKickoffTo)
   const totalTips = participants.reduce((s, p) => s + p.tips, 0)
+  const hasPrizes = prizes && prizes.length > 0
+  const prizeByRank: Record<number, number> = {}
+  if (hasPrizes) {
+    prizes.forEach((p, i) => { prizeByRank[i + 1] = p.amount })
+  }
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -162,6 +170,7 @@ export function CompetitionLiveStandings({
             <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase text-muted-foreground tracking-wider hidden sm:table-cell">W/L</th>
             <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase text-muted-foreground tracking-wider">ROI</th>
             <th className="px-2 py-1.5 text-center text-[10px] font-medium uppercase text-muted-foreground tracking-wider hidden md:table-cell">Streak</th>
+            {hasPrizes && <th className="px-2 py-1.5 text-right text-[10px] font-medium uppercase text-muted-foreground tracking-wider hidden sm:table-cell">Prize</th>}
           </tr>
         </thead>
         <tbody>
@@ -189,7 +198,7 @@ export function CompetitionLiveStandings({
                 <Link href={tipsterHref(p.username, p.username)} className="flex items-center gap-2 hover:text-primary">
                   {p.avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.avatar} alt="" className="h-7 w-7 rounded-full object-cover bg-muted shrink-0" />
+                    <img src={p.avatar} alt="" loading="lazy" decoding="async" className="h-7 w-7 rounded-full object-cover bg-muted shrink-0" />
                   ) : (
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shrink-0">
                       {(p.displayName || '?').charAt(0).toUpperCase()}
@@ -228,6 +237,21 @@ export function CompetitionLiveStandings({
                   </span>
                 )}
               </td>
+              {hasPrizes && (
+                <td className="px-2 py-1.5 text-right hidden sm:table-cell">
+                  {prizeByRank[p.rank] ? (
+                    <span className={cn(
+                      'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap',
+                      p.rank === 1 && 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/40',
+                      p.rank === 2 && 'bg-gray-400/15 text-gray-500 dark:text-gray-300 border border-gray-400/30',
+                      p.rank === 3 && 'bg-amber-700/15 text-amber-700 dark:text-amber-500 border border-amber-700/30',
+                    )}>
+                      {p.rank === 1 ? '🥇' : p.rank === 2 ? '🥈' : '🥉'}
+                      {' '}{currency} {prizeByRank[p.rank].toLocaleString()}
+                    </span>
+                  ) : null}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
