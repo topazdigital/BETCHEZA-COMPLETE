@@ -138,6 +138,7 @@ const mainNavItems: NavItem[] = [
   { href: "/", label: "Home", icon: Home, color: "text-blue-500", activeColor: "bg-blue-500" },
   { href: "/live", label: "Live", icon: Radio, badgeKey: 'live', color: "text-red-500", activeColor: "bg-red-500" },
   { href: "/matches", label: "Matches", icon: Calendar, badgeKey: 'today', color: "text-green-500", activeColor: "bg-green-500" },
+  { href: "/tips", label: "Tips", icon: Bookmark, color: "text-violet-500", activeColor: "bg-violet-500" },
   { href: "/predictor", label: "AI Predictor", icon: Sparkles, color: "text-purple-500", activeColor: "bg-purple-500" },
   { href: "/feed", label: "Community Feed", icon: MessageSquare, color: "text-teal-500", activeColor: "bg-teal-500" },
   { href: "/tipsters", label: "Tipsters", icon: Users, color: "text-orange-500", activeColor: "bg-orange-500" },
