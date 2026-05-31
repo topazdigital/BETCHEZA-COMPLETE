@@ -272,6 +272,9 @@ export function Header() {
             <Link href="/feed" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
               Feed
             </Link>
+            <Link href="/tips" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+              Tips
+            </Link>
             <Link href="/tipsters" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
               Tipsters
             </Link>
