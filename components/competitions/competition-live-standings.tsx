@@ -25,6 +25,7 @@ interface Participant {
   streak: number
   isVerified: boolean
   isFake: boolean
+  prizeEligible?: boolean
 }
 
 interface Props {
@@ -38,6 +39,7 @@ interface Props {
   matchKickoffTo?: string | null
   prizes?: Array<{ place: string; amount: number }>
   currency?: string
+  minimumTips?: number
 }
 
 const POLL_INTERVAL_ACTIVE = 30_000
@@ -73,7 +75,7 @@ function buildPrizeByRank(prizes: Array<{ place: string; amount: number }>): Rec
 export function CompetitionLiveStandings({
   slug, initialParticipants, currentUserId, isActive,
   leagueName, sportFocus, matchKickoffFrom, matchKickoffTo,
-  prizes, currency = 'KES',
+  prizes, currency = 'KES', minimumTips = 1,
 }: Props) {
   const [participants, setParticipants] = useState<Participant[]>(initialParticipants)
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null)
@@ -229,6 +231,11 @@ export function CompetitionLiveStandings({
                           <Badge variant="outline" className="h-3.5 text-[8px] px-1 border-primary text-primary leading-none">You</Badge>
                         )}
                         {p.isVerified && <Star className="h-2.5 w-2.5 fill-primary text-primary shrink-0" />}
+                        {p.prizeEligible === false && minimumTips > 1 && (
+                          <span className="inline-flex items-center rounded-full bg-muted px-1 py-0.5 text-[8px] font-medium text-muted-foreground border border-border/60 whitespace-nowrap shrink-0">
+                            {p.tips}/{minimumTips} tips
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] text-muted-foreground truncate flex items-center gap-1">
                         @{p.username}

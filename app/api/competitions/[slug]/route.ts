@@ -51,7 +51,10 @@ export async function GET(
         sportFocus: comp.sportFocus,
         matchKickoffFrom: comp.matchKickoffFrom,
         matchKickoffTo: comp.matchKickoffTo,
-        minTips: minTipsRequired,
+        // Always show anyone with ≥1 tip in the live rankings; the prize
+        // eligibility threshold (minTipsRequired) is reported separately so
+        // the frontend can flag who is/isn't yet prize-eligible.
+        minTips: 1,
         limit: 200,
         // Pass joined real-user IDs — fakes always included inside computeLeaderboard
         allowedUserIds: joinedUserIds,
@@ -76,6 +79,7 @@ export async function GET(
     streak: 0,
     isVerified: false,
     isFake: r.isFake,
+    prizeEligible: r.totalTips >= minTipsRequired,
   }));
 
   const actualParticipants = ranked.length;

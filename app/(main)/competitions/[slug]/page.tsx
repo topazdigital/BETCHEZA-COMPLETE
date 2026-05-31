@@ -105,6 +105,9 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
 
   const joinedUserIds = await getJoinedUserIds(comp.id);
 
+  const minTipsRule = (comp.ruleConfig ?? []).find((r: { type: string }) => r.type === 'min_tips');
+  const minTipsRequired = minTipsRule ? Number((minTipsRule as { value?: number }).value ?? 1) : 1;
+
   const [currentUser, leaderboard] = await Promise.all([
     getCurrentUser(),
     started
@@ -140,6 +143,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
     streak: 0,
     isVerified: false,
     isFake: r.isFake,
+    prizeEligible: r.totalTips >= minTipsRequired,
   }));
 
   const isLeagueScoped = !!(comp.leagueId || comp.leagueName || comp.matchKickoffFrom);
@@ -537,6 +541,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           matchKickoffTo={comp.matchKickoffTo ?? null}
           prizes={comp.prizes}
           currency={comp.currency}
+          minimumTips={minTipsRequired}
         />
       </div>
     </div>

@@ -109,6 +109,11 @@ export const KNOWN_LEAGUES: LeagueRef[] = [
   // ── Cricket ───────────────────────────────────────────────────────────────
   { leagueId: 900, leagueName: 'ICC Cricket World Cup',        sportFocus: 'cricket', espnKey: 'cricket.wc',   aliases: ['cricket world cup', 'icc wc'] },
   { leagueId: 901, leagueName: 'IPL',                          sportFocus: 'cricket', espnKey: 'cricket.ipl',  aliases: ['indian premier league cricket', 'ipl cricket'] },
+  // ── FIFA World Cup ────────────────────────────────────────────────────────
+  // Tips are stored as 'World Cup' by the ESPN feed; the competition is named
+  // 'FIFA World Cup 2026'. All variants must map to the same leagueId so
+  // the LIKE/exact filters in computeLeaderboard resolve them correctly.
+  { leagueId: 29, leagueName: 'World Cup',                     sportFocus: 'football', espnKey: 'fifa.world',  aliases: ['fifa world cup', 'fifa world cup 2026', 'world cup 2026', 'world cup football', 'fifa wc', 'wc 2026'] },
 ];
 
 /**
