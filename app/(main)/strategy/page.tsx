@@ -124,8 +124,8 @@ function PickResultIcon({ result }: { result?: string }) {
 }
 
 function PickCard({ pick }: { pick: StrategyPick }) {
-  const isLive = pick.liveStatus === 'live';
-  const scoreDisplay = pick.actualScore || pick.liveScore;
+  const isLive = pick.liveStatus === 'live' && pick.result === 'pending';
+  const scoreDisplay = pick.actualScore || (pick.liveStatus === 'finished' ? pick.liveScore : undefined);
 
   return (
     <div className={cn(

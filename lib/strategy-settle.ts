@@ -203,6 +203,50 @@ export function checkPickResult(
     return null;
   }
 
+  // ── Win to Nil ─────────────────────────────────────────────────────────────
+  // "Win to Nil" = a team wins without conceding a goal (clean sheet win).
+  // Outcomes: "Home" | "Away" | "Neither" / "Nether" (no team wins to nil)
+  if (
+    market.includes('win to nil') || market.includes('win and to nil') ||
+    market.includes('clean sheet win') || market.includes('win to nil')
+  ) {
+    const homeWinToNil = homeWin && awayScore === 0;
+    const awayWinToNil = awayWin && homeScore === 0;
+    const neitherWinsToNil = !homeWinToNil && !awayWinToNil;
+
+    // "Neither" / "Nether" / "No" — no team wins to nil
+    if (
+      pickRaw === 'neither' || pickRaw === 'nether' || pickRaw === 'no' ||
+      pickRaw.includes('neither') || pickRaw.includes('nether')
+    ) {
+      return neitherWinsToNil ? 'win' : 'loss';
+    }
+    // "Home" / home team wins to nil
+    if (
+      pickRaw === '1' || pickRaw === 'home' || pickRaw === 'home win to nil' ||
+      (homeNorm.length > 2 && pickNorm.includes(homeNorm) && !pickRaw.includes('away'))
+    ) {
+      return homeWinToNil ? 'win' : 'loss';
+    }
+    // "Away" / away team wins to nil
+    if (
+      pickRaw === '2' || pickRaw === 'away' || pickRaw === 'away win to nil' ||
+      (awayNorm.length > 2 && pickNorm.includes(awayNorm) && !pickRaw.includes('home'))
+    ) {
+      return awayWinToNil ? 'win' : 'loss';
+    }
+    // Word matching fallback
+    const homeWords = pick.homeTeam.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    const awayWords = pick.awayTeam.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    for (const w of homeWords) {
+      if (pickRaw.includes(w) && !pickRaw.includes('away')) return homeWinToNil ? 'win' : 'loss';
+    }
+    for (const w of awayWords) {
+      if (pickRaw.includes(w) && !pickRaw.includes('home')) return awayWinToNil ? 'win' : 'loss';
+    }
+    return null;
+  }
+
   // ── BTTS ───────────────────────────────────────────────────────────────────
   if (
     market === 'btts' || market === 'both teams to score' ||

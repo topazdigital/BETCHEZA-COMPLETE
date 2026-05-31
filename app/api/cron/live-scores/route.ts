@@ -48,6 +48,13 @@ export async function GET(req: NextRequest) {
   g.__liveScoreCronBusy = true;
 
   try {
+    // Always run past-pick settlement on every cron tick — finished games are no
+    // longer "live" so they won't show up in getLiveMatches(). This ensures picks
+    // from games that ended since the last cron run get settled promptly.
+    settleRecentPendingStrategyPicks().catch(e =>
+      console.warn('[live-scores] past-pick settlement failed:', e?.message ?? e)
+    );
+
     const matches = await getLiveMatches();
     if (matches.length === 0) {
       return NextResponse.json({ ok: true, live: 0, goals: 0 });
@@ -152,14 +159,6 @@ export async function GET(req: NextRequest) {
       console.warn('[live-scores] strategy live-score update failed:', e?.message ?? e)
     );
 
-    // ── Settle pending picks from past days ─────────────────────────────────
-    // Runs alongside live-score updates to catch yesterday's / older picks
-    // that finished after the game ended (no longer "live" so the above
-    // function misses them). Only touches picks whose kickoff was >2h ago.
-    settleRecentPendingStrategyPicks().catch(e =>
-      console.warn('[live-scores] past-pick settlement failed:', e?.message ?? e)
-    );
-
     return NextResponse.json({ ok: true, live: matches.length, goals: goals.length, pushed });
   } catch (e) {
     console.warn('[cron/live-scores] error:', e instanceof Error ? e.message : e);
@@ -181,29 +180,31 @@ async function settleRecentPendingStrategyPicks() {
   const now = Date.now();
   const TWO_HOURS_MS = 2 * 3600_000;
 
-  // Build ISO dates for today, yesterday, day before
+  // Build ISO dates for the last 7 days (full week coverage)
   const nairobi = (offsetDays: number) => {
     const d = new Date(now + offsetDays * 86_400_000);
     const s = d.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }).split(',')[0];
     const [mo, dy, yr] = s.split('/');
     return `${yr}-${mo.padStart(2, '0')}-${dy.padStart(2, '0')}`;
   };
-  const dates = [nairobi(0), nairobi(-1), nairobi(-2)];
+  const dates = [nairobi(0), nairobi(-1), nairobi(-2), nairobi(-3), nairobi(-4), nairobi(-5), nairobi(-6)];
 
   // Check if any of the recent days have pending picks before hitting the DB
   let rows: { id: number; date: string; day_number: number; picks: string; status: string }[] = [];
   try {
+    const placeholders = dates.map(() => '?').join(', ');
     const res = await query<{ id: number; date: string; day_number: number; picks: string; status: string }>(
-      `SELECT id, date, day_number, picks, status FROM daily_strategy WHERE date IN (?, ?, ?) AND picks IS NOT NULL`,
+      `SELECT id, date, day_number, picks, status FROM daily_strategy WHERE date IN (${placeholders}) AND picks IS NOT NULL`,
       dates
     );
     rows = res.rows;
   } catch { return; }
 
+  // Process rows that have pending picks OR picks with stale liveStatus: 'live'
   const pendingRows = rows.filter(r => {
     try {
       const picks: StrategyPick[] = JSON.parse(r.picks || '[]');
-      return picks.some(p => p.result === 'pending');
+      return picks.some(p => p.result === 'pending' || (p.result !== 'pending' && p.liveStatus === 'live'));
     } catch { return false; }
   });
 
@@ -233,6 +234,13 @@ async function settleRecentPendingStrategyPicks() {
 
     let changed = false;
     const updated = picks.map(pick => {
+      // Clean up stale liveStatus: 'live' on already-settled picks
+      // (happens when a day rolled over before the status was cleared)
+      if (pick.result !== 'pending' && pick.liveStatus === 'live') {
+        changed = true;
+        return { ...pick, liveStatus: 'finished' as const };
+      }
+
       if (pick.result !== 'pending') return pick;
 
       // Only try to settle if kickoff is >2h in the past
