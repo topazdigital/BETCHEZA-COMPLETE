@@ -60,6 +60,13 @@ const nextConfig = {
   ],
   async redirects() {
     return [
+      // Redirect www → non-www to prevent duplicate content in Google Search Console
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.betcheza.co.ke' }],
+        destination: 'https://betcheza.co.ke/:path*',
+        permanent: true,
+      },
       {
         source: '/3-daily-odds-strategy',
         destination: '/strategy',

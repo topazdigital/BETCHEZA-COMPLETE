@@ -80,10 +80,19 @@ export function matchToSlug(matchId: string, homeTeam: string, awayTeam: string)
     return `${homeSlug}-vs-${awaySlug}-${stableNumericSuffix(camelMatch[1])}`
   }
 
-  // Any other format with a trailing numeric ID
+  // Any other format with a trailing numeric ID separated by underscore
   const genericNumeric = matchId.match(/_(\d{4,})$/)
   if (genericNumeric) {
     return `${homeSlug}-vs-${awaySlug}-${genericNumeric[1]}`
+  }
+
+  // URL slug formats — trailing numeric separated by hyphen.
+  // Handles legacy slugs ("ken1-401867459") and canonical slugs passed back in
+  // ("gor-mahia-vs-nairobi-united-401867459"). In both cases we rebuild from the
+  // numeric suffix + current team names so the canonical is always consistent.
+  const hyphenNumeric = matchId.match(/-(\d{4,})$/)
+  if (hyphenNumeric) {
+    return `${homeSlug}-vs-${awaySlug}-${hyphenNumeric[1]}`
   }
 
   return encodeURIComponent(matchId)

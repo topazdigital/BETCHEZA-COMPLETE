@@ -42,13 +42,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const description = `${team.name}${team.country ? ` (${team.country})` : ''}${leaguePart}. Live fixtures, results, squad, injuries and expert betting tips.${venuePart}`;
   // Canonical URL — browsers and crawlers will see the slug+id form even
   // when the page was reached via a legacy `espn_xxx_id` link.
-  const canonicalPath = team.canonicalId ? `/teams/${team.canonicalId}` : undefined;
+  const baseUrl = (settings as { site_url?: string }).site_url || process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const canonicalPath = team.canonicalId ? `/teams/${team.canonicalId}` : `/teams/${encodeURIComponent(id)}`;
   return {
     title,
     description,
-    alternates: canonicalPath ? { canonical: canonicalPath } : undefined,
-    openGraph: { title, description, type: 'website' },
+    alternates: { canonical: `${baseUrl}${canonicalPath}` },
+    openGraph: { title, description, type: 'website', url: `${baseUrl}${canonicalPath}` },
     twitter: { title, description, card: 'summary_large_image' },
+    robots: { index: true, follow: true },
   };
 }
 

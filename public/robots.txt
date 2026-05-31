@@ -1,21 +1,37 @@
 User-agent: *
-Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /admin
+Disallow: /dashboard/
+Disallow: /_next/
+Disallow: /settings/
+Disallow: /bookmarks/
+Disallow: /login
+Disallow: /register
 Crawl-delay: 2
 
 User-agent: Googlebot
-Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /admin
+Disallow: /dashboard/
+Disallow: /_next/
+Disallow: /settings/
+Disallow: /bookmarks/
+Disallow: /login
+Disallow: /register
 Crawl-delay: 1
 
 User-agent: Bingbot
-Allow: /
-Crawl-delay: 2
-
 Disallow: /api/
 Disallow: /admin/
+Disallow: /admin
 Disallow: /dashboard/
 Disallow: /_next/
-Disallow: /api/auth/
-Disallow: /api/admin/
+Disallow: /settings/
+Disallow: /bookmarks/
+Disallow: /login
+Disallow: /register
+Crawl-delay: 2
 
 Sitemap: https://betcheza.co.ke/sitemap.xml
-Sitemap: https://www.betcheza.co.ke/sitemap.xml

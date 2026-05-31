@@ -502,6 +502,9 @@ export async function generateMetadata(): Promise<Metadata> {
         apple: '/apple-icon.png',
       };
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const canonicalPath = pathname === '/' ? '' : pathname.split('?')[0];
+
   return {
     title: {
       default: title,
@@ -511,7 +514,8 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords,
     authors: [{ name: settings.site_name }],
     creator: settings.site_name,
-    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'),
+    metadataBase: new URL(siteUrl),
+    alternates: { canonical: `${siteUrl}${canonicalPath}` },
     robots: seoEntry?.noIndex ? { index: false, follow: false } : undefined,
     verification: process.env.GOOGLE_SITE_VERIFICATION
       ? { google: process.env.GOOGLE_SITE_VERIFICATION }

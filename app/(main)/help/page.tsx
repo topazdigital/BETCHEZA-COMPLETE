@@ -10,7 +10,14 @@ export async function generateMetadata(): Promise<Metadata> {
   const [page, settings] = await Promise.all([getStaticPage('help'), getSiteSettings()]);
   const title = page?.title ?? 'Help Center';
   const description = page?.meta_description ?? 'Get help using ' + settings.site_name;
-  return { title, description, openGraph: { title, description } };
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  return {
+    title,
+    description,
+    alternates: { canonical: `${baseUrl}/help` },
+    openGraph: { title, description, url: `${baseUrl}/help` },
+    robots: { index: true, follow: true },
+  };
 }
 
 export default async function HelpPage() {

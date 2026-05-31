@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { getSiteSettings } from '@/lib/site-settings';
+import { matchToSlug } from '@/lib/utils/match-url';
 
 interface MatchData {
   homeTeam?: { name?: string; logo?: string };
@@ -88,7 +90,8 @@ function buildJsonLd(
   const home = match.homeTeam?.name ?? '';
   const away = match.awayTeam?.name ?? '';
   const league = match.league?.name ?? '';
-  const canonical = `${baseUrl}/matches/${encodeURIComponent(id)}`;
+  const canonicalSlug = (home && away) ? matchToSlug(id, home, away) : encodeURIComponent(id);
+  const canonical = `${baseUrl}/matches/${canonicalSlug}`;
   const finished = isFinished(match.status);
   const live = isLive(match.status);
 
@@ -214,6 +217,7 @@ export async function generateMetadata({
     return {
       title: `Match Preview | ${siteName}`,
       alternates: { canonical: `${baseUrl}/matches/${encodeURIComponent(id)}` },
+      robots: { index: false, follow: false },
     };
   }
 
@@ -221,7 +225,8 @@ export async function generateMetadata({
   const away = match.awayTeam.name;
   const league = match.league?.name || '';
   const leagueSuffix = league ? ` | ${league}` : '';
-  const canonical = `${baseUrl}/matches/${encodeURIComponent(id)}`;
+  const canonicalSlug = matchToSlug(id, home, away);
+  const canonical = `${baseUrl}/matches/${canonicalSlug}`;
   const dateStr = formatKickoffDate(match.kickoffTime);
 
   let title: string;
@@ -317,6 +322,19 @@ export default async function Layout({
 
   if (!match || !match.homeTeam?.name || !match.awayTeam?.name) {
     return <>{children}</>;
+  }
+
+  // Redirect legacy / non-canonical URL formats (e.g. "ken1-401867459") to the
+  // canonical team-name slug (e.g. "gor-mahia-vs-nairobi-united-401867459").
+  // This collapses all URL variants into one URL so Google stops flagging them as
+  // duplicate content without a user-selected canonical.
+  // Only redirect URLs that don't already contain "-vs-" to avoid redirect loops
+  // caused by minor team-name normalisation differences in already-canonical slugs.
+  if (!id.includes('-vs-')) {
+    const canonicalSlug = matchToSlug(id, match.homeTeam.name, match.awayTeam.name);
+    if (canonicalSlug !== id) {
+      redirect(`/matches/${canonicalSlug}`);
+    }
   }
 
   const siteName = settings.site_name || 'Betcheza';
