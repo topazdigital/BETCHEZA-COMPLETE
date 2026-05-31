@@ -500,7 +500,8 @@ export async function updateCompetition(id: number, patch: Partial<NewCompetitio
 
   const prizes = patch.prizes && patch.prizes.length > 0 ? patch.prizes : cur.prizes;
   const rules = patch.rules && patch.rules.length > 0 ? patch.rules : cur.rules;
-  const dbStatus = patch.status === 'completed' ? 'finished' : (patch.status || cur.status);
+  const rawStatus = patch.status !== undefined ? patch.status : cur.status;
+  const dbStatus = rawStatus === 'completed' ? 'finished' : rawStatus;
 
   await execute(`
     UPDATE competitions SET

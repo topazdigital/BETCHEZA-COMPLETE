@@ -5,13 +5,17 @@ import {
   updateCompetition,
   deleteCompetition,
   getCompetitionsAsync,
+  getCompetitionByIdAsync,
   type NewCompetitionInput,
 } from '@/lib/competitions-store';
 import {
   validateCompetitionLeague,
   findLeagueRoundEndDate,
   migrateCompetitionsTable,
+  computeLeaderboard,
 } from '@/lib/competition-league-utils';
+import { credit } from '@/lib/wallet-store';
+import { execute } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -131,15 +135,131 @@ export async function PATCH(req: NextRequest) {
   try { body = await req.json(); } catch {}
   if (!body.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  const updated = await updateCompetition(Number(body.id), body);
+  const compId = Number(body.id);
+
+  // Snapshot the old status before update so we can detect a transition to completed
+  const before = await getCompetitionByIdAsync(compId);
+  const wasCompleted = before?.status === 'completed';
+
+  let updated;
+  try {
+    updated = await updateCompetition(compId, body);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Save failed: ${msg}` }, { status: 500 });
+  }
+
   if (!updated) {
-    return NextResponse.json(
-      { error: 'Competition not found.' },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: 'Competition not found.' }, { status: 404 });
+  }
+
+  // Auto-distribute prizes when admin marks a competition as completed for the first time
+  if (body.status === 'completed' && !wasCompleted && before) {
+    try {
+      await autoDistributePrizes(before.id, before, updated.prizes, updated.currency || 'KES');
+    } catch (e) {
+      console.error('[competitions] auto prize distribution failed:', e);
+    }
   }
 
   return NextResponse.json({ success: true, competition: updated });
+}
+
+async function autoDistributePrizes(
+  competitionId: number,
+  comp: Awaited<ReturnType<typeof getCompetitionByIdAsync>>,
+  prizes: Array<{ place: string; amount: number }>,
+  currency: string,
+) {
+  if (!comp) return;
+
+  // Compute the real leaderboard from actual tips
+  const leaderboard = await computeLeaderboard({
+    startDate: comp.startDate,
+    endDate: comp.endDate,
+    leagueId: comp.leagueId,
+    leagueName: comp.leagueName,
+    sportFocus: comp.sportFocus,
+    matchKickoffFrom: comp.matchKickoffFrom,
+    matchKickoffTo: comp.matchKickoffTo,
+    minTips: 1,
+    limit: 20,
+    allowedUserIds: null,
+  });
+
+  if (leaderboard.length === 0) return;
+
+  // Map prizes to ranked tipsters — parse prize tiers like "4-10th"
+  let cursor = 0;
+  for (const prize of prizes) {
+    if (!prize.amount || prize.amount <= 0) continue;
+    const m = prize.place.match(/(\d+)(?:[-–](\d+))?/);
+    if (m) {
+      const start = parseInt(m[1], 10);
+      const end = m[2] ? parseInt(m[2], 10) : start;
+      for (let r = start; r <= end; r++) {
+        const winner = leaderboard[r - 1];
+        if (!winner) break;
+        // Only credit real tipsters (fake tipsters have id >= 1000)
+        if (winner.isFake || winner.userId >= 1000) continue;
+        try {
+          credit(winner.userId, prize.amount, {
+            type: 'prize_payout',
+            currency,
+            method: 'system',
+            reference: `comp-${competitionId}-rank-${r}`,
+            description: `Prize — ${comp.name} (${prize.place})`,
+            meta: { competitionId, competitionName: comp.name, place: prize.place, rank: r },
+          });
+          console.log(`[competitions] credited ${currency} ${prize.amount} to user ${winner.userId} (rank ${r}) for ${comp.name}`);
+        } catch (e) {
+          console.error(`[competitions] failed to credit user ${winner.userId}:`, e);
+        }
+      }
+      cursor = end;
+    } else {
+      // No numeric range — assign to next slot
+      const winner = leaderboard[cursor++];
+      if (!winner) continue;
+      if (winner.isFake || winner.userId >= 1000) continue;
+      try {
+        credit(winner.userId, prize.amount, {
+          type: 'prize_payout',
+          currency,
+          method: 'system',
+          reference: `comp-${competitionId}-rank-${cursor}`,
+          description: `Prize — ${comp.name} (${prize.place})`,
+          meta: { competitionId, competitionName: comp.name, place: prize.place, rank: cursor },
+        });
+      } catch { /* non-critical */ }
+    }
+  }
+
+  // Store winner data in DB for the winner graphic on the frontend
+  try {
+    const top3 = leaderboard.slice(0, 3).map((w, i) => ({
+      rank: i + 1,
+      userId: w.userId,
+      username: w.username,
+      displayName: w.displayName || w.username,
+      avatar: w.avatar || null,
+      points: w.points,
+      winRate: w.winRate,
+      roi: w.roi,
+      prize: prizes[i]?.amount ?? 0,
+      isFake: w.isFake,
+    }));
+    await execute(
+      `UPDATE competitions SET rule_config = JSON_MERGE_PATCH(COALESCE(rule_config, '{}'), ?) WHERE id = ?`,
+      [JSON.stringify({ _winners: top3, _settledAt: new Date().toISOString() }), competitionId]
+    ).catch(() => {
+      // Fallback if JSON_MERGE_PATCH not supported
+      execute(
+        `UPDATE competitions SET kicked_users = ? WHERE id = ?`,
+        [JSON.stringify({ _winners: top3 }), competitionId]
+      ).catch(() => {});
+    });
+  } catch { /* non-critical */ }
 }
 
 export async function DELETE(req: NextRequest) {
@@ -152,10 +272,7 @@ export async function DELETE(req: NextRequest) {
 
   const ok = await deleteCompetition(id);
   if (!ok) {
-    return NextResponse.json(
-      { error: 'Competition not found.' },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: 'Competition not found.' }, { status: 404 });
   }
 
   return NextResponse.json({ success: true });

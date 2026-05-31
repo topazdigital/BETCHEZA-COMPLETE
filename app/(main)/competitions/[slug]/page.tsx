@@ -389,8 +389,97 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           </div>
         )}
 
+        {/* ── Winner Podium (completed competitions) ── */}
+        {comp.status === 'completed' && participants.length > 0 && (() => {
+          const top3 = participants.slice(0, 3)
+          const medalColors = [
+            { ring: 'ring-yellow-500/60', bg: 'bg-yellow-500/10', text: 'text-yellow-600 dark:text-yellow-400', badge: 'bg-yellow-500 text-yellow-950', emoji: '🥇', label: '1st Place' },
+            { ring: 'ring-gray-400/50',   bg: 'bg-gray-400/10',   text: 'text-gray-500 dark:text-gray-300',     badge: 'bg-gray-300 text-gray-700',     emoji: '🥈', label: '2nd Place' },
+            { ring: 'ring-amber-700/50',  bg: 'bg-amber-700/10',  text: 'text-amber-700 dark:text-amber-500',   badge: 'bg-amber-700 text-amber-100',   emoji: '🥉', label: '3rd Place' },
+          ]
+          // Podium order: 2nd | 1st | 3rd
+          const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean)
+          const podiumHeights = top3[1] ? ['h-20', 'h-28', 'h-16'] : ['h-28', 'h-20', 'h-16']
+
+          return (
+            <div className="mb-3 rounded-xl border-2 border-yellow-500/30 bg-gradient-to-b from-yellow-500/8 via-amber-500/5 to-transparent overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-center gap-2 pt-3 pb-1">
+                <span className="text-lg">🏆</span>
+                <div className="text-center">
+                  <div className="text-sm font-black text-yellow-600 dark:text-yellow-400 leading-none">Competition Ended!</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Final results — congratulations to our winners</div>
+                </div>
+                <span className="text-lg">🏆</span>
+              </div>
+
+              {/* Sparkle row */}
+              <div className="flex justify-center gap-1 text-[10px] py-1 opacity-60 select-none pointer-events-none">
+                {'✨🌟⭐✨🌟⭐✨'.split('').map((c, i) => (
+                  <span key={i} style={{ animationDelay: `${i * 0.15}s` }} className="animate-pulse">{c}</span>
+                ))}
+              </div>
+
+              {/* Podium */}
+              <div className="flex items-end justify-center gap-2 px-4 pt-2 pb-0">
+                {podiumOrder.map((p, podiumPos) => {
+                  if (!p) return null
+                  const origRank = top3.indexOf(p)
+                  const colors = medalColors[origRank]
+                  const height = podiumHeights[podiumPos]
+                  const prizeAmt = comp.prizes[origRank]?.amount
+
+                  return (
+                    <div key={p.tipsterId} className="flex flex-col items-center gap-1 flex-1 max-w-[120px]">
+                      {/* Avatar */}
+                      <div className={cn('relative ring-2 rounded-full shrink-0', colors.ring, origRank === 0 && 'ring-offset-2 ring-offset-background')}>
+                        {p.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.avatar} alt="" className={cn('rounded-full object-cover', origRank === 0 ? 'h-14 w-14' : 'h-11 w-11')} />
+                        ) : (
+                          <div className={cn('flex items-center justify-center rounded-full font-black text-primary-foreground', origRank === 0 ? 'h-14 w-14 text-lg bg-primary' : 'h-11 w-11 text-sm bg-primary/80')}>
+                            {(p.displayName || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span className={cn('absolute -top-2 left-1/2 -translate-x-1/2 text-base leading-none', origRank === 0 && 'text-xl')}>
+                          {colors.emoji}
+                        </span>
+                      </div>
+
+                      {/* Name */}
+                      <div className="text-center min-w-0 w-full px-1">
+                        <div className={cn('text-[11px] font-bold leading-tight truncate', colors.text)}>
+                          {p.displayName}
+                        </div>
+                        <div className="text-[9px] text-muted-foreground truncate">@{p.username}</div>
+                        <div className="text-[10px] font-semibold text-muted-foreground mt-0.5">
+                          {p.points} pts · {p.winRate}%
+                        </div>
+                        {prizeAmt && (
+                          <div className={cn('mt-1 text-[10px] font-black leading-none', colors.text)}>
+                            {comp.currency} {prizeAmt.toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Podium block */}
+                      <div className={cn(
+                        'w-full rounded-t-lg flex items-center justify-center font-black text-sm',
+                        height,
+                        colors.badge,
+                      )}>
+                        {origRank + 1}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Prizes — top 3 podium */}
-        {comp.prizes.length > 0 && (
+        {comp.prizes.length > 0 && comp.status !== 'completed' && (
           <div className="mb-3">
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5 px-0.5">
               <Trophy className="h-3 w-3 text-warning" /> Prize Breakdown
