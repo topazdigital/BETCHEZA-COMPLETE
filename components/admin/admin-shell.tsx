@@ -263,42 +263,41 @@ export function AdminShell({ children, user }: AdminShellProps) {
       </aside>
 
       <div className="lg:pl-56">
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-card px-3">
+        <header className="sticky top-0 z-30 flex h-11 items-center gap-2 border-b border-border bg-card px-2 md:px-3">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 lg:hidden"
+            className="h-7 w-7 shrink-0 lg:hidden"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="h-4 w-4" />
           </Button>
 
-          <div className="flex-1 max-w-md">
-            <HeaderSearch inline placeholder="Search the site (matches, teams, tipsters)…" />
+          <div className="hidden md:flex flex-1 max-w-md">
+            <HeaderSearch inline placeholder="Search the site…" />
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <Button variant="ghost" size="icon" className="relative h-8 w-8">
-              <Bell className="h-4 w-4" />
+          <div className="flex flex-1 md:flex-none items-center justify-end gap-1">
+            <Button variant="ghost" size="icon" className="relative h-7 w-7">
+              <Bell className="h-3.5 w-3.5" />
             </Button>
-            <div className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+            <div className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
                 {user.displayName.charAt(0).toUpperCase()}
               </div>
-              <div className="hidden md:block leading-tight">
-                <p className="text-[11px] font-semibold">{user.displayName}</p>
-                <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{user.role}</p>
+              <div className="hidden sm:block leading-tight max-w-[100px] truncate">
+                <p className="text-[10px] font-semibold truncate">{user.displayName}</p>
               </div>
               <form action="/api/auth/logout" method="POST">
                 <button type="submit" title="Sign out" className="ml-0.5 text-muted-foreground hover:text-destructive">
-                  <LogOut className="h-3.5 w-3.5" />
+                  <LogOut className="h-3 w-3" />
                 </button>
               </form>
             </div>
           </div>
         </header>
 
-        <main className="p-3 md:p-4">
+        <main className="p-2 md:p-3">
           {children}
         </main>
       </div>

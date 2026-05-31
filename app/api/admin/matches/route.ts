@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { requireAdmin } from '@/lib/admin-auth';
+import { getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,12 +9,42 @@ export async function GET() {
   try {
     const result = await query<{
       id: number; league_id: string; home_team_id: string; away_team_id: string;
+      home_team_name?: string; away_team_name?: string;
+      league_name?: string; sport_name?: string; sport_icon?: string;
       kickoff_time: string; status: string; home_score: number | null; away_score: number | null; minute: number | null;
-    }>('SELECT * FROM matches ORDER BY kickoff_time DESC LIMIT 100');
-    return NextResponse.json({ matches: result.rows });
+    }>('SELECT * FROM matches ORDER BY kickoff_time DESC LIMIT 200');
+
+    if (result.rows.length > 0) {
+      return NextResponse.json({ matches: result.rows, source: 'db' });
+    }
+  } catch {
+    // DB unavailable — fall through to live feed
+  }
+
+  // Fall back to the in-memory ESPN cache so the admin can always see matches
+  try {
+    const liveMatches = await getAllMatches();
+    const mapped = liveMatches.slice(0, 300).map(m => ({
+      id: m.id,
+      home_team_name: m.homeTeam.name,
+      away_team_name: m.awayTeam.name,
+      home_team_logo: m.homeTeam.logo ?? null,
+      away_team_logo: m.awayTeam.logo ?? null,
+      league_name: m.league.name,
+      sport_name: m.sport.name,
+      sport_icon: m.sport.icon,
+      status: m.status === 'halftime' ? 'live' : m.status,
+      home_score: m.homeScore,
+      away_score: m.awayScore,
+      kickoff_time: m.kickoffTime instanceof Date
+        ? m.kickoffTime.toISOString()
+        : String(m.kickoffTime),
+      minute: m.minute ?? null,
+    }));
+    return NextResponse.json({ matches: mapped, source: 'live' });
   } catch (error) {
-    console.error('[Admin API] Failed to get matches:', error);
-    return NextResponse.json({ error: 'Failed to get matches' }, { status: 500 });
+    console.error('[Admin API] Failed to get matches from live feed:', error);
+    return NextResponse.json({ matches: [], source: 'unavailable' });
   }
 }
 
