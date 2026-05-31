@@ -28,7 +28,7 @@ import { teamHref, playerHref, tipsterHref } from "@/lib/utils/slug"
 import { formatTime, formatDate, getBrowserTimezone, getDayLabel } from "@/lib/utils/timezone"
 import { FlagIcon } from "@/components/ui/flag-icon"
 import { liveStatusLabel } from "@/lib/utils/live-status"
-import { matchIdToSlug, matchToSlug } from "@/lib/utils/match-url"
+import { matchToSlug } from "@/lib/utils/match-url"
 import { AIMatchPrediction } from "@/components/ai/ai-match-prediction"
 import { AIMultiMarket } from "@/components/ai/ai-multi-market"
 import { AddTipForm } from "@/components/matches/add-tip-form"
@@ -2765,7 +2765,7 @@ function UpcomingMatchesPanel({
             return (
               <Link
                 key={mAny.id}
-                href={`/matches/${matchIdToSlug(mAny.id)}`}
+                href={`/matches/${matchToSlug(mAny.id, mAny.homeTeam.name, mAny.awayTeam.name)}`}
                 className="flex items-center gap-3 rounded-xl border border-border/40 bg-muted/30 px-3 py-2.5 hover:bg-muted/50 transition-colors"
               >
                 <div className="flex flex-1 items-center justify-end gap-2 min-w-0">
@@ -3184,7 +3184,7 @@ function MatchInfoRail({
             {last3H2H.map((g, i) => {
               const hs = g.home.score ?? 0
               const as_ = g.away.score ?? 0
-              const detail = g.matchId ? `/matches/${matchIdToSlug(g.matchId)}` : null
+              const detail = g.matchId ? `/matches/${matchToSlug(g.matchId, g.home.name, g.away.name)}` : null
               const inner = (
                 <>
                   <span className="truncate flex-1 text-right font-medium">{g.home.name}</span>
@@ -3294,7 +3294,7 @@ function H2HRow({ game, timezone, homeName }: { game: H2HGame; timezone: string;
   const homeWon = hs > as_
   const awayWon = as_ > hs
   const isFromCurrent = game.home.name === homeName
-  const detailHref = game.matchId ? `/matches/${matchIdToSlug(game.matchId)}` : null
+  const detailHref = game.matchId ? `/matches/${matchToSlug(game.matchId, game.home.name, game.away.name)}` : null
 
   return (
     <div className="rounded-xl border border-border/40 bg-muted/20 hover:bg-muted/40 transition-colors text-sm overflow-hidden">

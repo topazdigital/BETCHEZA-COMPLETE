@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { ALL_SPORTS, ALL_LEAGUES, TEAMS_DATABASE } from "@/lib/sports-data"
 import { format } from "date-fns"
-import { matchIdToSlug } from "@/lib/utils/match-url"
+import { matchToSlug } from "@/lib/utils/match-url"
 
 interface Match {
   id: number | string
@@ -237,7 +237,7 @@ export default function AdminMatchesPage() {
                 {filteredMatches.map((match) => (
                   <tr key={String(match.id)} className="border-b hover:bg-muted/30">
                     <td className="p-2">
-                      <Link href={`/matches/${matchIdToSlug(String(match.id))}`} className="hover:text-primary">
+                      <Link href={`/matches/${matchToSlug(String(match.id), match.home_team_name, match.away_team_name)}`} className="hover:text-primary">
                         <p className="font-semibold">{match.home_team_name} <span className="text-muted-foreground">vs</span> {match.away_team_name}</p>
                         <p className="text-[10px] text-muted-foreground">{match.league_name}</p>
                       </Link>
@@ -259,7 +259,7 @@ export default function AdminMatchesPage() {
                     </td>
                     <td className="p-2">
                       <div className="flex items-center justify-end gap-0.5">
-                        <Link href={`/matches/${matchIdToSlug(String(match.id))}`} className="text-muted-foreground hover:text-primary p-1">
+                        <Link href={`/matches/${matchToSlug(String(match.id), match.home_team_name, match.away_team_name)}`} className="text-muted-foreground hover:text-primary p-1">
                           <ExternalLink className="h-3.5 w-3.5" />
                         </Link>
                         <DropdownMenu>

@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Trophy, Loader2, AlertCircle } from "lucide-react"
 import { TeamLogo } from "@/components/ui/team-logo"
 import { cn } from "@/lib/utils"
-import { matchIdToSlug } from "@/lib/utils/match-url"
+import { matchToSlug } from "@/lib/utils/match-url"
 
 // Knockout bracket renderer for cup competitions.
 // Fetches `/api/leagues/<id>/bracket` and lays the rounds out as horizontal
@@ -183,7 +183,7 @@ function TieCard({ tie }: { tie: Tie }) {
           {legs.map((l, idx) => (
             <Link
               key={l.matchId}
-              href={`/matches/${matchIdToSlug(l.matchId)}`}
+              href={`/matches/${matchToSlug(l.matchId, tie.homeTeam.name, tie.awayTeam.name)}`}
               className="rounded bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               {legs.length > 1 ? `Leg ${l.legNumber || idx + 1}` : 'Match'}

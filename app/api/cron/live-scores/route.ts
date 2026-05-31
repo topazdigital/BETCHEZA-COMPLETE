@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getLiveMatches, getAllMatches } from '@/lib/api/unified-sports-api';
+import { matchToSlug } from '@/lib/utils/match-url';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
 import { query, execute } from '@/lib/db';
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, live: 0, goals: 0 });
     }
 
-    const goals: Array<{ matchId: string; title: string; score: string }> = [];
+    const goals: Array<{ matchId: string; homeTeam: string; awayTeam: string; title: string; score: string }> = [];
 
     for (const m of matches) {
       const current = scoreKey(m.homeScore, m.awayScore);
@@ -85,7 +86,9 @@ export async function GET(req: NextRequest) {
         }
         goals.push({
           matchId: m.id,
-          title: `${m.homeTeam} ${m.homeScore ?? 0}–${m.awayScore ?? 0} ${m.awayTeam}`,
+          homeTeam: m.homeTeam.name,
+          awayTeam: m.awayTeam.name,
+          title: `${m.homeTeam.name} ${m.homeScore ?? 0}–${m.awayScore ?? 0} ${m.awayTeam.name}`,
           score: current,
         });
       }
@@ -117,7 +120,7 @@ export async function GET(req: NextRequest) {
     for (const goal of goals) {
       const title = '⚽ Score Update';
       const body = goal.title;
-      const url = `/matches/${goal.matchId}`;
+      const url = `/matches/${matchToSlug(goal.matchId, goal.homeTeam, goal.awayTeam)}`;
 
       // 1. Broadcast to all live-score subscribers
       for (const sub of liveSubs) {

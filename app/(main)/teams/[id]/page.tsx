@@ -21,7 +21,7 @@ import { FollowTeamButton } from '@/components/teams/follow-team-button';
 import { cn } from '@/lib/utils';
 import { formatDate, getBrowserTimezone, formatTime } from '@/lib/utils/timezone';
 import { playerHref } from '@/lib/utils/slug';
-import { matchIdToSlug } from '@/lib/utils/match-url';
+import { matchToSlug } from '@/lib/utils/match-url';
 
 interface PageProps { params: Promise<{ id: string }> }
 
@@ -81,7 +81,7 @@ function MatchRow({ event, timezone, teamName }: { event: MatchEvent; timezone: 
 
   return (
     <Link
-      href={`/matches/${matchIdToSlug(event.id)}`}
+      href={`/matches/${matchToSlug(event.id, event.isHome ? teamName : (event.opponent?.name || ''), event.isHome ? (event.opponent?.name || '') : teamName)}`}
       className={cn(
         'flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/40 hover:bg-muted/40 hover:shadow-sm',
         isLive && 'border-live/30 bg-live/5'
@@ -537,7 +537,7 @@ export default function TeamPage({ params }: PageProps) {
           {/* Next match teaser */}
           {nextMatch && nextMatch.opponent && (
             <Link
-              href={`/matches/${matchIdToSlug(nextMatch.id)}`}
+              href={`/matches/${matchToSlug(nextMatch.id, nextMatch.isHome ? team.name : (nextMatch.opponent?.name || ''), nextMatch.isHome ? (nextMatch.opponent?.name || '') : team.name)}`}
               className="block rounded-xl border border-border bg-card p-4 hover:border-primary/50 hover:shadow-md transition"
             >
               <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -637,7 +637,7 @@ function TopPicksWidget({ teamName, upcomingEvents }: { teamName: string; upcomi
           </div>
         ))}
         <Link
-          href={`/matches/${matchIdToSlug(next.id)}`}
+          href={`/matches/${matchToSlug(next.id, next.isHome ? teamName : (next.opponent?.name || ''), next.isHome ? (next.opponent?.name || '') : teamName)}`}
           className="flex items-center justify-center gap-1.5 w-full text-xs font-semibold text-amber-600 hover:text-amber-700 py-2"
         >
           View full match analysis

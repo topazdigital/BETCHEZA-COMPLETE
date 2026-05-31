@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next';
 import { ALL_LEAGUES, ALL_SPORTS } from '@/lib/sports-data';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getPool } from '@/lib/db';
+import { matchToSlug } from '@/lib/utils/match-url';
 
 export const revalidate = 1800;
 
@@ -170,7 +171,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
             (m.status || '').toLowerCase()
           );
           matchEntries.push({
-            url: `${base}/matches/${encodeURIComponent(m.match_id)}`,
+            url: `${base}/matches/${matchToSlug(m.match_id, m.home_team || '', m.away_team || '')}`,
             lastModified: isFinished ? new Date(m.kickoff_time) : now,
             changeFrequency: isFinished ? 'weekly' : 'hourly',
             priority: isFinished ? 0.70 : 0.82,

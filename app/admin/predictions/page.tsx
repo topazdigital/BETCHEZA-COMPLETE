@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { format } from "date-fns"
-import { matchIdToSlug } from "@/lib/utils/match-url"
+import { matchToSlug } from "@/lib/utils/match-url"
 import { cn } from "@/lib/utils"
 import { tipsterHref } from "@/lib/utils/slug"
 
@@ -142,7 +142,7 @@ export default function AdminPredictionsPage() {
                       </Link>
                     </td>
                     <td className="p-2">
-                      <Link href={`/matches/${matchIdToSlug(p.match.id)}`} className="hover:text-primary">
+                      <Link href={`/matches/${matchToSlug(p.match.id, p.match.homeTeam, p.match.awayTeam)}`} className="hover:text-primary">
                         <div className="font-medium truncate max-w-[200px]">
                           {p.match.homeTeam} <span className="text-muted-foreground">vs</span> {p.match.awayTeam}
                         </div>
@@ -163,7 +163,7 @@ export default function AdminPredictionsPage() {
                     </td>
                     <td className="p-2 text-[10px] text-muted-foreground whitespace-nowrap">{format(new Date(p.createdAt), 'MMM d HH:mm')}</td>
                     <td className="p-2">
-                      <Link href={`/matches/${matchIdToSlug(p.match.id)}`} className="text-muted-foreground hover:text-primary">
+                      <Link href={`/matches/${matchToSlug(p.match.id, p.match.homeTeam, p.match.awayTeam)}`} className="text-muted-foreground hover:text-primary">
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
                     </td>

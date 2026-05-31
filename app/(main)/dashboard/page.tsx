@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { formatDate, formatTime, getBrowserTimezone } from '@/lib/utils/timezone';
 import { cn } from '@/lib/utils';
-import { matchIdToSlug } from '@/lib/utils/match-url';
+import { matchToSlug } from '@/lib/utils/match-url';
 import { teamHref, tipsterHref } from '@/lib/utils/slug';
 
 interface FollowedTeam {
@@ -457,7 +457,7 @@ function TipsterCardWithTip({ t, tz }: { t: FollowedTipster; tz: string }) {
       {/* Inline latest tip */}
       {tip ? (
         <Link
-          href={`/matches/${matchIdToSlug(tip.match.id)}`}
+          href={`/matches/${matchToSlug(tip.match.id, tip.match.homeTeam, tip.match.awayTeam)}`}
           className="mt-1.5 block rounded-lg border border-border bg-gradient-to-br from-primary/5 to-transparent p-1.5 transition-colors hover:border-primary/30"
         >
           <div className="flex items-center gap-1 text-[9px] uppercase font-bold tracking-wider text-muted-foreground">
@@ -525,7 +525,7 @@ function FeedTipCard({ t, tz }: { t: FeedTip; tz: string }) {
         <span className={cn('rounded px-1 py-0 text-[8px] font-bold uppercase tracking-wider', statusBadge)}>{status}</span>
       </div>
       <Link
-        href={`/matches/${matchIdToSlug(t.match.id)}`}
+        href={`/matches/${matchToSlug(t.match.id, t.match.homeTeam, t.match.awayTeam)}`}
         className="mt-1 block text-[11px] font-bold hover:text-primary transition-colors truncate"
       >
         {t.match.homeTeam}
@@ -558,7 +558,7 @@ function DashboardMatchRow({ ev, tz, kind }: { ev: DashboardEvent; tz: string; k
   const oppName = ev.opponent?.name || 'Opponent';
   return (
     <Link
-      href={`/matches/${matchIdToSlug(ev.id)}`}
+      href={`/matches/${matchToSlug(ev.id, ev.isHome ? ev.team.name : (ev.opponent?.name || ''), ev.isHome ? (ev.opponent?.name || '') : ev.team.name)}`}
       className="flex items-center gap-2 rounded-lg border border-border bg-card p-2 hover:border-primary/40 transition-colors"
     >
       <div className="w-12 shrink-0 text-center">
@@ -623,7 +623,7 @@ function AiTipCard({ ev }: { ev: DashboardEvent }) {
 
   return (
     <Link
-      href={`/matches/${matchIdToSlug(ev.id)}`}
+      href={`/matches/${matchToSlug(ev.id, ev.isHome ? ev.team.name : (ev.opponent?.name || ''), ev.isHome ? (ev.opponent?.name || '') : ev.team.name)}`}
       className="block rounded-lg border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-transparent p-2.5 hover:border-amber-500/40 transition-colors"
     >
       <div className="flex items-center justify-between gap-2">
