@@ -18,6 +18,7 @@ type Day = "today" | "tomorrow" | "upcoming"
 interface Tip {
   id: string
   matchId: string
+  matchSlug?: string
   homeTeam: string
   awayTeam: string
   league: string
@@ -194,7 +195,7 @@ function TipCard({ tip }: { tip: Tip }) {
           </div>
         </div>
 
-        <Link href={`/matches/${tip.matchId}`} className="group mt-1 block">
+        <Link href={`/matches/${tip.matchSlug || tip.matchId}`} className="group mt-1 block">
           <p className="text-xs font-semibold group-hover:text-primary">
             {tip.homeTeam} <span className="text-muted-foreground font-normal">vs</span> {tip.awayTeam}
           </p>

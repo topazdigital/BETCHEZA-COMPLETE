@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
   };
   const orderBy = sortColumn[sortBy] || 't.rank ASC';
 
-  const where: string[] = ["u.role IN ('tipster','admin')"];
+  const where: string[] = ["u.role = 'tipster'"];
   const params: unknown[] = [];
 
   if (search) {

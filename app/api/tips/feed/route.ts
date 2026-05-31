@@ -8,6 +8,7 @@ import {
 import { getFakeTipsterById, getFakeTipsters } from '@/lib/fake-tipsters';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
 import { query } from '@/lib/db';
+import { matchToSlug } from '@/lib/utils/match-url';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,7 +44,6 @@ interface NormalisedTipster {
   isReal: boolean;
 }
 
-// Cache real tipsters in memory for 5 minutes to avoid hammering the DB on every request
 const g = globalThis as {
   __realTipstersCache?: { data: NormalisedTipster[]; ts: number };
 };
@@ -53,7 +53,6 @@ async function getRealTipsters(): Promise<NormalisedTipster[]> {
   if (g.__realTipstersCache && Date.now() - g.__realTipstersCache.ts < CACHE_MS) {
     return g.__realTipstersCache.data;
   }
-
   try {
     const result = await query<DbTipster>(
       `SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.country_code,
@@ -62,14 +61,13 @@ async function getRealTipsters(): Promise<NormalisedTipster[]> {
               t.is_pro, t.subscription_price
          FROM users u
          LEFT JOIN tipster_profiles t ON t.user_id = u.id
-        WHERE u.role IN ('tipster','admin')
+        WHERE u.role = 'tipster'
         ORDER BY t.win_rate DESC
         LIMIT 200`,
       [],
     );
     const rows = (result as unknown as { rows?: DbTipster[] }).rows ?? (result as unknown as DbTipster[]);
     if (!rows || rows.length === 0) return [];
-
     const normalised: NormalisedTipster[] = rows.map(r => ({
       id: r.user_id,
       displayName: r.display_name || r.username,
@@ -83,7 +81,6 @@ async function getRealTipsters(): Promise<NormalisedTipster[]> {
       isVerified: !!r.is_verified,
       isReal: true,
     }));
-
     g.__realTipstersCache = { data: normalised, ts: Date.now() };
     return normalised;
   } catch {
@@ -91,7 +88,6 @@ async function getRealTipsters(): Promise<NormalisedTipster[]> {
   }
 }
 
-// Also fetch real tips from the DB (submitted by real tipsters)
 interface DbTip {
   id: number;
   user_id: number;
@@ -103,19 +99,11 @@ interface DbTip {
   status: string;
   analysis: string | null;
   created_at: Date | string;
-  // joined from matches if available
-  home_team: string | null;
-  away_team: string | null;
-  league_name: string | null;
-  sport_name: string | null;
-  kickoff_time: Date | string | null;
-  // joined from users
   username: string;
   display_name: string | null;
   avatar_url: string | null;
   country_code: string | null;
   is_verified: number | null;
-  // joined from tipster_profiles
   win_rate: number | null;
   roi: number | null;
   total_tips: number | null;
@@ -132,18 +120,15 @@ async function getRealDbTips(day: 'today' | 'tomorrow' | 'upcoming'): Promise<Db
     } else {
       dateFilter = `AND t.created_at >= CURDATE() + INTERVAL 2 DAY`;
     }
-
     const result = await query<DbTip>(
       `SELECT t.id, t.user_id, t.match_id, t.selection, t.market_id,
               t.odds_value, t.stake, t.status, t.analysis, t.created_at,
-              NULL AS home_team, NULL AS away_team, NULL AS league_name,
-              NULL AS sport_name, NULL AS kickoff_time,
               u.username, u.display_name, u.avatar_url, u.country_code, u.is_verified,
               tp.win_rate, tp.roi, tp.total_tips, tp.is_pro
          FROM tips t
          JOIN users u ON u.id = t.user_id
          LEFT JOIN tipster_profiles tp ON tp.user_id = t.user_id
-        WHERE u.role IN ('tipster','admin')
+        WHERE u.role = 'tipster'
           ${dateFilter}
         ORDER BY t.created_at DESC
         LIMIT 200`,
@@ -155,13 +140,24 @@ async function getRealDbTips(day: 'today' | 'tomorrow' | 'upcoming'): Promise<Db
   }
 }
 
-function getDayBucket(kickoff: string | undefined | null): 'today' | 'tomorrow' | 'upcoming' {
+/**
+ * Returns which day-bucket this kickoff belongs to.
+ * Crucially: any kickoff BEFORE today's calendar start → 'past' (excluded from feed).
+ * Kickoffs 3+ hours in the past today that are still pending are also treated as past.
+ */
+function getDayBucket(kickoff: string | undefined | null): 'today' | 'tomorrow' | 'upcoming' | 'past' {
   if (!kickoff) return 'today';
   const k = new Date(kickoff);
+  if (isNaN(k.getTime())) return 'past';
   const now = new Date();
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
   const tomorrowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
-  if (k <= todayEnd) return 'today';
+
+  // Older than today → past, never show in any tab
+  if (k < todayStart) return 'past';
+  if (k <= todayEnd)   return 'today';
   if (k <= tomorrowEnd) return 'tomorrow';
   return 'upcoming';
 }
@@ -170,7 +166,6 @@ function getDayBucket(kickoff: string | undefined | null): 'today' | 'tomorrow' 
 async function ensureSeedIfEmpty(): Promise<void> {
   const stats = getAutoTipsStats();
   if (stats.total > 0) return;
-
   try {
     const matches = await getAllMatches();
     const now = Date.now();
@@ -184,7 +179,6 @@ async function ensureSeedIfEmpty(): Promise<void> {
     for (const m of relevant) {
       const markets = (m.markets as Array<{ key?: string; name: string; selections?: Array<{ label: string; odds: number }> }> | undefined)
         ?.filter(mk => mk.selections && mk.selections.length > 0) ?? [];
-
       seedTipsForMatch({
         matchId: m.id,
         homeTeam: m.homeTeam.name,
@@ -209,30 +203,28 @@ export async function GET(request: NextRequest) {
   const minOdds = parseFloat(searchParams.get('minOdds') || '1');
   const maxOdds = parseFloat(searchParams.get('maxOdds') || '99');
 
-  // Fetch real tipsters from DB in parallel with seeding
   const [realTipsters, dbTips] = await Promise.all([
     getRealTipsters(),
     getRealDbTips(day),
   ]);
 
-  // Build a lookup map: tipster id → normalised tipster
   const realTipsterMap = new Map<number, NormalisedTipster>(realTipsters.map(t => [t.id, t]));
 
-  // Boot the auto-tips store if cold
   await ensureSeedIfEmpty();
 
-  // --- Build real DB tips ---
+  // --- Real DB tips from tipsters ---
   const realDbTipsMapped = dbTips.map(tip => {
     const t = realTipsterMap.get(tip.user_id);
     const displayName = tip.display_name || tip.username;
     return {
       id: `db-${tip.id}`,
       matchId: tip.match_id,
-      homeTeam: tip.home_team ?? '',
-      awayTeam: tip.away_team ?? '',
-      league: tip.league_name ?? '',
-      sport: tip.sport_name ?? 'Football',
-      kickoff: tip.kickoff_time ? new Date(tip.kickoff_time).toISOString() : null,
+      matchSlug: tip.match_id,
+      homeTeam: '',
+      awayTeam: '',
+      league: '',
+      sport: 'Football',
+      kickoff: null as string | null,
       prediction: tip.selection,
       market: tip.market_id ?? 'h2h',
       odds: Number(tip.odds_value ?? 1.5),
@@ -261,25 +253,34 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  // --- Build auto-tips (from real match data, attributed to real or fake tipsters) ---
+  // --- Auto-tips (seeded from real match data) ---
   const allAutoTips = listAllAutoTips(3000);
 
-  const today_count = allAutoTips.filter(t => getDayBucket(t.kickoff) === 'today').length + (day === 'today' ? realDbTipsMapped.length : 0);
+  // Count per bucket (excluding past)
+  const today_count    = allAutoTips.filter(t => getDayBucket(t.kickoff) === 'today').length;
   const tomorrow_count = allAutoTips.filter(t => getDayBucket(t.kickoff) === 'tomorrow').length;
   const upcoming_count = allAutoTips.filter(t => getDayBucket(t.kickoff) === 'upcoming').length;
 
-  let filteredAuto = allAutoTips.filter(t => getDayBucket(t.kickoff) === day);
+  // Only include tips for current/future matches — never show ended matches
+  let filteredAuto = allAutoTips.filter(t => {
+    const bucket = getDayBucket(t.kickoff);
+    if (bucket === 'past') return false;
+    return bucket === day;
+  });
   if (sport) filteredAuto = filteredAuto.filter(t => t.sport?.toLowerCase() === sport);
   filteredAuto = filteredAuto.filter(t => t.odds >= minOdds && (maxOdds >= 99 || t.odds <= maxOdds));
   filteredAuto.sort((a, b) => b.confidence - a.confidence);
 
   const autoTipsMapped = filteredAuto.slice(0, 100).map(tip => {
-    // Prefer a real tipster if one exists with this ID; fall back to fake
     const realTipster = realTipsterMap.get(Number(tip.tipsterId));
     const fakeTipster = realTipster ? null : getFakeTipsterById(tip.tipsterId);
     if (!realTipster && !fakeTipster) return null;
 
     const realStats = computeRealTipsterStats(tip.tipsterId);
+
+    // Build proper match URL slug from team names + match ID
+    const slug = matchToSlug(tip.matchId, tip.homeTeam, tip.awayTeam);
+
     const tipsterData = realTipster
       ? {
           id: realTipster.id,
@@ -290,9 +291,7 @@ export async function GET(request: NextRequest) {
           winRate: realStats?.winRate ?? realTipster.winRate,
           roi: realStats?.roi ?? realTipster.roi,
           totalTips: realStats?.total ?? realTipster.totalTips,
-          profit: realStats
-            ? (realStats.won * 0.9 - realStats.lost).toFixed(1)
-            : (realTipster.roi * 10).toFixed(1),
+          profit: realStats ? (realStats.won * 0.9 - realStats.lost).toFixed(1) : (realTipster.roi * 10).toFixed(1),
           isPro: realTipster.isPro,
           isVerified: realTipster.isVerified,
           isReal: true,
@@ -306,9 +305,7 @@ export async function GET(request: NextRequest) {
           winRate: realStats?.winRate ?? fakeTipster!.winRate,
           roi: realStats?.roi ?? fakeTipster!.roi,
           totalTips: realStats?.total ?? fakeTipster!.totalTips,
-          profit: realStats
-            ? (realStats.won * 0.9 - realStats.lost).toFixed(1)
-            : (fakeTipster!.roi * 10).toFixed(1),
+          profit: realStats ? (realStats.won * 0.9 - realStats.lost).toFixed(1) : (fakeTipster!.roi * 10).toFixed(1),
           isPro: fakeTipster!.isPro,
           isVerified: fakeTipster!.isVerified,
           isReal: false,
@@ -317,6 +314,7 @@ export async function GET(request: NextRequest) {
     return {
       id: tip.id,
       matchId: tip.matchId,
+      matchSlug: slug,
       homeTeam: tip.homeTeam,
       awayTeam: tip.awayTeam,
       league: tip.league ?? '',
@@ -337,12 +335,13 @@ export async function GET(request: NextRequest) {
     };
   }).filter(Boolean);
 
-  // Merge: real DB tips first (they're most authentic), then auto tips
+  // Real DB tips first, then auto-seeded tips
   const tips = [...realDbTipsMapped, ...autoTipsMapped];
 
+  // Best tip: prefer pending future match
   const bestTip = tips.find(t => t!.status === 'pending') ?? tips[0] ?? null;
 
-  // Top tipsters: prefer real DB tipsters, fall back to fake
+  // Top tipsters — real DB tipsters take priority; fallback to fake (never admin)
   let topTipsters: {
     id: number; displayName: string; username: string; avatar: string | null;
     countryCode: string | null; winRate: number; totalTips: number; roi: number;
@@ -395,7 +394,7 @@ export async function GET(request: NextRequest) {
       .map((t, i) => ({ ...t, rank: i + 1 }));
   }
 
-  const sports = Array.from(new Set(allAutoTips.map(t => t.sport).filter(Boolean))) as string[];
+  const sports = Array.from(new Set(allAutoTips.filter(t => getDayBucket(t.kickoff) !== 'past').map(t => t.sport).filter(Boolean))) as string[];
 
   return NextResponse.json({
     tips,
