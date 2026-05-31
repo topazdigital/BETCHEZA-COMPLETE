@@ -13,6 +13,7 @@ import { sendPushToSubscription } from '@/lib/push-sender';
 import { query, execute } from '@/lib/db';
 import { checkPickResult, normalizeTeam, matchTeamWords } from '@/lib/strategy-settle';
 import { sendStrategyResultPush } from '@/lib/strategy-push';
+import { pingMatchResult, pingIndexNow } from '@/lib/indexnow';
 import type { StrategyPick } from '@/app/api/strategy/predictions/route';
 
 export const dynamic = 'force-dynamic';
@@ -23,14 +24,19 @@ const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
 // __sentGoalKeys: Set of "matchId:score" strings already notified — prevents
 // duplicate pushes if the cron fires twice in quick succession or the snap
 // state is stale after an API outage.
+// __liveStatusSnap: previous status per matchId — used to detect live→finished transitions
+// so we can fire an IndexNow ping the moment a result is confirmed.
 const g = globalThis as {
   __liveScoreSnap?: Map<string, string>;
+  __liveStatusSnap?: Map<string, string>;
   __liveScoreCronBusy?: boolean;
   __sentGoalKeys?: Set<string>;
 };
 if (!g.__liveScoreSnap) g.__liveScoreSnap = new Map();
+if (!g.__liveStatusSnap) g.__liveStatusSnap = new Map();
 if (!g.__sentGoalKeys) g.__sentGoalKeys = new Set();
 const snap = g.__liveScoreSnap;
+const statusSnap = g.__liveStatusSnap;
 const sentGoals = g.__sentGoalKeys;
 
 function scoreKey(home: number | null | undefined, away: number | null | undefined): string {
@@ -62,10 +68,22 @@ export async function GET(req: NextRequest) {
     }
 
     const goals: Array<{ matchId: string; homeTeam: string; awayTeam: string; title: string; score: string }> = [];
+    const justFinished: Array<{ matchId: string; homeTeam: string; awayTeam: string }> = [];
 
     for (const m of matches) {
       const current = scoreKey(m.homeScore, m.awayScore);
       const previous = snap.get(m.id);
+
+      // Track live→finished transitions for IndexNow freshness pings
+      const prevStatus = statusSnap.get(m.id);
+      const isNowFinished = ['finished', 'ft', 'full-time', 'aet', 'pen', 'walkover', 'awarded'].includes(
+        (m.status || '').toLowerCase()
+      );
+      const wasLive = prevStatus && ['live', 'inprogress', 'in_progress', 'halftime', 'ht', 'extra_time', 'penalties', 'break'].includes(prevStatus.toLowerCase());
+      if (isNowFinished && wasLive) {
+        justFinished.push({ matchId: m.id, homeTeam: m.homeTeam.name, awayTeam: m.awayTeam.name });
+      }
+      statusSnap.set(m.id, m.status || '');
 
       if (previous === undefined) {
         // First time we see this match — just record, don't alert
@@ -100,8 +118,25 @@ export async function GET(req: NextRequest) {
       if (!liveIds.has(key)) snap.delete(key);
     }
 
+    // IndexNow: ping for every match that just reached full-time.
+    // This tells search engines the result page has fresh, unique content.
+    if (justFinished.length > 0) {
+      for (const m of justFinished) {
+        // fire-and-forget: don't await so push notification delivery isn't delayed
+        pingMatchResult(m.matchId, m.homeTeam, m.awayTeam).catch(() => {});
+        console.log(`[live-scores] IndexNow queued for FT result: ${m.homeTeam} vs ${m.awayTeam}`);
+      }
+    }
+
+    // Also ping sitemap for Bing to discover any new match pages
+    if (goals.length > 0 || justFinished.length > 0) {
+      pingIndexNow([
+        `${process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'}/sitemap.xml`,
+      ]);
+    }
+
     if (goals.length === 0) {
-      return NextResponse.json({ ok: true, live: matches.length, goals: 0 });
+      return NextResponse.json({ ok: true, live: matches.length, goals: 0, finished: justFinished.length });
     }
 
     // Gather all push subscriptions once
@@ -162,7 +197,7 @@ export async function GET(req: NextRequest) {
       console.warn('[live-scores] strategy live-score update failed:', e?.message ?? e)
     );
 
-    return NextResponse.json({ ok: true, live: matches.length, goals: goals.length, pushed });
+    return NextResponse.json({ ok: true, live: matches.length, goals: goals.length, pushed, finished: justFinished.length });
   } catch (e) {
     console.warn('[cron/live-scores] error:', e instanceof Error ? e.message : e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

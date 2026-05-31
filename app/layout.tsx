@@ -515,14 +515,22 @@ export async function generateMetadata(): Promise<Metadata> {
     authors: [{ name: settings.site_name }],
     creator: settings.site_name,
     metadataBase: new URL(siteUrl),
-    alternates: { canonical: `${siteUrl}${canonicalPath}` },
+    alternates: {
+      canonical: `${siteUrl}${canonicalPath}`,
+      languages: {
+        'en-KE': `${siteUrl}${canonicalPath}`,
+        'en': `${siteUrl}${canonicalPath}`,
+        'sw-KE': `${siteUrl}${canonicalPath}`,
+        'x-default': `${siteUrl}${canonicalPath}`,
+      },
+    },
     robots: seoEntry?.noIndex ? { index: false, follow: false } : undefined,
     verification: process.env.GOOGLE_SITE_VERIFICATION
       ? { google: process.env.GOOGLE_SITE_VERIFICATION }
       : undefined,
     openGraph: {
       type: 'website',
-      locale: 'en_US',
+      locale: 'en_KE',
       url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'}${pathname === '/' ? '' : pathname}`,
       siteName: settings.site_name,
       title,

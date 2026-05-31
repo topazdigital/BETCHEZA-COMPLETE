@@ -4,7 +4,7 @@ import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getPool } from '@/lib/db';
 import { matchToSlug } from '@/lib/utils/match-url';
 
-export const revalidate = 1800;
+export const revalidate = 600;
 
 function siteUrl(): string {
   return (
@@ -165,16 +165,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           LIMIT 500
         `, [threeDaysAgo.toISOString(), sevenDaysAhead.toISOString()]);
 
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         for (const m of matchRows) {
           if (!m.match_id) continue;
-          const isFinished = ['finished', 'ft', 'full-time', 'aet', 'pen'].includes(
+          const isFinished = ['finished', 'ft', 'full-time', 'aet', 'pen', 'walkover', 'awarded'].includes(
             (m.status || '').toLowerCase()
           );
+          // Recently-finished matches (last 24h) signal maximum freshness.
+          // Use now as lastModified so Googlebot sees them as just-updated.
+          const kickoff = m.kickoff_time ? new Date(m.kickoff_time) : null;
+          const isRecentResult = isFinished && kickoff && kickoff > oneDayAgo;
           matchEntries.push({
             url: `${base}/matches/${matchToSlug(m.match_id, m.home_team || '', m.away_team || '')}`,
-            lastModified: isFinished ? new Date(m.kickoff_time) : now,
-            changeFrequency: isFinished ? 'weekly' : 'hourly',
-            priority: isFinished ? 0.70 : 0.82,
+            lastModified: isRecentResult ? now : isFinished && kickoff
+              ? new Date(kickoff.getTime() + 110 * 60 * 1000)  // kickoff + 110min
+              : now,
+            changeFrequency: isRecentResult
+              ? ('hourly' as const)
+              : isFinished
+              ? ('weekly' as const)
+              : ('hourly' as const),
+            priority: isRecentResult ? 0.92 : isFinished ? 0.72 : 0.84,
           });
         }
       } catch { /* matches table may not exist — skip */ }

@@ -39,7 +39,7 @@ Disallow: /login
 Disallow: /register
 Disallow: /verify-email
 Disallow: /maintenance
-Crawl-delay: 2
+Crawl-delay: 1
 
 User-agent: AhrefsBot
 Crawl-delay: 5
@@ -54,3 +54,4 @@ User-agent: DotBot
 Disallow: /
 
 Sitemap: https://betcheza.co.ke/sitemap.xml
+IndexNow-Key: betcheza2026ke

@@ -28,7 +28,7 @@ async function fetchMatch(id: string): Promise<MatchData | null> {
     `http://localhost:${process.env.PORT || 5000}`;
   try {
     const r = await fetch(`${baseUrl}/api/matches/${encodeURIComponent(id)}/details`, {
-      next: { revalidate: 120 },
+      next: { revalidate: 30 },
     });
     if (!r.ok) return null;
     const data = (await r.json()) as DetailsResponse;
@@ -131,34 +131,48 @@ function buildJsonLd(
       }
     : undefined;
 
+  // Estimate endDate for finished matches (kickoff + 110 min typical game time)
+  let endDate: string | undefined;
+  if ((finished || live) && match.kickoffTime) {
+    try {
+      const kickoff = new Date(match.kickoffTime).getTime();
+      if (!isNaN(kickoff)) {
+        endDate = new Date(kickoff + 110 * 60 * 1000).toISOString();
+      }
+    } catch { /* ignore */ }
+  }
+
   // SportsEvent — Google's rich result for matches
   const sportsEvent: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'SportsEvent',
     '@id': canonical,
-    name: `${home} vs ${away}`,
+    name: finished
+      ? `${home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${away}`
+      : `${home} vs ${away}`,
     startDate: match.kickoffTime,
+    ...(endDate ? { endDate } : {}),
     eventStatus,
     eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
     url: canonical,
     description: finished
-      ? `${home} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${away} full time result${league ? ` | ${league}` : ''}.`
+      ? `${home} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${away} full time result${league ? ` | ${league}` : ''}. Match stats, lineups and AI analysis on Betcheza.`
       : live
-      ? `Live: ${home} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${away}${league ? ` | ${league}` : ''}.`
-      : `${home} vs ${away}${league ? ` | ${league}` : ''} — predictions, tips and odds.`,
+      ? `🔴 LIVE: ${home} ${match.homeScore ?? 0} - ${match.awayScore ?? 0} ${away}${league ? ` | ${league}` : ''}. Follow live commentary, lineups, stats and tips.`
+      : `${home} vs ${away}${league ? ` | ${league}` : ''} — free AI predictions, betting tips, odds and team lineups on Betcheza.`,
     ...(locationObj ? { location: locationObj } : {}),
     // Standard Schema.org competitor array
     competitor: [homeTeamSchema, awayTeamSchema],
-    // Google also reads homeTeam/awayTeam for score display
+    // Google reads homeTeam/awayTeam with score for rich result display
     homeTeam: {
       ...homeTeamSchema,
-      ...(finished && match.homeScore != null
+      ...((finished || live) && match.homeScore != null
         ? { score: { '@type': 'QuantitativeValue', value: match.homeScore } }
         : {}),
     },
     awayTeam: {
       ...awayTeamSchema,
-      ...(finished && match.awayScore != null
+      ...((finished || live) && match.awayScore != null
         ? { score: { '@type': 'QuantitativeValue', value: match.awayScore } }
         : {}),
     },
