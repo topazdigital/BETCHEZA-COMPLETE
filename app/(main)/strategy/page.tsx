@@ -2,11 +2,104 @@
 
 import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
-import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck, RefreshCw, X, CreditCard } from 'lucide-react';
+import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck, RefreshCw, X, CreditCard, Bell, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WeeklyStrategy, DayPrediction, StrategyPick } from '@/app/api/strategy/predictions/route';
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
+import { isPushSupported, getPushPermission, ensurePushSubscribed } from '@/lib/push-client';
+
+/* ────────────────────────────────────────────────────────── */
+/* Strategy Result Notification Toggle                      */
+/* ────────────────────────────────────────────────────────── */
+function StrategyNotifBell() {
+  const [state, setState] = useState<'loading' | 'subscribed' | 'unsubscribed' | 'denied' | 'unsupported'>('loading');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isPushSupported()) { setState('unsupported'); return; }
+    const perm = getPushPermission();
+    if (perm === 'denied') { setState('denied'); return; }
+    // Check if browser already has a push subscription
+    navigator.serviceWorker.getRegistration('/sw.js').then(reg => {
+      if (!reg) { setState('unsubscribed'); return; }
+      reg.pushManager.getSubscription().then(sub => {
+        setState(sub ? 'subscribed' : 'unsubscribed');
+      }).catch(() => setState('unsubscribed'));
+    }).catch(() => setState('unsubscribed'));
+  }, []);
+
+  async function toggle() {
+    if (busy || state === 'unsupported') return;
+    if (state === 'denied') {
+      alert('Notifications are blocked in your browser settings. Open your browser settings and allow notifications for this site, then try again.');
+      return;
+    }
+    if (state === 'subscribed') {
+      // Unsubscribe from push entirely at the browser level
+      setBusy(true);
+      try {
+        const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+        const sub = await reg?.pushManager.getSubscription();
+        if (sub) {
+          await sub.unsubscribe();
+          await fetch('/api/notifications/subscribe', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
+        }
+        setState('unsubscribed');
+      } catch { /* ignore */ } finally { setBusy(false); }
+      return;
+    }
+    // Subscribe
+    setBusy(true);
+    const result = await ensurePushSubscribed({ topics: ['strategy_results', 'general'] });
+    setBusy(false);
+    if (result.ok) {
+      setState('subscribed');
+    } else if (result.error?.includes('blocked') || result.error?.includes('denied')) {
+      setState('denied');
+    }
+  }
+
+  if (state === 'unsupported' || state === 'loading') return null;
+
+  const isOn = state === 'subscribed';
+  const isDenied = state === 'denied';
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      title={
+        isDenied ? 'Notifications blocked — check browser settings' :
+        isOn ? 'Receiving result notifications — click to mute' :
+        'Get notified when today\'s picks are settled'
+      }
+      className={cn(
+        'flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-60',
+        isOn
+          ? 'border-green-500/40 bg-green-500/10 text-green-600 hover:bg-green-500/20 dark:text-green-400'
+          : isDenied
+          ? 'border-red-500/30 bg-red-500/8 text-red-500 cursor-not-allowed'
+          : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+      )}
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : isDenied ? (
+        <BellOff className="h-3.5 w-3.5" />
+      ) : (
+        <Bell className={cn('h-3.5 w-3.5', isOn && 'fill-green-500')} />
+      )}
+      <span className="hidden sm:inline">
+        {isDenied ? 'Blocked' : isOn ? 'Notifying' : 'Notify me'}
+      </span>
+    </button>
+  );
+}
 
 const WEEK_PLAN = [
   { day: 1, stake: 1000,  save: 0,      targetWin: 3000  },
@@ -867,17 +960,20 @@ export default function StrategyPage() {
             </div>
             <h1 className="text-xl font-bold">3 Daily Odds Winning Strategy</h1>
           </div>
-          {isAdmin && (
-            <button
-              onClick={handleResettle}
-              disabled={resettling}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors disabled:opacity-60"
-              title="Re-settle all pending picks from past matches"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${resettling ? 'animate-spin' : ''}`} />
-              {resettling ? 'Settling…' : 'Resettle Picks'}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <StrategyNotifBell />
+            {isAdmin && (
+              <button
+                onClick={handleResettle}
+                disabled={resettling}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors disabled:opacity-60"
+                title="Re-settle all pending picks from past matches"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${resettling ? 'animate-spin' : ''}`} />
+                {resettling ? 'Settling…' : 'Resettle Picks'}
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-sm text-muted-foreground">
           A 7-day compounding football bet strategy. Each day we publish picks whose <strong>combined odds land between 3.0–4.0</strong>. Subscribe weekly — your personal 7-day plan starts the day you join.

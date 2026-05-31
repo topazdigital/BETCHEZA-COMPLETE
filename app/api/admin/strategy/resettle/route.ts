@@ -154,13 +154,58 @@ export async function POST(req: NextRequest) {
       let picks: StrategyPick[];
       try { picks = JSON.parse(row.picks || '[]'); } catch { continue; }
 
-      const hasPending = picks.some(p => p.result === 'pending' && !p.actualScore);
-      if (!hasPending) continue;
+      // Process this day if it has any pending picks OR settled picks whose
+      // actualScore might differ from the API's final score (early-settlement bug).
+      const hasWorkToDo = picks.some(p =>
+        (p.result === 'pending' && !p.actualScore) ||
+        (p.result && p.result !== 'pending' && p.actualScore)
+      );
+      if (!hasWorkToDo) continue;
 
       let dayChanged = false;
 
       const updated = await Promise.all(picks.map(async pick => {
-        if (pick.result !== 'pending') return pick;
+        // For already-settled picks: check whether the API has a different final
+        // score (happens when early settlement captured an intermediate score).
+        if (pick.result !== 'pending') {
+          if (!pick.actualScore) return pick; // no stored score — leave alone
+
+          const pHomeN = normalizeTeam(pick.homeTeam);
+          const pAwayN = normalizeTeam(pick.awayTeam);
+          let apiMatch: { homeScore: number; awayScore: number } | null = null;
+          for (const [, v] of realScoreMap.entries()) {
+            const vHomeN = normalizeTeam(v.homeTeam);
+            const vAwayN = normalizeTeam(v.awayTeam);
+            const homeOk = vHomeN === pHomeN || vHomeN.includes(pHomeN) || pHomeN.includes(vHomeN) || matchTeamWords(v.homeTeam, pick.homeTeam);
+            const awayOk = vAwayN === pAwayN || vAwayN.includes(pAwayN) || pAwayN.includes(vAwayN) || matchTeamWords(v.awayTeam, pick.awayTeam);
+            if (homeOk && awayOk) { apiMatch = v; break; }
+          }
+          if (!apiMatch) return pick; // match not in API cache — can't verify
+
+          const apiScoreStr = `${apiMatch.homeScore}-${apiMatch.awayScore}`;
+          if (apiScoreStr === pick.actualScore) return pick; // scores agree — fine
+
+          // API shows a different final score than what was stored — re-evaluate
+          const correct = checkPickResult(pick, apiMatch.homeScore, apiMatch.awayScore);
+          if (!correct || correct === pick.result) return { ...pick, actualScore: apiScoreStr }; // same result, just update score
+
+          corrections.push({
+            date: row.date,
+            match: `${pick.homeTeam} vs ${pick.awayTeam}`,
+            pick: `${pick.pick} (${pick.market})`,
+            score: apiScoreStr,
+            was: pick.result,
+            now: correct,
+          });
+          dayChanged = true;
+          pass2Fixed++;
+          console.log(
+            `[strategy/resettle] PASS2-CORRECT ${row.date} | ${pick.homeTeam} vs ${pick.awayTeam} | ` +
+            `"${pick.pick}" | stored ${pick.actualScore} → API ${apiScoreStr} → ${correct}`
+          );
+          return { ...pick, result: correct, actualScore: apiScoreStr };
+        }
+
         if (pick.actualScore) return pick; // has score — handled in pass 1
 
         // Only try to settle if kickoff was > 2 hours ago

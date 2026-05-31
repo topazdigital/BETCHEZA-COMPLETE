@@ -336,24 +336,51 @@ async function updateStrategyPickLiveScores(
 
     // Only process pending picks for real-time settlement
     if (pick.result === 'pending') {
-      // Settle immediately when outcome is mathematically certain mid-game.
-      //  • LOSS certain: Under line blown, opponent scored enough — can never recover.
-      //  • WIN certain:  Over line cleared, BTTS Yes after both scored, etc.
-      // VAR can only disallow a goal that was just scored; once play resumes from
-      // kick-off the review window is closed — same logic bookmakers use to pay out.
-      const earlyResult = checkPickResult(pick, hs, as_);
-      if (earlyResult === 'loss' || earlyResult === 'win') {
-        changed = true;
-        console.log(`[live-scores] Early ${earlyResult.toUpperCase()} settled: ${pick.homeTeam} vs ${pick.awayTeam} | ${pick.market} ${pick.pick} @ ${scoreStr}`);
-        return { ...pick, result: earlyResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+      // Picks are for 90-minute results only. Double Chance and 1X2 markets must
+      // NOT be early-settled mid-game — a trailing team can still equalise or win.
+      // Only Over/Under/BTTS have truly certain mid-game outcomes (line blown, etc.).
+      const marketLower = (pick.market || '').toLowerCase();
+      const waitForFinalWhistle =
+        marketLower.includes('double chance') ||
+        marketLower === '1x2' || marketLower.includes('1x2') ||
+        marketLower === 'match result' || marketLower.includes('match result') ||
+        marketLower === 'match winner' || marketLower === '' ||
+        marketLower === 'full time result' || marketLower === 'ft result';
+
+      if (!waitForFinalWhistle || liveStatus === 'finished') {
+        const earlyResult = checkPickResult(pick, hs, as_);
+        if (earlyResult === 'loss' || earlyResult === 'win') {
+          changed = true;
+          const label = liveStatus === 'finished' ? 'FT' : 'Early';
+          console.log(`[live-scores] ${label} ${earlyResult.toUpperCase()} settled: ${pick.homeTeam} vs ${pick.awayTeam} | ${pick.market} ${pick.pick} @ ${scoreStr}`);
+          return { ...pick, result: earlyResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+        }
       }
     }
 
-    // Update liveScore even for already-settled picks (FT score display)
+    // When a match finishes, correct any pick that was early-settled using an
+    // intermediate score that turned out to be wrong (e.g. 0-1 during play → 1-1 FT).
+    if (pick.result !== 'pending' && liveStatus === 'finished') {
+      const finalResult = checkPickResult(pick, hs, as_);
+      if (finalResult && finalResult !== pick.result) {
+        changed = true;
+        console.log(`[live-scores] Correcting early settlement: ${pick.homeTeam} vs ${pick.awayTeam} | ${pick.market} | was ${pick.result} → corrected to ${finalResult} at ${scoreStr}`);
+        return { ...pick, result: finalResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+      }
+    }
+
+    // Update liveScore for display; also lock in actualScore when match finishes
+    // so admin resettle (Pass 1) always uses the true 90-min score, not an
+    // intermediate snapshot captured during early settlement.
     const liveScoreChanged = pick.liveScore !== scoreStr || pick.liveStatus !== liveStatus;
     if (liveScoreChanged) {
       changed = true;
-      return { ...pick, liveScore: scoreStr, liveStatus };
+      return {
+        ...pick,
+        liveScore: scoreStr,
+        liveStatus,
+        ...(liveStatus === 'finished' ? { actualScore: scoreStr } : {}),
+      };
     }
     return pick;
   });
