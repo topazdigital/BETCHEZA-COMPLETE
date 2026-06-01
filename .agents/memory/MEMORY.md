@@ -4,3 +4,4 @@
 - [Match card date labels](match-card-dates.md) — compact variant hid "Today" intentionally; fixed to show with styled label
 - [Strategy pick settlement](strategy-settlement.md) — live-scores cron settles last 3 days' picks via settleRecentPendingStrategyPicks(); admin "Resettle Picks" button on /strategy page hits /api/admin/strategy/resettle
 - [SEO canonical & robots fixes](seo-canonical.md) — robots.txt was broken (Disallow rules orphaned); match canonicals must use matchToSlug not encodeURIComponent(id); matchToSlug now handles hyphen-delimited URL slugs
+- [Cricket & Tennis ESPN fetch](cricket-tennis-espn.md) — ESPN cricket has no /all/ endpoint; must scan sequential series IDs; DB/file match cache persists across restarts and can serve stale 0-cricket results — must clear both when debugging

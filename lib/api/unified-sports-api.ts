@@ -1213,6 +1213,51 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     }
     if (combined.events.length) data = combined;
   }
+  // For cricket, ESPN's /all/ endpoint doesn't exist. Fetch multiple known
+  // active series IDs in parallel and merge — covers Tests, ODIs, T20s,
+  // domestic leagues, and bilateral series running concurrently.
+  if (!data?.events?.length && sport === 'cricket') {
+    // ESPN assigns sequential IDs to cricket series. We keep a wide curated
+    // list covering both known-active series and nearby IDs so that as new
+    // series are added we still catch them without a code change.
+    const CRICKET_LEAGUE_IDS = [
+      // Known active (Jun 2026) — keep scanning nearby IDs for future series
+      '8634','8638','8642','8646','8650','8654','8658','8662',
+      '8667','8673','8678','8679','8683','8688','8693','8698',
+      '8703','8708','8713','8718','8723','8728','8733','8738',
+      '8743','8748','8753','8758','8763','8768','8773','8778',
+    ];
+    // ESPN cricket endpoints don't accept ?dates= — fetch each league without
+    // a date parameter and filter to matches within a wide window afterwards.
+    const cricketWindowStart = new Date(now); cricketWindowStart.setUTCDate(cricketWindowStart.getUTCDate() - 30);
+    const cricketWindowEnd = new Date(now); cricketWindowEnd.setUTCDate(cricketWindowEnd.getUTCDate() + 30);
+    const combined: ESPNScoreboardResponseFull = { events: [] } as ESPNScoreboardResponseFull;
+    await Promise.allSettled(
+      CRICKET_LEAGUE_IDS.map(async (lid) => {
+        try {
+          const r = await fetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
+            headers: { Accept: 'application/json' },
+            cache: 'no-store' as const,
+            signal: AbortSignal.timeout(5000),
+          });
+          if (r.ok) {
+            const d = await r.json() as ESPNScoreboardResponseFull;
+            // Grab the friendly series name from the top-level leagues array
+            const seriesName: string | undefined = (d as unknown as { leagues?: Array<{ name?: string }> }).leagues?.[0]?.name;
+            // Only include events whose date falls within the window; annotate
+            // each event with the series ID and name since cricket event UIDs
+            // don't contain an "l:" fragment.
+            const relevant = (d?.events || []).filter(ev => {
+              const evDate = new Date(ev.date);
+              return evDate >= cricketWindowStart && evDate <= cricketWindowEnd;
+            }).map(ev => Object.assign(ev, { _cricketLeagueId: lid, _cricketLeagueName: seriesName }));
+            if (relevant.length) combined.events.push(...relevant);
+          }
+        } catch { /* timeout or 404 — skip */ }
+      })
+    );
+    if (combined.events.length) data = combined;
+  }
   if (!data?.events?.length) {
     setCache(cacheKey, []);
     return [];
@@ -1244,13 +1289,26 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     })
   );
 
+  // Sports where each competitor is an individual athlete (not a team).
+  // For these we try to build ESPN CDN headshot URLs from the athlete's id.
+  const INDIVIDUAL_SPORT_TYPES = new Set(['tennis', 'golf', 'mma', 'racing']);
+  const isIndividualSportType = INDIVIDUAL_SPORT_TYPES.has(sportType);
+  // Helper: extract ESPN athlete numeric ID from a competitor uid like "s:850~l:851~a:4691"
+  const athleteIdFromUid = (uid?: string): string | undefined => uid?.match(/a:(\d+)/)?.[1];
+
   // Build a flat list of {event, competition} pairs.
   // Most sports: competitions are directly on event.competitions.
   // Tennis/golf/tournament sports: ESPN nests competitions inside event.groupings[].competitions.
-  type EventCompPair = { event: ESPNEvent; competition: ESPNEvent['competitions'][0]; eventName?: string };
+  type GroupingInfo = { grouping?: { name?: string; displayName?: string; slug?: string } };
+  type EventCompPair = {
+    event: ESPNEvent;
+    competition: ESPNEvent['competitions'][0];
+    eventName?: string;
+    groupingName?: string; // e.g. "Women's Singles" — used as sub-tournament label
+  };
   const eventCompPairs: EventCompPair[] = [];
   for (const event of data.events) {
-    const evExt = event as ESPNEvent & { groupings?: Array<{ grouping?: unknown; competitions?: ESPNEvent['competitions'] }> };
+    const evExt = event as ESPNEvent & { groupings?: Array<GroupingInfo & { competitions?: ESPNEvent['competitions'] }> };
     if (event.competitions?.length) {
       for (const comp of event.competitions) {
         eventCompPairs.push({ event, competition: comp });
@@ -1258,14 +1316,15 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     } else if (evExt.groupings?.length) {
       // Tournament-style sports (tennis, golf): matches are nested in groupings
       for (const grp of evExt.groupings) {
+        const groupingName = grp.grouping?.displayName || grp.grouping?.name;
         for (const comp of (grp.competitions || [])) {
-          eventCompPairs.push({ event, competition: comp, eventName: event.name });
+          eventCompPairs.push({ event, competition: comp, eventName: event.name, groupingName });
         }
       }
     }
   }
 
-  for (const { event, competition, eventName } of eventCompPairs) {
+  for (const { event, competition, eventName, groupingName } of eventCompPairs) {
     if (!competition) continue;
     const homeCompetitor = competition.competitors.find(c => c.homeAway === 'home');
     const awayCompetitor = competition.competitors.find(c => c.homeAway === 'away');
@@ -1278,11 +1337,38 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     const awayTeamName = resolvedAway?.team?.displayName || resolvedAway?.team?.name || resolvedAway?.athlete?.displayName || 'TBD';
     if (homeTeamName === 'TBD' && awayTeamName === 'TBD') continue;
 
-    // For grouping-based events (tennis/golf), use the competition's own uid for league id
+    // For grouping-based events (tennis/golf), use the competition's own uid for league id.
+    // For cricket fallback events, uid has no "l:" part — use the annotated _cricketLeagueId.
     const uidSource = (competition as unknown as { uid?: string }).uid || (event as ESPNEvent & { uid?: string }).uid;
     const espnLeagueIdMatch = uidSource?.match(/l:(\d+)/);
-    const espnLeagueId = espnLeagueIdMatch?.[1] || '0';
-    const leagueInfo = leagueInfoMap.get(espnLeagueId) || { name: eventName || 'Unknown League', slug: `espn-${espnLeagueId}`, country: 'World', countryCode: 'WO' };
+    const annotatedCricketId = (event as unknown as { _cricketLeagueId?: string })._cricketLeagueId;
+    const espnLeagueId = espnLeagueIdMatch?.[1] || annotatedCricketId || '0';
+    // Build a friendly league/tournament name: prefer cached lookup, then
+    // combine event name + grouping (e.g. "Roland Garros — Women's Singles"),
+    // then the ESPN series name annotated on cricket fallback events.
+    const annotatedCricketLeagueName = (event as unknown as { _cricketLeagueName?: string })._cricketLeagueName;
+    const fallbackLeagueName = eventName
+      ? (groupingName ? `${eventName} — ${groupingName}` : eventName)
+      : (annotatedCricketLeagueName || 'Unknown League');
+    const resolvedLeagueInfo = leagueInfoMap.get(espnLeagueId);
+    // If the resolved name is a generic placeholder (e.g. "League 851") AND
+    // we have a better name from the event/grouping metadata, prefer that.
+    const isGenericName = !resolvedLeagueInfo || /^League \d+$/.test(resolvedLeagueInfo.name);
+    const leagueInfo = (!isGenericName && resolvedLeagueInfo)
+      ? resolvedLeagueInfo
+      : { name: fallbackLeagueName !== 'Unknown League' ? fallbackLeagueName : (resolvedLeagueInfo?.name || 'Unknown League'), slug: `espn-${espnLeagueId}`, country: 'World', countryCode: 'WO' };
+
+    // For individual sports (tennis/golf/mma) build ESPN CDN headshot URLs from
+    // the athlete id embedded in each competitor uid (e.g. "s:850~l:851~a:4691").
+    const homeAthleteId = athleteIdFromUid((resolvedHome as unknown as { uid?: string }).uid);
+    const awayAthleteId = athleteIdFromUid((resolvedAway as unknown as { uid?: string }).uid);
+    const headshotBase = `https://a.espncdn.com/i/headshots/${sport}/players/full`;
+    const homeLogoUrl = resolvedHome?.team?.logo
+      || (isIndividualSportType && homeAthleteId ? `${headshotBase}/${homeAthleteId}.png` : undefined)
+      || (resolvedHome?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href;
+    const awayLogoUrl = resolvedAway?.team?.logo
+      || (isIndividualSportType && awayAthleteId ? `${headshotBase}/${awayAthleteId}.png` : undefined)
+      || (resolvedAway?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href;
 
     // Use our internal leagueId if we have a mapping, otherwise fall back to
     // a deterministic synthetic id (80000 + espnNumericId). The mapping is
@@ -1334,18 +1420,18 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       leagueId: ourLeagueId,
       leagueKey: leagueKeyForId,
       homeTeam: {
-        id: resolvedHome?.team?.id || resolvedHome?.athlete?.id || '',
+        id: resolvedHome?.team?.id || resolvedHome?.athlete?.id || homeAthleteId || '',
         name: homeTeamName,
         shortName: resolvedHome?.team?.abbreviation || resolvedHome?.athlete?.shortName || homeTeamName.slice(0, 3).toUpperCase(),
-        logo: resolvedHome?.team?.logo,
+        logo: homeLogoUrl,
         form: resolvedHome?.form || undefined,
         record: resolvedHome?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
       },
       awayTeam: {
-        id: resolvedAway?.team?.id || resolvedAway?.athlete?.id || '',
+        id: resolvedAway?.team?.id || resolvedAway?.athlete?.id || awayAthleteId || '',
         name: awayTeamName,
         shortName: resolvedAway?.team?.abbreviation || resolvedAway?.athlete?.shortName || awayTeamName.slice(0, 3).toUpperCase(),
-        logo: resolvedAway?.team?.logo,
+        logo: awayLogoUrl,
         form: resolvedAway?.form || undefined,
         record: resolvedAway?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
       },
