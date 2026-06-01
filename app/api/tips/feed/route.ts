@@ -335,8 +335,65 @@ export async function GET(request: NextRequest) {
     };
   }).filter(Boolean);
 
-  // Real DB tips first, then auto-seeded tips
-  const tips = [...realDbTipsMapped, ...autoTipsMapped];
+  // In-memory user-submitted tips (globalThis store shared with match tips route)
+  type MemTip = {
+    id: string; matchId: string; prediction: string; market: string; odds: number;
+    stake: number; confidence: number; analysis: string; isPremium: boolean; status: string;
+    likes: number; comments: number; createdAt: string;
+    tipster: { id: string; displayName: string; totalTips: number; wonTips: number; winRate: number; roi: number; streak: number; rank: number; isPremium: boolean; monthlyPrice: number; followers: number; verified: boolean; };
+  };
+  const memStore = (globalThis as { __tipsStore?: Map<string, MemTip[]> }).__tipsStore;
+  const inMemoryTips: typeof realDbTipsMapped = [];
+  if (memStore) {
+    for (const [mId, tips] of memStore) {
+      for (const tip of tips) {
+        const userId = Number(tip.tipster.id);
+        const realT = isNaN(userId) ? null : realTipsterMap.get(userId);
+        // Only include tips from real DB tipsters or all user-submitted tips
+        inMemoryTips.push({
+          id: `mem-${tip.id}`,
+          matchId: mId,
+          matchSlug: mId,
+          homeTeam: '',
+          awayTeam: '',
+          league: '',
+          sport: 'Football',
+          kickoff: null,
+          prediction: tip.prediction,
+          market: tip.market,
+          odds: tip.odds,
+          confidence: tip.confidence,
+          status: tip.status,
+          likes: tip.likes,
+          comments: tip.comments,
+          analysis: tip.analysis,
+          isPremium: tip.isPremium,
+          createdAt: tip.createdAt,
+          isReal: !!realT,
+          tipster: {
+            id: userId || 0,
+            displayName: tip.tipster.displayName,
+            username: tip.tipster.displayName.toLowerCase().replace(/\s+/g, '_'),
+            avatar: realT?.avatar ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${tip.tipster.displayName}`,
+            countryCode: realT?.countryCode ?? 'KE',
+            winRate: realT?.winRate ?? tip.tipster.winRate,
+            roi: realT?.roi ?? tip.tipster.roi,
+            totalTips: realT?.totalTips ?? tip.tipster.totalTips,
+            profit: (realT?.roi ?? tip.tipster.roi * 10).toFixed(1),
+            isPro: realT?.isPro ?? tip.tipster.isPremium,
+            isVerified: realT?.isVerified ?? tip.tipster.verified,
+            isReal: !!realT,
+          },
+        });
+      }
+    }
+  }
+  // De-duplicate: if a tip is already in DB tips, skip the in-memory copy
+  const dbTipMatchIds = new Set(realDbTipsMapped.map(t => `${t.tipster.id}-${t.matchId}`));
+  const freshMemTips = inMemoryTips.filter(t => !dbTipMatchIds.has(`${t.tipster.id}-${t.matchId}`));
+
+  // Real DB tips first, then in-memory user tips, then auto-seeded tips
+  const tips = [...realDbTipsMapped, ...freshMemTips, ...autoTipsMapped];
 
   // Best tip: prefer pending future match
   const bestTip = tips.find(t => t!.status === 'pending') ?? tips[0] ?? null;

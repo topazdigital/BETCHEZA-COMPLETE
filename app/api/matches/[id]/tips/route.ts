@@ -267,6 +267,27 @@ export async function POST(
   existing.unshift(newTip);
   submittedTipsStore.set(matchId, existing);
 
+  // Persist to DB tips table (best-effort, non-blocking)
+  setImmediate(async () => {
+    try {
+      await query(
+        `INSERT INTO tips (user_id, match_id, market_id, selection, odds_value, stake, analysis, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+        [
+          user.userId,
+          matchId,
+          newTip.market,
+          newTip.prediction,
+          newTip.odds,
+          newTip.stake,
+          newTip.analysis,
+        ],
+      );
+    } catch (e) {
+      console.warn('[tips] DB insert failed (in-memory fallback active):', (e as Error).message);
+    }
+  });
+
   // Track first bet for referral system (fire-and-forget)
   onReferralFirstBet(user.userId).catch(() => {});
 

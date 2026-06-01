@@ -320,23 +320,24 @@ function StandingsSidebar({ tipsters }: { tipsters: TopTipster[] }) {
 
       <div className="space-y-2">
         {tipsters.map((t, i) => (
-          <div key={t.id} className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-muted transition-colors">
-            <span className="text-base w-5 text-center shrink-0">{prizes[i]}</span>
-            <Link href={`/tipsters/${t.username}`} className="h-7 w-7 shrink-0">
-              <Avatar src={t.avatar} name={t.displayName} size="sm" />
-            </Link>
-            <Link href={`/tipsters/${t.username}`} className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate">{t.displayName}</p>
-              <p className="text-[10px] text-muted-foreground">{t.totalTips} tips</p>
-            </Link>
-            <div className="flex flex-col items-end gap-1 shrink-0">
-              <p className="text-xs font-bold text-emerald-600">{t.winRate.toFixed(0)}%</p>
+          <div key={t.id} className="rounded-lg p-2 hover:bg-muted transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-sm w-5 text-center shrink-0">{prizes[i]}</span>
+              <Link href={`/tipsters/${t.username}`} className="h-7 w-7 shrink-0">
+                <Avatar src={t.avatar} name={t.displayName} size="sm" />
+              </Link>
+              <Link href={`/tipsters/${t.username}`} className="flex-1 min-w-0">
+                <p className="text-xs font-semibold leading-tight">{t.displayName}</p>
+                <p className="text-[10px] text-muted-foreground">{t.totalTips} tips · <span className="text-emerald-600 font-bold">{t.winRate.toFixed(0)}%</span></p>
+              </Link>
+            </div>
+            <div className="mt-1.5 ml-14">
               <FollowTipsterButton
                 tipsterId={t.id}
                 tipsterName={t.displayName}
                 variant="pill"
                 size="sm"
-                className="text-[10px] h-5 px-2 py-0"
+                className="text-[10px] h-6 w-full px-2"
               />
             </div>
           </div>
