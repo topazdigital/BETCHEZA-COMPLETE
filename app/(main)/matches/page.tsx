@@ -170,23 +170,39 @@ export async function generateMetadata({
     ] : []),
   ];
 
+  const sportSlug = sport?.toLowerCase() ?? 'football';
+  const ogImageUrl = `${BASE_URL}/api/og?${new URLSearchParams({
+    home: leagueName ? `${leagueName} Matches` : `${SPORT_SEO[sportSlug]?.name ?? 'Sport'} Tips`,
+    away: 'Betcheza Kenya',
+    league: leagueName || (SPORT_SEO[sportSlug]?.name ? `${SPORT_SEO[sportSlug].name} Today` : 'All Sports Today'),
+    sport: sportSlug,
+    status: 'scheduled',
+  }).toString()}`;
+
   return {
     title,
     description,
     keywords,
     alternates: { canonical },
-    robots: { index: true, follow: true },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: { index: true, follow: true, 'max-snippet': -1, 'max-image-preview': 'large' },
+    },
     openGraph: {
       title,
       description,
       url: canonical,
       type: 'website',
       siteName: SITE_NAME,
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: title }],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
+      site: '@betcheza',
+      images: [ogImageUrl],
     },
   };
 }

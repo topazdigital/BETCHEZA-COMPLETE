@@ -4,7 +4,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
 
 export const metadata: Metadata = {
   title: 'Live Scores Today | Football, Tennis, Basketball & All Sports | Betcheza',
-  description: 'Real-time live scores for football, tennis, basketball, cricket, rugby, MMA and more. Follow in-play results, live betting tips and match commentary updated every minute. Kenya's #1 live scores site.',
+  description: "Real-time live scores for football, tennis, basketball, cricket, rugby, MMA and more. Follow in-play results, live betting tips and match commentary updated every minute. Kenya's #1 live scores site.",
   keywords: [
     // Football
     'live football scores today', 'live football scores Kenya', 'football live results today',
