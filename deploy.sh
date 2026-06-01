@@ -14,8 +14,13 @@ if [ -z "$BETCHEZA_DEPLOY_REEXECED" ]; then
   echo -e "${YELLOW}[1/5] Pulling latest changes...${NC}"
   git rm -r --cached .local/state/ 2>/dev/null || true
   git rm -r --cached .local/data/ 2>/dev/null || true
+  # Stash any uncommitted local changes (env files, runtime data, etc.)
   git stash push --include-untracked -m "auto-stash before deploy $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
-  git pull origin main
+  # Fetch then hard-reset — avoids "divergent branches" errors that block a
+  # plain `git pull` when the server has local commits not on origin.
+  # The server should always mirror origin/main exactly.
+  git fetch origin
+  git reset --hard origin/main
   export BETCHEZA_DEPLOY_REEXECED=1
   exec bash "$APP_DIR/deploy.sh" "$@"
 fi
