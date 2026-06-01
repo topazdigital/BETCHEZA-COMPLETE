@@ -70,7 +70,12 @@ npm install --prefer-offline
 
 # ── Step 3: Build ─────────────────────────────────────────────────────────────
 echo -e "${YELLOW}[3/5] Building...${NC}"
-npm run build
+# Clear stale Next.js build cache before every deploy to prevent partial-build
+# artifacts from causing TypeScript or module-resolution failures.
+rm -rf "$APP_DIR/.next"
+# Give the build process extra heap — Next.js (especially with turbopack and
+# many routes) can exceed the default 512 MB Node.js limit.
+NODE_OPTIONS='--max-old-space-size=4096' npm run build
 
 # ── Step 4: Apache proxy config ───────────────────────────────────────────────
 echo -e "${YELLOW}[4/5] Configuring Apache reverse proxy...${NC}"
