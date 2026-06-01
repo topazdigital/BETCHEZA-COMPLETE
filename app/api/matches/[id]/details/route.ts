@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getMatchById,
+  getAllMatches,
   fetchESPNSummary,
   getEspnLeagueConfigForId,
   getEspnEventIdFromMatchId,
   extractEspnOdds,
   deriveSoccerMarkets,
   type ESPNSummaryResponse,
+  type UnifiedMatch,
 } from '@/lib/api/unified-sports-api';
 import { slugToMatchId } from '@/lib/utils/match-url';
 
@@ -815,12 +817,52 @@ function generateComputedOdds(homeTeamName: string, awayTeamName: string, sportT
   };
 }
 
+/**
+ * Extract team-name tokens from a human-readable URL slug so we can do a
+ * fuzzy cache scan before the expensive ESPN league-probe lookup.
+ * "palestino-vs-audax-italiano-401850594" → ["palestino", "audax italiano"]
+ */
+function extractTeamHintsFromSlug(slug: string): [string, string] | null {
+  const m = decodeURIComponent(slug).match(/^([a-z0-9-]+)-vs-([a-z0-9-]+?)(?:-\d{4,})?$/i);
+  if (!m) return null;
+  return [m[1].replace(/-/g, ' '), m[2].replace(/-/g, ' ')];
+}
+
+function teamNameMatches(teamName: string, hint: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+  const t = norm(teamName);
+  const h = norm(hint);
+  const hWords = h.split(' ').filter(w => w.length >= 3);
+  return hWords.length > 0 && hWords.every(w => t.includes(w));
+}
+
 export async function GET(_request: NextRequest, context: RouteContext) {
   const { id: rawId } = await context.params;
   // Resolve clean URL slugs (e.g. "ita1-737421") to full ESPN IDs ("espn_ita.1_737421")
   const id = slugToMatchId(decodeURIComponent(rawId));
   try {
-    const match = await getMatchById(id);
+    let match: UnifiedMatch | null = null;
+
+    // Fast path for human-readable slugs: scan the live match cache by team
+    // names BEFORE doing the expensive ESPN league-probe. This prevents the
+    // wrong-league bug where an old Champions League event with the same
+    // numeric ID beats the actual current match in the race.
+    if (id.startsWith('espn_eventid_') && decodeURIComponent(rawId).includes('-vs-')) {
+      const hints = extractTeamHintsFromSlug(rawId);
+      if (hints) {
+        try {
+          const allMatches = await getAllMatches();
+          const byTeam = allMatches.find(m =>
+            teamNameMatches(m.homeTeam.name, hints[0]) &&
+            teamNameMatches(m.awayTeam.name, hints[1])
+          );
+          if (byTeam) match = byTeam;
+        } catch { /* fall through to getMatchById */ }
+      }
+    }
+
+    if (!match) match = await getMatchById(id);
+
     if (!match) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }

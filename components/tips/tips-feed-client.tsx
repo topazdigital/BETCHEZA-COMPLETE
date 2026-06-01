@@ -4,16 +4,18 @@ import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { format, parseISO } from "date-fns"
 import {
-  ThumbsUp, MessageSquare, Star, TrendingUp, Clock, Filter,
-  ChevronDown, ChevronUp, ExternalLink, Trophy, Flame,
+  ThumbsUp, MessageSquare, TrendingUp, Filter,
+  ChevronDown, ChevronUp, ExternalLink, Trophy, Flame, BookmarkCheck,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { FollowTipsterButton } from "@/components/tipsters/follow-tipster-button"
+import { useAuth } from "@/contexts/auth-context"
 
-type Day = "today" | "tomorrow" | "upcoming"
+type Day = "today" | "tomorrow" | "upcoming" | "mine"
 
 interface Tip {
   id: string
@@ -169,7 +171,7 @@ function TipCard({ tip }: { tip: Tip }) {
 
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <Link href={`/tipsters/${tip.tipster.username}`} className="text-xs font-bold hover:text-primary truncate">
                 {tip.tipster.displayName}
@@ -181,6 +183,13 @@ function TipCard({ tip }: { tip: Tip }) {
                 {tip.tipster.winRate.toFixed(0)}% win •{" "}
                 {tip.tipster.totalTips} tips
               </span>
+              <FollowTipsterButton
+                tipsterId={tip.tipster.id}
+                tipsterName={tip.tipster.displayName}
+                variant="pill"
+                size="sm"
+                className="text-[10px] h-5 px-2 py-0"
+              />
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {sportIcon(tip.sport)} {tip.league}
@@ -311,20 +320,26 @@ function StandingsSidebar({ tipsters }: { tipsters: TopTipster[] }) {
 
       <div className="space-y-2">
         {tipsters.map((t, i) => (
-          <Link key={t.id} href={`/tipsters/${t.username}`} className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-muted transition-colors">
-            <span className="text-base w-5 text-center">{prizes[i]}</span>
-            <div className="h-7 w-7 shrink-0">
+          <div key={t.id} className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-muted transition-colors">
+            <span className="text-base w-5 text-center shrink-0">{prizes[i]}</span>
+            <Link href={`/tipsters/${t.username}`} className="h-7 w-7 shrink-0">
               <Avatar src={t.avatar} name={t.displayName} size="sm" />
-            </div>
-            <div className="flex-1 min-w-0">
+            </Link>
+            <Link href={`/tipsters/${t.username}`} className="flex-1 min-w-0">
               <p className="text-xs font-semibold truncate">{t.displayName}</p>
               <p className="text-[10px] text-muted-foreground">{t.totalTips} tips</p>
-            </div>
-            <div className="text-right shrink-0">
+            </Link>
+            <div className="flex flex-col items-end gap-1 shrink-0">
               <p className="text-xs font-bold text-emerald-600">{t.winRate.toFixed(0)}%</p>
-              <p className="text-[9px] text-muted-foreground">win rate</p>
+              <FollowTipsterButton
+                tipsterId={t.id}
+                tipsterName={t.displayName}
+                variant="pill"
+                size="sm"
+                className="text-[10px] h-5 px-2 py-0"
+              />
             </div>
-          </Link>
+          </div>
         ))}
       </div>
 
@@ -353,7 +368,66 @@ function LoadingSkeleton() {
   )
 }
 
+interface MyTip {
+  id: string
+  matchId: string
+  matchSlug?: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  sport: string
+  kickoff: string | null
+  prediction: string
+  market: string
+  odds: number
+  stake: number
+  confidence: number
+  status: string
+  analysis: string
+  isPremium: boolean
+  createdAt: string
+}
+
+function MyTipCard({ tip }: { tip: MyTip }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted/30 transition-colors">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+        <BookmarkCheck className="h-4 w-4 text-primary" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <Link href={`/matches/${tip.matchSlug || tip.matchId}`} className="text-xs font-bold hover:text-primary">
+              {tip.homeTeam || "Match"} <span className="font-normal text-muted-foreground">vs</span> {tip.awayTeam}
+            </Link>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {sportIcon(tip.sport)} {tip.league}
+              {tip.kickoff && " · " + format(parseISO(tip.kickoff), "HH:mm")}
+            </p>
+          </div>
+          <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 shrink-0", statusColor(tip.status))}>
+            {tip.status}
+          </Badge>
+        </div>
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 rounded bg-primary/8 px-2 py-0.5">
+            <span className="text-[10px] text-muted-foreground">{tip.market}</span>
+            <span className="text-xs font-bold text-primary">{tip.prediction}</span>
+          </div>
+          <div className="rounded bg-muted px-2 py-0.5">
+            <span className="text-xs font-black tabular-nums">{tip.odds.toFixed(2)}</span>
+          </div>
+        </div>
+        <div className="mt-1.5 text-[10px] text-muted-foreground">
+          {format(parseISO(tip.createdAt), "MMM d, HH:mm")}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function TipsFeedClient() {
+  const { isAuthenticated } = useAuth()
   const [day, setDay] = useState<Day>("today")
   const [sport, setSport] = useState("")
   const [minOdds, setMinOdds] = useState("")
@@ -361,8 +435,11 @@ export function TipsFeedClient() {
   const [data, setData] = useState<FeedData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showMobileFilters, setShowMobileFilters] = useState(false)
+  const [myTips, setMyTips] = useState<MyTip[]>([])
+  const [myTipsLoading, setMyTipsLoading] = useState(false)
 
   const fetchFeed = useCallback(async () => {
+    if (day === "mine") return
     setLoading(true)
     try {
       const params = new URLSearchParams({ day })
@@ -379,12 +456,26 @@ export function TipsFeedClient() {
     }
   }, [day, sport, minOdds, maxOdds])
 
-  useEffect(() => { void fetchFeed() }, [fetchFeed])
+  const fetchMyTips = useCallback(async () => {
+    if (!isAuthenticated) return
+    setMyTipsLoading(true)
+    try {
+      const res = await fetch("/api/tips/my")
+      const json = await res.json()
+      setMyTips(json.tips || [])
+    } catch { /* ignore */ } finally {
+      setMyTipsLoading(false)
+    }
+  }, [isAuthenticated])
 
-  const tabs: { key: Day; label: string }[] = [
+  useEffect(() => { void fetchFeed() }, [fetchFeed])
+  useEffect(() => { if (day === "mine") void fetchMyTips() }, [day, fetchMyTips])
+
+  const tabs: { key: Day; label: string; authOnly?: boolean }[] = [
     { key: "today", label: "Today" },
     { key: "tomorrow", label: "Tomorrow" },
     { key: "upcoming", label: "Upcoming" },
+    { key: "mine", label: "My Tips", authOnly: true },
   ]
 
   return (
@@ -453,55 +544,96 @@ export function TipsFeedClient() {
           )}
 
           {/* Tabs */}
-          <div className="flex items-center gap-0.5 border-b border-border">
-            {tabs.map(t => (
+          <div className="flex items-center gap-0.5 border-b border-border overflow-x-auto">
+            {tabs.filter(t => !t.authOnly || isAuthenticated).map(t => (
               <button
                 key={t.key}
                 onClick={() => setDay(t.key)}
                 className={cn(
-                  "flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-colors border-b-2 -mb-px",
+                  "flex items-center gap-1.5 whitespace-nowrap px-4 py-2 text-xs font-semibold transition-colors border-b-2 -mb-px",
                   day === t.key
                     ? "border-primary text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 )}
               >
                 {t.label}
-                {data && (
+                {t.key !== "mine" && data && (
                   <span className={cn(
                     "rounded-full px-1.5 py-px text-[10px] font-bold",
                     day === t.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                   )}>
-                    {data.counts[t.key]}
+                    {data.counts[t.key as keyof typeof data.counts] ?? 0}
+                  </span>
+                )}
+                {t.key === "mine" && myTips.length > 0 && (
+                  <span className={cn(
+                    "rounded-full px-1.5 py-px text-[10px] font-bold",
+                    day === "mine" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  )}>
+                    {myTips.length}
                   </span>
                 )}
               </button>
             ))}
           </div>
 
-          {loading ? (
-            <LoadingSkeleton />
-          ) : !data || data.tips.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card py-16 text-center">
-              <p className="text-sm font-semibold">No tips for {day}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Try switching tabs or adjusting your filters
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <Flame className="h-3.5 w-3.5 text-orange-500" />
-                <p className="text-xs text-muted-foreground">
-                  Showing <strong>{data.tips.length}</strong> tips
-                  {sport && <> for <strong>{sport}</strong></>}
+          {/* My Tips tab content */}
+          {day === "mine" && (
+            myTipsLoading ? <LoadingSkeleton /> : myTips.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card py-16 text-center">
+                <BookmarkCheck className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm font-semibold">No tips submitted yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Browse matches and add your picks to see them here
+                </p>
+                <Link href="/matches">
+                  <Button size="sm" className="mt-4">Browse Matches</Button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <BookmarkCheck className="h-3.5 w-3.5 text-primary" />
+                  <p className="text-xs text-muted-foreground">
+                    Your <strong>{myTips.length}</strong> submitted tip{myTips.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {myTips.map(tip => (
+                    <MyTipCard key={tip.id} tip={tip} />
+                  ))}
+                </div>
+              </>
+            )
+          )}
+
+          {/* Regular feed tab content */}
+          {day !== "mine" && (
+            loading ? (
+              <LoadingSkeleton />
+            ) : !data || data.tips.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card py-16 text-center">
+                <p className="text-sm font-semibold">No tips for {day}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Try switching tabs or adjusting your filters
                 </p>
               </div>
-              <div className="space-y-2">
-                {data.tips.map(tip => (
-                  <TipCard key={tip.id} tip={tip} />
-                ))}
-              </div>
-            </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <Flame className="h-3.5 w-3.5 text-orange-500" />
+                  <p className="text-xs text-muted-foreground">
+                    Showing <strong>{data.tips.length}</strong> tips
+                    {sport && <> for <strong>{sport}</strong></>}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {data.tips.map(tip => (
+                    <TipCard key={tip.id} tip={tip} />
+                  ))}
+                </div>
+              </>
+            )
           )}
         </main>
 

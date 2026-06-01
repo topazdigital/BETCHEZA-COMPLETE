@@ -5122,7 +5122,17 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
   const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
   if (eventIdOnly) {
     const numericId = eventIdOnly[1];
+    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - SIXTY_DAYS_MS;
 
+    /**
+     * Try each league in parallel via Promise.any.
+     * Crucially, we VALIDATE each result so that an old historical match with the
+     * same numeric event ID (e.g. a past Champions League game) cannot beat a
+     * current match in a different league. Any match whose kickoff is older than
+     * 60 days is rejected, forcing the race to continue until a current match is
+     * found or all leagues are exhausted.
+     */
     async function tryLeagues(leagues: ESPNLeagueConfig[]): Promise<string | null> {
       try {
         return await Promise.race([
@@ -5133,6 +5143,18 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
               if (!competition) throw new Error('no competition');
               const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
               if (!homeComp) throw new Error('no home competitor');
+
+              // Reject matches that are from a previous season / too old.
+              // This prevents a stale Champions League event from hijacking
+              // a current Chilean / other-league match that shares the same ID.
+              const competitionDate = (competition as { date?: string }).date;
+              if (competitionDate) {
+                const matchTs = new Date(competitionDate).getTime();
+                if (!isNaN(matchTs) && matchTs < cutoff) {
+                  throw new Error('match too old');
+                }
+              }
+
               return `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${numericId}`;
             })
           ),
