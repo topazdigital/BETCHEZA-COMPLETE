@@ -73,11 +73,31 @@ function isPostponed(status?: string): boolean {
 function formatKickoffDate(kickoffTime?: string): string {
   if (!kickoffTime) return '';
   try {
-    return new Date(kickoffTime).toLocaleDateString('en-US', {
+    // Use East Africa Time (Africa/Nairobi, UTC+3) as the canonical display
+    // timezone for the site's primary market. This ensures titles like
+    // "Jun 1" match what Kenyan users see rather than the UTC date.
+    return new Date(kickoffTime).toLocaleDateString('en-KE', {
       weekday: 'short', month: 'short', day: 'numeric',
+      timeZone: 'Africa/Nairobi',
     });
   } catch {
     return '';
+  }
+}
+
+/** Format an ISO UTC string as a local-time ISO-8601 string with +03:00 offset
+ *  (Africa/Nairobi) for structured-data startDate / endDate fields, so Google
+ *  shows the correct local date in search results instead of the UTC date. */
+function toEatIso(utcString?: string): string | undefined {
+  if (!utcString) return undefined;
+  try {
+    const d = new Date(utcString);
+    if (isNaN(d.getTime())) return undefined;
+    // Shift by +3h and replace the 'Z' suffix with '+03:00'
+    const eat = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+    return eat.toISOString().replace('Z', '+03:00');
+  } catch {
+    return undefined;
   }
 }
 
@@ -143,6 +163,11 @@ function buildJsonLd(
   }
 
   // SportsEvent — Google's rich result for matches
+  // Use East Africa Time (+03:00) for startDate/endDate so Google shows the
+  // correct local date in search results rather than the UTC date.
+  const eatStartDate = toEatIso(match.kickoffTime) ?? match.kickoffTime;
+  const eatEndDate = endDate ? (toEatIso(endDate) ?? endDate) : undefined;
+
   const sportsEvent: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'SportsEvent',
@@ -150,8 +175,8 @@ function buildJsonLd(
     name: finished
       ? `${home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${away}`
       : `${home} vs ${away}`,
-    startDate: match.kickoffTime,
-    ...(endDate ? { endDate } : {}),
+    startDate: eatStartDate,
+    ...(eatEndDate ? { endDate: eatEndDate } : {}),
     eventStatus,
     eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
     url: canonical,

@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils"
 import { ALL_LEAGUES, ALL_SPORTS, getSportIcon } from "@/lib/sports-data"
 import { playerHref } from "@/lib/utils/slug"
 import { resolveLeagueSlug } from "@/lib/league-aliases"
-import { useMatches } from "@/lib/hooks/use-matches"
+import { useMatches, type Match } from "@/lib/hooks/use-matches"
 import { isLiveMatchStatus } from "@/lib/utils/live-status"
 import {
   Select,
@@ -149,8 +149,27 @@ export default function LeaguePage({ params }: PageProps) {
   const { matches: allMatches, isLoading: matchesLoading } = useMatches(matchesFilter)
 
   const isPastSeason = selectedSeason !== null
+
+  // Determine the effective league ID early (before `league` is derived from allMatches)
+  // so we can pass it to the historical SWR key without a circular dependency.
+  const effectiveLeagueId = knownLeague?.id ?? rawEspnLeagueId ?? null
+
+  // Fetch historical matches from the dedicated endpoint when a past season is selected.
+  // The API returns UnifiedMatch[] (serialised to JSON), which is structurally
+  // compatible with Match (kickoffTime becomes a string after JSON serialisation).
+  const { data: historicalRes, isLoading: historicalLoading } = useSWR<{
+    success: boolean;
+    matches: Match[];
+  }>(
+    isPastSeason && effectiveLeagueId ? `/api/leagues/${effectiveLeagueId}/matches?season=${selectedSeason}` : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60 * 60_000 },
+  )
+
+  const historicalMatches: Match[] = historicalRes?.matches ?? []
+
   const matches = isPastSeason
-    ? []
+    ? historicalMatches
     : knownLeague
     // Client-side safety filter: must match BOTH leagueId AND sportId so that
     // a stale SWR cache can't bleed matches from other leagues onto this page.
@@ -410,7 +429,7 @@ export default function LeaguePage({ params }: PageProps) {
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
             {/* ── Main column: matches + standings table ─────────── */}
             <div className="min-w-0 space-y-3">
-              {matchesLoading ? (
+              {(matchesLoading || historicalLoading) ? (
                 <div className="flex h-32 items-center justify-center">
                   <Spinner className="h-6 w-6" />
                 </div>
@@ -481,7 +500,7 @@ export default function LeaguePage({ params }: PageProps) {
                           <Calendar className="h-6 w-6 text-muted-foreground/60" />
                           <p className="text-sm font-semibold">{SEASONS.find(s => s.year === selectedSeason)?.label} archive</p>
                           <p className="max-w-md text-[11px] text-muted-foreground">
-                            Live/upcoming data is current-season only. Standings and scorers below reflect your selection.
+                            No match data found for this season. Standings and top scorers below may still be available.
                           </p>
                           <Button size="sm" variant="outline" className="mt-2 h-7 text-xs px-3" onClick={() => setSelectedSeason(null)}>
                             Back to current

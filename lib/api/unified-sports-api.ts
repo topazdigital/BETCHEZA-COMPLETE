@@ -4817,6 +4817,120 @@ export async function getMatchesByLeague(leagueId: number): Promise<UnifiedMatch
   return allMatches.filter(m => m.leagueId === leagueId);
 }
 
+/**
+ * Fetch historical matches for a specific league season from ESPN.
+ * Used by the league page season-selector to populate past-season results.
+ * The season year refers to the calendar year in which the season STARTS
+ * (e.g. 2024 → 2024/25 for soccer, or the 2024 season for calendar-year sports).
+ */
+export async function getHistoricalLeagueMatches(
+  leagueId: number,
+  seasonYear: number
+): Promise<UnifiedMatch[]> {
+  const cacheKey = `hist-matches-${leagueId}-${seasonYear}`;
+  const cached = getCached<UnifiedMatch[]>(cacheKey, 24 * 60 * 60 * 1000); // 24h cache for historical
+  if (cached) return cached;
+
+  const config = ESPN_LEAGUES.find(l => l.leagueId === leagueId);
+  if (!config) return [];
+
+  const isSoccer = config.sportType === 'soccer';
+
+  // Build two half-season date ranges (ESPN scoreboard handles wide ranges fine for
+  // finished seasons; splitting avoids potential payload limits on busy leagues).
+  const h1Start = isSoccer ? `${seasonYear}0701` : `${seasonYear}0801`;
+  const h1End   = isSoccer ? `${seasonYear}1231` : `${seasonYear}1231`;
+  const h2Start = isSoccer ? `${seasonYear + 1}0101` : `${seasonYear + 1}0101`;
+  const h2End   = isSoccer ? `${seasonYear + 1}0731` : `${seasonYear + 1}0731`;
+
+  const [data1, data2] = await Promise.all([
+    fetchESPN(config.sport, config.league, 'scoreboard', `${h1Start}-${h1End}`),
+    fetchESPN(config.sport, config.league, 'scoreboard', `${h2Start}-${h2End}`),
+  ]);
+
+  const allEvents = [
+    ...(data1?.events ?? []),
+    ...(data2?.events ?? []),
+  ];
+
+  if (allEvents.length === 0) return [];
+
+  const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+  const hasDraw = !noDrawSports.includes(config.sportType);
+
+  const matches: UnifiedMatch[] = allEvents.map((event) => {
+    const competition = event.competitions[0];
+    const homeCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'home');
+    const awayCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'away');
+    const homeTeamName = homeCompetitor?.team?.displayName || homeCompetitor?.team?.name || homeCompetitor?.athlete?.displayName || 'TBD';
+    const awayTeamName = awayCompetitor?.team?.displayName || awayCompetitor?.team?.name || awayCompetitor?.athlete?.displayName || 'TBD';
+    const status = mapESPNStatus(event.status);
+    const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw, config.sportType, homeTeamName, awayTeamName);
+    const venue = competition?.venue?.fullName;
+
+    return {
+      id: `espn_${config.league.replace(/[^a-z0-9]/gi, '')}_${event.id}`,
+      externalId: event.id,
+      source: 'espn' as const,
+      sportId: config.sportId,
+      sportKey: `${config.sport}_${config.league}`,
+      leagueId: config.leagueId,
+      leagueKey: config.league,
+      homeTeam: {
+        id: homeCompetitor?.team?.id || homeCompetitor?.athlete?.id || '',
+        name: homeTeamName,
+        shortName: homeCompetitor?.team?.abbreviation || homeCompetitor?.athlete?.shortName || homeTeamName.split(' ').pop() || 'TBD',
+        logo: homeCompetitor?.team?.logo,
+        form: homeCompetitor?.form || undefined,
+        record: homeCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      awayTeam: {
+        id: awayCompetitor?.team?.id || awayCompetitor?.athlete?.id || '',
+        name: awayTeamName,
+        shortName: awayCompetitor?.team?.abbreviation || awayCompetitor?.athlete?.shortName || awayTeamName.split(' ').pop() || 'TBD',
+        logo: awayCompetitor?.team?.logo,
+        form: awayCompetitor?.form || undefined,
+        record: awayCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      kickoffTime: new Date(event.date),
+      status,
+      homeScore:
+        homeCompetitor?.score !== undefined && homeCompetitor?.score !== null && homeCompetitor.score !== ''
+          ? parseInt(String(homeCompetitor.score), 10)
+          : null,
+      awayScore:
+        awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
+          ? parseInt(String(awayCompetitor.score), 10)
+          : null,
+      league: {
+        id: config.leagueId,
+        name: config.leagueName,
+        slug: ALL_LEAGUES.find(l => l.id === config.leagueId)?.slug || config.league.replace(/\./g, '-'),
+        country: config.country,
+        countryCode: config.countryCode,
+        tier: 1,
+      },
+      sport: {
+        id: config.sportId,
+        name: ALL_SPORTS.find(s => s.id === config.sportId)?.name || config.sport,
+        slug: ALL_SPORTS.find(s => s.id === config.sportId)?.slug || config.sport,
+        icon: ALL_SPORTS.find(s => s.id === config.sportId)?.icon || config.sport,
+      },
+      odds,
+      markets,
+      tipsCount: 0,
+      venue,
+      roundName: (event as unknown as { week?: { number?: number } }).week?.number
+        ? `Round ${(event as unknown as { week?: { number?: number } }).week!.number}`
+        : null,
+    };
+  });
+
+  const result = matches.sort((a, b) => new Date(b.kickoffTime).getTime() - new Date(a.kickoffTime).getTime());
+  setCache(cacheKey, result);
+  return result;
+}
+
 export async function getLiveMatches(): Promise<UnifiedMatch[]> {
   const allMatches = await getAllMatches();
   return allMatches.filter(m =>
@@ -5528,55 +5642,69 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
   const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
   if (eventIdOnly) {
     const numericId = eventIdOnly[1];
-    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - SIXTY_DAYS_MS;
 
     /**
-     * Try each league in parallel via Promise.any.
-     * Crucially, we VALIDATE each result so that an old historical match with the
-     * same numeric event ID (e.g. a past Champions League game) cannot beat a
-     * current match in a different league. Any match whose kickoff is older than
-     * 60 days is rejected, forcing the race to continue until a current match is
-     * found or all leagues are exhausted.
+     * Try each league in parallel and collect ALL results within the timeout.
+     * No age cutoff — old historical matches must load too.
+     * Collision guard: when multiple leagues return a match for the same event ID
+     * (rare but possible), we pick the most recent kickoff date so a current
+     * match always beats an older one from a different league.
      */
     async function tryLeagues(leagues: ESPNLeagueConfig[]): Promise<string | null> {
-      try {
-        return await Promise.race([
-          Promise.any(
-            leagues.map(async cfg => {
-              const summary = await fetchESPNSummary(cfg.sport, cfg.league, numericId);
-              const competition = summary?.header?.competitions?.[0];
-              if (!competition) throw new Error('no competition');
-              const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
-              if (!homeComp) throw new Error('no home competitor');
+      return new Promise<string | null>(resolve => {
+        const TIMEOUT_MS = 10_000;
+        const candidates: Array<{ id: string; date: number }> = [];
+        let settled = false;
+        let remaining = leagues.length;
 
-              // Reject matches that are from a previous season / too old.
-              // This prevents a stale Champions League event from hijacking
-              // a current Chilean / other-league match that shares the same ID.
-              const competitionDate = (competition as { date?: string }).date;
-              if (competitionDate) {
-                const matchTs = new Date(competitionDate).getTime();
-                if (!isNaN(matchTs) && matchTs < cutoff) {
-                  throw new Error('match too old');
+        // Resolve with best candidate found so far.
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (candidates.length === 0) { resolve(null); return; }
+          // Pick most recent kickoff (beats stale hijacking without rejecting old matches)
+          candidates.sort((a, b) => b.date - a.date);
+          resolve(candidates[0].id);
+        };
+
+        const timer = setTimeout(finish, TIMEOUT_MS);
+
+        if (leagues.length === 0) { clearTimeout(timer); resolve(null); return; }
+
+        for (const cfg of leagues) {
+          fetchESPNSummary(cfg.sport, cfg.league, numericId).then(summary => {
+            const competition = summary?.header?.competitions?.[0];
+            if (competition) {
+              const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
+              if (homeComp) {
+                const competitionDate = (competition as { date?: string }).date;
+                const matchDate = competitionDate ? new Date(competitionDate).getTime() : 0;
+                candidates.push({
+                  id: `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${numericId}`,
+                  date: matchDate,
+                });
+                // Once we have at least 1 result, resolve quickly to avoid waiting
+                // for slow leagues — but delay 300 ms to catch near-simultaneous
+                // responses so the collision guard can pick the most recent.
+                if (candidates.length === 1 && !settled) {
+                  setTimeout(finish, 300);
                 }
               }
-
-              return `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${numericId}`;
-            })
-          ),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
-        ]);
-      } catch {
-        return null;
-      }
+            }
+          }).catch(() => { /* league doesn't have this event */ }).finally(() => {
+            remaining--;
+            // All leagues responded — resolve immediately with best candidate
+            if (remaining === 0) { clearTimeout(timer); finish(); }
+          });
+        }
+      });
     }
 
     const soccerLeagues = ESPN_LEAGUES.filter(l => l.sport === 'soccer');
     const otherLeagues = ESPN_LEAGUES.filter(l => l.sport !== 'soccer');
 
-    // Run soccer and non-soccer lookups IN PARALLEL (not sequentially) so the
-    // worst-case is ~10 s (one timeout) instead of ~20 s (two sequential timeouts).
-    // Promise.any picks the first non-null winner; if both fail we get null.
+    // Run soccer and non-soccer lookups IN PARALLEL so the worst-case is
+    // ~10 s (one timeout) instead of ~20 s (two sequential timeouts).
     let resolvedId: string | null = null;
     try {
       resolvedId = await Promise.any([
