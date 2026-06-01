@@ -1,7 +1,13 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { cn } from '@/lib/utils';
-import { MatchCardNew } from '@/components/matches/match-card-new';
+
+const MatchCardNew = dynamic(
+  () => import('@/components/matches/match-card-new').then(m => ({ default: m.MatchCardNew })),
+  { loading: () => <div className="h-24 w-72 shrink-0 rounded-xl border border-border bg-card/60 animate-pulse" /> }
+);
+
 import { FavoritedTipMarqueeCard, type FeaturedItem } from '@/components/home/favorited-tips-panel';
 import type { Match } from '@/lib/hooks/use-matches';
 

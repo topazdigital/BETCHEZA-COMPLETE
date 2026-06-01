@@ -11,8 +11,6 @@ import {
   Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { HeaderSearch } from "@/components/layout/header-search"
-import { WorldCupBanner } from "@/components/layout/header"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,6 +53,14 @@ const PushPromptBanner = dynamic(
 )
 const WelcomeModal = dynamic(
   () => import("@/components/auth/welcome-modal").then(m => ({ default: m.WelcomeModal })),
+  { ssr: false }
+)
+const HeaderSearch = dynamic(
+  () => import("@/components/layout/header-search").then(m => ({ default: m.HeaderSearch })),
+  { ssr: false, loading: () => <div className="h-8 w-full rounded-md bg-muted/50 animate-pulse" /> }
+)
+const WorldCupBanner = dynamic(
+  () => import("@/components/layout/header").then(m => ({ default: m.WorldCupBanner })),
   { ssr: false }
 )
 

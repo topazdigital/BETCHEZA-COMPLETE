@@ -24,7 +24,10 @@ const BetchezaBackBanner = dynamic(
   () => import('@/components/home/betcheza-back-banner').then(m => ({ default: m.BetchezaBackBanner })),
   { ssr: false }
 );
-import { SportsFilter } from '@/components/sports/sports-filter';
+const SportsFilter = dynamic(
+  () => import('@/components/sports/sports-filter').then(m => ({ default: m.SportsFilter })),
+  { ssr: false, loading: () => <div className="h-8 rounded-md bg-muted/50 animate-pulse" /> }
+);
 import { TeamLogo } from '@/components/ui/team-logo';
 const MatchCardNew = dynamic(
   () => import('@/components/matches/match-card-new').then(m => ({ default: m.MatchCardNew })),
@@ -120,9 +123,20 @@ const homeFetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function HomePage() {
   const [selectedSportId, setSelectedSportId] = useState<number | null>(null);
+  const [isIdle, setIsIdle] = useState(false);
   const { open: openAuthModal } = useAuthModal();
   const { user, isAuthenticated } = useAuth();
   const { mutate } = useSWRConfig();
+
+  useEffect(() => {
+    const w = window as any;
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(() => setIsIdle(true), { timeout: 1500 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(() => setIsIdle(true), 300);
+    return () => clearTimeout(t);
+  }, []);
 
   // ── Single consolidated fetch: replaces 5 separate API calls ──────────────
   const { data: homeData } = useSWR('/api/home', homeFetcher, {
@@ -346,7 +360,7 @@ export default function HomePage() {
             {/* My Tips — logged-in user's recent tips */}
             <MyTipsPanel />
             {/* Favorited Tips */}
-            <FavoritedTipsPanel />
+            {isIdle && <FavoritedTipsPanel />}
           </div>
         </aside>
 
@@ -475,7 +489,7 @@ export default function HomePage() {
               {/* My Tips + Favorited Tips — mobile only; on lg+ they live in the left sidebar */}
               <div className="mb-4 lg:hidden space-y-3">
                 <MyTipsPanel />
-                <FavoritedTipsPanel />
+                {isIdle && <FavoritedTipsPanel />}
               </div>
 
               {/* Tipster of the Week spotlight */}
@@ -817,7 +831,7 @@ export default function HomePage() {
               </section>
 
               {/* Newsletter signup */}
-              <NewsletterSection />
+              {isIdle && <NewsletterSection />}
             </>
           )}
         </div>
@@ -825,7 +839,7 @@ export default function HomePage() {
         {/* RIGHT PANEL — Best Bets (xl+) */}
         <aside className="hidden xl:block w-72 shrink-0 border-l border-border">
           <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
-            <BestBetsPanel matches={todayMatches} />
+            {isIdle ? <BestBetsPanel matches={todayMatches} /> : <PanelSkeleton />}
           </div>
         </aside>
 
