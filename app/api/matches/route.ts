@@ -203,12 +203,17 @@ function sortMatches(matches: MatchData[], userCountryCode: string, tzOffsetMin:
 const STALE_LIVE_HOURS: Record<string, number> = {
   soccer: 3, football: 3, basketball: 3,
   americanfootball: 4, baseball: 4, hockey: 3.5, icehockey: 3.5,
-  tennis: 5, cricket: 10, rugby: 3, mma: 3.5, boxing: 3.5,
+  tennis: 7, cricket: 12, rugby: 3, mma: 3.5, boxing: 3.5,
   golf: 12, racing: 5,
 };
 
-// Period strings that indicate a game has actually finished regardless of API status
-const FINAL_PERIOD_PATTERNS = /\b(f|ft|final|full.?time|end|game.?over|finished|over|result)\b/i;
+// Period strings that indicate a game has actually finished regardless of API status.
+// IMPORTANT: Do NOT include bare "end" (matches "End of Set 1" in tennis mid-match)
+// or bare "over" (matches cricket over-count strings like "35.4 Overs" during play).
+// Tennis between-set periods use "End of Set N" — those matches are still live.
+// Cricket uses "X.X Overs" throughout the innings — the match is still in progress.
+// The time-based fallback (tennis: 5h, cricket: 10h) handles genuinely stale matches.
+const FINAL_PERIOD_PATTERNS = /\b(ft|final|full.?time|game.?over|finished)\b/i;
 
 function isStaleLive(m: MatchData): boolean {
   const live = m.status === 'live' || m.status === 'halftime' ||

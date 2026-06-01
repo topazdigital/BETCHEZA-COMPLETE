@@ -25,6 +25,21 @@ Competitor UIDs contain athlete IDs: `s:850~l:851~a:4691` — extract with `/a:(
 Headshot URL: `https://a.espncdn.com/i/headshots/tennis/players/full/{athleteId}.png`
 League name: for generic names like "League 851", override with `eventName — groupingName` (e.g. "Roland Garros — Women's Singles").
 
+## isStaleLive false-positive: "appear then disappear" bug
+
+`FINAL_PERIOD_PATTERNS` in `app/api/matches/route.ts` originally included `\bend\b` and `\bover\b`.
+- `\bend\b` matches ESPN's between-set period string **"End of Set 1"** in tennis → live match wrongly filtered as finished
+- `\bover\b` could match cricket over-count strings → same false-positive
+
+Fix: removed `\bend\b`, `\bover\b`, and `\bf\b` (too ambiguous) from the pattern. The safe patterns are:
+`/\b(ft|final|full.?time|game.?over|finished)\b/i`
+
+Also bumped `STALE_LIVE_HOURS`: tennis 5→7h (Grand Slams), cricket 10→12h (Test matches).
+
+**Why:** The time-based fallback (tennis 7h, cricket 12h) is the correct safety net for genuinely stale live matches. Period-string detection must only use unambiguous terminal strings.
+
+**How to apply:** If cricket/tennis matches appear then vanish, check `isStaleLive` period-pattern false-positives first.
+
 ## Match cache stale-zero problem
 
 `g_allMatchesCache` (in-memory, 30s TTL) + DB `match_cache` table (5-min stale TTL) + `/tmp/betcheza_matches_cache.json` (5-min stale TTL) all persist across app restarts.
