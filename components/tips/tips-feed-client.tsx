@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { format, parseISO } from "date-fns"
+import { format, parseISO, isToday, isTomorrow, formatDistanceToNow } from "date-fns"
 import {
   ThumbsUp, MessageSquare, TrendingUp, Filter,
   ChevronDown, ChevronUp, ExternalLink, Trophy, Flame, BookmarkCheck,
@@ -84,6 +84,27 @@ function sportIcon(sport: string) {
   return SPORT_ICONS[sport.toLowerCase()] ?? "🏆"
 }
 
+function formatKickoff(kickoff: string | null | undefined): string {
+  if (!kickoff) return ""
+  try {
+    const d = parseISO(kickoff)
+    const time = format(d, "HH:mm")
+    if (isToday(d)) return `Today, ${time}`
+    if (isTomorrow(d)) return `Tomorrow, ${time}`
+    return format(d, "EEE d MMM, HH:mm")
+  } catch {
+    return ""
+  }
+}
+
+function formatAge(iso: string): string {
+  try {
+    return formatDistanceToNow(parseISO(iso), { addSuffix: true })
+  } catch {
+    return ""
+  }
+}
+
 function statusColor(status: string) {
   if (status === "won") return "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
   if (status === "lost") return "bg-rose-500/10 text-rose-600 border-rose-500/30"
@@ -138,7 +159,7 @@ function BestBetCard({ tip }: { tip: Tip }) {
               <span className="text-[10px] text-muted-foreground">Win rate: <strong>{tip.tipster.winRate.toFixed(1)}%</strong></span>
             </div>
             <p className="text-[11px] text-muted-foreground mb-2">
-              {tip.league} — {tip.kickoff ? format(parseISO(tip.kickoff), "EEE d MMM, HH:mm") : "Today"}
+              {tip.league} — {tip.kickoff ? formatKickoff(tip.kickoff) : "Today"}
             </p>
             <p className="font-semibold text-sm">{tip.homeTeam} <span className="text-muted-foreground">vs</span> {tip.awayTeam}</p>
             <div className="mt-2 flex items-center gap-3 flex-wrap">
@@ -193,7 +214,7 @@ function TipCard({ tip }: { tip: Tip }) {
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {sportIcon(tip.sport)} {tip.league}
-              {tip.kickoff && " · " + format(parseISO(tip.kickoff), "HH:mm")}
+              {tip.kickoff && <> · <span className="font-medium text-foreground/70">{formatKickoff(tip.kickoff)}</span></>}
             </p>
           </div>
 
@@ -228,7 +249,9 @@ function TipCard({ tip }: { tip: Tip }) {
           <button className="flex items-center gap-0.5 hover:text-foreground">
             <MessageSquare className="h-3 w-3" />{tip.comments}
           </button>
-          <span className="ml-auto">{format(parseISO(tip.createdAt), "MMM d, HH:mm")}</span>
+          <span className="ml-auto" title={format(parseISO(tip.createdAt), "d MMM yyyy HH:mm")}>
+            {formatAge(tip.createdAt)}
+          </span>
         </div>
       </div>
     </div>
@@ -403,7 +426,7 @@ function MyTipCard({ tip }: { tip: MyTip }) {
             </Link>
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {sportIcon(tip.sport)} {tip.league}
-              {tip.kickoff && " · " + format(parseISO(tip.kickoff), "HH:mm")}
+              {tip.kickoff && <> · <span className="font-medium text-foreground/70">{formatKickoff(tip.kickoff)}</span></>}
             </p>
           </div>
           <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 shrink-0", statusColor(tip.status))}>
@@ -419,8 +442,8 @@ function MyTipCard({ tip }: { tip: MyTip }) {
             <span className="text-xs font-black tabular-nums">{tip.odds.toFixed(2)}</span>
           </div>
         </div>
-        <div className="mt-1.5 text-[10px] text-muted-foreground">
-          {format(parseISO(tip.createdAt), "MMM d, HH:mm")}
+        <div className="mt-1.5 text-[10px] text-muted-foreground" title={format(parseISO(tip.createdAt), "d MMM yyyy HH:mm")}>
+          {formatAge(tip.createdAt)}
         </div>
       </div>
     </div>
@@ -480,7 +503,7 @@ export function TipsFeedClient() {
   ]
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-4">
+    <div className="w-full px-3 py-4">
       {/* Page header */}
       <div className="mb-4">
         <h1 className="text-xl font-black">Free Betting Tips</h1>
@@ -489,9 +512,9 @@ export function TipsFeedClient() {
         </p>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex gap-3">
         {/* Left sidebar — desktop filters */}
-        <aside className="hidden lg:block w-44 shrink-0 space-y-4">
+        <aside className="hidden lg:block w-40 shrink-0 space-y-4">
           {data && (
             <Filters
               sports={data.sports}
