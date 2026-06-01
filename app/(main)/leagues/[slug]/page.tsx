@@ -137,8 +137,14 @@ export default function LeaguePage({ params }: PageProps) {
         return leagueMatch && sportMatch;
       })
     : allMatches.filter(m => {
-        const ms = (m.league?.slug || slugify(m.league?.name || '')).toLowerCase()
-        return ms === normalisedSlug || ms === slug.toLowerCase()
+        // Check both raw league slug AND name-derived slug, since URLs are always
+        // built from the name when the league is unknown (no raw slug matches name).
+        const rawSlug = (m.league?.slug || '').toLowerCase()
+        const nameSlug = slugify(m.league?.name || '').toLowerCase()
+        const normLower = normalisedSlug.toLowerCase()
+        const slugLower = slug.toLowerCase()
+        return rawSlug === normLower || rawSlug === slugLower
+            || nameSlug === normLower || nameSlug === slugLower
       })
 
   const firstMatch = matches[0]

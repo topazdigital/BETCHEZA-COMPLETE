@@ -124,20 +124,29 @@ export async function generateMetadata({
   } else if (leagueName) {
     title = `${leagueName} Matches, Tips & Predictions | ${SITE_NAME}`;
     description = `Live scores, upcoming fixtures, AI match predictions and free betting tips for ${leagueName}. Compare odds on ${KE_BOOKMAKERS}. ${SITE_NAME} Kenya.`;
+  } else if (sport && tab === 'upcoming') {
+    const seo = SPORT_SEO[sport.toLowerCase()] ?? { name: sport.charAt(0).toUpperCase() + sport.slice(1), description: '' };
+    title = `Upcoming ${seo.name} Matches & Free Predictions | ${SITE_NAME}`;
+    description = `Upcoming ${seo.name} fixtures with free AI predictions and expert betting tips. Odds from ${KE_BOOKMAKERS}. Updated daily on ${SITE_NAME} Kenya.`;
+  } else if (sport && date) {
+    const seo = SPORT_SEO[sport.toLowerCase()] ?? { name: sport.charAt(0).toUpperCase() + sport.slice(1), description: '' };
+    const dateDisplay = formatDate(date);
+    title = `${seo.name} Matches on ${dateDisplay} | Free Tips | ${SITE_NAME}`;
+    description = `${seo.name} fixtures on ${dateDisplay}. Free AI predictions, odds and expert tips. Available on ${KE_BOOKMAKERS}. ${SITE_NAME} Kenya.`;
   } else if (tab === 'upcoming') {
-    title = `Upcoming Football Matches & Free Predictions Kenya | ${SITE_NAME}`;
-    description = `All upcoming football fixtures with free AI predictions and expert betting tips. SportPesa, Betika, Odibets, Betway tips updated daily. ${SITE_NAME} Kenya.`;
+    title = `Upcoming Matches & Free Predictions | All Sports | ${SITE_NAME}`;
+    description = `Browse all upcoming sports fixtures with free AI predictions and expert betting tips. Football, Tennis, Basketball, Cricket and more. ${SITE_NAME} Kenya.`;
   } else if (date) {
     const dateDisplay = formatDate(date);
-    title = `Football Matches on ${dateDisplay} | Free Betting Tips | ${SITE_NAME}`;
-    description = `All football fixtures on ${dateDisplay} with free AI predictions and expert tips. Odds from ${KE_BOOKMAKERS}. ${SITE_NAME} Kenya.`;
+    title = `Matches on ${dateDisplay} | Free Betting Tips | ${SITE_NAME}`;
+    description = `All sports fixtures on ${dateDisplay} with free AI predictions and expert tips. Odds from ${KE_BOOKMAKERS}. ${SITE_NAME} Kenya.`;
   } else if (sport) {
     const seo = SPORT_SEO[sport.toLowerCase()] ?? { name: sport.charAt(0).toUpperCase() + sport.slice(1), description: '' };
     title = `${seo.name} Matches Today — Free Tips & Predictions | ${SITE_NAME}`;
     description = seo.description || `Live ${seo.name} scores, upcoming fixtures, and free betting tips. AI predictions updated in real time. ${SITE_NAME} Kenya.`;
   } else {
-    title = 'Best Free Betting Tips Today Kenya | Football Predictions | Betcheza';
-    description = 'Get the best free betting tips in Kenya today — AI predictions and expert tipster picks for every football match. SportPesa, Betika, Odibets, Betway, BahatiБет tips updated daily. The most trusted source for free sure tips in Kenya.';
+    title = 'Best Free Betting Tips Today Kenya | All Sports Predictions | Betcheza';
+    description = 'Get the best free betting tips in Kenya today — AI predictions and expert tipster picks for football, tennis, basketball, cricket and more. SportPesa, Betika, Odibets, Betway tips updated daily on Betcheza Kenya.';
   }
 
   const sportSeoExtra = sport ? (SPORT_SEO[sport.toLowerCase()]?.keywords ?? []) : [];

@@ -295,6 +295,16 @@ function MatchesLeftSidebar({
   );
 }
 
+function buildMatchesUrl(sportId: number | null, tab: DateTab, date: string): string {
+  const params = new URLSearchParams();
+  const sport = ALL_SPORTS.find(s => s.id === sportId);
+  if (sport) params.set('sport', sport.slug);
+  if (tab !== 'today') params.set('tab', tab);
+  if (tab === 'calendar' && date) params.set('date', date);
+  const qs = params.size ? `?${params.toString()}` : '';
+  return `/matches${qs}`;
+}
+
 function MatchesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -305,26 +315,51 @@ function MatchesContent() {
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   const [leagueFilter, setLeagueFilter] = useState(searchParams.get('league') || 'all');
 
-  const handleSelectSport = useCallback((id: number | null) => {
-    setSelectedSportId(id);
-    setLeagueFilter('all');
-    const sport = ALL_SPORTS.find(s => s.id === id);
-    const params = new URLSearchParams();
-    if (sport) params.set('sport', sport.slug);
-    const qs = params.size ? `?${params.toString()}` : '';
-    router.replace(`/matches${qs}`, { scroll: false });
-    if (typeof document !== 'undefined') {
-      document.title = sport
-        ? `${sport.name} Matches — Free Tips & Predictions | Betcheza`
-        : 'Best Free Betting Tips | Football Predictions | Betcheza';
-    }
-  }, [router]);
   const [dateTab, setDateTab] = useState<DateTab>(() => {
     const t = searchParams.get('tab');
     if (t === 'upcoming' || t === 'calendar') return t as DateTab;
     return 'today';
   });
-  const [calendarDate, setCalendarDate] = useState<string>(toLocalISODate(new Date()));
+  const [calendarDate, setCalendarDate] = useState<string>(
+    searchParams.get('date') || toLocalISODate(new Date())
+  );
+
+  const handleSelectSport = useCallback((id: number | null) => {
+    setSelectedSportId(id);
+    setLeagueFilter('all');
+    router.replace(buildMatchesUrl(id, dateTab, calendarDate), { scroll: false });
+  }, [router, dateTab, calendarDate]);
+
+  const handleDateTab = useCallback((tab: DateTab) => {
+    setDateTab(tab);
+    router.replace(buildMatchesUrl(selectedSportId, tab, calendarDate), { scroll: false });
+  }, [router, selectedSportId, calendarDate]);
+
+  const handleCalendarDate = useCallback((date: string) => {
+    setCalendarDate(date);
+    router.replace(buildMatchesUrl(selectedSportId, 'calendar', date), { scroll: false });
+  }, [router, selectedSportId]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const sport = ALL_SPORTS.find(s => s.id === selectedSportId);
+    const sportName = sport?.name || 'All Sports';
+    let tabSuffix = '';
+    if (dateTab === 'upcoming') tabSuffix = ' — Upcoming';
+    else if (dateTab === 'calendar' && calendarDate) {
+      try {
+        const d = new Date(calendarDate + 'T12:00:00');
+        tabSuffix = ` — ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      } catch { tabSuffix = ` — ${calendarDate}`; }
+    } else {
+      tabSuffix = ' — Today';
+    }
+    if (sport) {
+      document.title = `${sportName} Matches${tabSuffix} — Free Tips & Predictions | Betcheza`;
+    } else {
+      document.title = `All Sports Matches${tabSuffix} — Free Betting Tips | Betcheza`;
+    }
+  }, [selectedSportId, dateTab, calendarDate]);
 
   const { matches, isLoading } = useMatches({
     sportId: selectedSportId || undefined,
@@ -424,9 +459,9 @@ function MatchesContent() {
         liveCount={stats.live}
         todayCount={stats.today}
         dateTab={dateTab}
-        onDateTab={setDateTab}
+        onDateTab={handleDateTab}
         calendarDate={calendarDate}
-        onCalendarDate={setCalendarDate}
+        onCalendarDate={handleCalendarDate}
         leagueFilter={leagueFilter}
         onLeagueFilter={setLeagueFilter}
         allMatchCount={allMatches.length}
@@ -448,7 +483,18 @@ function MatchesContent() {
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h1 className="text-lg font-bold text-foreground">
-                {selectedSportId ? ALL_SPORTS.find(s => s.id === selectedSportId)?.name + ' Matches' : 'All Matches'}
+                {(() => {
+                  const sport = ALL_SPORTS.find(s => s.id === selectedSportId);
+                  const base = sport ? `${sport.name} Matches` : 'All Matches';
+                  if (dateTab === 'upcoming') return `${base} — Upcoming`;
+                  if (dateTab === 'calendar' && calendarDate) {
+                    try {
+                      const d = new Date(calendarDate + 'T12:00:00');
+                      return `${base} — ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+                    } catch { return base; }
+                  }
+                  return base;
+                })()}
               </h1>
             </div>
             <div className="flex gap-2">
@@ -464,7 +510,8 @@ function MatchesContent() {
                 {stats.live} Live
               </Badge>
               <Badge variant="outline" className="gap-1 h-6 text-[10px]">
-                <Clock className="h-3 w-3" />{stats.today} Today
+                <Clock className="h-3 w-3" />
+                {dateTab === 'upcoming' ? `${stats.upcoming} Upcoming` : `${stats.today} Today`}
               </Badge>
             </div>
           </div>
@@ -479,7 +526,7 @@ function MatchesContent() {
               ]).map(({ v, label, Icon }) => (
                 <button
                   key={v}
-                  onClick={() => setDateTab(v)}
+                  onClick={() => handleDateTab(v)}
                   className={cn(
                     'flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
                     dateTab === v ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
@@ -490,7 +537,7 @@ function MatchesContent() {
               ))}
             </div>
             {dateTab === 'calendar' && (
-              <Input type="date" value={calendarDate} onChange={(e) => setCalendarDate(e.target.value)} className="h-7 w-36 text-xs" />
+              <Input type="date" value={calendarDate} onChange={(e) => handleCalendarDate(e.target.value)} className="h-7 w-36 text-xs" />
             )}
           </div>
 
@@ -542,9 +589,10 @@ function MatchesContent() {
             <div className="space-y-3">
               {groupedMatches.map(({ key, sport, league, matches: leagueMatches }) => {
                 const _knownL = ALL_LEAGUES.find(l => l.id === league.id);
+                // For unknown leagues, always derive slug from name so league pages can match it.
+                // Raw ESPN slugs may contain dots/underscores that break URL-to-match resolution.
                 const leagueSlug = _knownL?.slug
                   || resolveLeagueSlug(league.slug || '')
-                  || (league.slug && !/^espn[-_]?\d+$/i.test(league.slug) ? league.slug : null)
                   || league.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
                 return (
                   <div key={key}>
