@@ -545,12 +545,18 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
         merged[todayIdx].combinedOdds = parseFloat(combined.toFixed(2));
         merged[todayIdx].status = 'active';
         // Persist to DB
+        // Only overwrite picks if the DB row is currently empty/placeholder —
+        // never clobber real picks that were set by a previous cron or manual post.
         await execute(
           `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, posted_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active',
-             day_number = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
-             target_win = VALUES(target_win), generated_at = NOW()`,
+           ON DUPLICATE KEY UPDATE
+             picks         = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(picks), picks),
+             combined_odds = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(combined_odds), combined_odds),
+             status        = IF(picks IS NULL OR picks = '' OR picks = '[]', 'active', status),
+             day_number    = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
+             target_win    = VALUES(target_win),
+             generated_at  = IF(picks IS NULL OR picks = '' OR picks = '[]', NOW(), generated_at)`,
           [todayStr, weekId, dayNumber, merged[todayIdx].stake, merged[todayIdx].save, merged[todayIdx].targetWin, merged[todayIdx].combinedOdds, JSON.stringify(autoPicks)]
         ).catch(() => undefined);
       } catch { /* non-fatal */ }
@@ -592,9 +598,13 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
       await execute(
         `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
-         ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), status = 'active',
-           day_number = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
-           target_win = VALUES(target_win), generated_at = NOW()`,
+         ON DUPLICATE KEY UPDATE
+           picks         = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(picks), picks),
+           combined_odds = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(combined_odds), combined_odds),
+           status        = IF(picks IS NULL OR picks = '' OR picks = '[]', 'active', status),
+           day_number    = VALUES(day_number), stake = VALUES(stake), save_amount = VALUES(save_amount),
+           target_win    = VALUES(target_win),
+           generated_at  = IF(picks IS NULL OR picks = '' OR picks = '[]', NOW(), generated_at)`,
         [todayStr, weekId, dayNumber, empty.days[todayIdx].stake, empty.days[todayIdx].save, empty.days[todayIdx].targetWin, empty.days[todayIdx].combinedOdds, JSON.stringify(autoPicks)]
       ).catch(() => undefined);
       fileStoreSet(`strategy-week-${weekId}`, empty);

@@ -1108,10 +1108,15 @@ export default function StrategyPage() {
             }))).map((day, i) => {
               const isToday = day.status === 'active';
               const isYesterday = i === yesterdayPlanIndex;
-              // Today's picks become free for everyone once ALL matches in the day are finished
-              const todayAllSettled = isToday && day.picks.length > 0 && day.picks.every(p => p.result !== 'pending');
-              // Non-subscribers: locked for today (until all done) and upcoming; free for yesterday and settled today
-              const isLocked = !hasAccess && !isYesterday && (day.status === 'upcoming' || (isToday && !todayAllSettled));
+              // Today's picks unlock for everyone at 21:00 EAT (18:00 UTC) regardless of
+              // settlement status — waiting for every pick to settle caused the day to
+              // stay locked all evening when live-score results came in late.
+              const nowUTC = Date.now();
+              const eatHour = Math.floor(((nowUTC % 86400000) + 3 * 3600000) / 3600000) % 24;
+              const pastEveningCutoff = eatHour >= 21; // 9 PM EAT
+              const todayFreeAfterCutoff = isToday && pastEveningCutoff;
+              // Non-subscribers: locked for today until 9 PM EAT, always locked for upcoming days
+              const isLocked = !hasAccess && !isYesterday && !todayFreeAfterCutoff && (day.status === 'upcoming' || isToday);
 
               return (
                 <DayCard
