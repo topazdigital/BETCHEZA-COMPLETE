@@ -10,6 +10,7 @@ import {
   type ESPNSummaryResponse,
   type UnifiedMatch,
 } from '@/lib/api/unified-sports-api';
+import { fetchCamel1Matches } from '@/lib/api/camel1';
 import { slugToMatchId } from '@/lib/utils/match-url';
 
 export const dynamic = 'force-dynamic';
@@ -862,6 +863,23 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     if (!match) match = await getMatchById(id);
+
+    // Final fallback: scan camel1 directly by team name.
+    // This catches non-ESPN matches (e.g. small WTA tournaments, camel1-only events)
+    // that are not in the rolling getAllMatches() window or ESPN's API.
+    if (!match && decodeURIComponent(rawId).includes('-vs-')) {
+      const hints = extractTeamHintsFromSlug(rawId);
+      if (hints) {
+        try {
+          const camel1Matches = await fetchCamel1Matches();
+          const byTeam = camel1Matches.find(m =>
+            teamNameMatches(m.homeTeam.name, hints[0]) &&
+            teamNameMatches(m.awayTeam.name, hints[1])
+          );
+          if (byTeam) match = byTeam;
+        } catch { /* camel1 unavailable — fall through to 404 */ }
+      }
+    }
 
     if (!match) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
