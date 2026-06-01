@@ -4567,7 +4567,48 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   void _writeDbCache(sorted);
   void _writeFileCache(sorted);
 
+  // Ping IndexNow for any match pages that just appeared for the first time.
+  // This tells Bing/Google to crawl them immediately rather than waiting for
+  // the next sitemap revalidation cycle (up to 60 s away).
+  _pingNewMatches(sorted).catch(() => {});
+
   return sorted;
+}
+
+// ── New-match discovery IndexNow pings ────────────────────────────────────────
+// Tracks match IDs seen across fetch cycles so we only ping on first appearance.
+let   _g_initialMatchLoadDone = false;
+const _g_knownMatchIds = new Set<string>();
+
+async function _pingNewMatches(matches: UnifiedMatch[]): Promise<void> {
+  if (!_g_initialMatchLoadDone) {
+    // First fetch after server start — record all IDs as "known" without pinging
+    // (too many URLs at once; sitemap covers cold-start discovery).
+    for (const m of matches) _g_knownMatchIds.add(m.id);
+    _g_initialMatchLoadDone = true;
+    return;
+  }
+
+  const newUrls: string[] = [];
+  for (const m of matches) {
+    if (!_g_knownMatchIds.has(m.id)) {
+      _g_knownMatchIds.add(m.id);
+      newUrls.push(m.id);
+    }
+  }
+  if (newUrls.length === 0) return;
+
+  try {
+    const { pingIndexNow } = await import('../indexnow');
+    const { matchToSlug } = await import('../utils/match-url');
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+    const urls = newUrls.map(id => {
+      const m = matches.find(x => x.id === id)!;
+      return `${siteUrl}/matches/${matchToSlug(m.id, m.homeTeam?.name ?? '', m.awayTeam?.name ?? '')}`;
+    });
+    pingIndexNow(urls);
+    console.log(`[seo] IndexNow queued for ${urls.length} newly-discovered match(es)`);
+  } catch { /* never block the fetch pipeline */ }
 }
 
 export async function getMatchesBySport(sportId: number): Promise<UnifiedMatch[]> {

@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
 
     const goals: Array<{ matchId: string; homeTeam: string; awayTeam: string; title: string; score: string }> = [];
     const justFinished: Array<{ matchId: string; homeTeam: string; awayTeam: string }> = [];
+    const justWentLive: Array<{ matchId: string; homeTeam: string; awayTeam: string }> = [];
 
     for (const m of matches) {
       const current = scoreKey(m.homeScore, m.awayScore);
@@ -80,9 +81,16 @@ export async function GET(req: NextRequest) {
       const isNowFinished = ['finished', 'ft', 'full-time', 'aet', 'pen', 'walkover', 'awarded'].includes(
         (m.status || '').toLowerCase()
       );
+      const isNowLive = ['live', 'inprogress', 'in_progress', 'halftime', 'ht', 'extra_time', 'penalties', 'break'].includes(
+        (m.status || '').toLowerCase()
+      );
       const wasLive = prevStatus && ['live', 'inprogress', 'in_progress', 'halftime', 'ht', 'extra_time', 'penalties', 'break'].includes(prevStatus.toLowerCase());
+      const wasScheduled = !prevStatus || ['scheduled', 'tbd', 'upcoming', 'pre', 'preview', 'ns', 'not_started', ''].includes(prevStatus.toLowerCase());
       if (isNowFinished && wasLive) {
         justFinished.push({ matchId: m.id, homeTeam: m.homeTeam.name, awayTeam: m.awayTeam.name });
+      }
+      if (isNowLive && wasScheduled) {
+        justWentLive.push({ matchId: m.id, homeTeam: m.homeTeam.name, awayTeam: m.awayTeam.name });
       }
       statusSnap.set(m.id, m.status || '');
 
@@ -135,8 +143,24 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // IndexNow ping when matches just kicked off (scheduled → live).
+    // Tells search engines the live page is now high-priority content.
+    if (justWentLive.length > 0) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+      const liveUrls: string[] = [];
+      for (const m of justWentLive) {
+        try {
+          const { matchToSlug } = await import('@/lib/utils/match-url');
+          liveUrls.push(`${siteUrl}/matches/${matchToSlug(m.matchId, m.homeTeam, m.awayTeam)}`);
+          console.log(`[live-scores] IndexNow: match just went live: ${m.homeTeam} vs ${m.awayTeam}`);
+        } catch { liveUrls.push(`${siteUrl}/matches/${m.matchId}`); }
+      }
+      pingIndexNow(liveUrls);
+      pingGoogleIndexingBatch(liveUrls).catch(() => {});
+    }
+
     // Also ping sitemap for Bing to discover any new match pages
-    if (goals.length > 0 || justFinished.length > 0) {
+    if (goals.length > 0 || justFinished.length > 0 || justWentLive.length > 0) {
       pingIndexNow([
         `${process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'}/sitemap.xml`,
       ]);

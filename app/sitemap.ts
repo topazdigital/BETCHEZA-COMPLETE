@@ -4,7 +4,7 @@ import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getPool } from '@/lib/db';
 import { matchToSlug } from '@/lib/utils/match-url';
 
-export const revalidate = 600;
+export const revalidate = 60;
 
 function siteUrl(): string {
   return (
@@ -191,6 +191,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       } catch { /* matches table may not exist — skip */ }
     }
   } catch { /* no DB — skip */ }
+
+  // Supplement with live API matches (ESPN tennis, cricket, etc.) that may not
+  // yet be persisted to the DB. This ensures every match page is discoverable
+  // by crawlers as soon as it appears on the site — regardless of sport.
+  try {
+    const { getAllMatches } = await import('@/lib/api/unified-sports-api');
+    const apiMatches = await getAllMatches();
+    const seenUrls = new Set(matchEntries.map(e => e.url));
+    for (const m of apiMatches) {
+      const url = `${base}/matches/${matchToSlug(m.id, m.homeTeam?.name ?? '', m.awayTeam?.name ?? '')}`;
+      if (seenUrls.has(url)) continue;
+      seenUrls.add(url);
+      const status = (m.status || '').toLowerCase();
+      const isLive = ['live', 'inprogress', 'in_progress', 'halftime', 'ht', 'extra_time', 'penalties', 'break'].includes(status);
+      const isFinished = ['finished', 'ft', 'full-time', 'aet', 'pen', 'walkover', 'awarded'].includes(status);
+      const kickoff = m.kickoffTime ? new Date(m.kickoffTime) : now;
+      matchEntries.push({
+        url,
+        lastModified: isLive ? now : isFinished ? new Date(kickoff.getTime() + 110 * 60 * 1000) : now,
+        changeFrequency: isLive ? ('always' as const) : isFinished ? ('weekly' as const) : ('hourly' as const),
+        priority: isLive ? 0.95 : isFinished ? 0.72 : 0.84,
+      });
+    }
+  } catch { /* API unavailable — skip */ }
 
   // Fake tipsters (community seed data)
   const fakeTipsters = getFakeTipsters();
