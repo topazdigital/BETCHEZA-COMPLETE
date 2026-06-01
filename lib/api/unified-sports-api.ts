@@ -5574,8 +5574,18 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
     const soccerLeagues = ESPN_LEAGUES.filter(l => l.sport === 'soccer');
     const otherLeagues = ESPN_LEAGUES.filter(l => l.sport !== 'soccer');
 
-    let resolvedId = await tryLeagues(soccerLeagues);
-    if (!resolvedId) resolvedId = await tryLeagues(otherLeagues);
+    // Run soccer and non-soccer lookups IN PARALLEL (not sequentially) so the
+    // worst-case is ~10 s (one timeout) instead of ~20 s (two sequential timeouts).
+    // Promise.any picks the first non-null winner; if both fail we get null.
+    let resolvedId: string | null = null;
+    try {
+      resolvedId = await Promise.any([
+        tryLeagues(soccerLeagues).then(r => { if (!r) throw new Error('no result'); return r; }),
+        tryLeagues(otherLeagues).then(r => { if (!r) throw new Error('no result'); return r; }),
+      ]);
+    } catch {
+      resolvedId = null;
+    }
     if (!resolvedId) return null;
 
     return getMatchById(resolvedId);

@@ -1012,6 +1012,9 @@ export default function MatchDetailPage({ params }: PageProps) {
   const [showMobileLineups, setShowMobileLineups] = useState(false)
   const [tipSubmitted, setTipSubmitted] = useState<null | { label: string; odds: number }>(null)
   const [shareToast, setShareToast] = useState<string | null>(null)
+  // Track the first-mount time so we can show "Loading..." during the cold-cache
+  // retry window instead of immediately flashing "Match not found".
+  const mountTimeRef = useRef(Date.now())
   // Add-Tip modal — auth-aware: signed-out users see a friendly sign-in prompt
   // INSIDE the modal so they never miss it (the old inline form pushed the
   // CTA below the fold).
@@ -1050,6 +1053,7 @@ export default function MatchDetailPage({ params }: PageProps) {
     } catch { /* ignore */ }
   }, [id])
 
+  const [swrRetryCount, setSwrRetryCount] = useState(0)
   const { data, error, isLoading } = useSWR<MatchDetails>(
     `/api/matches/${encodeURIComponent(id)}/details`,
     fetcher,
@@ -1059,7 +1063,17 @@ export default function MatchDetailPage({ params }: PageProps) {
         return (s === 'live' || s === 'in_progress') ? 30_000 : 60_000
       },
       revalidateOnFocus: false,
-      dedupingInterval: 30_000,
+      dedupingInterval: 15_000,
+      // Auto-retry on error for up to 5 attempts (≈15 s window).
+      // This covers the cold-cache race where the server's match cache hasn't
+      // warmed yet on the first request but will have it on the second.
+      onErrorRetry: (_err, _key, _cfg, revalidate, { retryCount }) => {
+        setSwrRetryCount(retryCount)
+        if (retryCount >= 5) return // Give up after 5 retries
+        // Escalating back-off: 2s, 3s, 4s, 5s, 5s
+        const delay = Math.min(2000 + retryCount * 1000, 5000)
+        setTimeout(() => revalidate({ retryCount }), delay)
+      },
     }
   )
 
@@ -1138,7 +1152,13 @@ export default function MatchDetailPage({ params }: PageProps) {
   const ticksByMinute = isMinuteTickingSport(sportSlug)
   const liveLabel = liveStatusLabel(sportSlug, match?.status || '', liveMinute)
 
-  if (isLoading) {
+  // Show a spinner while: (a) first load, or (b) an error occurred but we're
+  // still within the 19 s cold-cache retry window (server waits 2 s + retries).
+  const RETRY_WINDOW_MS = 19_000
+  const withinRetryWindow = Date.now() - mountTimeRef.current < RETRY_WINDOW_MS
+  const isRetrying = !!error && swrRetryCount < 5 && withinRetryWindow
+
+  if (isLoading || isRetrying) {
     return (
       <div className="flex h-96 flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-3">

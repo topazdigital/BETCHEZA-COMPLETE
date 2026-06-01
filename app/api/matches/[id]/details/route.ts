@@ -877,8 +877,34 @@ export async function GET(_request: NextRequest, context: RouteContext) {
             teamNameMatches(m.awayTeam.name, hints[1])
           );
           if (byTeam) match = byTeam;
-        } catch { /* camel1 unavailable — fall through to 404 */ }
+        } catch { /* camel1 unavailable — fall through to retry */ }
       }
+    }
+
+    // ── Cold-cache retry ──────────────────────────────────────────────────────
+    // If still not found, the match cache may still be warming (cold server
+    // start / first request for this sport). Wait 2 s and try once more before
+    // giving up. This eliminates the "Match not found → refresh → works" race.
+    if (!match) {
+      await new Promise(r => setTimeout(r, 2000));
+
+      // Retry team-name fast-path first (cheapest)
+      if (id.startsWith('espn_eventid_') && decodeURIComponent(rawId).includes('-vs-')) {
+        const hints = extractTeamHintsFromSlug(rawId);
+        if (hints) {
+          try {
+            const allMatches = await getAllMatches();
+            const byTeam = allMatches.find(m =>
+              teamNameMatches(m.homeTeam.name, hints[0]) &&
+              teamNameMatches(m.awayTeam.name, hints[1])
+            );
+            if (byTeam) match = byTeam;
+          } catch { /* fall through */ }
+        }
+      }
+
+      // Full retry via getMatchById (cache likely warm now)
+      if (!match) match = await getMatchById(id);
     }
 
     if (!match) {
