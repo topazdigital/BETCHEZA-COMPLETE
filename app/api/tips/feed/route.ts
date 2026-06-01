@@ -141,24 +141,30 @@ async function getRealDbTips(day: 'today' | 'tomorrow' | 'upcoming'): Promise<Db
 }
 
 /**
- * Returns which day-bucket this kickoff belongs to.
- * Crucially: any kickoff BEFORE today's calendar start → 'past' (excluded from feed).
- * Kickoffs 3+ hours in the past today that are still pending are also treated as past.
+ * Returns which day-bucket this kickoff belongs to, respecting the user's timezone.
+ * tzOffsetMin = browser's getTimezoneOffset() = (UTC − local) in minutes
+ * e.g. EAT (UTC+3) → -180, US Eastern (UTC-5) → 300
  */
-function getDayBucket(kickoff: string | undefined | null): 'today' | 'tomorrow' | 'upcoming' | 'past' {
+function getDayBucket(kickoff: string | undefined | null, tzOffsetMin = 0): 'today' | 'tomorrow' | 'upcoming' | 'past' {
   if (!kickoff) return 'past';
   const k = new Date(kickoff);
   if (isNaN(k.getTime())) return 'past';
-  const now = new Date();
 
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-  const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  const tomorrowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
+  // Shift both times into the user's "virtual UTC" so we can use UTC date methods
+  const off = tzOffsetMin * 60_000;
+  const localKickoff = k.getTime() - off;
+  const localNow     = Date.now()   - off;
 
-  // Older than today → past, never show in any tab
-  if (k < todayStart) return 'past';
-  if (k <= todayEnd)   return 'today';
-  if (k <= tomorrowEnd) return 'tomorrow';
+  const nowD = new Date(localNow);
+  const y = nowD.getUTCFullYear(), m = nowD.getUTCMonth(), d = nowD.getUTCDate();
+
+  const todayStartMs    = Date.UTC(y, m, d);
+  const tomorrowStartMs = Date.UTC(y, m, d + 1);
+  const dayAfterStartMs = Date.UTC(y, m, d + 2);
+
+  if (localKickoff < todayStartMs)    return 'past';
+  if (localKickoff < tomorrowStartMs) return 'today';
+  if (localKickoff < dayAfterStartMs) return 'tomorrow';
   return 'upcoming';
 }
 
@@ -202,6 +208,7 @@ export async function GET(request: NextRequest) {
   const sport = (searchParams.get('sport') || '').toLowerCase();
   const minOdds = parseFloat(searchParams.get('minOdds') || '1');
   const maxOdds = parseFloat(searchParams.get('maxOdds') || '99');
+  const tzOffsetMin = parseInt(searchParams.get('tzOffsetMin') || '0', 10);
 
   const [realTipsters, dbTips] = await Promise.all([
     getRealTipsters(),
@@ -256,14 +263,14 @@ export async function GET(request: NextRequest) {
   // --- Auto-tips (seeded from real match data) ---
   const allAutoTips = listAllAutoTips(3000);
 
-  // Count per bucket (excluding past)
-  const today_count    = allAutoTips.filter(t => getDayBucket(t.kickoff) === 'today').length;
-  const tomorrow_count = allAutoTips.filter(t => getDayBucket(t.kickoff) === 'tomorrow').length;
-  const upcoming_count = allAutoTips.filter(t => getDayBucket(t.kickoff) === 'upcoming').length;
+  // Count per bucket (excluding past) — using the user's timezone
+  const today_count    = allAutoTips.filter(t => getDayBucket(t.kickoff, tzOffsetMin) === 'today').length;
+  const tomorrow_count = allAutoTips.filter(t => getDayBucket(t.kickoff, tzOffsetMin) === 'tomorrow').length;
+  const upcoming_count = allAutoTips.filter(t => getDayBucket(t.kickoff, tzOffsetMin) === 'upcoming').length;
 
   // Only include tips for current/future matches — never show ended matches
   let filteredAuto = allAutoTips.filter(t => {
-    const bucket = getDayBucket(t.kickoff);
+    const bucket = getDayBucket(t.kickoff, tzOffsetMin);
     if (bucket === 'past') return false;
     return bucket === day;
   });
@@ -451,7 +458,15 @@ export async function GET(request: NextRequest) {
       .map((t, i) => ({ ...t, rank: i + 1 }));
   }
 
-  const sports = Array.from(new Set(allAutoTips.filter(t => getDayBucket(t.kickoff) !== 'past').map(t => t.sport).filter(Boolean))) as string[];
+  // Build sports list from ALL non-past auto-tips (not just the current day filter)
+  const sports = Array.from(
+    new Set(
+      allAutoTips
+        .filter(t => getDayBucket(t.kickoff, tzOffsetMin) !== 'past')
+        .map(t => t.sport)
+        .filter(Boolean)
+    )
+  ).sort() as string[];
 
   return NextResponse.json({
     tips,

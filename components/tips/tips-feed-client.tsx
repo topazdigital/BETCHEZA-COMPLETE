@@ -5,7 +5,7 @@ import Link from "next/link"
 import { format, parseISO, isToday, isTomorrow, formatDistanceToNow } from "date-fns"
 import {
   ThumbsUp, MessageSquare, TrendingUp, Filter,
-  ChevronDown, ChevronUp, ExternalLink, Trophy, Flame, BookmarkCheck,
+  ChevronDown, ChevronUp, ExternalLink, Trophy, Flame, BookmarkCheck, BadgeCheck,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -184,75 +184,91 @@ function BestBetCard({ tip }: { tip: Tip }) {
 }
 
 function TipCard({ tip }: { tip: Tip }) {
+  const wr = tip.tipster.winRate
+  const wrColor = wr >= 60 ? "text-emerald-600 dark:text-emerald-400" : wr >= 45 ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"
+  const wrBg   = wr >= 60 ? "bg-emerald-500/10" : wr >= 45 ? "bg-amber-500/10" : "bg-rose-500/10"
+
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted/30 transition-colors">
-      <Link href={`/tipsters/${tip.tipster.username}`} className="shrink-0">
-        <Avatar src={tip.tipster.avatar} name={tip.tipster.displayName} size="md" />
-      </Link>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Link href={`/tipsters/${tip.tipster.username}`} className="text-xs font-bold hover:text-primary truncate">
-                {tip.tipster.displayName}
-              </Link>
-              {tip.tipster.isPro && (
-                <span className="rounded bg-amber-500/10 px-1 py-px text-[9px] font-bold text-amber-600">PRO</span>
-              )}
-              <span className="text-[10px] text-muted-foreground">
-                {tip.tipster.winRate.toFixed(0)}% win •{" "}
-                {tip.tipster.totalTips} tips
-              </span>
-              <FollowTipsterButton
-                tipsterId={tip.tipster.id}
-                tipsterName={tip.tipster.displayName}
-                variant="pill"
-                size="sm"
-                className="text-[10px] h-5 px-2 py-0"
-              />
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              {sportIcon(tip.sport)} {tip.league}
-              {tip.kickoff && <> · <span className="font-medium text-foreground/70">{formatKickoff(tip.kickoff)}</span></>}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", statusColor(tip.status))}>
-              {tip.status}
-            </Badge>
-          </div>
-        </div>
-
-        <Link href={`/matches/${tip.matchSlug || tip.matchId}`} className="group mt-1 block">
-          <p className="text-xs font-semibold group-hover:text-primary">
-            {tip.homeTeam} <span className="text-muted-foreground font-normal">vs</span> {tip.awayTeam}
-          </p>
+    <div className="rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-sm transition-all overflow-hidden">
+      {/* Tipster header row */}
+      <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
+        {/* Avatar with optional PRO badge */}
+        <Link href={`/tipsters/${tip.tipster.username}`} className="relative shrink-0">
+          <Avatar src={tip.tipster.avatar} name={tip.tipster.displayName} size="md" />
+          {tip.tipster.isPro && (
+            <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-amber-500 px-1 py-px text-[7px] font-black leading-tight text-white">PRO</span>
+          )}
         </Link>
 
-        <div className="mt-2 flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1 rounded bg-primary/8 px-2 py-0.5">
-            <span className="text-[10px] text-muted-foreground">{tip.market}</span>
-            <span className="text-xs font-bold text-primary">{tip.prediction}</span>
+        {/* Tipster info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1 flex-wrap">
+            <Link href={`/tipsters/${tip.tipster.username}`} className="text-xs font-bold hover:text-primary leading-tight truncate max-w-[120px]">
+              {tip.tipster.displayName}
+            </Link>
+            {tip.tipster.isVerified && <BadgeCheck className="h-3 w-3 text-primary shrink-0" />}
+            <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-bold shrink-0", wrBg, wrColor)}>
+              {wr.toFixed(0)}% win
+            </span>
+            <span className="text-[9px] text-muted-foreground shrink-0">· {tip.tipster.totalTips} tips</span>
           </div>
-          <div className="rounded bg-muted px-2 py-0.5">
-            <span className="text-xs font-black tabular-nums">{tip.odds.toFixed(2)}</span>
-          </div>
-          <ConfidenceBar value={tip.confidence} />
+          <p className="text-[10px] text-muted-foreground mt-0.5 leading-none">
+            {sportIcon(tip.sport)} {tip.league}
+            {tip.kickoff && (
+              <> · <span className="font-semibold text-foreground/80">{formatKickoff(tip.kickoff)}</span></>
+            )}
+          </p>
         </div>
 
-        <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
-          <button className="flex items-center gap-0.5 hover:text-foreground">
-            <ThumbsUp className="h-3 w-3" />{tip.likes}
-          </button>
-          <button className="flex items-center gap-0.5 hover:text-foreground">
-            <MessageSquare className="h-3 w-3" />{tip.comments}
-          </button>
-          <span className="ml-auto" title={format(parseISO(tip.createdAt), "d MMM yyyy HH:mm")}>
-            {formatAge(tip.createdAt)}
-          </span>
+        {/* Right controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <FollowTipsterButton
+            tipsterId={tip.tipster.id}
+            tipsterName={tip.tipster.displayName}
+            variant="pill"
+            size="sm"
+            className="text-[10px] h-5 px-2 py-0"
+          />
+          <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 h-5", statusColor(tip.status))}>
+            {tip.status}
+          </Badge>
         </div>
+      </div>
+
+      {/* Match link */}
+      <Link href={`/matches/${tip.matchSlug || tip.matchId}`} className="group block px-3 pb-1.5">
+        <p className="text-sm font-bold group-hover:text-primary leading-snug">
+          {tip.homeTeam} <span className="text-muted-foreground font-normal text-xs">vs</span> {tip.awayTeam}
+        </p>
+      </Link>
+
+      {/* Tip prediction + odds + confidence */}
+      <div className="flex items-center gap-2 px-3 pb-2.5 flex-wrap">
+        <div className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1.5">
+          <span className="text-[10px] text-muted-foreground leading-none">{tip.market}</span>
+          <span className="text-xs font-black text-primary leading-none">{tip.prediction}</span>
+        </div>
+        <div className="rounded-lg bg-muted px-2.5 py-1.5 text-center min-w-[44px]">
+          <div className="text-[9px] text-muted-foreground leading-none">Odds</div>
+          <div className="text-sm font-black tabular-nums leading-tight">{tip.odds.toFixed(2)}</div>
+        </div>
+        <ConfidenceBar value={tip.confidence} />
+        {tip.analysis && (
+          <p className="w-full text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{tip.analysis}</p>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground">
+        <button className="flex items-center gap-0.5 hover:text-foreground transition-colors">
+          <ThumbsUp className="h-3 w-3" /> {tip.likes}
+        </button>
+        <button className="flex items-center gap-0.5 hover:text-foreground transition-colors">
+          <MessageSquare className="h-3 w-3" /> {tip.comments}
+        </button>
+        <span className="ml-auto" title={format(parseISO(tip.createdAt), "d MMM yyyy HH:mm")}>
+          {formatAge(tip.createdAt)}
+        </span>
       </div>
     </div>
   )
@@ -470,6 +486,8 @@ export function TipsFeedClient() {
       if (sport) params.set("sport", sport)
       if (minOdds) params.set("minOdds", minOdds)
       if (maxOdds) params.set("maxOdds", maxOdds)
+      // Pass browser timezone offset so the server buckets matches into the correct local day
+      params.set("tzOffsetMin", String(new Date().getTimezoneOffset()))
       const res = await fetch(`/api/tips/feed?${params}`)
       const json = await res.json()
       setData(json)

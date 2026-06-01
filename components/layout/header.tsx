@@ -154,7 +154,7 @@ export function WorldCupBanner() {
           className="hidden lg:flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide text-black"
           style={{ background: 'linear-gradient(135deg, #ffd700, #ffaa00)', boxShadow: '0 0 12px rgba(255,200,0,0.6)' }}
         >
-          🎯 Join — KES 200 →
+          🏆 Win KES 50,000 Prize →
         </div>
       </Link>
 
