@@ -290,17 +290,92 @@ function hashStr(s: string): number {
   return Math.abs(h) || 1;
 }
 
-const FALLBACK_PREDICTIONS = [
-  { prediction: 'Home Win', market: 'Match Result (1X2)', marketKey: 'h2h' },
-  { prediction: 'Away Win', market: 'Match Result (1X2)', marketKey: 'h2h' },
-  { prediction: 'Draw', market: 'Match Result (1X2)', marketKey: 'h2h' },
-  { prediction: 'Both Teams to Score - Yes', market: 'BTTS', marketKey: 'btts' },
-  { prediction: 'Both Teams to Score - No', market: 'BTTS', marketKey: 'btts' },
-  { prediction: 'Over 2.5 Goals', market: 'Over/Under 2.5', marketKey: 'totals' },
-  { prediction: 'Under 2.5 Goals', market: 'Over/Under 2.5', marketKey: 'totals' },
-  { prediction: 'Home or Draw (1X)', market: 'Double Chance', marketKey: 'dc' },
-  { prediction: 'Away or Draw (X2)', market: 'Double Chance', marketKey: 'dc' },
-];
+// Sport-specific fallback predictions — used only when real market odds are unavailable.
+// Never includes random/mock odds. Keyed by sportType.
+const SPORT_FALLBACK_PREDICTIONS: Record<string, Array<{ prediction: string; market: string; marketKey: string }>> = {
+  soccer: [
+    { prediction: 'Home Win', market: 'Match Result (1X2)', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Match Result (1X2)', marketKey: 'h2h' },
+    { prediction: 'Draw', market: 'Match Result (1X2)', marketKey: 'h2h' },
+    { prediction: 'Both Teams to Score - Yes', market: 'BTTS', marketKey: 'btts' },
+    { prediction: 'Both Teams to Score - No', market: 'BTTS', marketKey: 'btts' },
+    { prediction: 'Over 2.5 Goals', market: 'Over/Under 2.5 Goals', marketKey: 'totals' },
+    { prediction: 'Under 2.5 Goals', market: 'Over/Under 2.5 Goals', marketKey: 'totals' },
+    { prediction: 'Home or Draw (1X)', market: 'Double Chance', marketKey: 'dc' },
+    { prediction: 'Away or Draw (X2)', market: 'Double Chance', marketKey: 'dc' },
+  ],
+  football: [
+    { prediction: 'Home Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Over 44.5 Points', market: 'Over/Under 44.5 Points', marketKey: 'totals' },
+    { prediction: 'Under 44.5 Points', market: 'Over/Under 44.5 Points', marketKey: 'totals' },
+    { prediction: 'Home -3.5', market: 'Point Spread', marketKey: 'spreads' },
+    { prediction: 'Away +3.5', market: 'Point Spread', marketKey: 'spreads' },
+  ],
+  basketball: [
+    { prediction: 'Home Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Over 215.5 Points', market: 'Over/Under 215.5 Points', marketKey: 'totals' },
+    { prediction: 'Under 215.5 Points', market: 'Over/Under 215.5 Points', marketKey: 'totals' },
+    { prediction: 'Home -4.5', market: 'Point Spread', marketKey: 'spreads' },
+    { prediction: 'Away +4.5', market: 'Point Spread', marketKey: 'spreads' },
+  ],
+  tennis: [
+    { prediction: 'Home Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Over 22.5 Games', market: 'Over/Under 22.5 Games', marketKey: 'totals' },
+    { prediction: 'Under 22.5 Games', market: 'Over/Under 22.5 Games', marketKey: 'totals' },
+    { prediction: 'Over 2.5 Sets', market: 'Total Sets', marketKey: 'sets' },
+    { prediction: 'Under 2.5 Sets', market: 'Total Sets', marketKey: 'sets' },
+  ],
+  cricket: [
+    { prediction: 'Home Win', market: 'Match Winner', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Match Winner', marketKey: 'h2h' },
+    { prediction: 'Draw', market: 'Match Winner', marketKey: 'h2h' },
+    { prediction: 'Over 300.5 Runs', market: 'Total Runs', marketKey: 'totals' },
+    { prediction: 'Under 300.5 Runs', market: 'Total Runs', marketKey: 'totals' },
+  ],
+  baseball: [
+    { prediction: 'Home Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Moneyline', marketKey: 'h2h' },
+    { prediction: 'Over 8.5 Runs', market: 'Over/Under 8.5 Runs', marketKey: 'totals' },
+    { prediction: 'Under 8.5 Runs', market: 'Over/Under 8.5 Runs', marketKey: 'totals' },
+    { prediction: 'Home -1.5', market: 'Run Line', marketKey: 'spreads' },
+    { prediction: 'Away +1.5', market: 'Run Line', marketKey: 'spreads' },
+  ],
+  hockey: [
+    { prediction: 'Home Win', market: 'Moneyline (60 min)', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Moneyline (60 min)', marketKey: 'h2h' },
+    { prediction: 'Over 5.5 Goals', market: 'Over/Under 5.5 Goals', marketKey: 'totals' },
+    { prediction: 'Under 5.5 Goals', market: 'Over/Under 5.5 Goals', marketKey: 'totals' },
+    { prediction: 'Both Teams to Score', market: 'Both Teams to Score', marketKey: 'btts' },
+  ],
+  mma: [
+    { prediction: 'Home Win (Decision)', market: 'Method of Victory', marketKey: 'method' },
+    { prediction: 'Away Win (Decision)', market: 'Method of Victory', marketKey: 'method' },
+    { prediction: 'Home Win (KO/TKO)', market: 'Method of Victory', marketKey: 'method' },
+    { prediction: 'Away Win (KO/TKO)', market: 'Method of Victory', marketKey: 'method' },
+    { prediction: 'Fight Goes the Distance - Yes', market: 'Fight Goes the Distance', marketKey: 'distance' },
+  ],
+  rugby: [
+    { prediction: 'Home Win', market: 'Match Result', marketKey: 'h2h' },
+    { prediction: 'Away Win', market: 'Match Result', marketKey: 'h2h' },
+    { prediction: 'Draw', market: 'Match Result', marketKey: 'h2h' },
+    { prediction: 'Over 42.5 Points', market: 'Over/Under 42.5 Points', marketKey: 'totals' },
+    { prediction: 'Under 42.5 Points', market: 'Over/Under 42.5 Points', marketKey: 'totals' },
+  ],
+  golf: [
+    { prediction: 'Home Win (Tournament)', market: 'Tournament Winner', marketKey: 'outright' },
+    { prediction: 'Away Win (Tournament)', market: 'Tournament Winner', marketKey: 'outright' },
+    { prediction: 'Over 69.5 Strokes', market: 'Total Strokes', marketKey: 'totals' },
+    { prediction: 'Under 69.5 Strokes', market: 'Total Strokes', marketKey: 'totals' },
+  ],
+};
+
+function getFallbackPredictions(sport?: string): Array<{ prediction: string; market: string; marketKey: string }> {
+  const key = (sport || 'soccer').toLowerCase();
+  return SPORT_FALLBACK_PREDICTIONS[key] || SPORT_FALLBACK_PREDICTIONS['soccer'];
+}
 
 // Big diverse analysis pool, grouped by "lens" so the same tipster posting on
 // the same match never reads like the previous one. We mix in tipster-name,
@@ -381,6 +456,7 @@ export function seedTipsForMatch(ctx: MatchContext): GeneratedTip[] {
     let odds: number;
 
     if (ctx.markets && ctx.markets.length > 0) {
+      // Use real bookmaker market odds only
       const m = ctx.markets[Math.floor(r() * ctx.markets.length)];
       const sel = m.selections[Math.floor(r() * m.selections.length)];
       prediction = sel.label;
@@ -388,11 +464,15 @@ export function seedTipsForMatch(ctx: MatchContext): GeneratedTip[] {
       marketKey = m.key;
       odds = sel.odds;
     } else {
-      const fp = FALLBACK_PREDICTIONS[Math.floor(r() * FALLBACK_PREDICTIONS.length)];
+      // No real odds available — use sport-correct market names but skip
+      // this tipster if odds are genuinely missing (no mock/random odds).
+      const fallbacks = getFallbackPredictions(ctx.sport);
+      const fp = fallbacks[Math.floor(r() * fallbacks.length)];
       prediction = fp.prediction;
       market = fp.market;
       marketKey = fp.marketKey;
-      odds = Math.round((1.5 + r() * 2.6) * 100) / 100;
+      // No real odds available — skip this tip entirely rather than use mock odds
+      odds = 0;
     }
 
     const confidence = Math.max(50, Math.min(95, Math.round(60 + (t.winRate - 50) + r() * 20)));
@@ -403,6 +483,9 @@ export function seedTipsForMatch(ctx: MatchContext): GeneratedTip[] {
     const likes = Math.floor(r() * 80) + 5;
     const dislikes = Math.floor(r() * 12);
     const comments = Math.floor(r() * 18);
+
+    // Skip tip if no real odds are available — no mock odds policy
+    if (odds === 0) continue;
 
     tips.push({
       id: `auto-${ctx.matchId}-${t.id}`,

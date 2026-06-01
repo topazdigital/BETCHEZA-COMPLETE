@@ -369,16 +369,18 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
   const avgGoals = h2hCount > 0 ? h2hGoals / h2hCount : 2.55
   const bttsRate = h2hCount > 0 ? bothScoredCount / h2hCount : 0.5
 
-  // ─── 1X2 ───
+  // ─── 1X2 / Moneyline ───
   if (odds) {
-    const isSoccer = sportSlug === "soccer" || sportSlug === "football"
+    const isSoccerMatch = sportSlug === "soccer" || sportSlug === "football"
     const winner = homeP >= awayP ? homeTeam : awayTeam
     const winnerSide: 'home' | 'away' = homeP >= awayP ? 'home' : 'away'
     const winnerP = Math.max(homeP, awayP)
-    const drawIsBest = isSoccer && drawP > homeP && drawP > awayP
+    const drawIsBest = isSoccerMatch && drawP > homeP && drawP > awayP
+    // Soccer/rugby/cricket → "Match Result"; no-draw sports → "Moneyline"
+    const primaryMarketName = isSoccerMatch ? "Match Result" : "Moneyline"
     if (drawIsBest) {
       picks.push({
-        market: "Match Result",
+        market: primaryMarketName,
         pick: "Draw",
         odds: odds.draw,
         confidence: Math.round(Math.min(82, drawP * 100)),
@@ -388,7 +390,7 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
       })
     } else {
       picks.push({
-        market: "Match Result",
+        market: primaryMarketName,
         pick: `${winner} to win`,
         odds: winner === homeTeam ? odds.home : odds.away,
         confidence: Math.round(Math.min(88, Math.max(40, winnerP * 100))),
@@ -398,28 +400,30 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
       })
     }
 
-    // ─── Double Chance ───
-    const dc1x = 1 / (homeP + drawP)
-    const dcx2 = 1 / (drawP + awayP)
-    const dc12 = 1 / (homeP + awayP)
-    const dcOptions: Array<{ name: string; p: number; price: number; side: 'home_or_draw' | 'away_or_draw' | 'home_or_away' }> = [
-      { name: `${homeTeam} or Draw (1X)`, p: homeP + drawP, price: Math.round(dc1x * 100) / 100, side: 'home_or_draw' },
-      { name: `${awayTeam} or Draw (X2)`, p: drawP + awayP, price: Math.round(dcx2 * 100) / 100, side: 'away_or_draw' },
-      { name: `${homeTeam} or ${awayTeam} (12)`, p: homeP + awayP, price: Math.round(dc12 * 100) / 100, side: 'home_or_away' },
-    ]
-    const dcBest = dcOptions.sort((a, b) => b.p - a.p)[0]
-    picks.push({
-      market: "Double Chance",
-      pick: dcBest.name,
-      odds: dcBest.price,
-      confidence: Math.round(Math.min(94, dcBest.p * 100)),
-      reason: "Covers two of the three possible outcomes — lower variance than a straight win bet.",
-      evalKey: 'dc',
-      side: dcBest.side,
-    })
+    // ─── Double Chance — soccer/rugby only (requires a draw outcome) ───
+    if (isSoccerMatch && odds.draw) {
+      const dc1x = 1 / (homeP + drawP)
+      const dcx2 = 1 / (drawP + awayP)
+      const dc12 = 1 / (homeP + awayP)
+      const dcOptions: Array<{ name: string; p: number; price: number; side: 'home_or_draw' | 'away_or_draw' | 'home_or_away' }> = [
+        { name: `${homeTeam} or Draw (1X)`, p: homeP + drawP, price: Math.round(dc1x * 100) / 100, side: 'home_or_draw' },
+        { name: `${awayTeam} or Draw (X2)`, p: drawP + awayP, price: Math.round(dcx2 * 100) / 100, side: 'away_or_draw' },
+        { name: `${homeTeam} or ${awayTeam} (12)`, p: homeP + awayP, price: Math.round(dc12 * 100) / 100, side: 'home_or_away' },
+      ]
+      const dcBest = dcOptions.sort((a, b) => b.p - a.p)[0]
+      picks.push({
+        market: "Double Chance",
+        pick: dcBest.name,
+        odds: dcBest.price,
+        confidence: Math.round(Math.min(94, dcBest.p * 100)),
+        reason: "Covers two of the three possible outcomes — lower variance than a straight win bet.",
+        evalKey: 'dc',
+        side: dcBest.side,
+      })
+    }
 
-    // ─── Draw No Bet ───
-    if (odds.draw) {
+    // ─── Draw No Bet — soccer/rugby only ───
+    if (isSoccerMatch && odds.draw) {
       const dnbWinner = homeP >= awayP ? homeTeam : awayTeam
       const dnbSide: 'home' | 'away' = homeP >= awayP ? 'home' : 'away'
       const dnbPrice = dnbSide === 'home'
@@ -456,26 +460,28 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
     })
   }
 
-  // ─── Over/Under 1.5, 2.5, 3.5 ───
-  for (const line of [1.5, 2.5, 3.5]) {
-    const over = avgGoals > line
-    const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
-      || findMarketPrice(markets, `over_under_${line.toString().replace(".", "_")}`, n => /over/i.test(n))
-    const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
-      || findMarketPrice(markets, `over_under_${line.toString().replace(".", "_")}`, n => /under/i.test(n))
-    const margin = Math.abs(avgGoals - line)
-    const conf = Math.round(Math.min(86, 50 + margin * 18))
-    picks.push({
-      market: `Over / Under ${line}`,
-      pick: over ? `Over ${line} goals` : `Under ${line} goals`,
-      odds: over ? overPrice : underPrice,
-      confidence: conf,
-      reason: over
-        ? `Recent meetings average ${avgGoals.toFixed(1)} goals — comfortably above the ${line} line.`
-        : `Recent meetings average ${avgGoals.toFixed(1)} goals — leaning under ${line}.`,
-      evalKey: over ? 'over' : 'under',
-      line,
-    })
+  // ─── Over/Under — soccer/football only (goals-based lines) ───
+  if (sportSlug === "soccer" || sportSlug === "football") {
+    for (const line of [1.5, 2.5, 3.5]) {
+      const over = avgGoals > line
+      const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
+        || findMarketPrice(markets, `over_under_${line.toString().replace(".", "_")}`, n => /over/i.test(n))
+      const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
+        || findMarketPrice(markets, `over_under_${line.toString().replace(".", "_")}`, n => /under/i.test(n))
+      const margin = Math.abs(avgGoals - line)
+      const conf = Math.round(Math.min(86, 50 + margin * 18))
+      picks.push({
+        market: `Over / Under ${line} Goals`,
+        pick: over ? `Over ${line} Goals` : `Under ${line} Goals`,
+        odds: over ? overPrice : underPrice,
+        confidence: conf,
+        reason: over
+          ? `Recent meetings average ${avgGoals.toFixed(1)} goals — comfortably above the ${line} line.`
+          : `Recent meetings average ${avgGoals.toFixed(1)} goals — leaning under ${line}.`,
+        evalKey: over ? 'over' : 'under',
+        line,
+      })
+    }
   }
 
   // ─── Half Time Result ───
@@ -515,10 +521,10 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
     })
   }
 
-  // Sort by confidence desc, but always keep Match Result first
+  const isPrimary = (m: string) => m === "Match Result" || m === "Moneyline"
   return picks.sort((a, b) => {
-    if (a.market === "Match Result") return -1
-    if (b.market === "Match Result") return 1
+    if (isPrimary(a.market)) return -1
+    if (isPrimary(b.market)) return 1
     return b.confidence - a.confidence
   })
 }
@@ -613,8 +619,9 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
         ? `${awayTeam} are in better recent form (${awayForm || '—'} vs ${homeForm || '—'})`
         : `Both sides are evenly matched on form and have drawn in past meetings`
 
+  const smartPrimaryMarket = isSoccer ? "Match Result" : "Moneyline"
   picks.push({
-    market: "Match Result",
+    market: smartPrimaryMarket,
     pick: pickSide === 'draw' ? 'Draw' : `${pickName} to win`,
     odds: pickOdds,
     confidence: Math.round(Math.min(90, Math.max(45, pickP * 100))),
@@ -660,26 +667,29 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
     })
   }
 
-  // ── Goal totals — logic from h2h average ──
-  const line = avgGoals >= 3 ? 2.5 : avgGoals >= 2 ? 2.5 : 1.5
-  const over = avgGoals > line
-  const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
-  const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
-  picks.push({
-    market: `Over / Under ${line}`,
-    pick: over ? `Over ${line} goals` : `Under ${line} goals`,
-    odds: over ? overPrice : underPrice,
-    confidence: Math.round(Math.min(86, 55 + Math.abs(avgGoals - line) * 20)),
-    reason: over
-      ? `Recent meetings average ${avgGoals.toFixed(1)} goals — game projects to be open.`
-      : `Recent meetings average ${avgGoals.toFixed(1)} goals — leaning to a tight, low-scoring affair.`,
-    evalKey: over ? 'over' : 'under',
-    line,
-  })
+  // ── Goal totals — soccer/football only ──
+  if (isSoccer) {
+    const line = avgGoals >= 3 ? 2.5 : avgGoals >= 2 ? 2.5 : 1.5
+    const over = avgGoals > line
+    const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
+    const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
+    picks.push({
+      market: `Over / Under ${line} Goals`,
+      pick: over ? `Over ${line} Goals` : `Under ${line} Goals`,
+      odds: over ? overPrice : underPrice,
+      confidence: Math.round(Math.min(86, 55 + Math.abs(avgGoals - line) * 20)),
+      reason: over
+        ? `Recent meetings average ${avgGoals.toFixed(1)} goals — game projects to be open.`
+        : `Recent meetings average ${avgGoals.toFixed(1)} goals — leaning to a tight, low-scoring affair.`,
+      evalKey: over ? 'over' : 'under',
+      line,
+    })
+  }
 
+  const isPrimaryMarket = (m: string) => m === "Match Result" || m === "Moneyline"
   return picks.sort((a, b) => {
-    if (a.market === "Match Result") return -1
-    if (b.market === "Match Result") return 1
+    if (isPrimaryMarket(a.market)) return -1
+    if (isPrimaryMarket(b.market)) return 1
     return b.confidence - a.confidence
   })
 }

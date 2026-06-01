@@ -1008,7 +1008,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
-    const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw);
+    const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw, sportType, match.homeTeam.name, match.awayTeam.name);
     const realOdds = summaryOdds || match.odds;
 
     // Only use real odds — never fall back to computed/estimated odds

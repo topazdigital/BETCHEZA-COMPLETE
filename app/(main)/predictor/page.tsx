@@ -159,6 +159,7 @@ export default function MatchPredictorPage() {
           homeTeam: selectedMatch.homeTeam,
           awayTeam: selectedMatch.awayTeam,
           league: selectedMatch.league,
+          sport: selectedMatch.sport || undefined,
           notes: notes.trim() || undefined,
         }),
       })
