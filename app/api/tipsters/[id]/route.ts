@@ -458,7 +458,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         wonTips: real.won,
         lostTips: real.lost,
         pendingTips: real.pending,
-        totalTips: real.totalSettled + real.pending,
+        // DO NOT override totalTips — keep the catalog/DB value so it matches
+        // the tipster list, SEO title, and tip cards everywhere.
       }),
     };
   }

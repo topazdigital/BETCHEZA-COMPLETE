@@ -189,30 +189,30 @@ function TipCard({ tip }: { tip: Tip }) {
   const wrBg   = wr >= 60 ? "bg-emerald-500/10" : wr >= 45 ? "bg-amber-500/10" : "bg-rose-500/10"
 
   return (
-    <div className="rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-sm transition-all overflow-hidden">
+    <div className="rounded-lg border border-border bg-card hover:border-primary/30 hover:shadow-sm transition-all overflow-hidden">
       {/* Tipster header row */}
-      <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
+      <div className="flex items-center gap-2 px-3 pt-2 pb-1">
         {/* Avatar with optional PRO badge */}
         <Link href={`/tipsters/${tip.tipster.username}`} className="relative shrink-0">
-          <Avatar src={tip.tipster.avatar} name={tip.tipster.displayName} size="md" />
+          <Avatar src={tip.tipster.avatar} name={tip.tipster.displayName} size="sm" />
           {tip.tipster.isPro && (
-            <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-amber-500 px-1 py-px text-[7px] font-black leading-tight text-white">PRO</span>
+            <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-amber-500 px-1 py-px text-[6px] font-black leading-tight text-white">PRO</span>
           )}
         </Link>
 
         {/* Tipster info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1 flex-wrap">
-            <Link href={`/tipsters/${tip.tipster.username}`} className="text-xs font-bold hover:text-primary leading-tight truncate max-w-[120px]">
+            <Link href={`/tipsters/${tip.tipster.username}`} className="text-[11px] font-bold hover:text-primary leading-tight truncate max-w-[110px]">
               {tip.tipster.displayName}
             </Link>
             {tip.tipster.isVerified && <BadgeCheck className="h-3 w-3 text-primary shrink-0" />}
-            <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-bold shrink-0", wrBg, wrColor)}>
-              {wr.toFixed(0)}% win
+            <span className={cn("rounded-full px-1.5 py-px text-[9px] font-bold shrink-0", wrBg, wrColor)}>
+              {wr.toFixed(0)}%
             </span>
             <span className="text-[9px] text-muted-foreground shrink-0">· {tip.tipster.totalTips} tips</span>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-0.5 leading-none">
+          <p className="text-[9px] text-muted-foreground leading-none">
             {sportIcon(tip.sport)} {tip.league}
             {tip.kickoff && (
               <> · <span className="font-semibold text-foreground/80">{formatKickoff(tip.kickoff)}</span></>
@@ -221,51 +221,44 @@ function TipCard({ tip }: { tip: Tip }) {
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <FollowTipsterButton
-            tipsterId={tip.tipster.id}
-            tipsterName={tip.tipster.displayName}
-            variant="pill"
-            size="sm"
-            className="text-[10px] h-5 px-2 py-0"
-          />
-          <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 h-5", statusColor(tip.status))}>
+        <div className="flex items-center gap-1 shrink-0">
+          <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 h-4", statusColor(tip.status))}>
             {tip.status}
           </Badge>
         </div>
       </div>
 
       {/* Match link */}
-      <Link href={`/matches/${tip.matchSlug || tip.matchId}`} className="group block px-3 pb-1.5">
-        <p className="text-sm font-bold group-hover:text-primary leading-snug">
-          {tip.homeTeam} <span className="text-muted-foreground font-normal text-xs">vs</span> {tip.awayTeam}
+      <Link href={`/matches/${tip.matchSlug || tip.matchId}`} className="group block px-3 pb-1">
+        <p className="text-xs font-bold group-hover:text-primary leading-snug">
+          {tip.homeTeam} <span className="text-muted-foreground font-normal">vs</span> {tip.awayTeam}
         </p>
       </Link>
 
-      {/* Tip prediction + odds + confidence */}
-      <div className="flex items-center gap-2 px-3 pb-2.5 flex-wrap">
-        <div className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1.5">
-          <span className="text-[10px] text-muted-foreground leading-none">{tip.market}</span>
-          <span className="text-xs font-black text-primary leading-none">{tip.prediction}</span>
+      {/* Tip prediction + odds */}
+      <div className="flex items-center gap-1.5 px-3 pb-1.5 flex-wrap">
+        <div className="flex items-center gap-1 rounded-md border border-primary/20 bg-primary/5 px-2 py-1">
+          <span className="text-[9px] text-muted-foreground leading-none">{tip.market}</span>
+          <span className="text-[11px] font-black text-primary leading-none">{tip.prediction}</span>
         </div>
-        <div className="rounded-lg bg-muted px-2.5 py-1.5 text-center min-w-[44px]">
-          <div className="text-[9px] text-muted-foreground leading-none">Odds</div>
-          <div className="text-sm font-black tabular-nums leading-tight">{tip.odds.toFixed(2)}</div>
+        <div className="rounded-md bg-muted px-2 py-1 text-center min-w-[38px]">
+          <div className="text-[8px] text-muted-foreground leading-none">Odds</div>
+          <div className="text-xs font-black tabular-nums leading-tight">{tip.odds.toFixed(2)}</div>
         </div>
         <ConfidenceBar value={tip.confidence} />
-        {tip.analysis && (
-          <p className="w-full text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{tip.analysis}</p>
-        )}
       </div>
 
       {/* Footer */}
-      <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-3 border-t border-border px-3 py-1 text-[9px] text-muted-foreground">
         <button className="flex items-center gap-0.5 hover:text-foreground transition-colors">
-          <ThumbsUp className="h-3 w-3" /> {tip.likes}
+          <ThumbsUp className="h-2.5 w-2.5" /> {tip.likes}
         </button>
         <button className="flex items-center gap-0.5 hover:text-foreground transition-colors">
-          <MessageSquare className="h-3 w-3" /> {tip.comments}
+          <MessageSquare className="h-2.5 w-2.5" /> {tip.comments}
         </button>
+        {tip.analysis && (
+          <span className="truncate max-w-[160px] hidden sm:inline">{tip.analysis}</span>
+        )}
         <span className="ml-auto" title={format(parseISO(tip.createdAt), "d MMM yyyy HH:mm")}>
           {formatAge(tip.createdAt)}
         </span>

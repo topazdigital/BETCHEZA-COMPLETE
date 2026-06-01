@@ -181,13 +181,13 @@ export async function GET(request: NextRequest) {
           wonTips: real.won,
           lostTips: real.lost,
           pendingTips: real.pending,
-          totalTips: real.totalSettled + real.pending,
+          // DO NOT override totalTips from auto-tips — keep the catalog/DB value
         }),
         // Tipsters with only pending tips: show 0 win rate (not fake catalog value)
         ...(!hasSettled && hasTips && {
           winRate: 0,
           pendingTips: real.pending,
-          totalTips: real.pending,
+          // DO NOT override totalTips from auto-tips — keep the catalog/DB value
         }),
       };
     });

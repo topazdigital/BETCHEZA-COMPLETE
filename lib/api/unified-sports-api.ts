@@ -1195,6 +1195,24 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       if (r2.ok) data = await r2.json() as ESPNScoreboardResponseFull;
     } catch { /* fall through */ }
   }
+  // For tennis specifically, ESPN's /all/ endpoint is often empty.
+  // Fall back to fetching the specific tour scoreboards (atp + wta) and merge.
+  if (!data?.events?.length && sport === 'tennis') {
+    const combined: ESPNScoreboardResponseFull = { events: [] } as ESPNScoreboardResponseFull;
+    for (const tour of ['atp', 'wta']) {
+      try {
+        const r3 = await fetch(`${ESPN_BASE_URL}/tennis/${tour}/scoreboard`, {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store' as const,
+        });
+        if (r3.ok) {
+          const d3 = await r3.json() as ESPNScoreboardResponseFull;
+          if (d3?.events?.length) combined.events.push(...d3.events);
+        }
+      } catch { /* fall through */ }
+    }
+    if (combined.events.length) data = combined;
+  }
   if (!data?.events?.length) {
     setCache(cacheKey, []);
     return [];
@@ -1394,6 +1412,11 @@ const PRIORITY_LEAGUE_KEYS = new Set<string>([
   // ── International ─────────────────────────────────────────
   'fifa.world', 'fifa.wwc', 'afc.asian.qual', 'concacaf.wcq',
   'uefa.euro.qual', 'copa.america',
+  // ── Tennis (Grand Slams + tours, wide date range needed) ──
+  'atp', 'wta', 'atp.challenger', 'atp.doubles', 'wta.125', 'davis.cup', 'billie.jean.king.cup',
+  // ── Rugby (tournaments need 90-day forward visibility) ────
+  'rwc', 'six-nations', 'six.nations', 'rugby-championship', 'super-rugby', 'super.rugby',
+  'nrl', 'state.of.origin', 'urc', 'autumn.nations', 'premiership', 'eng.1', 'top14',
 ]);
 
 function formatYYYYMMDD(d: Date): string {
