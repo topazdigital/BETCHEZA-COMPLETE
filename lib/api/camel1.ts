@@ -15,15 +15,17 @@ const CAMEL_FOOTBALL_URL = `${CAMEL_BASE}/football`;
 const CACHE_MS = 10 * 60 * 1000;
 
 // All sport pages available on camel1.tv
+// NOTE: sportId must match lib/sports-data.ts ALL_SPORTS ids:
+//   1=Football, 2=Basketball, 3=Tennis, 6=Baseball, 7=Ice Hockey, 12=Rugby, 14=Volleyball, 24=Handball
 const CAMEL_SPORT_PAGES: Array<{ url: string; sportId: number; sportKey: string; sportName: string; icon: string }> = [
-  { url: `${CAMEL_BASE}/basketball`, sportId: 2, sportKey: 'basketball', sportName: 'Basketball', icon: '🏀' },
-  { url: `${CAMEL_BASE}/tennis`,     sportId: 6, sportKey: 'tennis',     sportName: 'Tennis',     icon: '🎾' },
-  { url: `${CAMEL_BASE}/baseball`,   sportId: 7, sportKey: 'baseball',   sportName: 'Baseball',   icon: '⚾' },
-  { url: `${CAMEL_BASE}/ice-hockey`, sportId: 9, sportKey: 'hockey',     sportName: 'Ice Hockey', icon: '🏒' },
-  { url: `${CAMEL_BASE}/volleyball`, sportId: 14, sportKey: 'volleyball', sportName: 'Volleyball', icon: '🏐' },
-  { url: `${CAMEL_BASE}/rugby`,      sportId: 12, sportKey: 'rugby',      sportName: 'Rugby',      icon: '🏉' },
-  { url: `${CAMEL_BASE}/american-football`, sportId: 4, sportKey: 'football', sportName: 'American Football', icon: '🏈' },
-  { url: `${CAMEL_BASE}/handball`,   sportId: 24, sportKey: 'handball',   sportName: 'Handball',   icon: '🤾' },
+  { url: `${CAMEL_BASE}/basketball`, sportId: 2,  sportKey: 'basketball', sportName: 'Basketball',       icon: '🏀' },
+  { url: `${CAMEL_BASE}/tennis`,     sportId: 3,  sportKey: 'tennis',     sportName: 'Tennis',           icon: '🎾' },
+  { url: `${CAMEL_BASE}/baseball`,   sportId: 6,  sportKey: 'baseball',   sportName: 'Baseball',         icon: '⚾' },
+  { url: `${CAMEL_BASE}/ice-hockey`, sportId: 7,  sportKey: 'hockey',     sportName: 'Ice Hockey',       icon: '🏒' },
+  { url: `${CAMEL_BASE}/volleyball`, sportId: 14, sportKey: 'volleyball', sportName: 'Volleyball',       icon: '🏐' },
+  { url: `${CAMEL_BASE}/rugby`,      sportId: 12, sportKey: 'rugby',      sportName: 'Rugby',            icon: '🏉' },
+  { url: `${CAMEL_BASE}/american-football`, sportId: 5, sportKey: 'americanfootball', sportName: 'American Football', icon: '🏈' },
+  { url: `${CAMEL_BASE}/handball`,   sportId: 24, sportKey: 'handball',   sportName: 'Handball',         icon: '🤾' },
 ];
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';

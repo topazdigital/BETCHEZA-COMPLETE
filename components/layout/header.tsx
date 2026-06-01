@@ -149,12 +149,12 @@ export function WorldCupBanner() {
           ))}
         </div>
 
-        {/* CTA */}
+        {/* CTA — always visible */}
         <div
-          className="hidden lg:flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide text-black"
+          className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] sm:text-[11px] font-black uppercase tracking-wide text-black whitespace-nowrap"
           style={{ background: 'linear-gradient(135deg, #ffd700, #ffaa00)', boxShadow: '0 0 12px rgba(255,200,0,0.6)' }}
         >
-          🏆 Win KES 50,000 Prize →
+          🏆 <span className="hidden xs:inline">Win </span>KES 50,000 Prize →
         </div>
       </Link>
 
