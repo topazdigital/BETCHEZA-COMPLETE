@@ -142,6 +142,21 @@ const nextConfig = {
         headers: [{ key: 'Cache-Control', value: 's-maxage=60, stale-while-revalidate=120' }],
       },
       {
+        // Match pages: tell Google to allow full snippets, large images, video previews
+        source: '/matches/:path*',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1' },
+        ],
+      },
+      {
+        // Live page: always fresh
+        source: '/live',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'index, follow, max-snippet:-1, max-image-preview:large' },
+          { key: 'Cache-Control', value: 'public, max-age=0, s-maxage=0, must-revalidate' },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },

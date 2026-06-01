@@ -70,6 +70,7 @@ interface FeedData {
   bestTip: Tip | null
   topTipsters: TopTipster[]
   sports: string[]
+  sportCounts: Record<string, number>
   counts: { today: number; tomorrow: number; upcoming: number }
 }
 
@@ -268,10 +269,11 @@ function TipCard({ tip }: { tip: Tip }) {
 }
 
 function Filters({
-  sports, selectedSport, onSport,
+  sports, sportCounts, selectedSport, onSport,
   minOdds, maxOdds, onMinOdds, onMaxOdds,
 }: {
   sports: string[]
+  sportCounts: Record<string, number>
   selectedSport: string
   onSport: (s: string) => void
   minOdds: string
@@ -279,6 +281,7 @@ function Filters({
   onMinOdds: (v: string) => void
   onMaxOdds: (v: string) => void
 }) {
+  const totalCount = Object.values(sportCounts).reduce((a, b) => a + b, 0)
   return (
     <div className="space-y-4">
       <div>
@@ -291,7 +294,14 @@ function Filters({
               !selectedSport ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
           >
-            🏆 All Sports
+            <span>🏆</span>
+            <span className="flex-1">All Sports</span>
+            {totalCount > 0 && (
+              <span className={cn(
+                "rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums",
+                !selectedSport ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+              )}>{totalCount}</span>
+            )}
           </button>
           {sports.map(s => (
             <button
@@ -302,7 +312,14 @@ function Filters({
                 selectedSport === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              {sportIcon(s)} {s}
+              <span>{sportIcon(s)}</span>
+              <span className="flex-1 truncate capitalize">{s}</span>
+              {sportCounts[s] && (
+                <span className={cn(
+                  "rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums",
+                  selectedSport === s ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                )}>{sportCounts[s]}</span>
+              )}
             </button>
           ))}
         </div>
@@ -529,6 +546,7 @@ export function TipsFeedClient() {
           {data && (
             <Filters
               sports={data.sports}
+              sportCounts={data.sportCounts ?? {}}
               selectedSport={sport}
               onSport={s => { setSport(s) }}
               minOdds={minOdds}
@@ -561,6 +579,7 @@ export function TipsFeedClient() {
                 <CardContent className="p-3">
                   <Filters
                     sports={data.sports}
+                    sportCounts={data.sportCounts ?? {}}
                     selectedSport={sport}
                     onSport={s => { setSport(s); setShowMobileFilters(false) }}
                     minOdds={minOdds}

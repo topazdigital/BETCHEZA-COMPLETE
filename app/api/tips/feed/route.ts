@@ -458,21 +458,20 @@ export async function GET(request: NextRequest) {
       .map((t, i) => ({ ...t, rank: i + 1 }));
   }
 
-  // Build sports list from ALL non-past auto-tips (not just the current day filter)
-  const sports = Array.from(
-    new Set(
-      allAutoTips
-        .filter(t => getDayBucket(t.kickoff, tzOffsetMin) !== 'past')
-        .map(t => t.sport)
-        .filter(Boolean)
-    )
-  ).sort() as string[];
+  // Build sports list + per-sport tip counts from ALL non-past auto-tips
+  const sportCountMap: Record<string, number> = {};
+  for (const t of allAutoTips) {
+    if (!t.sport || getDayBucket(t.kickoff, tzOffsetMin) === 'past') continue;
+    sportCountMap[t.sport] = (sportCountMap[t.sport] ?? 0) + 1;
+  }
+  const sports = Object.keys(sportCountMap).sort();
 
   return NextResponse.json({
     tips,
     bestTip,
     topTipsters,
     sports,
+    sportCounts: sportCountMap,
     counts: { today: today_count, tomorrow: tomorrow_count, upcoming: upcoming_count },
   });
 }

@@ -202,17 +202,49 @@ function buildJsonLd(
   // WebPage — signals to Google what kind of page this is
   const webPage = {
     '@context': 'https://schema.org',
-    '@type': finished ? 'WebPage' : 'WebPage',
+    '@type': 'WebPage',
     '@id': `${canonical}#webpage`,
     url: canonical,
     name: finished
       ? `${home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${away} Result`
       : `${home} vs ${away} Predictions`,
+    description: sportsEvent.description,
     isPartOf: { '@id': `${baseUrl}/#website` },
     breadcrumb: { '@id': `${canonical}#breadcrumb` },
+    ...(match.kickoffTime ? {
+      datePublished: match.kickoffTime,
+      dateModified: (finished || live) ? new Date().toISOString() : match.kickoffTime,
+    } : {}),
   };
 
-  return [sportsEvent, breadcrumb, webPage];
+  // NewsArticle — helps Google surface match result pages as news items
+  const newsArticle = (finished || live) ? {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    '@id': `${canonical}#article`,
+    headline: finished
+      ? `${home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${away} Full Time Result${league ? ` | ${league}` : ''}`
+      : `🔴 LIVE: ${home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${away}${league ? ` | ${league}` : ''}`,
+    description: sportsEvent.description,
+    url: canonical,
+    datePublished: match.kickoffTime ?? new Date().toISOString(),
+    dateModified: new Date().toISOString(),
+    author: { '@type': 'Organization', name: siteName, url: baseUrl },
+    publisher: {
+      '@type': 'Organization',
+      name: siteName,
+      url: baseUrl,
+      logo: { '@type': 'ImageObject', url: `${baseUrl}/icon-512.png` },
+    },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
+    about: [homeTeamSchema, awayTeamSchema],
+    articleSection: league || (match.sport?.name ?? 'Sport'),
+    keywords: [home, away, league, match.sport?.name].filter(Boolean).join(', '),
+  } : null;
+
+  const schemas: object[] = [sportsEvent, breadcrumb, webPage];
+  if (newsArticle) schemas.push(newsArticle);
+  return schemas;
 }
 
 // ─── generateMetadata ─────────────────────────────────────────────────────────
@@ -315,7 +347,17 @@ export async function generateMetadata({
       description,
     },
     alternates: { canonical },
-    robots: { index: true, follow: true },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        'max-snippet': -1,
+        'max-image-preview': 'large',
+        'max-video-preview': -1,
+      },
+    },
   };
 }
 

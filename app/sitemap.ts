@@ -4,7 +4,7 @@ import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getPool } from '@/lib/db';
 import { matchToSlug } from '@/lib/utils/match-url';
 
-export const revalidate = 60;
+export const revalidate = 30;
 
 function siteUrl(): string {
   return (

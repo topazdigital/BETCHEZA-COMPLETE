@@ -135,7 +135,9 @@ export async function GET(req: NextRequest) {
       for (const m of justFinished) {
         pingMatchResult(m.matchId, m.homeTeam, m.awayTeam).catch(() => {});
         console.log(`[live-scores] IndexNow queued for FT result: ${m.homeTeam} vs ${m.awayTeam}`);
-        finishedUrls.push(`${siteUrl}/matches/${m.matchId}`);
+        // Use canonical slug format so Google indexes the right URL
+        const slug = matchToSlug(m.matchId, m.homeTeam, m.awayTeam);
+        finishedUrls.push(`${siteUrl}/matches/${slug}`);
       }
       // Also ping Google's Indexing API (direct crawl queue)
       if (finishedUrls.length > 0) {

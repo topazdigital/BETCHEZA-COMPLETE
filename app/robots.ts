@@ -12,6 +12,33 @@ export default function robots(): MetadataRoute.Robots {
   const base = siteUrl();
   return {
     rules: [
+      // Googlebot: no crawl delay, full snippet + image preview allowed
+      {
+        userAgent: 'Googlebot',
+        allow: '/',
+        disallow: [
+          '/api/',
+          '/admin/',
+          '/dashboard/',
+          '/login',
+          '/register',
+          '/_next/',
+        ],
+      },
+      // Bingbot
+      {
+        userAgent: 'Bingbot',
+        allow: '/',
+        disallow: [
+          '/api/',
+          '/admin/',
+          '/dashboard/',
+          '/login',
+          '/register',
+          '/_next/',
+        ],
+      },
+      // All other crawlers
       {
         userAgent: '*',
         allow: '/',

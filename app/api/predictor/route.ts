@@ -282,7 +282,7 @@ Rules:
 
 Output STRICT JSON with this exact shape:
 {
-  "pick": "string (e.g. '${s === 'tennis' ? 'Madison Keys' : s === 'basketball' ? 'Lakers'} Win')",
+  "pick": "string — e.g. 'Team Name to win' or 'Draw'",
   "market": "string (sport-appropriate primary market)",
   "confidence": number (0-100),
   "recommendedBet": "string",
