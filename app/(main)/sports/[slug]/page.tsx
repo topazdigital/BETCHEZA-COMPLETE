@@ -174,7 +174,7 @@ export default async function SportPage({
             href={`/matches?sport=${slug}`}
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors"
           >
-            {config.icon} View {config.name} Matches Today
+            {config.icon} View {config.name} Matches
           </Link>
           <Link
             href={`/live?sport=${slug}`}

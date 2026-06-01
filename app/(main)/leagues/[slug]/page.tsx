@@ -7,7 +7,7 @@ import useSWR from "swr"
 import {
   ArrowLeft, Trophy, Calendar, TrendingUp,
   ChevronRight, Clock, Star, Target, Loader2,
-  AlertCircle, ChevronDown,
+  AlertCircle, ChevronDown, Info, Bookmark, BarChart2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -178,17 +178,102 @@ export default function LeaguePage({ params }: PageProps) {
       )
     }
 
+    const displayName = normalisedSlug.match(/^espn[-_]?\d+$/i)
+      ? 'Competition'
+      : titleCase(normalisedSlug);
     return (
-      <div className="flex-1 p-8 text-center">
-          <Trophy className="mx-auto h-12 w-12 text-muted-foreground/60" />
-          <h1 className="mt-4 text-2xl font-bold">{titleCase(normalisedSlug)}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            No matches scheduled or available for this competition right now.
-          </p>
-          <Button asChild className="mt-4">
-            <Link href="/matches">Browse all matches</Link>
-          </Button>
+      <div className="flex-1 px-3 py-3 md:px-4 md:py-4">
+        <Button variant="ghost" size="sm" className="mb-3 h-7 text-xs px-2" asChild>
+          <Link href="/matches"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Back</Link>
+        </Button>
+
+        <Card className="mb-4 border-dashed">
+          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+            <Trophy className="h-12 w-12 text-muted-foreground/40" />
+            <div>
+              <h1 className="text-2xl font-bold">{displayName}</h1>
+              <p className="mt-1.5 text-sm text-muted-foreground max-w-md">
+                No current fixtures found. The season may be in a break or yet to begin — check back soon, or explore matches across all leagues below.
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap justify-center mt-1">
+              <Button asChild size="sm">
+                <Link href="/matches">All Matches</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/live">Live Now</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold mb-1">About this Competition</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {displayName} is tracked on Betcheza with AI-powered match predictions, live scores, and community tips. Bookmark this page to be notified when fixtures are announced.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <Bookmark className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold mb-1">Free Betting Tips</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    When fixtures are live, our AI analyses team form, head-to-head records, and odds to deliver the best free tips for every {displayName} match.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <BarChart2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold mb-1">AI Predictions</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Our prediction engine covers 1X2, BTTS, Over/Under, Asian Handicap and Correct Score markets — fully automated for every match week.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm">
+              <Star className="h-3.5 w-3.5 text-warning" />Popular Leagues
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {[
+                { name: 'Premier League', slug: 'premier-league', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+                { name: 'La Liga', slug: 'la-liga', flag: '🇪🇸' },
+                { name: 'Champions League', slug: 'champions-league', flag: '🇪🇺' },
+                { name: 'Bundesliga', slug: 'bundesliga', flag: '🇩🇪' },
+                { name: 'Serie A', slug: 'serie-a', flag: '🇮🇹' },
+                { name: 'Ligue 1', slug: 'ligue-1', flag: '🇫🇷' },
+              ].map(l => (
+                <Link key={l.slug} href={`/leagues/${l.slug}`}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-2 text-xs font-medium hover:border-primary hover:bg-accent transition-colors">
+                  <span>{l.flag}</span>{l.name}
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -392,7 +477,7 @@ export default function LeaguePage({ params }: PageProps) {
                     <EmptyState
                       icon={AlertCircle}
                       title="No standings available"
-                      hint="ESPN doesn't publish a table for this competition."
+                      hint="Standings are not published for this competition or the season hasn't started yet."
                     />
                   ) : (
                     <div className="overflow-x-auto">
@@ -548,7 +633,7 @@ export default function LeaguePage({ params }: PageProps) {
                     <EmptyState
                       icon={TrendingUp}
                       title="No top scorers data"
-                      hint="ESPN hasn't published leaders for this competition."
+                      hint="Top scorer stats are not yet published for this competition."
                     />
                   ) : (
                     <ol className="space-y-2">
@@ -609,7 +694,150 @@ export default function LeaguePage({ params }: PageProps) {
               </Card>
             </aside>
           </div>
+
+          {/* ── Rich Auto-Generated SEO Content ── */}
+          <LeagueRichContent
+            league={league}
+            standings={standings}
+            scorers={scorers}
+            upcomingMatches={upcomingMatches}
+            finishedMatches={finishedMatches}
+            liveMatches={liveMatches}
+          />
         </div>
       </div>
+  )
+}
+
+/* ── Rich SEO content block ─────────────────────────────────────────────── */
+
+interface LeagueRichContentProps {
+  league: { id: number; name: string; slug: string; country: string; countryCode: string; sportId: number; tier: number }
+  standings: StandingRow[]
+  scorers: ScorerRow[]
+  upcomingMatches: { kickoffTime: string | Date; homeTeam: { name: string }; awayTeam: { name: string } }[]
+  finishedMatches: { kickoffTime: string | Date; homeTeam: { name: string }; awayTeam: { name: string }; homeScore: number | null; awayScore: number | null }[]
+  liveMatches: { homeTeam: { name: string }; awayTeam: { name: string } }[]
+}
+
+function LeagueRichContent({ league, standings, scorers, upcomingMatches, finishedMatches, liveMatches }: LeagueRichContentProps) {
+  const topTeam = standings[0]
+  const topScorer = scorers[0]
+  const nextFixture = upcomingMatches[0]
+  const lastResult = finishedMatches[0]
+
+  const aboutLines: string[] = []
+  if (standings.length > 0) {
+    aboutLines.push(`${standings.length} teams compete in the current ${league.name} season.`)
+    if (topTeam) aboutLines.push(`${topTeam.team.name} currently lead the table with ${topTeam.points} points from ${topTeam.played} matches.`)
+  }
+  if (topScorer) {
+    aboutLines.push(`${topScorer.player.name} (${topScorer.team.name}) leads the scoring charts with ${topScorer.stats.goals} goal${topScorer.stats.goals !== 1 ? 's' : ''} this season.`)
+  }
+  if (liveMatches.length > 0) {
+    aboutLines.push(`${liveMatches.length} ${league.name} match${liveMatches.length !== 1 ? 'es are' : ' is'} live right now — follow the scores in real time.`)
+  } else if (nextFixture) {
+    const d = new Date(nextFixture.kickoffTime)
+    const dateLabel = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+    aboutLines.push(`Next fixture: ${nextFixture.homeTeam.name} vs ${nextFixture.awayTeam.name} on ${dateLabel}.`)
+  }
+  if (lastResult) {
+    aboutLines.push(`Most recent result: ${lastResult.homeTeam.name} ${lastResult.homeScore ?? '?'} – ${lastResult.awayScore ?? '?'} ${lastResult.awayTeam.name}.`)
+  }
+
+  if (aboutLines.length === 0) {
+    aboutLines.push(`${league.name} fixtures, results, standings and AI-powered predictions are available on Betcheza. Check back for the latest updates when the next round begins.`)
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* About */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-1.5 text-sm">
+            <Info className="h-3.5 w-3.5 text-primary" />
+            About {league.name}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-2">
+          {aboutLines.map((line, i) => (
+            <p key={i} className="text-[12px] text-muted-foreground leading-relaxed">{line}</p>
+          ))}
+          <p className="text-[12px] text-muted-foreground leading-relaxed">
+            Betcheza tracks every {league.name} match with live scores, community tips from verified tipsters, and AI predictions covering 1X2, BTTS, Over/Under, Asian Handicap and Correct Score markets — all free.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Upcoming Fixtures Summary */}
+      {upcomingMatches.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm">
+              <Clock className="h-3.5 w-3.5 text-primary" />
+              Upcoming {league.name} Fixtures
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-1.5">
+              {upcomingMatches.slice(0, 5).map((m, i) => {
+                const d = new Date(m.kickoffTime)
+                const dateLabel = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+                const timeLabel = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+                return (
+                  <div key={i} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-xs">
+                    <span className="font-medium truncate">{m.homeTeam.name} <span className="text-muted-foreground">vs</span> {m.awayTeam.name}</span>
+                    <span className="shrink-0 ml-2 text-muted-foreground tabular-nums">{dateLabel} · {timeLabel}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              All times are shown in your local timezone. Free AI predictions will be published before each kick-off.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Results Summary */}
+      {finishedMatches.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm">
+              <Trophy className="h-3.5 w-3.5 text-success" />
+              Recent {league.name} Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-1.5">
+              {finishedMatches.slice(0, 5).map((m, i) => {
+                const d = new Date(m.kickoffTime)
+                const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                return (
+                  <div key={i} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-xs">
+                    <span className="truncate font-medium">{m.homeTeam.name}</span>
+                    <span className="shrink-0 mx-2 font-bold tabular-nums text-foreground">
+                      {m.homeScore ?? '?'} – {m.awayScore ?? '?'}
+                    </span>
+                    <span className="truncate font-medium text-right">{m.awayTeam.name}</span>
+                    <span className="shrink-0 ml-2 text-muted-foreground text-[10px]">{dateLabel}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SEO footer */}
+      <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          {league.name} predictions, tips, standings and top scorers on Betcheza Kenya. Free AI-powered betting tips updated before every match.{' '}
+          <Link href="/responsible-gambling" className="underline hover:text-foreground">Bet responsibly.</Link>
+          {' '}
+          <Link href="/matches" className="underline hover:text-foreground">Browse all matches →</Link>
+        </p>
+      </div>
+    </div>
   )
 }

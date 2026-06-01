@@ -21,6 +21,7 @@ import { SportIcon, LeagueFlag } from '@/components/ui/team-logo';
 import { Spinner } from '@/components/ui/spinner';
 import { useMatches, useMatchStats } from '@/lib/hooks/use-matches';
 import { ALL_SPORTS, ALL_LEAGUES } from '@/lib/sports-data';
+import { resolveLeagueSlug } from '@/lib/league-aliases';
 import type { Match } from '@/lib/api/sports-api';
 import { cn } from '@/lib/utils';
 import { getBrowserTimezone, isToday as isTodayTz } from '@/lib/utils/timezone';
@@ -314,8 +315,8 @@ function MatchesContent() {
     router.replace(`/matches${qs}`, { scroll: false });
     if (typeof document !== 'undefined') {
       document.title = sport
-        ? `${sport.name} Matches Today — Free Tips & Predictions | Betcheza`
-        : 'Best Free Betting Tips Today Kenya | Football Predictions | Betcheza';
+        ? `${sport.name} Matches — Free Tips & Predictions | Betcheza`
+        : 'Best Free Betting Tips | Football Predictions | Betcheza';
     }
   }, [router]);
   const [dateTab, setDateTab] = useState<DateTab>(() => {
@@ -540,7 +541,11 @@ function MatchesContent() {
           ) : filteredMatches.length > 0 ? (
             <div className="space-y-3">
               {groupedMatches.map(({ key, sport, league, matches: leagueMatches }) => {
-                const leagueSlug = league.slug || league.name.toLowerCase().replace(/\s+/g, '-');
+                const _knownL = ALL_LEAGUES.find(l => l.id === league.id);
+                const leagueSlug = _knownL?.slug
+                  || resolveLeagueSlug(league.slug || '')
+                  || (league.slug && !/^espn[-_]?\d+$/i.test(league.slug) ? league.slug : null)
+                  || league.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
                 return (
                   <div key={key}>
                     <div className="mb-1.5 flex items-center justify-between border-b border-border/60 pb-1">
