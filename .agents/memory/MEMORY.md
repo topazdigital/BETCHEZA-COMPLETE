@@ -6,3 +6,4 @@
 - [SEO canonical & robots fixes](seo-canonical.md) — robots.txt was broken (Disallow rules orphaned); match canonicals must use matchToSlug not encodeURIComponent(id); matchToSlug now handles hyphen-delimited URL slugs
 - [Cricket & Tennis ESPN fetch](cricket-tennis-espn.md) — ESPN cricket has no /all/ endpoint; must scan sequential series IDs; DB/file match cache persists across restarts and can serve stale 0-cricket results — must clear both when debugging
 - [Match not found — espn_eventid_ cache skip](match-eventid-cache.md) — getMatchById was skipping cache scan for espn_eventid_ format, causing "Match not found" for tennis/basketball/all non-soccer sports even when match was live in cache
+- [League page sport param & slug resolution](league-page-sport-param.md) — unknown league links must include ?sport=slug; never use raw match.league.slug; status filter is context-aware based on dateTab

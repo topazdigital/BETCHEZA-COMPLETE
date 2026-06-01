@@ -1,6 +1,7 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useState, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import useSWR from "swr"
@@ -18,7 +19,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { TeamLogo } from "@/components/ui/team-logo"
 import { FlagIcon } from "@/components/ui/flag-icon"
 import { cn } from "@/lib/utils"
-import { ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
+import { ALL_LEAGUES, ALL_SPORTS, getSportIcon } from "@/lib/sports-data"
 import { playerHref } from "@/lib/utils/slug"
 import { resolveLeagueSlug } from "@/lib/league-aliases"
 import { useMatches } from "@/lib/hooks/use-matches"
@@ -115,14 +116,37 @@ const SEASONS = generateSeasons();
 
 export default function LeaguePage({ params }: PageProps) {
   const { slug } = use(params)
+  const searchParams = useSearchParams()
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
 
   const normalisedSlug = resolveLeagueSlug(slug) || slug
   const knownLeague = ALL_LEAGUES.find(l => l.slug === normalisedSlug)
 
-  const { matches: allMatches, isLoading: matchesLoading } = useMatches(
-    knownLeague ? { leagueId: knownLeague.id, sportId: knownLeague.sportId } : undefined
+  // Detect raw ESPN numeric ID slugs like "espn-900" or "900"
+  const espnIdMatch = slug.match(/^(?:espn-)?(\d{2,})$/)
+  const rawEspnLeagueId = espnIdMatch ? parseInt(espnIdMatch[1], 10) : null
+
+  // When league is unknown, read the sport from the query param (passed by match/matches pages)
+  // so we fetch from the right sport-specific cache instead of the slow all-sports cache.
+  const sportSlugParam = searchParams.get('sport') || ''
+  const sportFromParam = useMemo(
+    () => ALL_SPORTS.find(s => s.slug === sportSlugParam) || null,
+    [sportSlugParam]
   )
+
+  // Build the useMatches filter:
+  // - Known league → filter by leagueId + sportId
+  // - Raw ESPN numeric ID → filter by that leagueId
+  // - Name-based unknown slug with sport hint → filter by sportId only (client filters further)
+  // - Fully unknown → fetch all (slow path, works when SWR cache is warm)
+  const matchesFilter = useMemo(() => {
+    if (knownLeague) return { leagueId: knownLeague.id, sportId: knownLeague.sportId };
+    if (rawEspnLeagueId) return { leagueId: rawEspnLeagueId };
+    if (sportFromParam) return { sportId: sportFromParam.id };
+    return undefined;
+  }, [knownLeague, rawEspnLeagueId, sportFromParam])
+
+  const { matches: allMatches, isLoading: matchesLoading } = useMatches(matchesFilter)
 
   const isPastSeason = selectedSeason !== null
   const matches = isPastSeason
@@ -136,6 +160,9 @@ export default function LeaguePage({ params }: PageProps) {
         const sportMatch = !knownLeague.sportId || md.sportId === knownLeague.sportId;
         return leagueMatch && sportMatch;
       })
+    : rawEspnLeagueId
+    // Fetched by leagueId directly — all results are correct
+    ? allMatches
     : allMatches.filter(m => {
         // Check both raw league slug AND name-derived slug, since URLs are always
         // built from the name when the league is unknown (no raw slug matches name).

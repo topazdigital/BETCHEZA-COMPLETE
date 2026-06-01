@@ -24,7 +24,9 @@ import { Spinner } from "@/components/ui/spinner"
 import { TeamLogo } from "@/components/ui/team-logo"
 import { PlayerAvatar } from "@/components/ui/player-avatar"
 import { cn } from "@/lib/utils"
-import { teamHref, playerHref, tipsterHref } from "@/lib/utils/slug"
+import { teamHref, playerHref, tipsterHref, slugify } from "@/lib/utils/slug"
+import { ALL_LEAGUES } from "@/lib/sports-data"
+import { resolveLeagueSlug } from "@/lib/league-aliases"
 import { formatTime, formatDate, getBrowserTimezone, getDayLabel } from "@/lib/utils/timezone"
 import { FlagIcon } from "@/components/ui/flag-icon"
 import { liveStatusLabel } from "@/lib/utils/live-status"
@@ -1194,17 +1196,29 @@ export default function MatchDetailPage({ params }: PageProps) {
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-base shrink-0" aria-hidden>{SPORT_EMOJI[sport] || '🏆'}</span>
               <FlagIcon countryCode={match.league.countryCode} size="xs" className="shrink-0" title={match.league.country} />
-              {match.league.slug ? (
-                <Link
-                  href={`/leagues/${match.league.slug}`}
-                  className="text-[11px] font-bold text-white/90 truncate hover:text-white hover:underline uppercase tracking-wider"
-                  onClick={e => e.stopPropagation()}
-                >
-                  {match.league.name}
-                </Link>
-              ) : (
-                <span className="text-[11px] font-bold text-white/90 truncate uppercase tracking-wider">{match.league.name}</span>
-              )}
+              {(() => {
+                const knownL = ALL_LEAGUES.find(l => l.id === match.league.id);
+                const leagueSlug = knownL?.slug
+                  || resolveLeagueSlug(match.league.slug || '')
+                  || slugify(match.league.name);
+                const sportSlug = match.sport?.slug || sport;
+                const href = knownL
+                  ? `/leagues/${leagueSlug}`
+                  : leagueSlug
+                  ? `/leagues/${leagueSlug}?sport=${sportSlug}`
+                  : null;
+                return href ? (
+                  <Link
+                    href={href}
+                    className="text-[11px] font-bold text-white/90 truncate hover:text-white hover:underline uppercase tracking-wider"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {match.league.name}
+                  </Link>
+                ) : (
+                  <span className="text-[11px] font-bold text-white/90 truncate uppercase tracking-wider">{match.league.name}</span>
+                );
+              })()}
               <span className="text-[10px] text-white/40 shrink-0 hidden sm:inline">• {match.league.country}</span>
             </div>
             <div className="flex items-center gap-1">
@@ -2476,10 +2490,15 @@ export default function MatchDetailPage({ params }: PageProps) {
               standings.map((g, i) => {
                 const hasGoals = g.rows.some(r => r.goalsFor !== undefined)
                 const totalRows = g.rows.length
-                const fullTableHref = match.homeTeam.leagueSlug
-                  ? `/leagues/${match.homeTeam.leagueSlug}`
-                  : match.league?.slug
-                  ? `/leagues/${match.league.slug}`
+                const knownL2 = match.league?.id ? ALL_LEAGUES.find(l => l.id === match.league.id) : null;
+                const resolvedLeagueSlug2 = knownL2?.slug
+                  || resolveLeagueSlug(match.homeTeam.leagueSlug || '')
+                  || resolveLeagueSlug(match.league?.slug || '')
+                  || (match.league?.name ? slugify(match.league.name) : null);
+                const fullTableHref = resolvedLeagueSlug2
+                  ? knownL2
+                    ? `/leagues/${resolvedLeagueSlug2}`
+                    : `/leagues/${resolvedLeagueSlug2}?sport=${match.sport?.slug || sport}`
                   : null
                 return (
                   <Card key={i} className="overflow-hidden">

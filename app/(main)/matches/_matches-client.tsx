@@ -42,11 +42,7 @@ function toLocalISO(offset: number): string {
   return toLocalISODate(d);
 }
 
-const statusOptions = [
-  { value: 'all', label: 'All (Live & Upcoming)' },
-  { value: 'live', label: 'Live Now' },
-  { value: 'scheduled', label: 'Upcoming Only' },
-];
+// statusOptions is now computed inside MatchesContent based on tab/date context
 
 const POPULAR_LEAGUES = [
   { slug: 'eng.1', name: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
@@ -340,6 +336,41 @@ function MatchesContent() {
     router.replace(buildMatchesUrl(selectedSportId, 'calendar', date), { scroll: false });
   }, [router, selectedSportId]);
 
+  // Context-aware status options based on active tab + selected date
+  const statusOptions = useMemo(() => {
+    const todayKey = toLocalISODate(new Date());
+    if (dateTab === 'upcoming') {
+      return [
+        { value: 'all', label: 'All Upcoming' },
+        { value: 'live', label: 'Show Live Too' },
+      ];
+    }
+    if (dateTab === 'calendar') {
+      if (calendarDate > todayKey) {
+        return [{ value: 'scheduled', label: 'Scheduled Only' }];
+      }
+      if (calendarDate < todayKey) {
+        return [{ value: 'all', label: 'All Results' }];
+      }
+    }
+    return [
+      { value: 'all', label: 'All (Live & Today)' },
+      { value: 'live', label: 'Live Now' },
+      { value: 'scheduled', label: 'Today Scheduled' },
+    ];
+  }, [dateTab, calendarDate]);
+
+  // Auto-adapt status filter when tab or calendar date changes
+  useEffect(() => {
+    const todayKey = toLocalISODate(new Date());
+    if (dateTab === 'upcoming') {
+      setStatusFilter(prev => prev === 'live' ? 'all' : prev);
+    } else if (dateTab === 'calendar') {
+      if (calendarDate > todayKey) setStatusFilter('scheduled');
+      else if (calendarDate < todayKey) setStatusFilter('all');
+    }
+  }, [dateTab, calendarDate]);
+
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const sport = ALL_SPORTS.find(s => s.id === selectedSportId);
@@ -594,11 +625,16 @@ function MatchesContent() {
                 const leagueSlug = _knownL?.slug
                   || resolveLeagueSlug(league.slug || '')
                   || league.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                // For unknown leagues, pass the sport slug as a query param so the league page
+                // can fetch sport-specific matches (avoids SWR cache miss for non-football sports).
+                const leagueHref = _knownL
+                  ? `/leagues/${leagueSlug}`
+                  : `/leagues/${leagueSlug}?sport=${sport.slug}`;
                 return (
                   <div key={key}>
                     <div className="mb-1.5 flex items-center justify-between border-b border-border/60 pb-1">
                       <Link
-                        href={`/leagues/${leagueSlug}`}
+                        href={leagueHref}
                         className="group flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-primary transition-colors"
                       >
                         <SportIcon sportSlug={sport.slug} size="sm" />
