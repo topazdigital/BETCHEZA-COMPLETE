@@ -12,11 +12,9 @@ import {
   Trophy,
   Target,
   Users,
-  Star,
   ArrowRight,
   Zap,
   Shield,
-  Sparkles,
   ShieldCheck,
   Medal,
   PenLine,
@@ -27,20 +25,19 @@ const BetchezaBackBanner = dynamic(
   { ssr: false }
 );
 import { SportsFilter } from '@/components/sports/sports-filter';
-import { MatchCardNew } from '@/components/matches/match-card-new';
 import { TeamLogo } from '@/components/ui/team-logo';
+const MatchCardNew = dynamic(
+  () => import('@/components/matches/match-card-new').then(m => ({ default: m.MatchCardNew })),
+  { ssr: false, loading: () => <div className="rounded-xl border border-border bg-card/60 animate-pulse" style={{ height: '76px' }} /> }
+);
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { useMatches, useLiveMatches, useMatchStats, type Match } from '@/lib/hooks/use-matches';
-import { Spinner } from '@/components/ui/spinner';
+import { useMatches, useLiveMatches, useMatchStats } from '@/lib/hooks/use-matches';
 import { cn } from '@/lib/utils';
-import { ALL_SPORTS, getSportIcon } from '@/lib/sports-data';
-import { FavoritedTipMarqueeCard, MyTipsPanel, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
+import { MyTipsPanel, useFavoritedTips } from '@/components/home/favorited-tips-panel';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { useAuth } from '@/contexts/auth-context';
 import { matchToSlug } from '@/lib/utils/match-url';
-import { liveStatusLabel } from '@/lib/utils/live-status';
 import { tipsterHref } from '@/lib/utils/slug';
 
 const PanelSkeleton = () => (
@@ -61,6 +58,24 @@ const FavoritedTipsPanel = dynamic(
 );
 const NewsletterSection = dynamic(
   () => import('@/components/sections/newsletter').then(m => ({ default: m.NewsletterSection })),
+  { ssr: false, loading: () => <div className="h-24 rounded-xl bg-muted/30 animate-pulse" /> }
+);
+const HeroCarousel = dynamic(
+  () => import('@/components/home/hero-carousel').then(m => ({ default: m.HeroCarousel })),
+  { ssr: false, loading: () => (
+    <div className="space-y-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="rounded-2xl border border-border bg-card/50 p-4 animate-pulse shadow-xl" style={{ height: '88px' }} />
+      ))}
+    </div>
+  )}
+);
+const LiveSidePanel = dynamic(
+  () => import('@/components/home/live-side-panel').then(m => ({ default: m.LiveSidePanel })),
+  { ssr: false, loading: () => <div className="h-32 rounded-xl bg-muted/30 animate-pulse" /> }
+);
+const LiveMarquee = dynamic(
+  () => import('@/components/home/live-marquee').then(m => ({ default: m.LiveMarquee })),
   { ssr: false, loading: () => <div className="h-24 rounded-xl bg-muted/30 animate-pulse" /> }
 );
 
@@ -819,397 +834,3 @@ export default function HomePage() {
   );
 }
 
-// ───────────────────────────────────────────────
-// LiveSidePanel — compact live + upcoming for the left sidebar on desktop
-// ───────────────────────────────────────────────
-type SidePanelMatch = ReturnType<typeof useMatches>['matches'][number];
-
-function LiveSidePanel({
-  liveMatches,
-  upcomingMatches,
-}: {
-  liveMatches: SidePanelMatch[];
-  upcomingMatches: SidePanelMatch[];
-}) {
-  const hasLive = liveMatches.length > 0;
-  // When there are live matches, show ONLY live — never mix in upcoming
-  const displayMatches = hasLive ? liveMatches.slice(0, 8) : upcomingMatches.slice(0, 8);
-  const label = hasLive ? 'Live Now' : 'Up Next';
-  const allHref = hasLive ? '/matches?status=live' : '/matches?status=scheduled';
-
-  return (
-    <div>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="relative flex h-2 w-2">
-          <span className={cn(
-            'absolute inline-flex h-full w-full rounded-full opacity-75',
-            hasLive ? 'animate-ping bg-live' : 'bg-muted-foreground/40',
-          )}></span>
-          <span className={cn(
-            'relative inline-flex h-2 w-2 rounded-full',
-            hasLive ? 'bg-live' : 'bg-muted-foreground/60',
-          )}></span>
-        </span>
-        <h3 className="text-xs font-bold text-foreground">{label}</h3>
-        <Badge variant={hasLive ? 'destructive' : 'secondary'} className="h-4 px-1 text-[9px]">
-          {displayMatches.length}
-        </Badge>
-        <Link href={allHref} className="ml-auto text-[10px] text-primary hover:underline">
-          All
-        </Link>
-      </div>
-      <div className="space-y-1">
-        {displayMatches.map(m => {
-          const t = new Date(m.kickoffTime);
-          const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          return (
-            <Link
-              key={m.id}
-              href={`/matches/${matchToSlug(m.id, m.homeTeam.name, m.awayTeam.name)}`}
-              className="group flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-[11px] transition-colors hover:border-primary/50"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1 truncate">
-                  <TeamLogo teamName={m.homeTeam.name} logoUrl={m.homeTeam.logo} sportSlug={m.sport?.slug} size="xs" />
-                  <span className="truncate font-medium text-foreground group-hover:text-primary">
-                    {m.homeTeam.shortName || m.homeTeam.name}
-                  </span>
-                  <span className="text-muted-foreground mx-0.5">vs</span>
-                  <TeamLogo teamName={m.awayTeam.name} logoUrl={m.awayTeam.logo} sportSlug={m.sport?.slug} size="xs" />
-                  <span className="truncate font-medium text-foreground group-hover:text-primary">
-                    {m.awayTeam.shortName || m.awayTeam.name}
-                  </span>
-                </div>
-                <p className="truncate text-[9px] text-muted-foreground">{m.league?.name || m.sport?.name}</p>
-              </div>
-              <div className="shrink-0 text-right">
-                {m.status === 'live' || m.status === 'halftime' ? (
-                  <span className="rounded bg-live/20 px-1 py-0.5 text-[9px] font-bold text-live">
-                    {m.status === 'halftime' ? 'HT' : m.minute ? `${m.minute}'` : 'LIVE'}
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-semibold text-foreground">{time}</span>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-        {displayMatches.length === 0 && (
-          <p className="py-2 text-center text-[10px] text-muted-foreground">No matches right now</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────
-// Hero Carousel — alternates Live Now ↔ Featured Matches every 6s
-// Slides right-to-left. Shows HT badge for halftime matches.
-// ───────────────────────────────────────────────
-type CarouselMatch = ReturnType<typeof useMatches>['matches'][number];
-
-function HeroCarousel({
-  liveMatches,
-  featuredMatches,
-  isLoading,
-}: {
-  liveMatches: CarouselMatch[];
-  featuredMatches: CarouselMatch[];
-  isLoading?: boolean;
-}) {
-  // Slides we actually have content for
-  const slides = useMemo(() => {
-    const list: Array<'live' | 'featured'> = [];
-    if (liveMatches.length > 0) list.push('live');
-    if (featuredMatches.length > 0) list.push('featured');
-    return list;
-  }, [liveMatches.length, featuredMatches.length]);
-
-  const [index, setIndex] = useState(0);
-
-  // Reset when the available slides change
-  useEffect(() => {
-    if (index >= slides.length) setIndex(0);
-  }, [slides.length, index]);
-
-  // Auto-rotate every 6 seconds when there is more than one slide
-  useEffect(() => {
-    if (slides.length < 2) return;
-    const id = window.setInterval(() => {
-      setIndex(i => (i + 1) % slides.length);
-    }, 6000);
-    return () => window.clearInterval(id);
-  }, [slides.length]);
-
-  if (slides.length === 0) {
-    if (isLoading) {
-      return (
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-border bg-card/50 p-4 animate-pulse shadow-xl">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex-1 space-y-2.5">
-                  <div className="h-3 w-28 rounded bg-muted" />
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded-full bg-muted" />
-                    <div className="h-4 w-24 rounded bg-muted" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded-full bg-muted" />
-                    <div className="h-4 w-20 rounded bg-muted" />
-                  </div>
-                </div>
-                <div className="flex gap-1.5">
-                  <div className="h-14 w-10 rounded-lg bg-muted/60" />
-                  <div className="h-14 w-10 rounded-lg bg-muted/60" />
-                  <div className="h-14 w-10 rounded-lg bg-muted/60" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return (
-      <div className="rounded-2xl border border-dashed border-border bg-card/50 p-6 text-center shadow-xl">
-        <Clock className="mx-auto h-8 w-8 text-muted-foreground/60" />
-        <p className="mt-3 text-sm font-semibold">No matches available right now</p>
-        <p className="mt-1 text-xs text-muted-foreground">New fixtures load throughout the day.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative">
-      {/* Sliding viewport */}
-      <div className="overflow-hidden rounded-2xl">
-        <div
-          className="flex transition-transform duration-700 ease-out"
-          style={{ transform: `translateX(-${index * 100}%)` }}
-        >
-          {slides.map(slide => (
-            <div key={slide} className="w-full shrink-0">
-              {slide === 'live' ? (
-                <LiveSlide matches={liveMatches} totalCount={liveMatches.length} />
-              ) : (
-                <FeaturedSlide matches={featuredMatches} />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Dots */}
-      {slides.length > 1 && (
-        <div className="mt-3 flex items-center justify-center gap-2">
-          {slides.map((s, i) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setIndex(i)}
-              aria-label={`Show ${s === 'live' ? 'Live Now' : 'Featured Matches'}`}
-              className={cn(
-                'h-1.5 rounded-full transition-all',
-                i === index ? 'w-6 bg-primary' : 'w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60',
-              )}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LiveSlide({ matches, totalCount }: { matches: CarouselMatch[]; totalCount: number }) {
-  return (
-    <div className="rounded-2xl border border-live/30 bg-gradient-to-br from-live/10 to-transparent p-6 shadow-xl shadow-live/10">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="relative flex h-3 w-3">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-75"></span>
-          <span className="relative inline-flex h-3 w-3 rounded-full bg-live"></span>
-        </span>
-        <span className="font-semibold text-live">Live Now</span>
-        <span className="ml-auto text-sm text-muted-foreground">{totalCount} matches</span>
-      </div>
-      <div className="space-y-3">
-        {matches.map(match => {
-          const tickerLabel = liveStatusLabel(
-            match.sport.slug,
-            match.status,
-            match.minute,
-          );
-          return (
-            <Link
-              key={match.id}
-              href={`/matches/${matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name)}`}
-              className="block rounded-lg bg-card/50 p-3 transition-colors hover:bg-card"
-            >
-              <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                <span className="truncate">{match.sport.icon} {match.league.name}</span>
-                <span
-                  className={cn(
-                    'ml-2 shrink-0 font-mono font-bold',
-                    match.status === 'halftime'
-                      ? 'rounded-full bg-warning/20 px-2 py-0.5 text-warning'
-                      : 'text-live',
-                  )}
-                >
-                  {tickerLabel}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} sportSlug={match.sport?.slug} size="xs" />
-                  <span className="truncate text-sm font-medium">{match.homeTeam.name}</span>
-                </div>
-                <span className="ml-2 shrink-0 font-mono text-lg font-bold text-live">{match.homeScore ?? 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} sportSlug={match.sport?.slug} size="xs" />
-                  <span className="truncate text-sm font-medium">{match.awayTeam.name}</span>
-                </div>
-                <span className="ml-2 shrink-0 font-mono text-lg font-bold text-live">{match.awayScore ?? 0}</span>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-      <Button variant="ghost" className="mt-4 w-full" asChild>
-        <Link href="/matches?status=live">
-          View all live matches
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
-function FeaturedSlide({ matches }: { matches: CarouselMatch[] }) {
-  return (
-    <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 to-transparent p-6 shadow-xl shadow-primary/10">
-      <div className="mb-2 flex items-center gap-2">
-        <Sparkles className="h-5 w-5 text-primary" />
-        <span className="font-semibold text-primary">Featured Matches</span>
-        <span className="ml-auto text-sm text-muted-foreground">{matches.length} picks</span>
-      </div>
-      <div className="space-y-3">
-        {matches.map(match => (
-          <Link
-            key={match.id}
-            href={`/matches/${matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name)}`}
-            className="block rounded-lg bg-card/50 p-3 transition-colors hover:bg-card"
-          >
-            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span className="truncate">{match.sport.icon} {match.league.name}</span>
-              <span className="ml-2 shrink-0">
-                {new Date(match.kickoffTime).toLocaleTimeString('en-US', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: false,
-                })}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="truncate text-sm font-medium">{match.homeTeam.name}</span>
-              <span className="ml-2 shrink-0 font-mono text-sm font-semibold text-primary">
-                {match.odds?.home?.toFixed(2) ?? '–'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="truncate text-sm font-medium">{match.awayTeam.name}</span>
-              <span className="ml-2 shrink-0 font-mono text-sm font-semibold text-primary">
-                {match.odds?.away?.toFixed(2) ?? '–'}
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
-      <Button variant="ghost" className="mt-4 w-full" asChild>
-        <Link href="/matches">
-          Browse all matches
-          <ChevronRight className="ml-1 h-4 w-4" />
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────
-// LiveMarquee — auto-scrolls live matches right→left in a continuous loop.
-// Pauses on hover so you can read a card. We render the list twice so the
-// CSS animation can loop without a visible jump.
-// ───────────────────────────────────────────────
-type MarqueeEntry =
-  | { kind: 'live'; match: Match }
-  | { kind: 'tip'; tip: FeaturedItem };
-
-function LiveMarquee({ matches, tips = [] }: { matches: Match[]; tips?: FeaturedItem[] }) {
-  // When live action is sparse (1-3 games) we mix featured tips into the same
-  // row so the marquee never looks empty. The cards share the same w-80 width
-  // and stretched height so the row reads as a single continuous strip.
-  const entries: MarqueeEntry[] = [
-    ...matches.map((m) => ({ kind: 'live' as const, match: m })),
-    ...tips.map((t) => ({ kind: 'tip' as const, tip: t })),
-  ];
-
-  // Tune speed to the number of cards so a row of 4 doesn't fly past.
-  const cards = entries.length;
-  const duration = Math.max(28, cards * 9); // seconds per loop
-
-  // Only loop the marquee when there are enough cards to overflow the row
-  // (otherwise we'd render the same 1-2 cards twice and look broken).
-  const MARQUEE_MIN = 4;
-  const shouldLoop = cards >= MARQUEE_MIN;
-  const cardsToRender = shouldLoop ? [...entries, ...entries] : entries;
-
-  if (!shouldLoop) {
-    // Non-looping: grid layout so cards don't get clipped by overflow-hidden
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cardsToRender.map((entry, idx) => (
-          <div
-            key={
-              entry.kind === 'live'
-                ? `live-${entry.match.id}-${idx}`
-                : `tip-${entry.tip.matchId}-${idx}`
-            }
-          >
-            {entry.kind === 'live'
-              ? <MatchCardNew match={entry.match} showSport />
-              : <FavoritedTipMarqueeCard item={entry.tip} />}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="group relative overflow-hidden">
-      {/* Fade edges only when looping */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-background to-transparent" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-background to-transparent" />
-
-      <div
-        className="flex items-stretch gap-4 pb-2 animate-marquee group-hover:[animation-play-state:paused] motion-reduce:animate-none"
-        style={{ animationDuration: `${duration}s` }}
-      >
-        {cardsToRender.map((entry, idx) => (
-          <div
-            key={
-              entry.kind === 'live'
-                ? `live-${entry.match.id}-${idx}`
-                : `tip-${entry.tip.matchId}-${idx}`
-            }
-            className="w-72 sm:w-80 shrink-0"
-            aria-hidden={idx >= cards}
-          >
-            {entry.kind === 'live'
-              ? <MatchCardNew match={entry.match} showSport />
-              : <FavoritedTipMarqueeCard item={entry.tip} />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

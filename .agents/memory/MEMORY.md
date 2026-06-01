@@ -8,3 +8,4 @@
 - [Match not found — espn_eventid_ cache skip](match-eventid-cache.md) — getMatchById was skipping cache scan for espn_eventid_ format, causing "Match not found" for tennis/basketball/all non-soccer sports even when match was live in cache
 - [League page sport param & slug resolution](league-page-sport-param.md) — unknown league links must include ?sport=slug; never use raw match.league.slug; status filter is context-aware based on dateTab
 - [Historical matches & SEO timezone](historical-matches-seo.md) — tryLeagues no age cutoff + collision guard; EAT timezone in formatKickoffDate & JSON-LD; league page calls /api/leagues/[id]/matches?season=YEAR
+- [GTmetrix perf optimizations](gtmetrix-perf.md) — webpack config breaks Turbopack builds; MatchCardNew/HeroCarousel/LiveSidePanel/LiveMarquee must be dynamic imports; use turbopack:{} not webpack config
