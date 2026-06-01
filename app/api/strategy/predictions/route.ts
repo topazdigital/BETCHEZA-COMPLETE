@@ -329,11 +329,19 @@ async function autoGenerateTodayPicks(weekId: string, todayStr: string, dayNumbe
     const soccer = upcoming.filter(
       (m: { sport: { slug: string } }) => m.sport.slug === 'soccer' || m.sport.slug === 'football'
     );
+    // Use EAT-aware date comparison so matches crossing midnight UTC are
+    // assigned to the correct EAT calendar day (UTC+3).
+    const toEATDateStr = (d: Date) =>
+      new Date(d.getTime() + EAT_OFFSET_MS).toISOString().slice(0, 10);
+
     const dayMatches = soccer.filter((m: { kickoffTime: Date }) =>
-      new Date(m.kickoffTime).toDateString() === today.toDateString()
+      toEATDateStr(new Date(m.kickoffTime)) === todayStr
     ).slice(0, 25);
 
-    const pool = dayMatches.length >= 2 ? dayMatches : soccer.slice(0, 25);
+    // NEVER fall back to arbitrary upcoming matches — that would pull in tomorrow's
+    // games and show them as today's picks (the original bug). If there are no
+    // qualifying matches for this EAT date, return empty rather than wrong picks.
+    const pool = dayMatches;
 
     if (pool.length === 0) return buildAutoFallbackPicks(todayStr);
 

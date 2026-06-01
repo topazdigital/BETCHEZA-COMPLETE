@@ -190,6 +190,22 @@ function DayCard({
   const isActive = day.status === 'active';
   const isCompleted = day.status === 'completed';
 
+  // Detect picks whose match dates don't belong to this strategy day.
+  // Uses the browser's own timezone so a user in EAT (UTC+3) gets the correct
+  // local date — catches the edge case where the server stored tomorrow's games
+  // in today's slot (e.g. at 23:xx EAT when UTC has already rolled over).
+  const picksDateMismatch = day.picks.length > 0 && day.picks.every(pick => {
+    if (!pick.matchTime) return false;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const pickLocalDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
+        .format(new Date(pick.matchTime));
+      return pickLocalDate !== day.date;
+    } catch {
+      return false;
+    }
+  });
+
   return (
     <div className={cn(
       'rounded-xl border transition-all',
@@ -286,6 +302,12 @@ function DayCard({
                 <CreditCard className="h-4 w-4" />
                 Subscribe — KES 5,000 via M-Pesa
               </button>
+            </div>
+          ) : picksDateMismatch ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center text-muted-foreground">
+              <Clock className="h-8 w-8 opacity-30" />
+              <p className="text-sm">Today&apos;s picks are being prepared.</p>
+              <p className="text-xs">Our AI publishes picks for each day&apos;s matches — check back shortly.</p>
             </div>
           ) : day.picks.length > 0 ? (
             <>
