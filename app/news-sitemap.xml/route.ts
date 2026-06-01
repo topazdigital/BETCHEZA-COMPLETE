@@ -2,13 +2,13 @@ import { NextResponse } from 'next/server';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
 import { matchToSlug } from '@/lib/utils/match-url';
 
-export const revalidate = 60; // Regenerate every 60 seconds
+export const revalidate = 60;
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
 const SITE_NAME = 'Betcheza';
 
-// Google News requires articles published within the last 2 days
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 8_000;
 
 function escapeXml(str: string): string {
   return str
@@ -30,8 +30,9 @@ function buildHeadline(match: {
   const home = match.homeTeam?.name ?? '';
   const away = match.awayTeam?.name ?? '';
   const league = match.league?.name ?? '';
-  const isFinished = match.status === 'finished';
-  const isLive = ['live', 'halftime', 'in_progress', 'inprogress'].includes(match.status ?? '');
+  const s = (match.status ?? '').toLowerCase();
+  const isFinished = ['finished', 'ft', 'full-time', 'aet', 'pen'].includes(s);
+  const isLive = ['live', 'halftime', 'in_progress', 'inprogress', 'ht'].includes(s);
 
   if (isFinished) {
     return `${home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${away} Full Time Result${league ? ` | ${league}` : ''}`;
@@ -42,32 +43,49 @@ function buildHeadline(match: {
   return `${home} vs ${away} Predictions & Tips${league ? ` | ${league}` : ''}`;
 }
 
+const EMPTY_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"></urlset>`;
+
 export async function GET() {
   try {
     const now = Date.now();
     const cutoff = now - TWO_DAYS_MS;
 
-    const allMatches = await getAllMatches();
+    // Race against a hard timeout so Google never gets a hanging response
+    const allMatches = await Promise.race([
+      getAllMatches(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), FETCH_TIMEOUT_MS)
+      ),
+    ]);
 
-    // Include: live matches + matches that finished/started within last 48h
+    const statusPriority = (status?: string): number => {
+      const s = (status ?? '').toLowerCase();
+      if (['live', 'halftime', 'in_progress', 'inprogress', 'ht'].includes(s)) return 0;
+      if (['finished', 'ft', 'full-time', 'aet', 'pen'].includes(s)) return 1;
+      return 2;
+    };
+
+    // Live + finished within 48h
     const newsMatches = allMatches.filter(m => {
       if (!m.homeTeam?.name || !m.awayTeam?.name) return false;
       const kickoff = m.kickoffTime ? new Date(m.kickoffTime).getTime() : 0;
-      const isLive = ['live', 'halftime', 'in_progress', 'inprogress'].includes(m.status ?? '');
-      const isFinished = m.status === 'finished';
-      const isRecent = kickoff >= cutoff && kickoff <= now + 2 * 60 * 60 * 1000; // up to 2h in future
+      const s = (m.status ?? '').toLowerCase();
+      const isLive = ['live', 'halftime', 'in_progress', 'inprogress', 'ht'].includes(s);
+      const isFinished = ['finished', 'ft', 'full-time', 'aet', 'pen'].includes(s);
+      const isRecent = kickoff >= cutoff && kickoff <= now + 2 * 60 * 60 * 1000;
       return (isLive || isFinished) && isRecent;
     });
 
-    // Also include any scheduled matches with kickoff in last 2 days (for pre-match tips pages)
-    const scheduledRecent = allMatches.filter(m => {
+    // Scheduled with kickoff in next 6h (pre-match tips pages)
+    const scheduledSoon = allMatches.filter(m => {
       if (!m.homeTeam?.name || !m.awayTeam?.name) return false;
-      if (m.status !== 'scheduled') return false;
+      if ((m.status ?? '').toLowerCase() !== 'scheduled') return false;
       const kickoff = m.kickoffTime ? new Date(m.kickoffTime).getTime() : 0;
-      return kickoff >= cutoff && kickoff <= now + 6 * 60 * 60 * 1000; // kickoff within next 6h
+      return kickoff >= cutoff && kickoff <= now + 6 * 60 * 60 * 1000;
     });
 
-    const combined = [...newsMatches, ...scheduledRecent];
+    const combined = [...newsMatches, ...scheduledSoon];
 
     // De-duplicate by match ID
     const seen = new Set<string>();
@@ -77,8 +95,18 @@ export async function GET() {
       return true;
     });
 
+    // Sort: live first, then finished, then scheduled — within each group newest kickoff first
+    unique.sort((a, b) => {
+      const pa = statusPriority(a.status);
+      const pb = statusPriority(b.status);
+      if (pa !== pb) return pa - pb;
+      const ka = a.kickoffTime ? new Date(a.kickoffTime).getTime() : 0;
+      const kb = b.kickoffTime ? new Date(b.kickoffTime).getTime() : 0;
+      return kb - ka;
+    });
+
     const urlEntries = unique
-      .slice(0, 1000) // Google News limit
+      .slice(0, 1000)
       .map(m => {
         const slug = matchToSlug(m.id, m.homeTeam?.name ?? '', m.awayTeam?.name ?? '');
         const url = `${SITE_URL}/matches/${slug}`;
@@ -112,13 +140,17 @@ ${urlEntries}
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
         'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=120',
+        'X-Robots-Tag': 'noindex',
       },
     });
   } catch (err) {
     console.error('[news-sitemap] Error generating news sitemap:', err);
-    return new NextResponse(
-      `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>`,
-      { headers: { 'Content-Type': 'application/xml; charset=utf-8' } }
-    );
+    return new NextResponse(EMPTY_XML, {
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=30, s-maxage=30',
+        'X-Robots-Tag': 'noindex',
+      },
+    });
   }
 }

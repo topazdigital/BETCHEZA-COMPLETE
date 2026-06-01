@@ -329,6 +329,26 @@ export async function generateMetadata({
   }
 
   const ogTitle = title.replace(/🔴 LIVE: /, '');
+  const apiBase = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const sportSlug = match.sport?.slug ?? '';
+
+  // Build OG image URL — encodes all match info as query params so social crawlers
+  // get the correct sport-themed image even before the route is hot-compiled.
+  const ogImageParams = new URLSearchParams({
+    ...(home ? { home } : {}),
+    ...(away ? { away } : {}),
+    ...(league ? { league } : {}),
+    ...(sportSlug ? { sport: sportSlug } : {}),
+    ...(match.status ? { status: match.status } : {}),
+    ...(match.kickoffTime ? { kickoff: match.kickoffTime } : {}),
+    ...(isFinished(match.status) || isLive(match.status)
+      ? {
+          hs: String(match.homeScore ?? 0),
+          as: String(match.awayScore ?? 0),
+        }
+      : {}),
+  });
+  const ogImageUrl = `${apiBase}/api/og?${ogImageParams.toString()}`;
 
   return {
     title,
@@ -340,11 +360,13 @@ export async function generateMetadata({
       type: 'article',
       url: canonical,
       siteName,
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: ogTitle }],
     },
     twitter: {
       card: 'summary_large_image',
       title: ogTitle,
       description,
+      images: [ogImageUrl],
     },
     alternates: { canonical },
     robots: {
