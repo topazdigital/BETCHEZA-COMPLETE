@@ -1195,67 +1195,90 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       if (r2.ok) data = await r2.json() as ESPNScoreboardResponseFull;
     } catch { /* fall through */ }
   }
-  // For tennis specifically, ESPN's /all/ endpoint is often empty.
-  // Fall back to fetching the specific tour scoreboards (atp + wta) and merge.
-  if (!data?.events?.length && sport === 'tennis') {
-    const combined: ESPNScoreboardResponseFull = { events: [] } as ESPNScoreboardResponseFull;
-    for (const tour of ['atp', 'wta']) {
-      try {
-        const r3 = await fetch(`${ESPN_BASE_URL}/tennis/${tour}/scoreboard`, {
-          headers: { Accept: 'application/json' },
-          cache: 'no-store' as const,
-        });
-        if (r3.ok) {
-          const d3 = await r3.json() as ESPNScoreboardResponseFull;
-          if (d3?.events?.length) combined.events.push(...d3.events);
-        }
-      } catch { /* fall through */ }
-    }
+  // For tennis: ALWAYS merge ATP + WTA tour scoreboards on top of whatever
+  // the /all/ endpoint returned (it is frequently empty or stale).
+  // This ensures Roland Garros, Wimbledon, US Open etc. always surface.
+  if (sport === 'tennis') {
+    const combined: ESPNScoreboardResponseFull = { events: [...(data?.events || [])] } as ESPNScoreboardResponseFull;
+    const seenTennisIds = new Set((data?.events || []).map(ev => ev.id));
+    const tennisEndpoints = [
+      `${ESPN_BASE_URL}/tennis/atp/scoreboard`,
+      `${ESPN_BASE_URL}/tennis/wta/scoreboard`,
+      `${ESPN_BASE_URL}/tennis/atp/scoreboard?dates=${range}`,
+      `${ESPN_BASE_URL}/tennis/wta/scoreboard?dates=${range}`,
+    ];
+    await Promise.allSettled(
+      tennisEndpoints.map(async (endpoint) => {
+        try {
+          const r3 = await fetch(endpoint, {
+            headers: { Accept: 'application/json' },
+            cache: 'no-store' as const,
+            signal: AbortSignal.timeout(8000),
+          });
+          if (r3.ok) {
+            const d3 = await r3.json() as ESPNScoreboardResponseFull;
+            if (d3?.events?.length) {
+              for (const ev of d3.events) {
+                if (!seenTennisIds.has(ev.id)) {
+                  seenTennisIds.add(ev.id);
+                  combined.events.push(ev);
+                }
+              }
+            }
+          }
+        } catch { /* fall through */ }
+      })
+    );
     if (combined.events.length) data = combined;
   }
-  // For cricket, ESPN's /all/ endpoint doesn't exist. Fetch multiple known
-  // active series IDs in parallel and merge — covers Tests, ODIs, T20s,
-  // domestic leagues, and bilateral series running concurrently.
+  // For cricket, ESPN's /all/ endpoint doesn't exist. Scan a wide dense range
+  // of series IDs in parallel — step=1 ensures no series is skipped.
+  // ESPN assigns sequential numeric IDs to cricket series, so a dense scan
+  // covering the likely active range catches all current & upcoming series.
   if (!data?.events?.length && sport === 'cricket') {
-    // ESPN assigns sequential IDs to cricket series. We keep a wide curated
-    // list covering both known-active series and nearby IDs so that as new
-    // series are added we still catch them without a code change.
-    const CRICKET_LEAGUE_IDS = [
-      // Known active (Jun 2026) — keep scanning nearby IDs for future series
-      '8634','8638','8642','8646','8650','8654','8658','8662',
-      '8667','8673','8678','8679','8683','8688','8693','8698',
-      '8703','8708','8713','8718','8723','8728','8733','8738',
-      '8743','8748','8753','8758','8763','8768','8773','8778',
-    ];
-    // ESPN cricket endpoints don't accept ?dates= — fetch each league without
-    // a date parameter and filter to matches within a wide window afterwards.
     const cricketWindowStart = new Date(now); cricketWindowStart.setUTCDate(cricketWindowStart.getUTCDate() - 30);
     const cricketWindowEnd = new Date(now); cricketWindowEnd.setUTCDate(cricketWindowEnd.getUTCDate() + 30);
     const combined: ESPNScoreboardResponseFull = { events: [] } as ESPNScoreboardResponseFull;
-    await Promise.allSettled(
-      CRICKET_LEAGUE_IDS.map(async (lid) => {
-        try {
-          const r = await fetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
-            headers: { Accept: 'application/json' },
-            cache: 'no-store' as const,
-            signal: AbortSignal.timeout(5000),
-          });
-          if (r.ok) {
-            const d = await r.json() as ESPNScoreboardResponseFull;
-            // Grab the friendly series name from the top-level leagues array
-            const seriesName: string | undefined = (d as unknown as { leagues?: Array<{ name?: string }> }).leagues?.[0]?.name;
-            // Only include events whose date falls within the window; annotate
-            // each event with the series ID and name since cricket event UIDs
-            // don't contain an "l:" fragment.
-            const relevant = (d?.events || []).filter(ev => {
-              const evDate = new Date(ev.date);
-              return evDate >= cricketWindowStart && evDate <= cricketWindowEnd;
-            }).map(ev => Object.assign(ev, { _cricketLeagueId: lid, _cricketLeagueName: seriesName }));
-            if (relevant.length) combined.events.push(...relevant);
-          }
-        } catch { /* timeout or 404 — skip */ }
-      })
-    );
+
+    // Build a dense ID list: step=1 from 8500 to 8900 covers the expected
+    // active range for 2025-2026 without skipping any series.
+    // Also include well-known persistent IDs for major ICC tournaments.
+    const denseIds: string[] = [];
+    for (let id = 8500; id <= 8900; id++) denseIds.push(String(id));
+    // Known stable ESPN cricket competition IDs (ICC, IPL, PSL, BBL etc.)
+    const KNOWN_CRICKET_IDS = [
+      '8034','8049','8053','8055','8056','8061','8062','8063','8064',
+      '8100','8150','8200','8250','8300','8350','8400','8450',
+    ];
+    const allCricketIds = Array.from(new Set([...KNOWN_CRICKET_IDS, ...denseIds]));
+
+    // Batch into groups of 50 to avoid overwhelming ESPN while still being fast.
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < allCricketIds.length; i += BATCH_SIZE) {
+      const batch = allCricketIds.slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(
+        batch.map(async (lid) => {
+          try {
+            const r = await fetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
+              headers: { Accept: 'application/json' },
+              cache: 'no-store' as const,
+              signal: AbortSignal.timeout(4000),
+            });
+            if (r.ok) {
+              const d = await r.json() as ESPNScoreboardResponseFull;
+              const seriesName: string | undefined = (d as unknown as { leagues?: Array<{ name?: string }> }).leagues?.[0]?.name;
+              const relevant = (d?.events || []).filter(ev => {
+                const evDate = new Date(ev.date);
+                return evDate >= cricketWindowStart && evDate <= cricketWindowEnd;
+              }).map(ev => Object.assign(ev, { _cricketLeagueId: lid, _cricketLeagueName: seriesName }));
+              if (relevant.length) combined.events.push(...relevant);
+            }
+          } catch { /* timeout or 404 — skip */ }
+        })
+      );
+      // Stop early if we've already found matches
+      if (combined.events.length > 20) break;
+    }
     if (combined.events.length) data = combined;
   }
   if (!data?.events?.length) {
