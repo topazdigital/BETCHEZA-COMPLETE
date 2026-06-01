@@ -1007,15 +1007,15 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       }
     }
 
+    // sportType must be declared BEFORE extractEspnOdds (which uses it below)
+    const sportType = cfg?.sportType || 'soccer';
+
     const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
     const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw, sportType, match.homeTeam.name, match.awayTeam.name);
     const realOdds = summaryOdds || match.odds;
 
     // Only use real odds — never fall back to computed/estimated odds
     const finalOdds = realOdds || null;
-
-    // Only build derived markets when we have real odds to ground them in.
-    const sportType = cfg?.sportType || 'soccer';
     const isSoccer = sportType === 'soccer';
 
     // For soccer: derive additional markets (BTTS, correct score, etc.) from

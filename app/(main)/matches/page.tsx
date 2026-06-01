@@ -4,6 +4,69 @@ import MatchesClientPage from './_matches-client';
 const SITE_NAME = 'Betcheza';
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
 
+const SPORT_SEO: Record<string, { name: string; description: string; keywords: string[] }> = {
+  football: {
+    name: 'Football',
+    description: 'Live football scores today, upcoming fixtures and free AI betting tips. Compare odds on SportPesa, Betika, Odibets and more — updated every minute on Betcheza Kenya.',
+    keywords: ['football tips today Kenya', 'live football scores', 'football predictions Kenya', 'football betting tips Kenya', 'sure football tips today', 'over 2.5 goals today', 'BTTS tips today', 'football accumulator tips Kenya'],
+  },
+  soccer: {
+    name: 'Football',
+    description: 'Live football scores today, upcoming fixtures and free AI betting tips. Compare odds on SportPesa, Betika, Odibets and more — updated every minute on Betcheza Kenya.',
+    keywords: ['football tips today Kenya', 'live football scores', 'football predictions Kenya', 'sure football tips today', 'football betting odds Kenya'],
+  },
+  tennis: {
+    name: 'Tennis',
+    description: 'Live tennis scores today, ATP & WTA match predictions and free betting tips. Follow Grand Slams, ATP Tour and WTA Tour results in real time on Betcheza.',
+    keywords: ['tennis predictions today', 'ATP tips today', 'WTA tips today', 'tennis betting tips Kenya', 'live tennis scores', 'Grand Slam predictions', 'Wimbledon tips', 'US Open tips', 'tennis match winner tips'],
+  },
+  basketball: {
+    name: 'Basketball',
+    description: 'Live NBA scores today, basketball match predictions and free betting tips. Follow NBA, EuroLeague and FIBA results with AI-powered picks on Betcheza Kenya.',
+    keywords: ['NBA tips today', 'basketball betting tips Kenya', 'NBA predictions today', 'live NBA scores', 'basketball match winner', 'NBA totals tips', 'EuroLeague tips'],
+  },
+  cricket: {
+    name: 'Cricket',
+    description: 'Live cricket scores today — Test, ODI and T20 match predictions with free betting tips. IPL, World Cup and international cricket AI picks on Betcheza Kenya.',
+    keywords: ['cricket predictions today', 'IPL tips today', 'cricket betting tips Kenya', 'live cricket scores', 'T20 tips today', 'cricket match winner tips', 'IPL winner prediction'],
+  },
+  rugby: {
+    name: 'Rugby',
+    description: 'Live rugby scores today — Six Nations, Premiership, Super Rugby and World Cup predictions with free betting tips. Rugby union & league AI picks on Betcheza.',
+    keywords: ['rugby tips today', 'Six Nations predictions', 'rugby union betting tips', 'Super Rugby tips', 'rugby betting Kenya', 'rugby match winner tips'],
+  },
+  baseball: {
+    name: 'Baseball',
+    description: 'Live MLB scores today, baseball match predictions and free betting tips. Money line, run line and totals picks with AI analysis on Betcheza.',
+    keywords: ['MLB tips today', 'baseball betting tips', 'MLB predictions today', 'baseball money line tips', 'live MLB scores', 'MLB run line tips'],
+  },
+  hockey: {
+    name: 'Ice Hockey',
+    description: 'Live NHL scores today, ice hockey match predictions and free betting tips. Money line, puck line and totals picks with AI analysis on Betcheza.',
+    keywords: ['NHL tips today', 'hockey betting tips', 'NHL predictions today', 'ice hockey tips', 'live NHL scores', 'NHL money line tips'],
+  },
+  mma: {
+    name: 'MMA',
+    description: 'Live UFC results today, MMA fight predictions and free betting tips. Method of victory, round betting and fight winner AI picks on Betcheza.',
+    keywords: ['UFC tips today', 'MMA betting tips', 'UFC predictions today', 'fight night tips', 'MMA winner tips', 'UFC round betting'],
+  },
+  boxing: {
+    name: 'Boxing',
+    description: 'Live boxing results today, fight predictions and free betting tips. Method of victory, round betting and boxing winner AI picks on Betcheza.',
+    keywords: ['boxing tips today', 'boxing betting tips', 'boxing fight predictions', 'boxing winner tips', 'boxing round tips'],
+  },
+  golf: {
+    name: 'Golf',
+    description: 'Golf tournament predictions and free betting tips today. PGA Tour, European Tour and Major tournament AI outright picks on Betcheza.',
+    keywords: ['golf tips today', 'golf betting tips', 'PGA Tour predictions', 'golf outright tips', 'Masters golf tips', 'Ryder Cup tips'],
+  },
+  'american football': {
+    name: 'American Football',
+    description: 'Live NFL scores today, American football predictions and free betting tips. Spread, totals and money line picks with AI analysis on Betcheza.',
+    keywords: ['NFL tips today', 'NFL betting tips', 'NFL predictions today', 'NFL spread tips', 'NFL totals tips', 'live NFL scores'],
+  },
+};
+
 const LEAGUE_NAMES: Record<string, string> = {
   'eng.1': 'Premier League', 'esp.1': 'La Liga', 'ger.1': 'Bundesliga',
   'ita.1': 'Serie A', 'fra.1': 'Ligue 1', 'ned.1': 'Eredivisie',
@@ -69,14 +132,15 @@ export async function generateMetadata({
     title = `Football Matches on ${dateDisplay} | Free Betting Tips | ${SITE_NAME}`;
     description = `All football fixtures on ${dateDisplay} with free AI predictions and expert tips. Odds from ${KE_BOOKMAKERS}. ${SITE_NAME} Kenya.`;
   } else if (sport) {
-    const sportName = sport.charAt(0).toUpperCase() + sport.slice(1);
-    title = `${sportName} Matches Today — Free Tips & Predictions | ${SITE_NAME}`;
-    description = `Live ${sportName} scores, upcoming fixtures, and free betting tips. AI predictions updated in real time. ${SITE_NAME} Kenya.`;
+    const seo = SPORT_SEO[sport.toLowerCase()] ?? { name: sport.charAt(0).toUpperCase() + sport.slice(1), description: '' };
+    title = `${seo.name} Matches Today — Free Tips & Predictions | ${SITE_NAME}`;
+    description = seo.description || `Live ${seo.name} scores, upcoming fixtures, and free betting tips. AI predictions updated in real time. ${SITE_NAME} Kenya.`;
   } else {
     title = 'Best Free Betting Tips Today Kenya | Football Predictions | Betcheza';
     description = 'Get the best free betting tips in Kenya today — AI predictions and expert tipster picks for every football match. SportPesa, Betika, Odibets, Betway, BahatiБет tips updated daily. The most trusted source for free sure tips in Kenya.';
   }
 
+  const sportSeoExtra = sport ? (SPORT_SEO[sport.toLowerCase()]?.keywords ?? []) : [];
   const keywords = [
     'best free betting tips Kenya today', 'free betting tips Kenya today',
     'football predictions today Kenya', 'sure tips today Kenya',
@@ -91,6 +155,15 @@ export async function generateMetadata({
     'Kenya Premier League tips KPL', 'FKF Premier League predictions',
     'live football odds Kenya', 'football betting odds Kenya',
     'AI football predictions Kenya', 'high accuracy football tips Kenya',
+    // Tennis
+    'tennis predictions Kenya', 'ATP tips Kenya', 'WTA tips Kenya',
+    // Basketball
+    'NBA tips Kenya', 'basketball predictions Kenya',
+    // Cricket
+    'cricket tips Kenya', 'IPL predictions Kenya',
+    // MMA
+    'UFC tips Kenya', 'MMA predictions Kenya',
+    ...sportSeoExtra,
     ...(leagueName ? [
       `${leagueName} predictions`, `${leagueName} tips today`,
       `${leagueName} betting tips Kenya`, `${leagueName} odds Kenya`,

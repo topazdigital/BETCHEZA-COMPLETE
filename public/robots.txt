@@ -66,4 +66,5 @@ Disallow: /offline
 Crawl-delay: 2
 
 Sitemap: https://betcheza.co.ke/sitemap.xml
+Sitemap: https://betcheza.co.ke/news-sitemap.xml
 IndexNow-Key: betcheza2026ke

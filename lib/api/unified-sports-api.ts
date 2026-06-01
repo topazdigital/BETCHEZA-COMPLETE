@@ -5480,27 +5480,26 @@ export function sortMatchesWithPriority(matches: UnifiedMatch[]): UnifiedMatch[]
 
 export async function getMatchById(matchId: string): Promise<UnifiedMatch | null> {
   // 1) Fast path — match is in the current rolling window (today/upcoming/recent).
-  //    Wrapped in its own try so a transient scoreboard error doesn't kill the
-  //    direct-lookup fallback below.
-  // For espn_eventid_ format, skip the cache scan entirely — the suffix scan
-  // causes cross-sport collisions (e.g. soccer event 401862697 vs football event 401862697).
-  // Go straight to the parallel ESPN league lookup below.
+  //    For espn_eventid_ format we now DO scan the cache (cross-sport numeric
+  //    collisions are handled below: if exactly 1 hit → unambiguous return;
+  //    2+ hits → fall through to staged ESPN API for disambiguation).
+  //    This is critical for non-soccer sports (tennis, basketball, cricket, etc.)
+  //    whose matches ARE in the cache under espn_atp_, espn_wta_, espn_nba_, etc.
   const isEventIdFormat = matchId.startsWith('espn_eventid_');
 
-  if (!isEventIdFormat) {
-    try {
-      const allMatches = await getAllMatches();
+  try {
+    const allMatches = await getAllMatches();
+
+    if (!isEventIdFormat) {
       const found = allMatches.find(m => m.id === matchId);
       if (found) return found;
 
       // Scan by trailing numeric event ID — handles legacy-format mismatches where
       // dots were (re)introduced into the league key (e.g. looking for
       // espn_eng.1_740936 while cache holds espn_eng1_740936).
-      // ONLY used for non-eventid formats to prevent cross-sport collisions.
       const numericSuffix = matchId.match(/^espn_[a-z0-9.]+_(\d+)$/i);
       if (numericSuffix) {
         const numericId = numericSuffix[1];
-        // Only scan matches from the same sport namespace to avoid cross-sport hits.
         const srcSport = matchId.split('_')[1]?.toLowerCase() || '';
         const byEventId = allMatches.find(m =>
           m.id.endsWith(`_${numericId}`) &&
@@ -5508,9 +5507,18 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
         );
         if (byEventId) return byEventId;
       }
-    } catch (error) {
-      console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
+    } else {
+      // espn_eventid_ format: scan ALL sports by numeric suffix.
+      // Exactly 1 hit → unambiguous match (covers live/recent tennis, basketball, etc.).
+      // 0 hits → not in cache, fall through to staged ESPN API lookup.
+      // 2+ hits → cross-sport collision, fall through to staged lookup for disambiguation.
+      const numericId = matchId.slice('espn_eventid_'.length);
+      const hits = allMatches.filter(m => m.id.endsWith(`_${numericId}`));
+      if (hits.length === 1) return hits[0];
+      // Zero or 2+ hits → fall through to staged ESPN API lookup below
     }
+  } catch (error) {
+    console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
   }
 
   // Handle new human-readable URL format (espn_eventid_NNNNN) via staged ESPN lookup.
