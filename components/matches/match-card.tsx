@@ -11,7 +11,7 @@ import { matchToSlug } from '@/lib/utils/match-url';
 
 interface MatchCardProps {
   match: MatchWithDetails;
-  odds?: { home: number; draw: number; away: number };
+  odds?: { home: number; draw?: number | null; away: number };
   compact?: boolean;
 }
 
@@ -114,14 +114,20 @@ export function MatchCard({ match, odds, compact = false }: MatchCardProps) {
           </div>
         </div>
 
-        {/* Odds column — 3 compact boxes */}
+        {/* Odds column — compact boxes (2-way for no-draw sports, 3-way for soccer) */}
         {odds && !isFinished && (
           <div className="flex shrink-0 gap-1">
-            {[
-              { label: '1', value: odds.home },
-              { label: 'X', value: odds.draw },
-              { label: '2', value: odds.away },
-            ].map(({ label, value }) => (
+            {(odds.draw != null
+              ? [
+                  { label: '1', value: odds.home },
+                  { label: 'X', value: odds.draw },
+                  { label: '2', value: odds.away },
+                ]
+              : [
+                  { label: '1', value: odds.home },
+                  { label: '2', value: odds.away },
+                ]
+            ).map(({ label, value }) => (
               <div
                 key={label}
                 className="flex w-11 flex-col items-center justify-center rounded-md bg-muted/70 py-1 text-center transition-colors group-hover:bg-muted"

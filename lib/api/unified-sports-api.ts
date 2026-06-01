@@ -1404,7 +1404,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
 
     const compStatus = (competition as unknown as { status?: ESPNEvent['status'] }).status || event.status;
     const status = mapESPNStatus(compStatus);
-    const { odds, markets } = extractEspnOdds(competition.odds, hasDraw);
+    const gHomeTeamName = resolvedHome?.team?.displayName || resolvedHome?.team?.name || (resolvedHome?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Home';
+    const gAwayTeamName = resolvedAway?.team?.displayName || resolvedAway?.team?.name || (resolvedAway?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Away';
+    const { odds, markets } = extractEspnOdds(competition.odds, hasDraw, sportType, gHomeTeamName, gAwayTeamName);
     const venue = competition.venue?.fullName;
 
     // Extract HT scores from ESPN linescores (soccer only: index 0 = 1st half goals)
@@ -1610,7 +1612,40 @@ interface ESPNScoreboardResponseFull extends ESPNScoreboardResponse {
   events: Array<ESPNEvent & { competitions: Array<ESPNEvent['competitions'][number] & { odds?: ESPNOddsRaw[]; venue?: { fullName?: string; address?: { city?: string; country?: string } } }> }>;
 }
 
-export function extractEspnOdds(rawOddsList: ESPNOddsRaw[] | undefined, hasDraw: boolean = true): { odds?: MatchOdds; markets?: Market[] } {
+// Sport-specific totals market label
+function totalMarketName(sportType?: string): string {
+  switch (sportType) {
+    case 'basketball': return 'Total Points';
+    case 'football': return 'Total Points';    // American Football
+    case 'baseball': return 'Total Runs';
+    case 'hockey': case 'icehockey': return 'Total Goals';
+    case 'rugby': return 'Total Points';
+    case 'cricket': return 'Total Runs';
+    case 'tennis': return 'Total Games';
+    default: return 'Total Goals';             // soccer default
+  }
+}
+
+// Sport-specific handicap/spread label
+function spreadMarketName(sportType?: string): string {
+  switch (sportType) {
+    case 'baseball': return 'Run Line';
+    case 'hockey': case 'icehockey': return 'Puck Line';
+    case 'basketball': case 'football': return 'Point Spread';
+    case 'rugby': return 'Handicap';
+    case 'tennis': return 'Game Handicap';
+    case 'cricket': return 'Innings Handicap';
+    default: return 'Asian Handicap';
+  }
+}
+
+export function extractEspnOdds(
+  rawOddsList: ESPNOddsRaw[] | undefined,
+  hasDraw: boolean = true,
+  sportType?: string,
+  homeTeam?: string,
+  awayTeam?: string,
+): { odds?: MatchOdds; markets?: Market[] } {
   if (!rawOddsList || !Array.isArray(rawOddsList) || rawOddsList.length === 0) return {};
 
   // ESPN sometimes returns null entries in the odds array — strip them first.
@@ -1645,54 +1680,63 @@ export function extractEspnOdds(rawOddsList: ESPNOddsRaw[] | undefined, hasDraw:
     lastUpdate: new Date(),
   };
 
+  // "Match Winner" for no-draw sports; "Match Result" (1X2) for soccer/cricket/rugby
+  const h2hName = hasDraw ? 'Match Result' : 'Match Winner';
+  const h1 = homeTeam || 'Home';
+  const h2 = awayTeam || 'Away';
+
   const markets: Market[] = [{
     key: 'h2h',
-    name: 'Match Result',
+    name: h2hName,
     outcomes: [
-      { name: 'Home', price: home },
+      { name: h1, price: home },
       ...(draw ? [{ name: 'Draw', price: draw }] : []),
-      { name: 'Away', price: away },
+      { name: h2, price: away },
     ],
   }];
 
   // Spread / handicap — support new format (pointSpread) and old (homeTeamOdds.spreadOdds)
+  let spreadLine: number | undefined;
   if (o.pointSpread?.home?.close?.odds && o.pointSpread?.away?.close?.odds) {
     const homeSpread = americanToDecimal(o.pointSpread.home.close.odds);
     const awaySpread = americanToDecimal(o.pointSpread.away.close.odds);
-    const spreadLine = parseFloat(o.pointSpread.home.close.line || '0');
+    spreadLine = parseFloat(o.pointSpread.home.close.line || '0');
     if (homeSpread && awaySpread) {
       markets.push({
         key: 'spreads',
-        name: 'Handicap',
+        name: spreadMarketName(sportType),
         outcomes: [
-          { name: 'Home', price: homeSpread, point: spreadLine },
-          { name: 'Away', price: awaySpread, point: -spreadLine },
+          { name: h1, price: homeSpread, point: spreadLine },
+          { name: h2, price: awaySpread, point: -spreadLine },
         ],
       });
     }
   } else if (o.spread !== undefined && o.homeTeamOdds?.spreadOdds !== undefined) {
     const homeSpread = americanToDecimal(o.homeTeamOdds.spreadOdds);
     const awaySpread = americanToDecimal(o.awayTeamOdds?.spreadOdds);
+    spreadLine = Math.abs(o.spread);
     if (homeSpread && awaySpread) {
       markets.push({
         key: 'spreads',
-        name: 'Handicap',
+        name: spreadMarketName(sportType),
         outcomes: [
-          { name: 'Home', price: homeSpread, point: -Math.abs(o.spread) },
-          { name: 'Away', price: awaySpread, point: Math.abs(o.spread) },
+          { name: h1, price: homeSpread, point: -Math.abs(o.spread) },
+          { name: h2, price: awaySpread, point: Math.abs(o.spread) },
         ],
       });
     }
   }
 
-  // Totals (over/under)
+  // Totals (over/under) — sport-specific label
+  let totalLine: number | undefined;
   if (o.overUnder !== undefined) {
     const overOdds = americanToDecimal(o.total?.over?.close?.odds || o.overOdds);
     const underOdds = americanToDecimal(o.total?.under?.close?.odds || o.underOdds);
+    totalLine = o.overUnder;
     if (overOdds && underOdds) {
       markets.push({
         key: 'totals',
-        name: 'Total Goals/Points',
+        name: totalMarketName(sportType),
         outcomes: [
           { name: 'Over', price: overOdds, point: o.overUnder },
           { name: 'Under', price: underOdds, point: o.overUnder },
@@ -1701,32 +1745,56 @@ export function extractEspnOdds(rawOddsList: ESPNOddsRaw[] | undefined, hasDraw:
     }
   }
 
-  // ─── Derived markets (Oddspedia/BettingExpert-style market expansion) ────────
-  // Real bookmakers price these as separate markets, but the underlying maths
-  // is just a recombination of the 1X2 implied probabilities, so we publish
-  // them deterministically (with a small house margin baked in via the 1X2 vig
-  // we already inherited from the source). Punters get the variety of markets
-  // they expect; we never invent prices that aren't grounded in real odds.
-  if (hasDraw) {
-    // Some US-facing providers (e.g. DraftKings via ESPN pickcenter) don't
-    // include a draw moneyline even for soccer. When that happens we estimate
-    // the draw probability from the home/away implied probs so the full suite
-    // of derived markets (Double Chance, BTTS, Correct Score, etc.) is still
-    // available — exactly as it is for leagues where only basic 1X2 data is
-    // returned. The estimate is grounded in the real home/away odds; no random
-    // values are introduced.
-    let drawForDerivation = draw;
-    if (!drawForDerivation) {
-      const pH = 1 / home;
-      const pA = 1 / away;
-      // Typical ESPN 2-way market has ~5% overround on each side.
-      // Strip it and treat the residual as the fair draw probability.
-      const fairH = pH / 1.05;
-      const fairA = pA / 1.05;
-      const drawProb = Math.max(0.15, Math.min(0.40, 1 - fairH - fairA));
-      drawForDerivation = Math.round((1 / drawProb) * 100) / 100;
+  // ─── Sport-specific derived markets ──────────────────────────────────────────
+  // All derived prices are mathematically grounded in the real ESPN moneyline —
+  // never random. Each sport gets its own set of contextually correct markets.
+  switch (sportType) {
+    case 'soccer': {
+      // Soccer: full 1X2 derived suite (Double Chance, BTTS, O/U, Correct Score…)
+      let drawForDerivation = draw;
+      if (!drawForDerivation) {
+        const pH = 1 / home;
+        const pA = 1 / away;
+        const fairH = pH / 1.05;
+        const fairA = pA / 1.05;
+        const drawProb = Math.max(0.15, Math.min(0.40, 1 - fairH - fairA));
+        drawForDerivation = Math.round((1 / drawProb) * 100) / 100;
+      }
+      deriveSoccerMarkets(home, drawForDerivation, away).forEach(m => markets.push(m));
+      break;
     }
-    deriveSoccerMarkets(home, drawForDerivation, away).forEach(m => markets.push(m));
+    case 'basketball':
+      deriveBasketballMarkets(home, away, spreadLine, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'baseball':
+      deriveBaseballMarkets(home, away, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'hockey':
+    case 'icehockey':
+      deriveHockeyMarkets(home, draw, away, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'football': // American Football (NFL/NCAA)
+      deriveAmericanFootballMarkets(home, away, spreadLine, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'tennis':
+      deriveTennisMarkets(home, away, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'cricket':
+      deriveCricketMarkets(home, draw, away, h1, h2).forEach(m => markets.push(m));
+      break;
+    // rugby, mma, boxing, golf, racing: keep only real ESPN markets (no derivation)
+    default:
+      if (hasDraw && sportType !== 'cricket') {
+        // Fallback for unknown draw sports: basic soccer-style derivation
+        let drawFallback = draw;
+        if (!drawFallback) {
+          const pH = 1 / home, pA = 1 / away;
+          const drawProb = Math.max(0.15, Math.min(0.35, 1 - pH / 1.05 - pA / 1.05));
+          drawFallback = Math.round((1 / drawProb) * 100) / 100;
+        }
+        deriveSoccerMarkets(home, drawFallback, away).forEach(m => markets.push(m));
+      }
+      break;
   }
 
   return { odds, markets };
@@ -2425,6 +2493,134 @@ export function deriveAmericanFootballMarkets(
       });
     }
   }
+
+  return markets;
+}
+
+// ─── Tennis markets ──────────────────────────────────────────────────────────
+// Derives set-level markets from the match moneyline using an independent-sets
+// Bernoulli model (best-of-3). All prices are mathematically grounded in the
+// real ESPN moneyline — no random values are introduced.
+// Markets produced: First Set, Total Sets O/U 2.5, Set Betting (2-0/2-1/1-2/0-2)
+export function deriveTennisMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const p = pH / norm; // home match win prob (normalised, vig stripped)
+
+  const MARGIN = 0.93;
+  const price = (prob: number) =>
+    Math.max(1.01, Math.round(Math.min(1 / Math.max(prob, 0.001) * MARGIN, 99) * 100) / 100);
+
+  // Solve for pS (per-set win prob for home) using Newton's method on
+  // f(pS) = pS²(3 − 2pS) = p  (best-of-3 iid Bernoulli model)
+  let pS = Math.sqrt(p);
+  for (let i = 0; i < 12; i++) {
+    const f  = pS * pS * (3 - 2 * pS);
+    const df = 6 * pS * (1 - pS);
+    if (Math.abs(df) < 1e-10) break;
+    pS = Math.max(0.01, Math.min(0.99, pS - (f - p) / df));
+  }
+
+  const markets: Market[] = [];
+
+  // ── First Set Winner ───────────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_set1',
+    name: 'First Set',
+    outcomes: [
+      { name: homeTeam, price: price(pS) },
+      { name: awayTeam, price: price(1 - pS) },
+    ],
+  });
+
+  // ── Total Sets O/U 2.5 ────────────────────────────────────────────────────
+  const pThreeSets = 2 * pS * (1 - pS);   // P(match goes to a deciding set)
+  const pTwoSets   = 1 - pThreeSets;
+  if (pThreeSets > 0.08 && pThreeSets < 0.92) {
+    markets.push({
+      key: 'totals_sets',
+      name: 'Total Sets',
+      outcomes: [
+        { name: 'Over 2.5',  price: price(pThreeSets), point: 2.5 },
+        { name: 'Under 2.5', price: price(pTwoSets),   point: 2.5 },
+      ],
+    });
+  }
+
+  // ── Set Betting (best-of-3 outcomes) ──────────────────────────────────────
+  const p20 = pS * pS;                              // H wins 2-0
+  const p21 = 2 * pS * pS * (1 - pS);              // H wins 2-1
+  const p02 = (1 - pS) * (1 - pS);                 // A wins 0-2
+  const p12 = 2 * pS * (1 - pS) * (1 - pS);        // A wins 1-2
+  markets.push({
+    key: 'set_betting',
+    name: 'Set Betting',
+    outcomes: [
+      { name: `${homeTeam} 2-0`, price: price(p20) },
+      { name: `${homeTeam} 2-1`, price: price(p21) },
+      { name: `${awayTeam} 2-1`, price: price(p12) },
+      { name: `${awayTeam} 2-0`, price: price(p02) },
+    ],
+  });
+
+  return markets;
+}
+
+// ─── Cricket markets ──────────────────────────────────────────────────────────
+// Derives cricket-specific betting markets from the real moneyline (+ draw for
+// Test matches). All prices are grounded in ESPN odds — no random values.
+// Markets produced: Draw No Bet, First Innings Lead
+export function deriveCricketMarkets(
+  homeOdds: number,
+  drawOdds: number | undefined,
+  awayOdds: number,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+
+  const MARGIN = 0.93;
+  const price = (p: number) =>
+    Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+
+  const markets: Market[] = [];
+
+  // ── Draw No Bet: strip the draw and normalise home vs away ─────────────────
+  const pH = 1 / homeOdds;
+  const pA = 1 / awayOdds;
+  const norm2 = pH + pA;
+  const nH = pH / norm2, nA = pA / norm2;
+
+  markets.push({
+    key: 'dnb',
+    name: 'Draw No Bet',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  // ── First Innings Lead ─────────────────────────────────────────────────────
+  // In Test cricket, the team that scores more in the first innings wins this
+  // market. It correlates with match winner (nH/nA) but is closer to 50/50
+  // because a strong bowling side can dismiss cheaply in reply. We model it
+  // as a modest regression-to-mean of the match probabilities.
+  const pFIH = Math.max(0.25, Math.min(0.75, nH * 0.80 + 0.10));
+  markets.push({
+    key: 'first_innings_lead',
+    name: 'First Innings Lead',
+    outcomes: [
+      { name: homeTeam, price: price(pFIH) },
+      { name: awayTeam, price: price(1 - pFIH) },
+    ],
+  });
 
   return markets;
 }
@@ -3499,7 +3695,7 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
     
     const status = mapESPNStatus(event.status);
     // Extract REAL odds from ESPN scoreboard (DraftKings/Caesars/etc) - NO computed fallback
-    const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw);
+    const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw, config.sportType, homeTeamName, awayTeamName);
     const venue = competition?.venue?.fullName;
 
     // Extract HT scores from ESPN linescores (soccer only: index 0 = 1st half goals)
@@ -5397,7 +5593,9 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
     const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
     const hasDraw = !noDrawSports.includes(cfg.sportType);
     const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
-    const { odds, markets } = extractEspnOdds(summaryOddsList, hasDraw);
+    const sHomeTeamName = (homeComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.displayName || (homeComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.name || (homeComp?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Home';
+    const sAwayTeamName = (awayComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.displayName || (awayComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.name || (awayComp?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Away';
+    const { odds, markets } = extractEspnOdds(summaryOddsList, hasDraw, cfg.sportType, sHomeTeamName, sAwayTeamName);
 
     // Best-effort kickoff time — ESPN summary doesn't always include `date`,
     // so we leave it as "now" if absent (the detail page formats it gracefully).

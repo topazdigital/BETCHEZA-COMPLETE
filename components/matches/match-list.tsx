@@ -81,7 +81,6 @@ export function MatchList({ title, matches, defaultExpanded = true, showCount = 
                   <div key={match.id} className="p-3">
                     <MatchCard
                       match={match}
-                      odds={{ home: 1.5 + Math.random() * 2, draw: 2.5 + Math.random() * 1.5, away: 2 + Math.random() * 3 }}
                       compact
                     />
                   </div>
