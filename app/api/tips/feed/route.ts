@@ -146,7 +146,7 @@ async function getRealDbTips(day: 'today' | 'tomorrow' | 'upcoming'): Promise<Db
  * Kickoffs 3+ hours in the past today that are still pending are also treated as past.
  */
 function getDayBucket(kickoff: string | undefined | null): 'today' | 'tomorrow' | 'upcoming' | 'past' {
-  if (!kickoff) return 'today';
+  if (!kickoff) return 'past';
   const k = new Date(kickoff);
   if (isNaN(k.getTime())) return 'past';
   const now = new Date();

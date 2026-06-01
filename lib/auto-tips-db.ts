@@ -57,7 +57,12 @@ export async function loadAllTipsFromDb(): Promise<GeneratedTip[] | null> {
   const pool = getPool();
   if (!pool) return null;
   try {
-    const [rows] = await pool.execute<Array<Record<string, unknown>>>(`SELECT * FROM auto_tips ORDER BY created_at DESC`);
+    // Only load tips for matches from yesterday onwards — no stale historical data
+    const [rows] = await pool.execute<Array<Record<string, unknown>>>(
+      `SELECT * FROM auto_tips
+       WHERE kickoff >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+       ORDER BY kickoff ASC, created_at DESC`
+    );
     return (rows as Array<Record<string, unknown>>).map(rowToTip);
   } catch (e) {
     console.warn('[auto-tips-db] loadAllTipsFromDb failed:', e);
