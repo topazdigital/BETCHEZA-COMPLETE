@@ -1244,18 +1244,45 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     })
   );
 
+  // Build a flat list of {event, competition} pairs.
+  // Most sports: competitions are directly on event.competitions.
+  // Tennis/golf/tournament sports: ESPN nests competitions inside event.groupings[].competitions.
+  type EventCompPair = { event: ESPNEvent; competition: ESPNEvent['competitions'][0]; eventName?: string };
+  const eventCompPairs: EventCompPair[] = [];
   for (const event of data.events) {
-    const competition = event.competitions[0];
+    const evExt = event as ESPNEvent & { groupings?: Array<{ grouping?: unknown; competitions?: ESPNEvent['competitions'] }> };
+    if (event.competitions?.length) {
+      for (const comp of event.competitions) {
+        eventCompPairs.push({ event, competition: comp });
+      }
+    } else if (evExt.groupings?.length) {
+      // Tournament-style sports (tennis, golf): matches are nested in groupings
+      for (const grp of evExt.groupings) {
+        for (const comp of (grp.competitions || [])) {
+          eventCompPairs.push({ event, competition: comp, eventName: event.name });
+        }
+      }
+    }
+  }
+
+  for (const { event, competition, eventName } of eventCompPairs) {
     if (!competition) continue;
     const homeCompetitor = competition.competitors.find(c => c.homeAway === 'home');
     const awayCompetitor = competition.competitors.find(c => c.homeAway === 'away');
-    const homeTeamName = homeCompetitor?.team?.displayName || homeCompetitor?.team?.name || homeCompetitor?.athlete?.displayName || 'TBD';
-    const awayTeamName = awayCompetitor?.team?.displayName || awayCompetitor?.team?.name || awayCompetitor?.athlete?.displayName || 'TBD';
+    // Fallback: use order (1=home, 2=away) when homeAway field is absent
+    const comp0 = competition.competitors[0];
+    const comp1 = competition.competitors[1];
+    const resolvedHome = homeCompetitor ?? (comp0?.order === 1 ? comp0 : comp0);
+    const resolvedAway = awayCompetitor ?? (comp1?.order === 2 ? comp1 : comp1);
+    const homeTeamName = resolvedHome?.team?.displayName || resolvedHome?.team?.name || resolvedHome?.athlete?.displayName || 'TBD';
+    const awayTeamName = resolvedAway?.team?.displayName || resolvedAway?.team?.name || resolvedAway?.athlete?.displayName || 'TBD';
     if (homeTeamName === 'TBD' && awayTeamName === 'TBD') continue;
 
-    const espnLeagueIdMatch = (event as ESPNEvent & { uid?: string }).uid?.match(/l:(\d+)/);
+    // For grouping-based events (tennis/golf), use the competition's own uid for league id
+    const uidSource = (competition as unknown as { uid?: string }).uid || (event as ESPNEvent & { uid?: string }).uid;
+    const espnLeagueIdMatch = uidSource?.match(/l:(\d+)/);
     const espnLeagueId = espnLeagueIdMatch?.[1] || '0';
-    const leagueInfo = leagueInfoMap.get(espnLeagueId) || { name: 'Unknown League', slug: `espn-${espnLeagueId}`, country: 'World', countryCode: 'WO' };
+    const leagueInfo = leagueInfoMap.get(espnLeagueId) || { name: eventName || 'Unknown League', slug: `espn-${espnLeagueId}`, country: 'World', countryCode: 'WO' };
 
     // Use our internal leagueId if we have a mapping, otherwise fall back to
     // a deterministic synthetic id (80000 + espnNumericId). The mapping is
@@ -1266,15 +1293,16 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     // detail page can reconstruct it. Format: espn_global<id>_<eventId>
     const leagueKeyForId = `global${espnLeagueId}`;
 
-    const status = mapESPNStatus(event.status);
+    const compStatus = (competition as unknown as { status?: ESPNEvent['status'] }).status || event.status;
+    const status = mapESPNStatus(compStatus);
     const { odds, markets } = extractEspnOdds(competition.odds, hasDraw);
     const venue = competition.venue?.fullName;
 
     // Extract HT scores from ESPN linescores (soccer only: index 0 = 1st half goals)
     const isSoccer = sportType === 'soccer';
     const hasStartedG = status !== 'scheduled';
-    const htHomeScoreG = isSoccer && hasStartedG ? (homeCompetitor?.linescores?.[0]?.value ?? null) : null;
-    const htAwayScoreG = isSoccer && hasStartedG ? (awayCompetitor?.linescores?.[0]?.value ?? null) : null;
+    const htHomeScoreG = isSoccer && hasStartedG ? (resolvedHome?.linescores?.[0]?.value ?? null) : null;
+    const htAwayScoreG = isSoccer && hasStartedG ? (resolvedAway?.linescores?.[0]?.value ?? null) : null;
 
     // Extract stats from ESPN competitor.statistics array
     const getStatG = (stats: Array<{name: string; displayValue: string}> | undefined, key: string): number | undefined => {
@@ -1283,12 +1311,12 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     };
     let sportSpecificDataG: SportSpecificData | undefined;
     if (isSoccer) {
-      const hc = getStatG(homeCompetitor?.statistics, 'corner kick') ?? getStatG(homeCompetitor?.statistics, 'corner');
-      const ac = getStatG(awayCompetitor?.statistics, 'corner kick') ?? getStatG(awayCompetitor?.statistics, 'corner');
-      const hy = getStatG(homeCompetitor?.statistics, 'yellow card');
-      const ay = getStatG(awayCompetitor?.statistics, 'yellow card');
-      const hr = getStatG(homeCompetitor?.statistics, 'red card');
-      const ar = getStatG(awayCompetitor?.statistics, 'red card');
+      const hc = getStatG(resolvedHome?.statistics, 'corner kick') ?? getStatG(resolvedHome?.statistics, 'corner');
+      const ac = getStatG(resolvedAway?.statistics, 'corner kick') ?? getStatG(resolvedAway?.statistics, 'corner');
+      const hy = getStatG(resolvedHome?.statistics, 'yellow card');
+      const ay = getStatG(resolvedAway?.statistics, 'yellow card');
+      const hr = getStatG(resolvedHome?.statistics, 'red card');
+      const ar = getStatG(resolvedAway?.statistics, 'red card');
       const sdg: Record<string, unknown> = {};
       if (hc !== undefined && ac !== undefined) sdg.corners = { home: hc, away: ac };
       if (hy !== undefined && ay !== undefined) sdg.yellowCards = { home: hy, away: ay };
@@ -1296,44 +1324,45 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       if (Object.keys(sdg).length) sportSpecificDataG = sdg as SportSpecificData;
     }
 
+    const compId = (competition as unknown as { id?: string }).id || event.id;
     matches.push({
-      id: `espn_${leagueKeyForId}_${event.id}`,
-      externalId: event.id,
+      id: `espn_${leagueKeyForId}_${compId}`,
+      externalId: compId,
       source: 'espn',
       sportId,
       sportKey: `${sport}_global${espnLeagueId}`,
       leagueId: ourLeagueId,
       leagueKey: leagueKeyForId,
       homeTeam: {
-        id: homeCompetitor?.team?.id || homeCompetitor?.athlete?.id || '',
+        id: resolvedHome?.team?.id || resolvedHome?.athlete?.id || '',
         name: homeTeamName,
-        shortName: homeCompetitor?.team?.abbreviation || homeCompetitor?.athlete?.shortName || homeTeamName.slice(0, 3).toUpperCase(),
-        logo: homeCompetitor?.team?.logo,
-        form: homeCompetitor?.form || undefined,
-        record: homeCompetitor?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
+        shortName: resolvedHome?.team?.abbreviation || resolvedHome?.athlete?.shortName || homeTeamName.slice(0, 3).toUpperCase(),
+        logo: resolvedHome?.team?.logo,
+        form: resolvedHome?.form || undefined,
+        record: resolvedHome?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
       },
       awayTeam: {
-        id: awayCompetitor?.team?.id || awayCompetitor?.athlete?.id || '',
+        id: resolvedAway?.team?.id || resolvedAway?.athlete?.id || '',
         name: awayTeamName,
-        shortName: awayCompetitor?.team?.abbreviation || awayCompetitor?.athlete?.shortName || awayTeamName.slice(0, 3).toUpperCase(),
-        logo: awayCompetitor?.team?.logo,
-        form: awayCompetitor?.form || undefined,
-        record: awayCompetitor?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
+        shortName: resolvedAway?.team?.abbreviation || resolvedAway?.athlete?.shortName || awayTeamName.slice(0, 3).toUpperCase(),
+        logo: resolvedAway?.team?.logo,
+        form: resolvedAway?.form || undefined,
+        record: resolvedAway?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
       },
-      kickoffTime: new Date(event.date),
+      kickoffTime: new Date((competition as unknown as { date?: string }).date || event.date),
       status,
       homeScore:
-        homeCompetitor?.score !== undefined && homeCompetitor?.score !== null && homeCompetitor.score !== ''
-          ? parseInt(homeCompetitor.score, 10)
+        resolvedHome?.score !== undefined && resolvedHome?.score !== null && resolvedHome.score !== ''
+          ? parseInt(resolvedHome.score, 10)
           : null,
       awayScore:
-        awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
-          ? parseInt(awayCompetitor.score, 10)
+        resolvedAway?.score !== undefined && resolvedAway?.score !== null && resolvedAway.score !== ''
+          ? parseInt(resolvedAway.score, 10)
           : null,
       htHomeScore: htHomeScoreG,
       htAwayScore: htAwayScoreG,
-      minute: extractLiveMinute(event.status, sportType) ?? undefined,
-      period: event.status.displayClock,
+      minute: extractLiveMinute(compStatus, sportType) ?? undefined,
+      period: compStatus.displayClock,
       league: {
         id: ourLeagueId,
         name: leagueInfo.name,
