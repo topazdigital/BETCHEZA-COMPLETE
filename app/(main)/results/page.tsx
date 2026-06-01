@@ -40,7 +40,7 @@ export default function ResultsPage() {
   const [customDate, setCustomDate] = useState<string>(toIsoDate(new Date()))
 
   // Auto-refreshes every 60s — newly finished matches will pop in.
-  const { matches: finishedMatches, isLoading } = useFinishedMatches()
+  const { matches: finishedMatches, isLoading, error } = useFinishedMatches()
 
   // Date-range filter — supports a "Last N days" rolling window OR a single
   // calendar day selected via the date picker.
@@ -234,10 +234,21 @@ export default function ResultsPage() {
             ))}
           </div>
 
-          {/* Loading */}
+          {/* Loading / Error */}
           {isLoading ? (
             <div className="flex h-64 items-center justify-center">
               <Spinner className="h-8 w-8" />
+            </div>
+          ) : error ? (
+            <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border px-5 text-center">
+              <Trophy className="mb-2 h-8 w-8 text-muted-foreground" />
+              <p className="text-base font-semibold">Couldn&apos;t load results</p>
+              <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                We&apos;re having trouble fetching match results right now. Please try again in a moment.
+              </p>
+              <Button size="sm" className="mt-3 h-8 text-xs" onClick={() => window.location.reload()}>
+                Retry
+              </Button>
             </div>
           ) : groupedMatches.length > 0 ? (
             <div className="space-y-2.5">

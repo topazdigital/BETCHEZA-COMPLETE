@@ -406,9 +406,29 @@ function MatchesContent() {
   }, [allMatches]);
 
   const relevantLeagues = useMemo(() => {
-    if (!selectedSportId) return ALL_LEAGUES.slice(0, 20);
-    return ALL_LEAGUES.filter(l => l.sportId === selectedSportId);
-  }, [selectedSportId]);
+    const matchesToScan = selectedSportId
+      ? allMatches.filter(m => m.sportId === selectedSportId)
+      : allMatches;
+
+    const seen = new Map<string, { id: number; name: string; slug: string }>();
+
+    matchesToScan.forEach(m => {
+      const rawSlug = (m.league as { slug?: string }).slug || '';
+      const slug = rawSlug || m.league.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if (slug && !seen.has(slug)) {
+        seen.set(slug, { id: m.league.id, name: m.league.name, slug });
+      }
+    });
+
+    const staticLeagues = selectedSportId
+      ? ALL_LEAGUES.filter(l => l.sportId === selectedSportId)
+      : ALL_LEAGUES.slice(0, 20);
+    staticLeagues.forEach(l => {
+      if (!seen.has(l.slug)) seen.set(l.slug, { id: l.id, name: l.name, slug: l.slug });
+    });
+
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [selectedSportId, allMatches]);
 
   const filteredMatches = useMemo(() => {
     let result = matches.filter(m => m.status !== 'finished');

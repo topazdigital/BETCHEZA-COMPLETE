@@ -63,15 +63,24 @@ async function getFinishedMatchesCache(): Promise<ResultMatch[]> {
     return g.__resultsCache.data;
   }
 
-  const allMatches = await getAllMatches();
+  const timeoutMs = 25_000;
+  const timeoutPromise = new Promise<UnifiedMatch[]>((_, reject) =>
+    setTimeout(() => reject(new Error('getAllMatches timed out after 25s')), timeoutMs)
+  );
+
+  const allMatches = await Promise.race([getAllMatches(), timeoutPromise]);
+
   const finished = allMatches
     .filter(m => m.status === 'finished')
     .filter(m => {
       if (m.homeScore === null || m.awayScore === null) return false;
       const kickoff = new Date(m.kickoffTime).getTime();
-      return kickoff <= now;
+      return !isNaN(kickoff) && kickoff <= now;
     })
-    .map(toResultMatch);
+    .map(m => {
+      try { return toResultMatch(m); } catch { return null; }
+    })
+    .filter((m): m is ResultMatch => m !== null);
 
   g.__resultsCache = { data: finished, ts: now };
   return finished;

@@ -6,7 +6,7 @@ const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{
+  searchParams?: Promise<{
     headline?: string;
     description?: string;
     source?: string;
@@ -18,7 +18,8 @@ export async function generateMetadata({
   const s = await getSiteSettings();
   const siteName = s.site_name || 'Betcheza';
 
-  const { headline, description, source, image, source_url } = await searchParams;
+  const params = searchParams ? await searchParams : {};
+  const { headline, description, source, image, source_url } = params;
 
   const title = headline
     ? `${headline.slice(0, 90)} | ${siteName}`

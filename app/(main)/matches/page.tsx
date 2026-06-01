@@ -102,9 +102,10 @@ function formatDate(dateStr: string): string {
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{ league?: string; tab?: string; date?: string; sport?: string }>;
+  searchParams?: Promise<{ league?: string; tab?: string; date?: string; sport?: string }>;
 }): Promise<Metadata> {
-  const { league, tab, date, sport } = await searchParams;
+  const params = searchParams ? await searchParams : {};
+  const { league, tab, date, sport } = params;
 
   const leagueName = league && league !== 'all' ? leagueSlugToName(league) : null;
   const canonical = `${BASE_URL}/matches`;

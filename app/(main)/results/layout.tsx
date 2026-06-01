@@ -118,9 +118,10 @@ function leagueSlugToName(slug: string): string {
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{ sport?: string; league?: string; date?: string }>;
+  searchParams?: Promise<{ sport?: string; league?: string; date?: string }>;
 }): Promise<Metadata> {
-  const { sport, league } = await searchParams;
+  const params = searchParams ? await searchParams : {};
+  const { sport, league } = params;
 
   const sportKey = sport?.toLowerCase() ?? 'football';
   const seo = SPORT_SEO[sportKey] ?? SPORT_SEO.football;
