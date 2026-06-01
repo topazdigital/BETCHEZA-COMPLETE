@@ -18,6 +18,7 @@ const nextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   experimental: {
+    optimizeCss: true,
     optimizePackageImports: [
       'lucide-react',
       '@radix-ui/react-accordion',
@@ -44,8 +45,10 @@ const nextConfig = {
       '@radix-ui/react-tooltip',
       'recharts',
       'date-fns',
+      'framer-motion',
     ],
   },
+  turbopack: {},
   allowedDevOrigins: [
     '*.replit.dev',
     '*.replit.app',

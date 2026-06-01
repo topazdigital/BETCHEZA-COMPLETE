@@ -909,12 +909,12 @@ export default function RootLayout({
           <AuthProvider>
             <AuthModalProvider>
               <BetSlipProvider>
-              <UserSettingsProvider>
-                {children}
-                <ClientModals />
-                <Toaster position="top-right" richColors closeButton />
-              </UserSettingsProvider>
-            </BetSlipProvider>
+                <UserSettingsProvider>
+                  {children}
+                  <ClientModals />
+                  <Toaster position="top-right" richColors closeButton />
+                </UserSettingsProvider>
+              </BetSlipProvider>
             </AuthModalProvider>
           </AuthProvider>
         </ThemeProvider>
