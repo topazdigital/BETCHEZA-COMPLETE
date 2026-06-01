@@ -1,9 +1,9 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useMemo, Suspense, useEffect, useRef } from 'react';
+import { useState, useMemo, Suspense, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Calendar, Search, Clock, ChevronDown, ChevronRight, CalendarDays, CalendarClock,
   Flame, TrendingUp, Star, Trophy, Zap, ChevronUp, Globe, BarChart2, ListFilter,
@@ -296,12 +296,28 @@ function MatchesLeftSidebar({
 
 function MatchesContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedSportId, setSelectedSportId] = useState<number | null>(
     searchParams.get('sport') ? ALL_SPORTS.find(s => s.slug === searchParams.get('sport'))?.id || null : null
   );
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   const [leagueFilter, setLeagueFilter] = useState(searchParams.get('league') || 'all');
+
+  const handleSelectSport = useCallback((id: number | null) => {
+    setSelectedSportId(id);
+    setLeagueFilter('all');
+    const sport = ALL_SPORTS.find(s => s.id === id);
+    const params = new URLSearchParams();
+    if (sport) params.set('sport', sport.slug);
+    const qs = params.size ? `?${params.toString()}` : '';
+    router.replace(`/matches${qs}`, { scroll: false });
+    if (typeof document !== 'undefined') {
+      document.title = sport
+        ? `${sport.name} Matches Today — Free Tips & Predictions | Betcheza`
+        : 'Best Free Betting Tips Today Kenya | Football Predictions | Betcheza';
+    }
+  }, [router]);
   const [dateTab, setDateTab] = useState<DateTab>(() => {
     const t = searchParams.get('tab');
     if (t === 'upcoming' || t === 'calendar') return t as DateTab;
@@ -402,7 +418,7 @@ function MatchesContent() {
       {/* ── Creative Left Sidebar ── */}
       <MatchesLeftSidebar
         selectedSportId={selectedSportId}
-        onSelectSport={setSelectedSportId}
+        onSelectSport={handleSelectSport}
         matchCounts={matchCounts}
         liveCount={stats.live}
         todayCount={stats.today}
@@ -421,7 +437,7 @@ function MatchesContent() {
         <div className="border-b border-border bg-card/50 px-4 py-2 shrink-0">
           <SportsFilter
             selectedSportId={selectedSportId}
-            onSelectSport={setSelectedSportId}
+            onSelectSport={handleSelectSport}
             matchCounts={matchCounts}
           />
         </div>

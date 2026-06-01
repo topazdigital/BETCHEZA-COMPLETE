@@ -180,7 +180,7 @@ export async function generateMetadata({
   }).toString()}`;
 
   return {
-    title,
+    title: { absolute: title },
     description,
     keywords,
     alternates: { canonical },
