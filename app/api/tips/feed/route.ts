@@ -218,6 +218,7 @@ async function ensureSeedIfEmpty(): Promise<void> {
 }
 
 export async function GET(request: NextRequest) {
+  try {
   const { searchParams } = new URL(request.url);
   const day = (searchParams.get('day') || 'today') as 'today' | 'tomorrow' | 'upcoming';
   const sport = (searchParams.get('sport') || '').toLowerCase();
@@ -226,8 +227,8 @@ export async function GET(request: NextRequest) {
   const tzOffsetMin = parseInt(searchParams.get('tzOffsetMin') || '0', 10);
 
   const [realTipsters, dbTips] = await Promise.all([
-    getRealTipsters(),
-    getRealDbTips(day),
+    getRealTipsters().catch(() => [] as NormalisedTipster[]),
+    getRealDbTips(day).catch(() => []),
   ]);
 
   const realTipsterMap = new Map<number, NormalisedTipster>(realTipsters.map(t => [t.id, t]));
@@ -497,4 +498,11 @@ export async function GET(request: NextRequest) {
     sportCounts: sportCountMap,
     counts: { today: today_count, tomorrow: tomorrow_count, upcoming: upcoming_count },
   });
+  } catch (err) {
+    console.error('[tips/feed] Unhandled error:', err);
+    return NextResponse.json(
+      { tips: [], bestTip: null, topTipsters: [], sports: [], sportCounts: {}, counts: { today: 0, tomorrow: 0, upcoming: 0 } },
+      { status: 200 }
+    );
+  }
 }

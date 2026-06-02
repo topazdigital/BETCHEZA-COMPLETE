@@ -147,6 +147,11 @@ function isSportAppropriateMarket(sport: string | undefined, marketName: string,
   if (mk === 'btts' || mn.includes('both teams to score') || mn === 'btts') {
     return BTTS_VALID_SPORTS.has(sn);
   }
+  // "Goals" markets (Over/Under X.Y Goals) are soccer-specific.
+  // Ice hockey uses "Goals" too but other no-draw sports (basketball, baseball, tennis, etc.) don't.
+  if (sn !== 'icehockey' && sn !== 'hockey' && sn !== 'soccer' && sn !== 'football') {
+    if (mn.includes(' goals') || mn.endsWith(' goals')) return false;
+  }
   return true;
 }
 
@@ -181,6 +186,13 @@ function isTipValid(tip: GeneratedTip): boolean {
     const mn = (tip.market || '').toLowerCase();
     const mk = (tip.marketKey || '').toLowerCase();
     if (mn.includes('1x2') || mk === '1x2' || mn === 'match result (1x2)') return false;
+    // Reject soccer "Goals" prediction labels on non-soccer/non-hockey sports
+    // e.g. "Over 2.5 Goals" on a basketball or baseball match
+    const sn2 = normSport(tip.sport);
+    if (sn2 !== 'icehockey' && sn2 !== 'hockey') {
+      const pl = (tip.prediction || '').toLowerCase();
+      if (pl.includes(' goals') || pl.endsWith(' goals')) return false;
+    }
   }
 
   return true;

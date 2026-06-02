@@ -118,7 +118,9 @@ export function CompetitionLiveStandings({
 
   const inWindow    = isMatchWindowActive(matchKickoffFrom, matchKickoffTo)
   const totalTips   = participants.reduce((s, p) => s + p.tips, 0)
-  const hasPrizes   = prizes && prizes.length > 0
+  // Only show prize column once games have kicked off and actual results are coming in
+  const hasResults  = participants.some(p => p.won > 0 || p.lost > 0)
+  const hasPrizes   = prizes && prizes.length > 0 && hasResults
   const prizeByRank = hasPrizes ? buildPrizeByRank(prizes!) : {}
 
   return (

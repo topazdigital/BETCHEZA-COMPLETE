@@ -490,8 +490,8 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           )
         })()}
 
-        {/* Prizes — top 3 podium */}
-        {comp.prizes.length > 0 && comp.status !== 'completed' && (
+        {/* Prizes — top 3 podium (only shown once games have kicked off and results are coming in) */}
+        {comp.prizes.length > 0 && comp.status !== 'completed' && started && participants.some(p => (p.won ?? 0) > 0 || (p.lost ?? 0) > 0) && (
           <div className="mb-3">
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5 px-0.5">
               <Trophy className="h-3 w-3 text-warning" /> Prize Breakdown

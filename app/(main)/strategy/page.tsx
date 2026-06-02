@@ -1119,12 +1119,15 @@ export default function StrategyPage() {
               status: 'upcoming' as const,
               stake: p.stake, save: p.save, targetWin: p.targetWin,
             }))).map((day, i) => {
-              const isToday = day.status === 'active';
-              const isYesterday = i === yesterdayPlanIndex;
-
               // ── Browser timezone: use user's local clock, not server EAT ──
               // "Today" in the user's own timezone determines what they can see.
               const browserTodayStr = new Intl.DateTimeFormat('en-CA').format(new Date()); // 'YYYY-MM-DD' local
+
+              // Guard: if the DB has multiple days with status='active', only the one
+              // whose date actually matches today gets the TODAY badge.
+              const isToday = day.status === 'active' && (!day.date || day.date === browserTodayStr);
+              const isYesterday = i === yesterdayPlanIndex;
+
               // A day whose date is tomorrow or later in the user's browser hasn't started yet
               const isBrowserFuture = day.date > browserTodayStr;
 

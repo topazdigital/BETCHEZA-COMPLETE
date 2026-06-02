@@ -1,5 +1,9 @@
 // Community feed store — MySQL-backed with in-memory fallback when DB is unavailable.
+// When running without a DB, posts are also persisted to a local JSON file so they
+// survive server restarts.
 
+import fs from 'fs';
+import path from 'path';
 import { query, getPool } from './db';
 import { dispatchNotification, dispatchToMany } from './notification-dispatcher';
 import { listFollowersOfTipster } from './follows-store';
@@ -124,11 +128,48 @@ interface MemStore {
   likes: Map<string, Set<number>>; // postId → set of userIds
 }
 
-const gm = globalThis as { __feedMem?: MemStore };
+const gm = globalThis as { __feedMem?: MemStore; __feedMemLoaded?: boolean };
 if (!gm.__feedMem) {
   gm.__feedMem = { posts: [], comments: [], likes: new Map() };
 }
 const mem = gm.__feedMem;
+
+// JSON file used to persist in-memory posts across server restarts (no-DB mode only).
+const FEED_FILE = path.join(process.cwd(), '.local', 'state', 'feed-posts.json');
+
+function ensureFeedDir(): void {
+  try { fs.mkdirSync(path.dirname(FEED_FILE), { recursive: true }); } catch {}
+}
+
+function persistFeedToFile(): void {
+  try {
+    ensureFeedDir();
+    // Don't persist seeded/fake posts (userId 0) — only real user posts and any
+    // non-fake posts that should survive restarts.
+    const toSave = mem.posts.slice(0, 200);
+    fs.writeFileSync(FEED_FILE, JSON.stringify(toSave));
+  } catch (e) {
+    console.warn('[feed] persist to file failed', e);
+  }
+}
+
+function loadFeedFromFile(): void {
+  if (gm.__feedMemLoaded) return;
+  gm.__feedMemLoaded = true;
+  try {
+    if (!fs.existsSync(FEED_FILE)) return;
+    const raw = JSON.parse(fs.readFileSync(FEED_FILE, 'utf8')) as FeedPost[];
+    if (Array.isArray(raw) && raw.length > 0) {
+      mem.posts = raw;
+      console.log(`[feed] loaded ${raw.length} posts from JSON file`);
+    }
+  } catch (e) {
+    console.warn('[feed] loadFeedFromFile failed', e);
+  }
+}
+
+// Load from file immediately on first import (synchronous so listPosts has data instantly)
+loadFeedFromFile();
 
 function hasDb(): boolean {
   return !!getPool();
@@ -500,15 +541,19 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
       void storeHashtags(post.id, post.content ?? '');
       // DB succeeded — don't duplicate in memory
     } catch (e) {
-      // DB write failed — log loudly and propagate rather than silently
-      // falling back to memory (which would lose data on next server restart).
-      console.error('[feed] createPost DB write failed:', (e as Error).message);
-      throw e;
+      // DB write failed — fall back to in-memory + file persistence so the
+      // post isn't lost and survives server restarts.
+      console.error('[feed] createPost DB write failed, falling back to file store:', (e as Error).message);
+      mem.posts.unshift(post);
+      if (mem.posts.length > 200) mem.posts.length = 200;
+      persistFeedToFile();
     }
   } else {
     mem.posts.unshift(post);
     // Cap memory store at 200 posts
     if (mem.posts.length > 200) mem.posts.length = 200;
+    // Persist to JSON file so posts survive server restarts
+    persistFeedToFile();
   }
 
   try {
