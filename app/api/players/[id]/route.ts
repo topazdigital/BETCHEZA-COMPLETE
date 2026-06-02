@@ -148,15 +148,75 @@ interface NormalisedGameLogRow {
   result?: string;
   score?: string;
   stats: Record<string, string>;
+  competition?: string;
+  competitionShort?: string;
 }
 
-function normaliseGameLog(raw: AthleteGameLogResponse | null): NormalisedGameLogRow[] {
+// Map ESPN sport paths to human-readable competition names.
+const COMPETITION_LABELS: Record<string, { name: string; short: string }> = {
+  'soccer/eng.1': { name: 'Premier League', short: 'PL' },
+  'soccer/esp.1': { name: 'La Liga', short: 'LaLiga' },
+  'soccer/ita.1': { name: 'Serie A', short: 'SA' },
+  'soccer/ger.1': { name: 'Bundesliga', short: 'BL' },
+  'soccer/fra.1': { name: 'Ligue 1', short: 'L1' },
+  'soccer/ned.1': { name: 'Eredivisie', short: 'ERE' },
+  'soccer/por.1': { name: 'Primeira Liga', short: 'PPL' },
+  'soccer/sco.1': { name: 'Scottish Prem', short: 'SP' },
+  'soccer/tur.1': { name: 'Süper Lig', short: 'SL' },
+  'soccer/ksa.1': { name: 'Saudi Pro', short: 'SPL' },
+  'soccer/bra.1': { name: 'Brasileirão', short: 'BRA' },
+  'soccer/arg.1': { name: 'Liga Pro', short: 'ARG' },
+  'soccer/mex.1': { name: 'Liga MX', short: 'MX' },
+  'soccer/usa.1': { name: 'MLS', short: 'MLS' },
+  'soccer/uefa.champions': { name: 'Champions League', short: 'UCL' },
+  'soccer/uefa.europa': { name: 'Europa League', short: 'UEL' },
+  'soccer/uefa.europa.conf': { name: 'Conference League', short: 'UECL' },
+  'soccer/uefa.nations': { name: 'Nations League', short: 'UNL' },
+  'soccer/uefa.euro': { name: 'Euro', short: 'EURO' },
+  'soccer/fifa.world': { name: 'World Cup', short: 'WC' },
+  'soccer/conmebol.libertadores': { name: 'Copa Libertadores', short: 'LIBERT' },
+  'basketball/nba': { name: 'NBA', short: 'NBA' },
+  'basketball/euroleague': { name: 'EuroLeague', short: 'EL' },
+  'football/nfl': { name: 'NFL', short: 'NFL' },
+  'baseball/mlb': { name: 'MLB', short: 'MLB' },
+  'hockey/nhl': { name: 'NHL', short: 'NHL' },
+  'tennis/atp': { name: 'ATP Tour', short: 'ATP' },
+  'tennis/wta': { name: 'WTA Tour', short: 'WTA' },
+  'cricket/ipl': { name: 'IPL', short: 'IPL' },
+  'mma/ufc': { name: 'UFC', short: 'UFC' },
+};
+
+// For top European league players, also fetch these competition gamelogs.
+function getSiblingCompetitions(sportPath: string): string[] {
+  const top5 = ['soccer/eng.1', 'soccer/esp.1', 'soccer/ita.1', 'soccer/ger.1', 'soccer/fra.1'];
+  if (top5.includes(sportPath)) {
+    return ['soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/uefa.europa.conf'];
+  }
+  if (['soccer/ned.1', 'soccer/por.1', 'soccer/sco.1', 'soccer/tur.1'].includes(sportPath)) {
+    return ['soccer/uefa.europa', 'soccer/uefa.europa.conf'];
+  }
+  return [];
+}
+
+function deriveFallbackLabel(path: string): { name: string; short: string } | undefined {
+  const sport = path.split('/')[0];
+  const league = path.split('/')[1];
+  const sportNames: Record<string, string> = {
+    soccer: 'Football', basketball: 'Basketball', football: 'Am. Football',
+    baseball: 'Baseball', hockey: 'Ice Hockey', tennis: 'Tennis',
+    cricket: 'Cricket', rugby: 'Rugby', mma: 'MMA',
+  };
+  if (!sportNames[sport]) return undefined;
+  return { name: sportNames[sport], short: (league || sport).toUpperCase().slice(0, 4) };
+}
+
+function normaliseGameLog(raw: AthleteGameLogResponse | null, competitionPath?: string): NormalisedGameLogRow[] {
   if (!raw?.events || !raw.seasonTypes) return [];
-  // Use stat labels from the first season type — they tell us what each
-  // stat slot actually represents (Goals, Assists, Min, Cards, etc).
   const labels = raw.labels || raw.names || [];
+  const compInfo = competitionPath
+    ? (COMPETITION_LABELS[competitionPath] ?? deriveFallbackLabel(competitionPath))
+    : undefined;
   const out: NormalisedGameLogRow[] = [];
-  // Walk the most recent season first.
   for (const seasonType of raw.seasonTypes) {
     for (const cat of seasonType.categories || []) {
       for (const ev of cat.events || []) {
@@ -178,8 +238,9 @@ function normaliseGameLog(raw: AthleteGameLogResponse | null): NormalisedGameLog
           result: eventInfo.result,
           score: eventInfo.score,
           stats,
+          competition: compInfo?.name,
+          competitionShort: compInfo?.short,
         });
-        if (out.length >= 20) return out;
       }
     }
   }
@@ -230,11 +291,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Player not found' }, { status: 404 });
   }
 
-  const [stats, gamelogRaw] = await Promise.all([
+  // Fetch stats + primary gamelog + sibling competition gamelogs in parallel.
+  const siblingPaths = getSiblingCompetitions(found.sportPath);
+  const [stats, gamelogRaw, ...siblingGamelogsRaw] = await Promise.all([
     fetchAthleteStats(found.sportPath, id).catch(() => null),
     fetchAthleteGameLog(found.sportPath, id).catch(() => null),
+    ...siblingPaths.map(p => fetchAthleteGameLog(p, id).catch(() => null)),
   ]);
-  const recentMatches = normaliseGameLog(gamelogRaw);
+
+  // Normalise primary gamelog + all sibling competition gamelogs, then merge by date.
+  const primaryRows = normaliseGameLog(gamelogRaw, found.sportPath);
+  const siblingRows = siblingPaths.flatMap((p, i) => normaliseGameLog(siblingGamelogsRaw[i], p));
+  // Merge, deduplicate by date+opponent, sort newest first.
+  const allRows = [...primaryRows, ...siblingRows];
+  const seen = new Set<string>();
+  const recentMatches = allRows
+    .filter(r => {
+      const key = `${r.date ?? ''}|${r.opponent?.name ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => (b.date ?? '') > (a.date ?? '') ? 1 : -1)
+    .slice(0, 30);
 
   const a = found.athlete;
   const sportRoot = found.sportPath.split('/')[0];

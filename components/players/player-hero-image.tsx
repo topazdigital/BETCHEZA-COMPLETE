@@ -8,9 +8,17 @@ interface PlayerHeroImageProps {
   name: string
   id?: string | number | null
   sport?: string | null
+  className?: string
+  fallbackClassName?: string
+  size?: number
 }
 
-export function PlayerHeroImage({ headshot, name, id, sport }: PlayerHeroImageProps) {
+export function PlayerHeroImage({
+  headshot, name, id, sport,
+  className,
+  fallbackClassName,
+  size = 128,
+}: PlayerHeroImageProps) {
   const espnSport = !sport ? 'soccer' : sport === 'football' ? 'soccer' : sport
 
   const sources = useMemo(() => {
@@ -30,7 +38,7 @@ export function PlayerHeroImage({ headshot, name, id, sport }: PlayerHeroImagePr
 
   if (exhausted) {
     return (
-      <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-4xl font-bold text-primary shadow-md sm:h-32 sm:w-32">
+      <div className={fallbackClassName || 'flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-4xl font-bold text-primary shadow-md sm:h-32 sm:w-32'}>
         {name.charAt(0).toUpperCase()}
       </div>
     )
@@ -40,9 +48,9 @@ export function PlayerHeroImage({ headshot, name, id, sport }: PlayerHeroImagePr
     <Image
       src={currentSrc}
       alt={name}
-      width={128}
-      height={128}
-      className="h-28 w-28 rounded-2xl border border-border bg-muted object-cover shadow-md sm:h-32 sm:w-32"
+      width={size}
+      height={size}
+      className={className || 'h-28 w-28 rounded-2xl border border-border bg-muted object-cover shadow-md sm:h-32 sm:w-32'}
       unoptimized
       onError={() => setSrcIdx((i) => i + 1)}
     />
