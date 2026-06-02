@@ -143,6 +143,9 @@ export async function register() {
       await query(`ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS room_id INT DEFAULT NULL`).catch(() => {});
       await query(`ALTER TABLE feed_posts ADD INDEX IF NOT EXISTS idx_fp_room_id (room_id)`).catch(() => {});
 
+      // Widen teams.short_name to avoid "Data too long" errors from ESPN abbreviations
+      await query(`ALTER TABLE teams MODIFY COLUMN short_name VARCHAR(100) DEFAULT NULL`).catch(() => {});
+
       console.log('[instrumentation] DB migrations applied (community_rooms + room_id)');
 
       // 4b. Backfill room_id on existing fake-tipster posts (user_id >= 1000)

@@ -141,7 +141,11 @@ export async function generateMetadata({
     keywords.push(`${leagueName} results`, `${leagueName} scores today`, `${leagueName} tips results`);
   }
 
-  const canonical = `${BASE_URL}/results`;
+  // Use sport-specific canonical to help Google understand each sport filter
+  const canonicalBase = `${BASE_URL}/results`;
+  const canonical = sportKey && sportKey !== 'football'
+    ? `${canonicalBase}?sport=${encodeURIComponent(sportKey)}`
+    : canonicalBase;
 
   return {
     title,
@@ -169,5 +173,5 @@ export async function generateMetadata({
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <>{children}</>;
 }

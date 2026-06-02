@@ -455,7 +455,7 @@ interface PitchData {
 }
 
 function buildPitchData(roster: TeamRoster | null): PitchData | null {
-  if (!roster) return null
+  if (!roster || !roster.starting?.length) return null
   const starters = roster.starting.slice(0, 11)
   const formation = parseFormation(roster.formation)
 
@@ -1515,7 +1515,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                           )}
                         </div>
                         <div className="p-1.5 space-y-px">
-                          {roster.starting.slice(0, 11).map((p, i) => (
+                          {(roster.starting || []).slice(0, 11).map((p, i) => (
                             <div key={i} className="flex items-center gap-1.5 py-0.5 px-0.5">
                               <span className="w-4 text-center text-[9px] font-mono text-white/30 shrink-0">{p.jersey || (i + 1)}</span>
                               <span className="text-[10px] text-white/80 truncate flex-1">{p.name}</span>
@@ -3698,7 +3698,7 @@ function SidebarLineupsPanel({
                 <span className="text-[11px] font-bold truncate">{team.name}</span>
               </div>
               <div className="p-2 space-y-0.5">
-                {roster.starting.slice(0, 5).map((p, i) => (
+                {(roster.starting || []).slice(0, 5).map((p, i) => (
                   <div key={i} className="flex items-center gap-1.5 py-0.5">
                     <span className="w-4 text-[10px] font-mono text-muted-foreground">{p.jersey || (i + 1)}</span>
                     <span className="text-[10px] truncate flex-1">{p.name}</span>
@@ -3725,7 +3725,7 @@ function SidebarLineupsPanel({
                 <span className="text-[11px] font-bold truncate">{team.name}</span>
               </div>
               <div className="p-2 space-y-0.5">
-                {roster.starting.slice(0, 6).map((p, i) => (
+                {(roster.starting || []).slice(0, 6).map((p, i) => (
                   <div key={i} className="flex items-center gap-1.5 py-0.5">
                     <span className="w-4 text-[10px] font-mono text-muted-foreground">{p.jersey || (i + 1)}</span>
                     <span className="text-[10px] truncate flex-1">{p.name}</span>
@@ -3753,7 +3753,7 @@ function SidebarLineupsPanel({
                   </div>
                 </div>
                 <div className="p-2 space-y-0.5">
-                  {roster.starting.slice(0, 11).map((p, i) => (
+                  {(roster.starting || []).slice(0, 11).map((p, i) => (
                     <div key={i} className="flex items-center gap-1.5 py-0.5">
                       <span className="w-4 text-center text-[10px] font-mono text-muted-foreground shrink-0">{p.jersey || (i + 1)}</span>
                       <span className="text-[11px] text-foreground truncate flex-1">{p.name}</span>
@@ -3801,11 +3801,11 @@ function RosterCard({ side, roster, isConfirmed }: { side: string; roster: TeamR
         )}
       </div>
       <CardContent className="p-3">
-        {roster.starting.length > 0 && (
+        {(roster.starting?.length ?? 0) > 0 && (
           <>
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Starting XI</p>
             <div className="mb-3 space-y-0.5">
-              {roster.starting.map((p, i) => <PlayerRow key={i} player={p} />)}
+              {(roster.starting || []).map((p, i) => <PlayerRow key={i} player={p} />)}
             </div>
           </>
         )}

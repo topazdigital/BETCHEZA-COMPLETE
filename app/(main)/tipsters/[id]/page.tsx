@@ -482,7 +482,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
                   {tipster.avatar ? (
                     <img src={tipster.avatar} alt={tipster.displayName} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   ) : (
-                    tipster.displayName.charAt(0)
+                    (tipster.displayName || tipster.username || '?').charAt(0)
                   )}
                 </div>
                 {tipster.rank <= 3 && (

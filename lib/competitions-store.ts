@@ -274,7 +274,15 @@ export function getCompetitionBySlug(slug: string): Competition | undefined {
 
 export async function getCompetitionBySlugAsync(slug: string): Promise<Competition | undefined> {
   const all = await getCompetitionsAsync();
-  return all.find(c => c.slug === slug);
+  const found = all.find(c => c.slug === slug);
+  // Lazy-seed the World Cup competition if it wasn't seeded yet (e.g. request
+  // arrived before the 3-second instrumentation timeout fired).
+  if (!found && slug === WC_COMP_SLUG) {
+    await seedWorldCupCompetition();
+    const refreshed = await getCompetitionsAsync();
+    return refreshed.find(c => c.slug === slug);
+  }
+  return found;
 }
 
 export function getCompetitionById(id: number): Competition | undefined {

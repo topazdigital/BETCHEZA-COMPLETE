@@ -81,10 +81,10 @@ interface TeamPayload {
 
 async function upsertTeam(t: TeamPayload): Promise<void> {
   const slug = slugify(t.name);
-  // Truncate to fit column limits: name/slug 255 chars, short_name 50 chars
+  // Truncate to fit column limits: name/slug 255 chars, short_name 100 chars
   const safeName = t.name.slice(0, 255);
   const safeSlug = slug.slice(0, 255);
-  const safeShortName = t.shortName ? t.shortName.slice(0, 50) : null;
+  const safeShortName = t.shortName ? t.shortName.slice(0, 100) : null;
   try {
     const byApi = await queryOne<{ id: number }>(
       `SELECT id FROM teams WHERE api_id = ? AND api_id IS NOT NULL LIMIT 1`,

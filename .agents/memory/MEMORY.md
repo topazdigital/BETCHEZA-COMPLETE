@@ -9,3 +9,6 @@
 - [League page sport param & slug resolution](league-page-sport-param.md) — unknown league links must include ?sport=slug; never use raw match.league.slug; status filter is context-aware based on dateTab
 - [Historical matches & SEO timezone](historical-matches-seo.md) — tryLeagues no age cutoff + collision guard; EAT timezone in formatKickoffDate & JSON-LD; league page calls /api/leagues/[id]/matches?season=YEAR
 - [GTmetrix perf optimizations](gtmetrix-perf.md) — webpack config breaks Turbopack builds; MatchCardNew/HeroCarousel/LiveSidePanel/LiveMarquee must be dynamic imports; use turbopack:{} not webpack config
+- [Roster null-safety](roster-null-safety.md) — roster.starting can be undefined even when roster is non-null (API omits it); always use (roster.starting || []).slice() everywhere; buildPitchData guards with !roster.starting?.length
+- [Tips feed null guards](tips-feed-nulls.md) — tip.tipster can be null at runtime despite interface; BestBetCard/TipCard must return null early; sportCounts can be null before first SWR response
+- [teams.short_name column width](db-short-name.md) — short_name was VARCHAR(50); ESPN abbreviations can exceed that; widened to VARCHAR(100) via instrumentation.ts ALTER TABLE migration

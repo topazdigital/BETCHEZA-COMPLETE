@@ -82,7 +82,8 @@ const SPORT_ICONS: Record<string, string> = {
   mma: "🥋", cycling: "🚴", motorsport: "🏎️", swimming: "🏊",
 }
 
-function sportIcon(sport: string) {
+function sportIcon(sport: string | null | undefined) {
+  if (!sport) return "🏆"
   return SPORT_ICONS[sport.toLowerCase()] ?? "🏆"
 }
 
@@ -142,6 +143,7 @@ function ConfidenceBar({ value }: { value: number }) {
 }
 
 function BestBetCard({ tip }: { tip: Tip }) {
+  if (!tip.tipster) return null
   return (
     <div className="relative rounded-xl border-2 border-emerald-500/40 bg-gradient-to-br from-emerald-500/5 to-background overflow-hidden">
       <div className="flex items-center gap-2 bg-emerald-500 px-3 py-1.5">
@@ -150,7 +152,7 @@ function BestBetCard({ tip }: { tip: Tip }) {
       </div>
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <Avatar src={tip.tipster.avatar} name={tip.tipster.displayName} size="lg" />
+          <Avatar src={tip.tipster.avatar} name={tip.tipster.displayName || tip.tipster.username} size="lg" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <Link href={`/tipsters/${tip.tipster.username}`} className="text-sm font-bold hover:text-primary">
@@ -186,6 +188,7 @@ function BestBetCard({ tip }: { tip: Tip }) {
 }
 
 function TipCard({ tip }: { tip: Tip }) {
+  if (!tip.tipster) return null
   const wr = tip.tipster.winRate
   const wrColor = wr >= 60 ? "text-emerald-600 dark:text-emerald-400" : wr >= 45 ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"
   const wrBg   = wr >= 60 ? "bg-emerald-500/10" : wr >= 45 ? "bg-amber-500/10" : "bg-rose-500/10"
@@ -282,7 +285,7 @@ function Filters({
   onMinOdds: (v: string) => void
   onMaxOdds: (v: string) => void
 }) {
-  const totalCount = Object.values(sportCounts).reduce((a, b) => a + b, 0)
+  const totalCount = sportCounts ? Object.values(sportCounts).reduce((a, b) => a + b, 0) : 0
   return (
     <div className="space-y-4">
       <div>

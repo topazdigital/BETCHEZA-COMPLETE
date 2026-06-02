@@ -168,7 +168,7 @@ function parseFormation(f?: string): number[] {
 // Build an array of rows (GK row first, then defence → attack) with players
 // correctly classified and ordered left-to-right within each row.
 function buildFormationRows(roster: TeamRoster): Player[][] {
-  const starters = roster.starting.slice(0, 11)
+  const starters = (roster.starting || []).slice(0, 11)
   if (starters.length === 0) return []
 
   const formation = parseFormation(roster.formation)
@@ -302,8 +302,8 @@ function FormationPitch({ roster, isHome }: { roster: TeamRoster; isHome: boolea
 
 function RosterList({ roster, teamName }: { roster: TeamRoster; teamName: string }) {
   const [showBench, setShowBench] = useState(false)
-  const starters = roster.starting.slice(0, 11)
-  const bench = roster.bench
+  const starters = (roster.starting || []).slice(0, 11)
+  const bench = roster.bench || []
 
   return (
     <div className="space-y-1">
