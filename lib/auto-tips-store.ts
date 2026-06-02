@@ -104,36 +104,75 @@ function normTeam(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-// Sports that never end in a draw — Double Chance / BTTS / Draw markets are invalid for these
+// Sports that never end in a draw — Double Chance / Draw markets are invalid for these
 const NO_DRAW_SPORTS = new Set([
-  'basketball', 'tennis', 'baseball', 'hockey', 'mma', 'boxing',
+  'basketball', 'tennis', 'baseball', 'hockey', 'icehockey', 'mma', 'boxing',
   'american-football', 'americanfootball', 'nfl', 'nba', 'mlb', 'nhl',
   'volleyball', 'darts', 'snooker', 'esports',
 ]);
 
+// Sports where "Both Teams to Score" IS a valid market (teams score independently, no draws)
+const BTTS_VALID_SPORTS = new Set([
+  'hockey', 'icehockey', 'nhl', 'ice-hockey',
+]);
+
+function normSport(sport?: string): string {
+  return (sport || '').toLowerCase().replace(/[\s_-]/g, '');
+}
+
 function isNoDrawSport(sport?: string): boolean {
   if (!sport) return false;
-  const s = sport.toLowerCase().replace(/[\s_-]/g, '');
-  return NO_DRAW_SPORTS.has(s);
+  return NO_DRAW_SPORTS.has(normSport(sport));
 }
 
 /**
  * Returns true if the market is appropriate for the given sport.
  * Prevents soccer-specific markets (Double Chance, BTTS, etc.) being used
- * for no-draw sports like baseball, basketball, tennis, hockey.
+ * for no-draw sports like baseball, basketball, tennis.
+ * Ice hockey is special: BTTS is valid (both teams regularly score), but
+ * Draw / Double Chance / DNB are not (games go to OT/shootout).
  */
 function isSportAppropriateMarket(sport: string | undefined, marketName: string, marketKey?: string): boolean {
   if (!sport || !isNoDrawSport(sport)) return true; // soccer/rugby/cricket: all markets OK
   const mn = marketName.toLowerCase();
   const mk = (marketKey || '').toLowerCase();
-  // These markets require draws or are soccer-specific — not valid for no-draw sports
+  const sn = normSport(sport);
+  // Draw-dependent markets — never valid for no-draw sports
   if (mk === 'dc' || mn.includes('double chance')) return false;
-  if (mk === 'btts' || mn.includes('both teams to score') || mn === 'btts') return false;
-  if (mn.includes('clean sheet') || mn.includes('win to nil')) return false;
   if (mn.includes('draw no bet') || mk === 'dnb') return false;
   if (mn.includes('correct score') || mn.includes('exact score')) return false;
   if (mn.includes('half-time') && mn.includes('full-time')) return false;
+  if (mn.includes('clean sheet') || mn.includes('win to nil')) return false;
+  // BTTS is valid for ice hockey but NOT for baseball/basketball/tennis/etc.
+  if (mk === 'btts' || mn.includes('both teams to score') || mn === 'btts') {
+    return BTTS_VALID_SPORTS.has(sn);
+  }
   return true;
+}
+
+/**
+ * Removes tips whose market is inappropriate for their sport from the in-memory
+ * store (and flags them for DB/file cleanup). Returns count of tips removed.
+ */
+function purgeSportInappropriateTips(): number {
+  let purged = 0;
+  for (const [matchId, tips] of stores.byMatch.entries()) {
+    const clean = tips.filter(t => isSportAppropriateMarket(t.sport, t.market, t.marketKey));
+    if (clean.length !== tips.length) {
+      purged += tips.length - clean.length;
+      stores.byMatch.set(matchId, clean);
+    }
+  }
+  // Rebuild byTipster index after purge
+  stores.byTipster.clear();
+  for (const tips of stores.byMatch.values()) {
+    for (const t of tips) {
+      const list = stores.byTipster.get(t.tipsterId) || [];
+      list.push(t);
+      stores.byTipster.set(t.tipsterId, list);
+    }
+  }
+  return purged;
 }
 
 function applyKnownResults(tips: GeneratedTip[]): boolean {
@@ -234,10 +273,22 @@ function load() {
   // Try DB first (async); fall back to JSON synchronously so the store is
   // immediately usable while DB is connecting on first boot.
   loadFromFile(); // instant — seeds memory right away
+  // Remove any previously-generated tips that use sport-inappropriate markets
+  // (e.g. BTTS on baseball, Double Chance on basketball). This corrects tips
+  // that were generated before sport-awareness was added.
+  const purged = purgeSportInappropriateTips();
+  if (purged > 0) {
+    console.log(`[auto-tips] purged ${purged} sport-inappropriate tips`);
+    persist();
+  }
   loadFromDb().then(dbOk => {
     if (dbOk) {
-      // DB loaded additional / fresher tips — file already indexed above,
-      // duplicates are deduped in indexTips. No further action needed.
+      // DB loaded additional / fresher tips — run purge again in case DB had stale entries
+      const dbPurged = purgeSportInappropriateTips();
+      if (dbPurged > 0) {
+        console.log(`[auto-tips] purged ${dbPurged} sport-inappropriate tips from DB`);
+        persist();
+      }
     }
   });
 }
@@ -409,64 +460,190 @@ function getFallbackPredictions(sport?: string): Array<{ prediction: string; mar
   return SPORT_FALLBACK_PREDICTIONS[key] || SPORT_FALLBACK_PREDICTIONS['soccer'];
 }
 
-// Big diverse analysis pool, grouped by "lens" so the same tipster posting on
-// the same match never reads like the previous one. We mix in tipster-name,
-// league, sport, and specialty tokens so two tipsters with the same selection
-// still produce different copy.
+// Sport-specific analysis templates — each sport has its own vocabulary.
+// Never uses xG / full-backs / clean sheets / etc. for non-soccer sports.
+const SPORT_ANALYSIS_LINES: Record<string, (home: string, away: string, league: string, sel: string, spec: string, rand: () => number) => string[]> = {
+  baseball: (home, away, league, sel, spec, rand) => {
+    const era = (3.2 + rand() * 2.1).toFixed(2);
+    const whip = (1.1 + rand() * 0.4).toFixed(2);
+    const avg = (0.230 + rand() * 0.060).toFixed(3);
+    return [
+      `Starting pitcher ERA gap backs ${sel}. ${home}'s rotation has a ${era} ERA over the last two starts — lean into the run line.`,
+      `Both pitching rotations are solid but ${home}'s bullpen WHIP (${whip}) is the tiebreaker here. ${sel} is the call.`,
+      `Batting average against lefty starters strongly favours ${sel}. Spot play on the run line, ${spec} wheelhouse.`,
+      `${home}'s closer blew two saves in a row last week — ${sel} targets that vulnerability directly.`,
+      `Park factor and today's wind direction lean ${sel} on the total. First-pitch ERA makes this a value play.`,
+      `${away}'s lineup is hitting ${avg} on the road this month — ${sel} respects the home-park edge.`,
+      `${home} are 7-2 in day games this season. ${sel} captures that scheduling edge; cap at ${(1 + rand() * 3).toFixed(0)}% bankroll.`,
+      `WHIP + strikeout rate for tonight's starter makes ${sel} the value side of the run line. Sharp money agrees.`,
+      `${away} travel on a back-to-back — fatigue in the bullpen is the hidden angle behind ${sel}.`,
+      `H2H at this ballpark has produced under 8.5 runs in 5 of the last 6. ${sel} keeps us on the right side.`,
+    ];
+  },
+  basketball: (home, away, league, sel, spec, rand) => {
+    const netRtg = (2 + rand() * 6).toFixed(1);
+    const pace = (96 + rand() * 10).toFixed(1);
+    return [
+      `${home}'s pace (${pace} possessions/game) and 3-point rate at home back ${sel} on the spread. ${spec} model agrees.`,
+      `Pace-adjusted efficiency: ${home} carry a +${netRtg} net rating at home vs road-weary opponents. ${sel} is the play.`,
+      `${away}'s defensive rating drops 6 points on road — ${sel} exploits that regression. Cap at ${(1 + rand() * 3).toFixed(0)}% bankroll.`,
+      `Rebounding edge and second-chance points for ${home} support ${sel}. ${away}'s front-court is short-handed.`,
+      `${home} cover the spread in 68% of home games as a single-digit favourite — ${sel} fits the pattern exactly.`,
+      `Both offenses rank top-10 in pace — ${sel} on the total is the natural read coming into this one.`,
+      `${away}'s star is on a minutes restriction; backup PG is a -3 efficiency drag. ${sel} prices in that drop-off.`,
+      `${home}'s 3-point volume vs ${away}'s perimeter defence is the matchup to exploit. ${sel} is the result.`,
+      `H2H at this arena: ${home} win outright in 4 of last 5 and cover 3 of those. ${sel} follows the pattern.`,
+      `Sharp money moved the line 2 points toward ${sel} overnight — public is fading the wrong side.`,
+    ];
+  },
+  tennis: (home, away, league, sel, spec, rand) => {
+    const serveW = (58 + rand() * 18).toFixed(0);
+    const bpConv = (38 + rand() * 18).toFixed(0);
+    return [
+      `Surface form is decisive: ${home}'s win rate on this surface makes ${sel} the standout pick. ${spec} backing.`,
+      `First-serve percentage (${serveW}%) and break-point conversion (${bpConv}%) for ${home} support ${sel}.`,
+      `H2H on this surface is one-sided — ${sel} respects the pattern and offers closing-line value.`,
+      `${away} has dropped a deciding set in three of their last four matches. ${sel} on the sets total is the lean.`,
+      `${home} is fresh — ${away} played three-setters in each of the last two rounds. ${sel} is the fatigue play.`,
+      `Double-fault rate for ${away} on ${league} surfaces backs ${sel} on the games handicap.`,
+      `Serve-hold percentage makes ${sel} on games over/under the clear analytical pick this week.`,
+      `${home} won the last meeting in straight sets — ${sel} gives us the same outcome at value odds.`,
+      `${away}'s footwork has been below par on this surface — ${sel} exploits the movement disadvantage.`,
+      `Cap at ${(1 + rand() * 2).toFixed(0)}% bankroll. Tennis single-match variance is high, but the model says ${sel}.`,
+    ];
+  },
+  hockey: (home, away, league, sel, spec, rand) => {
+    const svPct = (0.905 + rand() * 0.020).toFixed(3);
+    const ppEff = (16 + rand() * 8).toFixed(1);
+    return [
+      `${home}'s goaltender save percentage (${svPct}) at home supports ${sel}. Power-play efficiency (${ppEff}%) is the tiebreaker.`,
+      `Shot differential and Corsi numbers back ${sel} at even strength — ${spec} read on the puck-possession edge.`,
+      `${away}'s penalty kill has been leaking — ${sel} targets the power-play advantage directly.`,
+      `Both teams have scored in the opening period in 6 of their last 8 meetings. ${sel} respects that pattern.`,
+      `Puck-possession metrics and zone-entry data lean ${sel} over the total. Road back-up in net seals it.`,
+      `${home} are 8-2 at home this month — ${sel} is the moneyline read with the ice advantage confirmed.`,
+      `${away}'s starting goaltender is questionable — ${sel} prices in that drop-off in the crease.`,
+      `H2H at this rink: 5 of last 6 games went over 5.5 goals. ${sel} respects the high-scoring trend.`,
+      `Sharp money overnight on ${sel}; syndicate action confirmed on the puck line. ${spec} workflow says take it.`,
+      `Cap at ${(1 + rand() * 2).toFixed(0)}% bankroll. Hockey variance is real, but the model rates ${sel} as value.`,
+    ];
+  },
+  football: (home, away, league, sel, spec, rand) => {
+    const ypg = (320 + rand() * 120).toFixed(0);
+    const tdRatio = (2 + rand() * 1.5).toFixed(1);
+    return [
+      `${home}'s red zone efficiency and turnover margin support ${sel} on the spread. ${spec} read.`,
+      `Yards-per-play differential and third-down conversion rate back ${sel} against ${away}'s defence.`,
+      `${away} ranks 28th in pass defence — ${sel} exploits the matchup with ${home}'s air attack (${ypg} py/g).`,
+      `${home} cover 71% as a home favourite — ${sel} on the spread has strong historical edge in ${league}.`,
+      `Weather: dome game or wind below 10 mph. ${sel} on the total is the environmental play.`,
+      `${home}'s rushing attack averages 145 yards per game — ${sel} captures the clock-control edge.`,
+      `${away} is 1-6 ATS on the road — ${sel} is the analytical read regardless of the line movement.`,
+      `Turnover differential: ${home} +${(1 + rand() * 5).toFixed(0)} on the season. ${sel} stays on the right side of possession.`,
+      `${away} travel across two time zones — fatigue angle backs ${sel} in the second half.`,
+      `${home} TD-to-INT ratio (${tdRatio}) vs ${away}'s corners backs ${sel} on the moneyline.`,
+    ];
+  },
+  mma: (home, away, _league, sel, spec, rand) => {
+    const strAcc = (48 + rand() * 14).toFixed(0);
+    const tdDef = (62 + rand() * 20).toFixed(0);
+    return [
+      `${home}'s striking accuracy (${strAcc}%) vs ${away}'s chin — ${sel} is the method-of-victory lean. ${spec} read.`,
+      `Grappling stats: ${home} carries ${tdDef}% takedown defence. ${sel} shuts down the ground game.`,
+      `Both fighters are finishers — ${sel} on going the distance is the contrarian value on this card.`,
+      `${home} has the reach advantage and 43% more significant strikes landed. ${sel} is backed by the CompuStrike data.`,
+      `${away}'s gas tank has been questioned in five-rounders — ${sel} captures that late-round read.`,
+      `Judge scoring patterns in this promotion favour ${sel} when the fight stays upright.`,
+      `${home} finished the last three opponents inside two rounds. ${sel} on the method market is the call.`,
+      `Cardio edge: ${home} trains at altitude — ${sel} holds up in championship rounds.`,
+    ];
+  },
+  cricket: (home, away, league, sel, spec, rand) => {
+    const wickets = (3 + rand() * 3).toFixed(1);
+    const runs = (240 + rand() * 80).toFixed(0);
+    return [
+      `Pitch report and toss advantage strongly favour ${sel} in these ${league} conditions. ${spec} call.`,
+      `${home}'s bowling attack averages ${wickets} wickets per innings on this surface — ${sel} on the runs market.`,
+      `${away}'s top-order batting average in away conditions (${runs} first-innings runs) supports ${sel}.`,
+      `${home} have the stronger tail — ${sel} on first-innings runs is where the edge sits.`,
+      `Dew factor in the second innings: ${sel} is the read for sides batting second here.`,
+      `Both teams' net run-rate and recent form back ${sel} on the match winner market.`,
+      `${home} pacers are thriving in current humidity — ${sel} targets the early-wicket angle.`,
+      `${away}'s middle order has collapsed in 3 of 4 away Tests — ${sel} is the pressure play.`,
+    ];
+  },
+  rugby: (home, away, league, sel, spec, rand) => {
+    const scrumW = (58 + rand() * 18).toFixed(0);
+    const tries = (3 + rand() * 2).toFixed(0);
+    return [
+      `${home}'s scrum dominance (${scrumW}% win rate) and maul success back ${sel}. ${spec} read on the set-piece.`,
+      `${away}'s lineout has been unstable — ${sel} targets the set-piece edge at ${league} level.`,
+      `${home} dominant at home, averaging 28 points on their own park — ${sel} fits the handicap comfortably.`,
+      `Both teams rank top-5 in breakdown turnovers — ${sel} on the total is the tactical read.`,
+      `${away} have been leaking tries in the opening 20 minutes — ${sel} exploits that early pressure.`,
+      `${home} scored ${tries} tries per game at home this campaign — ${sel} on the try-scorer market is live.`,
+      `${away} travel without two first-choice locks — ${sel} targets the lineout disadvantage.`,
+      `Kicking game: ${home} territory battle has won 3 of last 4 H2H. ${sel} follows the map.`,
+    ];
+  },
+  volleyball: (home, away, _league, sel, spec, _rand) => [
+    `${home}'s serve error rate is the lowest in the division — ${sel} on set totals is backed by the data. ${spec} lean.`,
+    `${away} are strong in tiebreaks but ${home}'s block efficiency backs ${sel} on the match outcome.`,
+    `Both teams go to five sets frequently in even matchups — ${sel} on the match total captures that variance.`,
+    `${home}'s reception percentage (52%) vs ${away}'s serving squad backs ${sel} at home.`,
+    `${away}'s setter has been below 60% efficiency away from home — ${sel} exploits that dip.`,
+  ],
+};
+
 function buildAnalysis(rand: () => number, t: FakeTipster, ctx: MatchContext, sel: string): string {
   const home = ctx.homeTeam;
   const away = ctx.awayTeam;
   const league = ctx.league || 'this fixture';
-  const sport = ctx.sport || 'football';
-  const spec = t.specialties[0] || sport;
+  const spec = t.specialties[0] || 'value';
   const stakePct = (1 + Math.floor(rand() * 4) * 0.5).toFixed(1);
-  const last5W = 2 + Math.floor(rand() * 3); // 2-4
-  const cleanSheets = 1 + Math.floor(rand() * 4);
+
+  // Normalise sport slug to our analysis key
+  const rawSport = (ctx.sport || 'soccer').toLowerCase();
+  let sportKey = rawSport
+    .replace(/american[\s_-]?football|americanfootball|nfl/, 'football')
+    .replace(/ice[\s_-]?hockey|nhl/, 'hockey')
+    .replace(/nba/, 'basketball')
+    .replace(/mlb/, 'baseball');
+
+  const generator = SPORT_ANALYSIS_LINES[sportKey];
+
+  // Tipster signature — ~15% chance regardless of sport
+  if (rand() < 0.15) {
+    return `${t.displayName}'s ${spec} workflow: ${sel} is the highest-value pick on today's slate. Cap at ${stakePct}% bankroll — single only.`;
+  }
+
+  // Sharp/public angle — ~10% chance
+  if (rand() < 0.10) {
+    return `Sharp move overnight on ${sel}; consensus closing-line value supports the pick. Public is fading the wrong side in ${league}.`;
+  }
+
+  if (generator) {
+    const lines = generator(home, away, league, sel, spec, rand);
+    return lines[Math.floor(rand() * lines.length)];
+  }
+
+  // Soccer / default fallback
+  const last5W = 2 + Math.floor(rand() * 3);
   const xgFor = (1.1 + rand() * 1.4).toFixed(2);
   const xgAg = (0.9 + rand() * 1.1).toFixed(2);
-  const ppg = (1.0 + rand() * 1.4).toFixed(2);
-
-  const lines = [
-    // xG / data lens
-    `xG model lean: ${sel}. ${away}'s away xGA is trending up (${xgAg}/g) and ${home} are creating ${xgFor} xG/match — fade is alive and inside the ${spec} comfort zone.`,
-    `Underlying numbers: ${home} carry ${xgFor} xG/${ppg} PPG into this. ${sel} sits where the data and the price disagree — that's where edge lives.`,
-    `Pure data play. ${home} convert at 1.4× league average vs sides ranked outside the top 6. ${sel} is the line that reflects it best.`,
-    `Heat-map says ${home} dominate the half-spaces; ${away}'s full-backs leak there. ${sel} is the natural correlation play.`,
-    // Form lens
+  const soccerLines = [
+    `xG model lean: ${sel}. ${away}'s away xGA is trending up (${xgAg}/g) and ${home} are creating ${xgFor} xG/match — value on the right side.`,
     `${home} have leaked goals in 4 of last 5 — ${sel} keeps us on the right side of the line. ${stakePct}% bankroll only.`,
     `${home} won ${last5W}/5 at home this run-in. ${sel} is the cleanest expression of that form.`,
-    `${away} keep ${cleanSheets} clean sheets on the bounce away from home — ${sel} respects that defensive shape.`,
     `Three losses on the trot for ${away} — ${sel} is the obvious read but the price still has juice.`,
-    // Tactical lens
-    `${home}'s recent form against organised mid-blocks favours value here. ${sel} is the tactical answer to ${away}'s setup.`,
-    `${away} press high but their full-backs jump — ${home} have the runners to exploit that. ${sel} fits the tactical mismatch.`,
-    `Low-block expected from ${away}; ${home} need set-piece quality to break through. ${sel} respects that pattern.`,
-    `Fast restart counters from ${away} could matter — ${sel} gives you exposure either way.`,
-    // Market / sharp lens
-    `Sharp move overnight on ${sel}; consensus closing line value supports the pick. ${t.specialties.join(' / ')}.`,
-    `Public is heavy on the other side of ${sel}; price reflects fade opportunity in ${league}.`,
-    `Steam already moved 5p on this market — ${sel} is the side the syndicates have hit.`,
-    `Bookmakers shading the favourite, but the underlying probability says ${sel} is closer to a coin-flip than the odds suggest.`,
-    // H2H / context lens
     `H2H pattern + tempo data point to ${sel}. ${away}'s key creator is doubtful — adjust your stake accordingly.`,
-    `Last four meetings between these two have all hit the ${sel} marker. Trends matter when the line-ups stay similar.`,
+    `Last four meetings have all hit the ${sel} marker. Trends matter when the line-ups stay similar.`,
     `${home} unbeaten in the last 5 H2H at this venue. ${sel} respects the home advantage angle.`,
-    `Reverse fixture finished 1-1 with both sides creating high-value chances. ${sel} expresses that variance.`,
-    // News / context lens
-    `${home}'s top scorer is back from suspension — ${sel} captures the upgrade in the front line.`,
-    `Manager rotation likely with European fixture midweek — ${sel} reads the squad-rest cue correctly.`,
-    `${away} travel without their first-choice keeper. ${sel} prices in that drop-off.`,
-    `Weather forecast: rain at kickoff, slower surface. That historically nudges ${league} games toward ${sel}.`,
-    // Tipster signature lens
-    `${t.displayName} reads this one as ${sel}. ${home}'s home record vs organised mid-blocks is the tell.`,
-    `${t.displayName}'s ${spec} model has flagged this all week — ${sel} is the highest-value selection on the slate.`,
-    `Long-running pattern in ${t.displayName}'s ${spec} workflow: when the public lines up like this, ${sel} pays out.`,
-    // Bankroll / discipline lens
-    `${stakePct}% bankroll on ${sel}, no parlay. Variance is the only story tonight.`,
-    `Single only — accumulators kill ROI on picks like ${sel} priced this fairly.`,
-    `Cap exposure at ${stakePct}%. The price is right but the variance is real.`,
+    `Bookmakers shading the favourite, but the underlying probability says ${sel} is closer to a coin-flip.`,
+    `${home} dominate the half-spaces; ${away}'s defensive shape leaks there. ${sel} is the tactical read.`,
+    `Weather: rain at kickoff, slower surface — that historically nudges ${league} games toward ${sel}.`,
   ];
-  return lines[Math.floor(rand() * lines.length)];
+  return soccerLines[Math.floor(rand() * soccerLines.length)];
 }
 
 export function seedTipsForMatch(ctx: MatchContext): GeneratedTip[] {

@@ -612,12 +612,26 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
     ((pickSide === 'home' && odds.home > odds.away) ||
       (pickSide === 'away' && odds.away > odds.home))
 
+  // Sport-specific context phrases for the moneyline reason text
+  const sportFormLabel = (() => {
+    const sn = (sportSlug || 'soccer').toLowerCase().replace(/[\s_-]/g, '')
+    if (sn === 'baseball' || sn === 'mlb') return 'pitching rotation and bullpen depth'
+    if (sn === 'basketball' || sn === 'nba') return 'pace-adjusted efficiency and 3-point rate'
+    if (sn === 'tennis') return 'surface form and serve percentage'
+    if (sn === 'hockey' || sn === 'icehockey' || sn === 'nhl') return 'goaltender save% and Corsi numbers'
+    if (sn === 'football' || sn === 'americanfootball' || sn === 'nfl') return 'yards-per-play differential and red zone efficiency'
+    if (sn === 'mma' || sn === 'boxing') return 'striking accuracy and grappling stats'
+    if (sn === 'cricket') return 'pitch conditions and batting/bowling form'
+    if (sn === 'rugby') return 'scrum dominance and lineout success'
+    return 'recent form and H2H record'  // soccer default
+  })()
+
   const formText =
     pickSide === 'home'
-      ? `${homeTeam} are in better recent form (${homeForm || '—'} vs ${awayForm || '—'})`
+      ? `${homeTeam} hold the edge on ${sportFormLabel} (form: ${homeForm || '—'} vs ${awayForm || '—'})`
       : pickSide === 'away'
-        ? `${awayTeam} are in better recent form (${awayForm || '—'} vs ${homeForm || '—'})`
-        : `Both sides are evenly matched on form and have drawn in past meetings`
+        ? `${awayTeam} hold the edge on ${sportFormLabel} (form: ${awayForm || '—'} vs ${homeForm || '—'})`
+        : `Both sides are level on ${sportFormLabel} — form and H2H support a close contest`
 
   const smartPrimaryMarket = isSoccer ? "Match Result" : "Moneyline"
   picks.push({

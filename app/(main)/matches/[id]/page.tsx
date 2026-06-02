@@ -2721,6 +2721,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                 matchId={match.id}
                 homeTeam={match.homeTeam.name}
                 awayTeam={match.awayTeam.name}
+                sport={match.sport?.slug}
                 odds={match.odds}
                 markets={match.markets}
                 isPremiumUser={user?.role === 'admin' || user?.role === 'tipster'}

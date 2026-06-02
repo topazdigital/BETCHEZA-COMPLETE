@@ -30,6 +30,8 @@ interface AddTipFormProps {
   matchId: string
   homeTeam: string
   awayTeam: string
+  /** Sport slug e.g. "soccer", "baseball", "basketball", "tennis", "hockey" */
+  sport?: string
   odds?: {
     home: number
     draw?: number
@@ -89,42 +91,190 @@ const CATEGORY_LABELS: Record<MarketCategory, string> = {
   other: 'Other',
 }
 
-// Catalog of common manual-entry markets — used ONLY when the user picks
-// "Enter manually". We never auto-generate odds; the user types the price
-// they actually got from their bookmaker.
-const MANUAL_MARKET_TEMPLATES = [
-  { key: 'h2h', name: 'Match Result (1X2)' },
-  { key: 'double_chance', name: 'Double Chance' },
-  { key: 'dnb', name: 'Draw No Bet' },
-  { key: 'btts', name: 'Both Teams to Score' },
-  { key: 'btts_and_result', name: 'BTTS & Result' },
-  { key: 'over_under_0_5', name: 'Over/Under 0.5 Goals' },
-  { key: 'over_under_1_5', name: 'Over/Under 1.5 Goals' },
-  { key: 'over_under_2_5', name: 'Over/Under 2.5 Goals' },
-  { key: 'over_under_3_5', name: 'Over/Under 3.5 Goals' },
-  { key: 'over_under_4_5', name: 'Over/Under 4.5 Goals' },
-  { key: 'asian_handicap', name: 'Asian Handicap' },
-  { key: 'european_handicap', name: 'European Handicap (3-way)' },
-  { key: 'ht_result', name: 'Half-Time Result' },
-  { key: 'ht_ft', name: 'Half-Time / Full-Time' },
-  { key: 'ht_over_under', name: 'HT Over/Under Goals' },
-  { key: 'second_half_result', name: '2nd Half Result' },
-  { key: 'correct_score', name: 'Correct Score' },
-  { key: 'win_to_nil', name: 'Win to Nil' },
-  { key: 'clean_sheet', name: 'Clean Sheet' },
-  { key: 'odd_even', name: 'Odd / Even Goals' },
-  { key: 'team_total', name: 'Team Total Goals' },
-  { key: 'race_to_n', name: 'Race to N Goals' },
-  { key: 'corners', name: 'Corners (Total / Handicap)' },
-  { key: 'cards', name: 'Cards (Total / Handicap)' },
-  { key: 'first_goalscorer', name: 'First Goalscorer' },
-  { key: 'anytime_goalscorer', name: 'Anytime Goalscorer' },
-] as const
+// Sport-specific manual-entry market catalogs.
+// Each list contains only markets that are valid/meaningful for that sport.
+// Tipsters must always enter the real price from their bookmaker — never invent odds.
+const SPORT_MANUAL_MARKETS: Record<string, readonly { key: string; name: string }[]> = {
+  soccer: [
+    { key: 'h2h', name: 'Match Result (1X2)' },
+    { key: 'double_chance', name: 'Double Chance' },
+    { key: 'dnb', name: 'Draw No Bet' },
+    { key: 'btts', name: 'Both Teams to Score' },
+    { key: 'btts_and_result', name: 'BTTS & Result' },
+    { key: 'over_under_0_5', name: 'Over/Under 0.5 Goals' },
+    { key: 'over_under_1_5', name: 'Over/Under 1.5 Goals' },
+    { key: 'over_under_2_5', name: 'Over/Under 2.5 Goals' },
+    { key: 'over_under_3_5', name: 'Over/Under 3.5 Goals' },
+    { key: 'over_under_4_5', name: 'Over/Under 4.5 Goals' },
+    { key: 'asian_handicap', name: 'Asian Handicap' },
+    { key: 'european_handicap', name: 'European Handicap (3-way)' },
+    { key: 'ht_result', name: 'Half-Time Result' },
+    { key: 'ht_ft', name: 'Half-Time / Full-Time' },
+    { key: 'ht_over_under', name: 'HT Over/Under Goals' },
+    { key: 'second_half_result', name: '2nd Half Result' },
+    { key: 'correct_score', name: 'Correct Score' },
+    { key: 'win_to_nil', name: 'Win to Nil' },
+    { key: 'clean_sheet', name: 'Clean Sheet' },
+    { key: 'odd_even', name: 'Odd / Even Goals' },
+    { key: 'team_total', name: 'Team Total Goals' },
+    { key: 'race_to_n', name: 'Race to N Goals' },
+    { key: 'corners', name: 'Corners (Total / Handicap)' },
+    { key: 'cards', name: 'Cards (Total / Handicap)' },
+    { key: 'first_goalscorer', name: 'First Goalscorer' },
+    { key: 'anytime_goalscorer', name: 'Anytime Goalscorer' },
+  ],
+  baseball: [
+    { key: 'h2h', name: 'Moneyline' },
+    { key: 'run_line', name: 'Run Line (±1.5)' },
+    { key: 'totals', name: 'Over/Under Runs' },
+    { key: 'alt_run_line', name: 'Alternate Run Line' },
+    { key: 'team_totals', name: 'Team Total Runs' },
+    { key: 'first_5_innings', name: 'First 5 Innings Result' },
+    { key: 'first_5_totals', name: 'First 5 Innings O/U Runs' },
+    { key: '1st_inning_score', name: '1st Inning — Will a Run Score?' },
+    { key: 'odd_even', name: 'Odd / Even Total Runs' },
+    { key: 'nrfi', name: 'No Run First Inning (NRFI)' },
+    { key: 'innings_pitched', name: 'Starting Pitcher Innings O/U' },
+  ],
+  basketball: [
+    { key: 'h2h', name: 'Moneyline' },
+    { key: 'spreads', name: 'Point Spread' },
+    { key: 'totals', name: 'Over/Under Points' },
+    { key: 'alt_spread', name: 'Alternate Spread' },
+    { key: 'team_totals', name: 'Team Total Points' },
+    { key: 'first_half', name: 'First Half Result' },
+    { key: 'first_half_totals', name: 'First Half O/U Points' },
+    { key: '1st_quarter', name: '1st Quarter Result' },
+    { key: '1st_quarter_totals', name: '1st Quarter O/U Points' },
+    { key: 'race_to_n', name: 'Race to N Points' },
+    { key: 'margin_of_victory', name: 'Margin of Victory' },
+    { key: 'odd_even', name: 'Odd / Even Total Points' },
+  ],
+  tennis: [
+    { key: 'h2h', name: 'Match Winner' },
+    { key: 'set_handicap', name: 'Set Handicap' },
+    { key: 'total_sets', name: 'Total Sets O/U' },
+    { key: 'total_games', name: 'Total Games O/U' },
+    { key: 'set_1_winner', name: 'Set 1 Winner' },
+    { key: 'set_1_games', name: 'Set 1 Total Games O/U' },
+    { key: 'first_set_to_6', name: 'First Set to 6 Games' },
+    { key: 'tiebreak', name: 'Will a Tiebreak Occur?' },
+    { key: 'correct_sets', name: 'Correct Set Score' },
+    { key: 'game_handicap', name: 'Game Handicap' },
+  ],
+  hockey: [
+    { key: 'h2h', name: 'Moneyline (60 min)' },
+    { key: 'puck_line', name: 'Puck Line (±1.5)' },
+    { key: 'totals', name: 'Over/Under Goals' },
+    { key: 'btts', name: 'Both Teams to Score' },
+    { key: 'alt_puck_line', name: 'Alternate Puck Line' },
+    { key: 'team_totals', name: 'Team Total Goals' },
+    { key: 'period_1_result', name: 'Period 1 Result' },
+    { key: 'period_1_totals', name: 'Period 1 Over/Under Goals' },
+    { key: 'period_2_result', name: 'Period 2 Result' },
+    { key: 'first_goal', name: 'First Team to Score' },
+    { key: 'ot_result', name: 'Regulation / OT / SO Result' },
+    { key: 'odd_even', name: 'Odd / Even Goals' },
+  ],
+  football: [
+    { key: 'h2h', name: 'Moneyline' },
+    { key: 'spreads', name: 'Point Spread' },
+    { key: 'totals', name: 'Over/Under Points' },
+    { key: 'alt_spread', name: 'Alternate Spread' },
+    { key: 'team_totals', name: 'Team Total Points' },
+    { key: 'first_half', name: 'First Half Result' },
+    { key: 'first_half_totals', name: '1H Over/Under Points' },
+    { key: '1st_quarter', name: '1st Quarter Result' },
+    { key: 'first_score', name: 'First Team to Score' },
+    { key: 'winning_margin', name: 'Winning Margin' },
+    { key: 'td_scorer', name: 'Anytime Touchdown Scorer' },
+    { key: 'odd_even', name: 'Odd / Even Points' },
+  ],
+  mma: [
+    { key: 'h2h', name: 'Fight Winner' },
+    { key: 'method_of_victory', name: 'Method of Victory' },
+    { key: 'goes_distance', name: 'Fight Goes the Distance?' },
+    { key: 'total_rounds', name: 'Total Rounds O/U' },
+    { key: 'winning_round', name: 'Winning Round (1 / 2 / 3+)' },
+    { key: 'round_1_finish', name: 'Round 1 Finish — Yes/No' },
+    { key: 'decision_type', name: 'Decision Type (Unanimous / Split)' },
+  ],
+  cricket: [
+    { key: 'match_winner', name: 'Match Winner' },
+    { key: 'total_runs', name: 'Total Runs O/U' },
+    { key: 'innings_runs', name: 'First Innings Runs O/U' },
+    { key: 'top_batsman', name: 'Top Batsman' },
+    { key: 'top_bowler', name: 'Top Bowler / Most Wickets' },
+    { key: 'first_wicket', name: 'Method of First Wicket' },
+    { key: 'player_runs', name: 'Player Runs O/U' },
+    { key: 'innings_lead', name: 'First Innings Lead' },
+    { key: 'series_winner', name: 'Series Winner' },
+  ],
+  rugby: [
+    { key: 'match_result', name: 'Match Result (1X2)' },
+    { key: 'dnb', name: 'Draw No Bet' },
+    { key: 'handicap', name: 'Handicap' },
+    { key: 'totals', name: 'Over/Under Points' },
+    { key: 'team_totals', name: 'Team Total Points' },
+    { key: 'first_try', name: 'First Try Scorer' },
+    { key: 'anytime_try', name: 'Anytime Try Scorer' },
+    { key: 'half_result', name: 'First Half Result' },
+    { key: 'half_totals', name: '1H Over/Under Points' },
+    { key: 'winning_margin', name: 'Winning Margin' },
+  ],
+  volleyball: [
+    { key: 'h2h', name: 'Match Winner' },
+    { key: 'handicap', name: 'Set Handicap' },
+    { key: 'total_sets', name: 'Total Sets O/U' },
+    { key: 'set_1_winner', name: 'Set 1 Winner' },
+    { key: 'set_1_points', name: 'Set 1 Total Points O/U' },
+    { key: 'match_points', name: 'Total Match Points O/U' },
+    { key: 'correct_sets', name: 'Correct Set Score' },
+  ],
+}
+
+// Placeholder examples per sport for the prediction input field
+const SPORT_PREDICTION_PLACEHOLDER: Record<string, string> = {
+  soccer: 'Chelsea -1, Over 2.5, BTTS Yes, 2-1…',
+  baseball: 'Yankees -1.5, Over 8.5 Runs, Moneyline…',
+  basketball: 'Lakers -4.5, Over 215.5 Pts, Moneyline…',
+  tennis: 'Djokovic 2-0, Over 22.5 Games, Set 1 Winner…',
+  hockey: 'Maple Leafs -1.5, Over 5.5 Goals, BTTS Yes…',
+  football: 'Chiefs -7, Over 51.5 Pts, Moneyline…',
+  mma: 'KO/TKO, Goes Distance No, Under 2.5 Rounds…',
+  cricket: 'India to win, Over 300.5 Runs, Top Batsman…',
+  rugby: 'All Blacks -8.5, Over 42.5 Pts, First Try…',
+  volleyball: 'Brazil 3-1, Over 3.5 Sets, Set 1 Winner…',
+}
+
+function getManualMarketsForSport(sport?: string): readonly { key: string; name: string }[] {
+  const s = (sport || 'soccer')
+    .toLowerCase()
+    .replace(/american[\s_-]?football|americanfootball|nfl/g, 'football')
+    .replace(/ice[\s_-]?hockey|nhl/g, 'hockey')
+    .replace(/nba/g, 'basketball')
+    .replace(/mlb/g, 'baseball')
+    .replace(/soccer/g, 'soccer')
+  return SPORT_MANUAL_MARKETS[s] ?? SPORT_MANUAL_MARKETS['soccer']
+}
+
+function getPredictionPlaceholder(home: string, sport?: string): string {
+  const s = (sport || 'soccer')
+    .toLowerCase()
+    .replace(/american[\s_-]?football|americanfootball|nfl/g, 'football')
+    .replace(/ice[\s_-]?hockey|nhl/g, 'hockey')
+    .replace(/nba/g, 'basketball')
+    .replace(/mlb/g, 'baseball')
+  const tpl = SPORT_PREDICTION_PLACEHOLDER[s] || SPORT_PREDICTION_PLACEHOLDER['soccer']
+  // Inject home team name for extra relevance
+  return tpl.replace(/^[\w\s]+(?= -| to| 2)/, home)
+}
 
 export function AddTipForm({
   matchId,
   homeTeam,
   awayTeam,
+  sport,
   odds: _odds,
   markets: providedMarkets,
   onSubmit,
@@ -132,6 +282,9 @@ export function AddTipForm({
   initialMarketKey,
   initialOutcome,
 }: AddTipFormProps) {
+  // Sport-specific manual market list — filters to only valid markets for this sport
+  const sportMarkets = useMemo(() => getManualMarketsForSport(sport), [sport])
+  const predictionPlaceholder = useMemo(() => getPredictionPlaceholder(homeTeam, sport), [homeTeam, sport])
   // Two modes:
   //  • "real"   — user picks from real bookmaker markets shipped with the match
   //  • "manual" — user types their own market, prediction text and odds
@@ -301,7 +454,7 @@ export function AddTipForm({
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                {mode === 'real' ? selectedMarket?.name : MANUAL_MARKET_TEMPLATES.find(t => t.key === manualMarket)?.name}
+                {mode === 'real' ? selectedMarket?.name : sportMarkets.find(t => t.key === manualMarket)?.name}
               </p>
               <p className="text-base font-semibold text-foreground truncate">{previewLabel}</p>
             </div>
@@ -411,7 +564,7 @@ export function AddTipForm({
                 <SelectValue placeholder="Pick a market (1X2, BTTS, Over/Under, AH…)" />
               </SelectTrigger>
               <SelectContent className="max-h-[280px]">
-                {MANUAL_MARKET_TEMPLATES.map(m => (
+                {sportMarkets.map(m => (
                   <SelectItem key={m.key} value={m.key}>{m.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -426,7 +579,7 @@ export function AddTipForm({
               </Label>
               <Input
                 id="manual-prediction"
-                placeholder={`e.g. ${homeTeam} -1, Over 2.5, BTTS Yes, 2-1…`}
+                placeholder={`e.g. ${predictionPlaceholder}`}
                 value={manualPrediction}
                 onChange={e => setManualPrediction(e.target.value)}
                 maxLength={80}
