@@ -33,10 +33,34 @@ export async function GET() {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    const user = await findUserById(authUser.userId);
+    // Try DB lookup — if DB is unavailable, fall back to JWT payload so the
+    // user stays logged in during DB outages or server restarts.
+    let user: DbUser | null = null;
+    try {
+      user = await findUserById(authUser.userId);
+    } catch {
+      // DB unreachable — serve session from JWT payload
+    }
 
     if (!user) {
-      return NextResponse.json({ user: null }, { status: 401 });
+      // Check if we have enough from the JWT to keep the session alive
+      if (!authUser.userId || !authUser.email) {
+        return NextResponse.json({ user: null }, { status: 401 });
+      }
+      // Return minimal user from JWT — keeps session alive even when DB is down
+      return NextResponse.json({
+        user: {
+          id: authUser.userId,
+          email: authUser.email,
+          username: authUser.email.split('@')[0],
+          displayName: authUser.email.split('@')[0],
+          avatarUrl: null,
+          role: authUser.role ?? 'user',
+          balance: 0,
+          isEmailVerified: false,
+          _fromJwtFallback: true,
+        },
+      });
     }
 
     const walletBalance = getBalance(user.id, 'KES');

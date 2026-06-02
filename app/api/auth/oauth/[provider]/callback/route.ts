@@ -3,6 +3,47 @@ import { getOAuthConfig, getOAuthSiteUrl, type OAuthProvider } from '@/lib/oauth
 import { PROVIDERS, exchangeCodeForToken, fetchOAuthProfile } from '@/lib/oauth-providers';
 import { setAuthCookie } from '@/lib/auth';
 import { queryOne, execute } from '@/lib/db';
+import fs from 'fs';
+import path from 'path';
+
+// ── File-based user store for no-DB fallback (dev / DB-unavailable mode) ──────
+const USERS_FILE = path.join(process.cwd(), '.local', 'state', 'oauth-users.json');
+function readLocalUsers(): DbUser[] {
+  try {
+    if (!fs.existsSync(USERS_FILE)) return [];
+    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')) as DbUser[];
+  } catch { return []; }
+}
+function writeLocalUsers(users: DbUser[]): void {
+  try {
+    fs.mkdirSync(path.dirname(USERS_FILE), { recursive: true });
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+  } catch { /* non-fatal */ }
+}
+function localFindOrCreate(opts: { provider: OAuthProvider; providerId: string; email?: string; name?: string; avatarUrl?: string }): DbUser {
+  const users = readLocalUsers();
+  // Find by provider ID or email
+  let found = opts.provider === 'google'
+    ? users.find(u => u.google_id === opts.providerId)
+    : users.find(u => u.email === opts.email);
+  if (!found && opts.email) found = users.find(u => u.email === opts.email);
+  if (found) return found;
+  // Create new local user
+  const newUser: DbUser = {
+    id: Date.now(),
+    email: opts.email || `${opts.provider}_${opts.providerId}@oauth.local`,
+    username: (opts.email?.split('@')[0] || `user_${Date.now()}`).toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20) || `user_${Date.now()}`,
+    display_name: opts.name || opts.email?.split('@')[0] || 'User',
+    avatar_url: opts.avatarUrl || null,
+    role: 'user',
+    balance: 0,
+    is_verified: !!opts.email,
+    google_id: opts.provider === 'google' ? opts.providerId : null,
+  };
+  users.push(newUser);
+  writeLocalUsers(users);
+  return newUser;
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
