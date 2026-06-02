@@ -700,6 +700,73 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
     })
   }
 
+  // ── Non-soccer sport-specific markets — use real bookmaker data when available ──
+  // For basketball, baseball, hockey, american football, tennis: generate Spread + Totals
+  if (!isSoccer && markets && markets.length > 0) {
+    const spreadMarket = markets.find(m =>
+      ['spreads', 'spread', 'run_line', 'puck_line', 'alternate_spreads'].includes(m.key.toLowerCase()) ||
+      /\b(spread|run\s*line|puck\s*line|handicap)\b/i.test(m.name)
+    )
+    if (spreadMarket && spreadMarket.outcomes.length >= 2) {
+      const homeFirstWord = homeTeam.split(' ')[0].toLowerCase()
+      const awayFirstWord = awayTeam.split(' ')[0].toLowerCase()
+      const homeSpreadOut = spreadMarket.outcomes.find(o =>
+        o.name.toLowerCase().includes(homeFirstWord) ||
+        /home|^1$/i.test(o.name)
+      )
+      const awaySpreadOut = spreadMarket.outcomes.find(o =>
+        o.name.toLowerCase().includes(awayFirstWord) ||
+        /away|^2$/i.test(o.name)
+      )
+      const spreadOut = homeP >= awayP ? (homeSpreadOut ?? spreadMarket.outcomes[0]) : (awaySpreadOut ?? spreadMarket.outcomes[1])
+      const spreadLabel =
+        sportSlug === 'baseball' ? 'Run Line' :
+        (sportSlug === 'hockey' || sportSlug === 'icehockey') ? 'Puck Line' :
+        'Point Spread'
+      const pointDiff = Math.abs(homeP - awayP)
+      picks.push({
+        market: spreadLabel,
+        pick: spreadOut.name,
+        odds: spreadOut.price,
+        confidence: Math.round(Math.min(82, Math.max(45, 50 + pointDiff * 80))),
+        reason: `Logic model backs ${homeP >= awayP ? homeTeam : awayTeam} to cover — form and H2H support this side.`,
+        evalKey: '1x2',
+        side: homeP >= awayP ? 'home' : 'away',
+      })
+    }
+
+    const totalsMarket = markets.find(m =>
+      ['totals', 'total', 'game_totals'].includes(m.key.toLowerCase()) ||
+      /\b(over.?under|o\/u|total)\b/i.test(m.name)
+    )
+    if (totalsMarket && totalsMarket.outcomes.length >= 2) {
+      const highFormBoth = hF >= 8 && aF >= 8
+      const lowFormBoth  = hF <= 4 && aF <= 4
+      const pickOver = highFormBoth || (!lowFormBoth && hF + aF >= 12)
+      const overOut  = totalsMarket.outcomes.find(o => /over/i.test(o.name))
+      const underOut = totalsMarket.outcomes.find(o => /under/i.test(o.name))
+      const totalsOut = pickOver ? overOut : underOut
+      if (totalsOut) {
+        const unitLabel =
+          sportSlug === 'baseball'  ? 'Runs' :
+          sportSlug === 'tennis'    ? 'Games' :
+          sportSlug === 'hockey' || sportSlug === 'icehockey' ? 'Goals' : 'Points'
+        const lineStr = totalsOut.point !== undefined ? ` ${totalsOut.point}` : ''
+        picks.push({
+          market: `Over / Under${lineStr} ${unitLabel}`,
+          pick: `${pickOver ? 'Over' : 'Under'}${lineStr} ${unitLabel}`,
+          odds: totalsOut.price,
+          confidence: Math.round(Math.min(80, 50 + (highFormBoth || lowFormBoth ? 20 : 10))),
+          reason: pickOver
+            ? `Both sides are in good form — backing an active, high-scoring contest.`
+            : `Defensive form is dominant — leaning under on the ${unitLabel.toLowerCase()} total.`,
+          evalKey: pickOver ? 'over' : 'under',
+          line: totalsOut.point,
+        })
+      }
+    }
+  }
+
   const isPrimaryMarket = (m: string) => m === "Match Result" || m === "Moneyline"
   return picks.sort((a, b) => {
     if (isPrimaryMarket(a.market)) return -1

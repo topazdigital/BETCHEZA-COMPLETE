@@ -168,12 +168,25 @@ function getDayBucket(kickoff: string | undefined | null, tzOffsetMin = 0): 'tod
   return 'upcoming';
 }
 
-/** Seed tips for live/upcoming matches when the in-memory store is cold. */
+// Semaphore: only one seed run at a time, no blocking the request
+let _seeding = false;
+
+/** Seed tips for live/upcoming matches when the in-memory store is cold.
+ *  MUST be called without await — it resolves asynchronously so it never
+ *  blocks the HTTP response and cannot cause 503 timeouts. */
 async function ensureSeedIfEmpty(): Promise<void> {
   const stats = getAutoTipsStats();
   if (stats.total > 0) return;
+  if (_seeding) return;
+  _seeding = true;
   try {
-    const matches = await getAllMatches();
+    // Hard cap: abort if getAllMatches takes longer than 20 s
+    const timeoutMs = 20_000;
+    const matchesPromise = getAllMatches();
+    const timeout = new Promise<never>((_, rej) =>
+      setTimeout(() => rej(new Error('getAllMatches timeout')), timeoutMs)
+    );
+    const matches = await Promise.race([matchesPromise, timeout]);
     const now = Date.now();
     const relevant = matches.filter(m => {
       const t = new Date(m.kickoffTime).getTime();
@@ -199,6 +212,8 @@ async function ensureSeedIfEmpty(): Promise<void> {
     }
   } catch (e) {
     console.warn('[tips/feed] ensureSeedIfEmpty failed:', e);
+  } finally {
+    _seeding = false;
   }
 }
 
@@ -217,7 +232,8 @@ export async function GET(request: NextRequest) {
 
   const realTipsterMap = new Map<number, NormalisedTipster>(realTipsters.map(t => [t.id, t]));
 
-  await ensureSeedIfEmpty();
+  // Fire-and-forget: never block the HTTP response waiting for external APIs
+  void ensureSeedIfEmpty();
 
   // --- Real DB tips from tipsters ---
   const realDbTipsMapped = dbTips.map(tip => {
@@ -263,10 +279,17 @@ export async function GET(request: NextRequest) {
   // --- Auto-tips (seeded from real match data) ---
   const allAutoTips = listAllAutoTips(3000);
 
-  // Count per bucket (excluding past) — using the user's timezone
-  const today_count    = allAutoTips.filter(t => getDayBucket(t.kickoff, tzOffsetMin) === 'today').length;
-  const tomorrow_count = allAutoTips.filter(t => getDayBucket(t.kickoff, tzOffsetMin) === 'tomorrow').length;
-  const upcoming_count = allAutoTips.filter(t => getDayBucket(t.kickoff, tzOffsetMin) === 'upcoming').length;
+  // Count per bucket — when a sport filter is active, counts reflect that sport only
+  // so the tab badges accurately show "how many tips exist in this bucket for this sport"
+  const countFilter = (bucket: 'today' | 'tomorrow' | 'upcoming') =>
+    allAutoTips.filter(t => {
+      if (getDayBucket(t.kickoff, tzOffsetMin) !== bucket) return false;
+      if (sport) return t.sport?.toLowerCase() === sport;
+      return true;
+    }).length;
+  const today_count    = countFilter('today');
+  const tomorrow_count = countFilter('tomorrow');
+  const upcoming_count = countFilter('upcoming');
 
   // Only include tips for current/future matches — never show ended matches
   let filteredAuto = allAutoTips.filter(t => {

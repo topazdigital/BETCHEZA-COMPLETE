@@ -150,14 +150,50 @@ function isSportAppropriateMarket(sport: string | undefined, marketName: string,
   return true;
 }
 
+/** Returns true if the prediction label is a draw outcome (not valid for no-draw sports). */
+function isDrawPick(prediction: string): boolean {
+  const p = prediction.toLowerCase().trim();
+  // Exact "draw" or "x" (1X2 notation), or common draw-result strings
+  return p === 'draw' || p === 'x' || p === '1x' || p === 'x2' ||
+    p.startsWith('draw ') || p.endsWith(' draw') ||
+    p === 'match draw' || p === 'result: draw' || p.includes(' draw ') ||
+    p.includes('(draw)') || /^draw$/i.test(p);
+}
+
 /**
- * Removes tips whose market is inappropriate for their sport from the in-memory
- * store (and flags them for DB/file cleanup). Returns count of tips removed.
+ * Returns true if the tip is valid for its sport.
+ * Checks both the market appropriateness AND the pick value.
+ * For no-draw sports (baseball, basketball, tennis, etc.) any tip
+ * with a "Draw" prediction or a soccer-only market is invalid.
+ */
+function isTipValid(tip: GeneratedTip): boolean {
+  // Must have real, usable odds
+  if (!tip.odds || tip.odds < 1.01) return false;
+
+  // Market-level check (BTTS for baseball, Double Chance, DNB, etc.)
+  if (!isSportAppropriateMarket(tip.sport, tip.market, tip.marketKey)) return false;
+
+  // For no-draw sports, reject any Draw prediction regardless of market
+  if (isNoDrawSport(tip.sport) && isDrawPick(tip.prediction)) return false;
+
+  // For no-draw sports, also reject 1X2 / Match Result market (soccer-specific)
+  if (isNoDrawSport(tip.sport)) {
+    const mn = (tip.market || '').toLowerCase();
+    const mk = (tip.marketKey || '').toLowerCase();
+    if (mn.includes('1x2') || mk === '1x2' || mn === 'match result (1x2)') return false;
+  }
+
+  return true;
+}
+
+/**
+ * Removes tips that are sport-inappropriate (wrong market, wrong pick value,
+ * or missing odds) from the in-memory store. Returns count of tips removed.
  */
 function purgeSportInappropriateTips(): number {
   let purged = 0;
   for (const [matchId, tips] of stores.byMatch.entries()) {
-    const clean = tips.filter(t => isSportAppropriateMarket(t.sport, t.market, t.marketKey));
+    const clean = tips.filter(t => isTipValid(t));
     if (clean.length !== tips.length) {
       purged += tips.length - clean.length;
       stores.byMatch.set(matchId, clean);

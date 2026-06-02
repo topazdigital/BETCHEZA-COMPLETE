@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { format, parseISO, isToday, isTomorrow, formatDistanceToNow } from "date-fns"
 import {
   ThumbsUp, MessageSquare, TrendingUp, Filter,
@@ -476,10 +477,18 @@ function MyTipCard({ tip }: { tip: MyTip }) {
   )
 }
 
-export function TipsFeedClient() {
+export function TipsFeedClient({
+  initialSport = "",
+  initialDay = "today",
+}: {
+  initialSport?: string
+  initialDay?: "today" | "tomorrow" | "upcoming"
+}) {
   const { isAuthenticated } = useAuth()
-  const [day, setDay] = useState<Day>("today")
-  const [sport, setSport] = useState("")
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [day, setDay] = useState<Day>(initialDay)
+  const [sport, setSport] = useState(initialSport)
   const [minOdds, setMinOdds] = useState("")
   const [maxOdds, setMaxOdds] = useState("")
   const [data, setData] = useState<FeedData | null>(null)
@@ -487,6 +496,33 @@ export function TipsFeedClient() {
   const [showMobileFilters, setShowMobileFilters] = useState(false)
   const [myTips, setMyTips] = useState<MyTip[]>([])
   const [myTipsLoading, setMyTipsLoading] = useState(false)
+
+  // Sync sport + day into the URL so Google can crawl sport/day-specific pages
+  const updateUrl = useCallback((newDay: Day, newSport: string) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "")
+    if (newDay && newDay !== "today" && newDay !== "mine") {
+      params.set("day", newDay)
+    } else {
+      params.delete("day")
+    }
+    if (newSport) {
+      params.set("sport", newSport)
+    } else {
+      params.delete("sport")
+    }
+    const qs = params.toString()
+    router.replace(`/tips${qs ? `?${qs}` : ""}`, { scroll: false })
+  }, [router, searchParams])
+
+  const handleSetDay = useCallback((newDay: Day) => {
+    setDay(newDay)
+    updateUrl(newDay, sport)
+  }, [sport, updateUrl])
+
+  const handleSetSport = useCallback((newSport: string) => {
+    setSport(newSport)
+    updateUrl(day, newSport)
+  }, [day, updateUrl])
 
   const fetchFeed = useCallback(async () => {
     if (day === "mine") return
@@ -548,7 +584,7 @@ export function TipsFeedClient() {
               sports={data.sports}
               sportCounts={data.sportCounts ?? {}}
               selectedSport={sport}
-              onSport={s => { setSport(s) }}
+              onSport={handleSetSport}
               minOdds={minOdds}
               maxOdds={maxOdds}
               onMinOdds={setMinOdds}
@@ -581,7 +617,7 @@ export function TipsFeedClient() {
                     sports={data.sports}
                     sportCounts={data.sportCounts ?? {}}
                     selectedSport={sport}
-                    onSport={s => { setSport(s); setShowMobileFilters(false) }}
+                    onSport={s => { handleSetSport(s); setShowMobileFilters(false) }}
                     minOdds={minOdds}
                     maxOdds={maxOdds}
                     onMinOdds={setMinOdds}
@@ -602,7 +638,7 @@ export function TipsFeedClient() {
             {tabs.filter(t => !t.authOnly || isAuthenticated).map(t => (
               <button
                 key={t.key}
-                onClick={() => setDay(t.key)}
+                onClick={() => handleSetDay(t.key)}
                 className={cn(
                   "flex items-center gap-1.5 whitespace-nowrap px-4 py-2 text-xs font-semibold transition-colors border-b-2 -mb-px",
                   day === t.key
