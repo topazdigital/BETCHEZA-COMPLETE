@@ -818,16 +818,37 @@ function determineTipOutcome(
   // ── Win to Nil ────────────────────────────────────────────────────────────
   // "Home Win to Nil": home wins AND away scored 0
   // "Away Win to Nil": away wins AND home scored 0
+  // Selections from bookmaker APIs: "Home", "Away", "Neither", "No" (= neither), "Yes"
   const isWtnMkt =
     mkt.includes('win to nil') || mkt.includes('win & clean') ||
-    mkt.includes('win and clean') || pred.includes('win to nil');
+    mkt.includes('win and clean') || mkt.includes('win-to-nil') ||
+    pred.includes('win to nil') || pred.includes('win-to-nil') ||
+    // "Home Win to Nil" / "Away Win to Nil" as standalone prediction strings
+    (pred.includes('win') && pred.includes('nil')) ||
+    (pred.includes('win') && pred.includes('clean sheet'));
   if (isWtnMkt) {
     const homeWtn = homeScore > awayScore && awayScore === 0;
     const awayWtn = awayScore > homeScore && homeScore === 0;
-    if (pred.includes('home') || pred === '1') return homeWtn ? 'won' : 'lost';
-    if (pred.includes('away') || pred === '2') return awayWtn ? 'won' : 'lost';
+    // "Neither" / "No" — no team wins to nil
+    if (
+      pred === 'neither' || pred === 'nether' ||
+      pred === 'no' || pred === 'no goal' ||
+      pred.includes('neither') || pred.includes('nether')
+    ) return (!homeWtn && !awayWtn) ? 'won' : 'lost';
+    // "Yes" — any team wins to nil
     if (pred === 'yes') return (homeWtn || awayWtn) ? 'won' : 'lost';
-    if (pred === 'no')  return (!homeWtn && !awayWtn) ? 'won' : 'lost';
+    // Home selections: "Home", "1", "Home Win to Nil", "Win to Nil - Home"
+    if (
+      pred === 'home' || pred === '1' ||
+      pred.includes('home') ||
+      (pred.includes('win') && pred.includes('nil') && !pred.includes('away'))
+    ) return homeWtn ? 'won' : 'lost';
+    // Away selections: "Away", "2", "Away Win to Nil", "Win to Nil - Away"
+    if (
+      pred === 'away' || pred === '2' ||
+      pred.includes('away') ||
+      (pred.includes('win') && pred.includes('nil') && !pred.includes('home'))
+    ) return awayWtn ? 'won' : 'lost';
     return null;
   }
 
@@ -1202,7 +1223,25 @@ export function settleStaleAutoTips(
         if (!tip.kickoff) continue;
         const kt = new Date(tip.kickoff).getTime();
         if (!Number.isFinite(kt) || now - kt < 2 * 3600_000) continue;
-        const real = realResults.get(tip.matchId);
+
+        // Try exact matchId lookup first
+        let real = realResults.get(tip.matchId);
+
+        // Fallback: fuzzy team-name search when matchId format doesn't align
+        // This is the critical fix — prevents wrong prob settlements from persisting
+        if (!real && tip.homeTeam && tip.awayTeam) {
+          const th = normTeam(tip.homeTeam);
+          const ta = normTeam(tip.awayTeam);
+          for (const v of realResults.values()) {
+            const rh = normTeam((v as { homeTeam?: string }).homeTeam || '');
+            const ra = normTeam((v as { awayTeam?: string }).awayTeam || '');
+            if (!rh || !ra) continue;
+            const homeMatch = th === rh || rh.includes(th) || th.includes(rh);
+            const awayMatch = ta === ra || ra.includes(ta) || ta.includes(ra);
+            if (homeMatch && awayMatch) { real = v; break; }
+          }
+        }
+
         if (!real) continue;
         const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
         if (outcome && (outcome !== tip.status || tip.settledByProb)) {
@@ -1228,22 +1267,38 @@ export function settleStaleAutoTips(
       // ~3% void rate
       if (r > 0.97) { tip.status = 'void'; tip.settledByProb = false; changed = true; continue; }
 
-      // Use real match result if available
-      const real = realResults?.get(tip.matchId);
-      if (real) {
-        const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
+      // Try direct matchId lookup first
+      let real2 = realResults?.get(tip.matchId);
+
+      // Fallback: fuzzy team-name search when matchId format doesn't align
+      if (!real2 && realResults && tip.homeTeam && tip.awayTeam) {
+        const th2 = normTeam(tip.homeTeam);
+        const ta2 = normTeam(tip.awayTeam);
+        for (const v of realResults.values()) {
+          const rh2 = normTeam((v as { homeTeam?: string }).homeTeam || '');
+          const ra2 = normTeam((v as { awayTeam?: string }).awayTeam || '');
+          if (!rh2 || !ra2) continue;
+          const hm2 = th2 === rh2 || rh2.includes(th2) || th2.includes(rh2);
+          const am2 = ta2 === ra2 || ra2.includes(ta2) || ta2.includes(ra2);
+          if (hm2 && am2) { real2 = v; break; }
+        }
+      }
+
+      // Use real match result if available (exact or fuzzy matched)
+      if (real2) {
+        const outcome = determineTipOutcome(tip.prediction, real2.homeScore, real2.awayScore, tip.market, real2);
         if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; continue; }
       }
 
-      // Don't probabilistically settle markets that require specific stats
-      // (HT result, corners, cards, HT/FT, FTTS, goalscorer) — they need real data, not guesses
+      // Don't probabilistically settle markets where a tipster win-rate guess
+      // would be systematically wrong — these MUST be settled with real data only.
       const mktLow = (tip.market || '').toLowerCase();
       const predLow = tip.prediction.toLowerCase();
-      const needsSpecialData =
-        // Stat-collection markets
+      const needsRealData =
+        // Stat-collection markets — need actual corner/card data
         mktLow.includes('corner') || predLow.includes('corner') ||
         mktLow.includes('card') || predLow.includes('yellow card') || predLow.includes('red card') ||
-        // Half-time markets
+        // Half-time markets — need HT score
         mktLow.includes('half-time result') || mktLow.includes('half time result') ||
         mktLow.includes('ht result') || mktLow.includes('first half result') ||
         predLow.includes('half-time') || predLow.includes('half time') || predLow.startsWith('ht ') ||
@@ -1258,11 +1313,37 @@ export function settleStaleAutoTips(
         mktLow.includes('goalscorer') || mktLow.includes('goal scorer') ||
         mktLow.includes('anytime scorer') || mktLow.includes('player to score') ||
         mktLow.includes('first scorer') || mktLow.includes('last scorer') ||
-        mktLow.includes('player ') || mktLow.startsWith('player');
-      if (needsSpecialData) continue; // leave pending — don't guess on these markets
+        mktLow.includes('player ') || mktLow.startsWith('player') ||
+        // Win to Nil — clean-sheet-win probability is much lower than general win rate.
+        // A tipster with 60% win rate does NOT have 60% chance of winning to nil.
+        mktLow.includes('win to nil') || mktLow.includes('win & clean') ||
+        mktLow.includes('win and clean') || predLow.includes('win to nil') ||
+        // Clean Sheet — depends on actual defensive outcome, not win rate
+        mktLow.includes('clean sheet') || predLow.includes('clean sheet') ||
+        // Correct / Exact Score — probability is always much lower than win rate
+        mktLow.includes('correct score') || mktLow.includes('exact score') ||
+        mktLow.includes('scoreline') ||
+        // Score in Both Halves — needs HT data
+        mktLow.includes('score both halves') || mktLow.includes('score in both') ||
+        // BTTS — both teams scoring is independent of which tipster is posting
+        mktLow.includes('btts') || mktLow.includes('both teams to score') ||
+        predLow.includes('both teams to score') ||
+        // Asian Handicap / Spread — line-specific, win rate doesn't apply
+        mktLow.includes('asian handicap') || mktLow.includes('asian hcap') ||
+        (mktLow.includes('handicap') && mktLow.includes('asian')) ||
+        // Moneyline / spread for non-soccer sports (points-based)
+        mktLow.includes('point spread') || mktLow.includes('run line') || mktLow.includes('puck line') ||
+        // Team to Score Yes/No — needs actual scoring data
+        mktLow.includes('team to score') || mktLow.includes('to score') ||
+        // Odd/Even goals — 50/50, win rate irrelevant
+        mktLow.includes('odd/even') || mktLow.includes('odd or even') ||
+        predLow === 'odd' || predLow === 'even';
+      if (needsRealData) continue; // leave pending — real data will settle these correctly
 
-      // Fallback: probabilistic using tipster win rate — mark so real scores can override later
-      // Only use probabilistic if the match is MORE than 4 hours old (give APIs time to update)
+      // Fallback: probabilistic using tipster win rate — ONLY for simple 1X2 / match winner
+      // markets where the tipster's win rate is a reasonable proxy.
+      // Mark as settledByProb so real scores always override this later.
+      // Only fire after 4 hours to give all score APIs time to update.
       const matchAge = now - new Date(tip.kickoff).getTime();
       if (matchAge < 4 * 3600_000) continue; // too soon — keep pending, wait for real data
       const tipster = getFakeTipsterById(tip.tipsterId);
@@ -1295,7 +1376,24 @@ export function bulkResettleWithRealData(
       const kt = new Date(tip.kickoff).getTime();
       if (!Number.isFinite(kt) || now - kt < 2 * 3600_000) continue;
 
-      const real = realResults.get(tip.matchId);
+      // Try exact matchId lookup first
+      let real = realResults.get(tip.matchId);
+
+      // Fallback: fuzzy team-name search — critical for correcting prob-settled tips
+      // when the matchId stored in the tip doesn't match the API's ID format
+      if (!real && tip.homeTeam && tip.awayTeam) {
+        const th = normTeam(tip.homeTeam);
+        const ta = normTeam(tip.awayTeam);
+        for (const v of realResults.values()) {
+          const rh = normTeam((v as { homeTeam?: string }).homeTeam || '');
+          const ra = normTeam((v as { awayTeam?: string }).awayTeam || '');
+          if (!rh || !ra) continue;
+          const homeMatch = th === rh || rh.includes(th) || th.includes(rh);
+          const awayMatch = ta === ra || ra.includes(ta) || ta.includes(ra);
+          if (homeMatch && awayMatch) { real = v; break; }
+        }
+      }
+
       if (!real) continue;
 
       const r = rng(hashStr(tip.id))();

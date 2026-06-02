@@ -98,12 +98,14 @@ export async function GET(req: Request) {
   // settled tips using full data (HT scores, corners, cards).
   try {
     const allCachedMatches = await getAllMatches();
-    const fullRealResults = new Map<string, { homeScore: number; awayScore: number } & TipMatchData>();
+    const fullRealResults = new Map<string, { homeScore: number; awayScore: number; homeTeam: string; awayTeam: string } & TipMatchData>();
     for (const m of allCachedMatches) {
       if (m.status !== 'finished' || typeof m.homeScore !== 'number' || typeof m.awayScore !== 'number') continue;
       fullRealResults.set(String(m.id), {
         homeScore: m.homeScore,
         awayScore: m.awayScore,
+        homeTeam: m.homeTeam?.name || '',
+        awayTeam: m.awayTeam?.name || '',
         htHomeScore: m.htHomeScore ?? null,
         htAwayScore: m.htAwayScore ?? null,
         corners: m.sportSpecificData?.corners,

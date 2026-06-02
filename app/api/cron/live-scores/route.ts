@@ -419,16 +419,28 @@ async function updateStrategyPickLiveScores(
 
     // Only process pending picks for real-time settlement
     if (pick.result === 'pending') {
-      // Picks are for 90-minute results only. Double Chance and 1X2 markets must
-      // NOT be early-settled mid-game — a trailing team can still equalise or win.
-      // Only Over/Under/BTTS have truly certain mid-game outcomes (line blown, etc.).
+      // Picks are for 90-minute results only. Several markets must NOT be
+      // early-settled mid-game — the state can change before the final whistle.
+      // Only certain Over/Under/BTTS outcomes are truly certain mid-game (line blown, etc.).
       const marketLower = (pick.market || '').toLowerCase();
+      const pickLower = (pick.pick || '').toLowerCase();
       const waitForFinalWhistle =
+        // 1X2 / Match Result — trailing team can still equalise or win
         marketLower.includes('double chance') ||
         marketLower === '1x2' || marketLower.includes('1x2') ||
         marketLower === 'match result' || marketLower.includes('match result') ||
         marketLower === 'match winner' || marketLower === '' ||
-        marketLower === 'full time result' || marketLower === 'ft result';
+        marketLower === 'full time result' || marketLower === 'ft result' ||
+        // Win to Nil — leading team might concede before FT (1-0 → 1-1 kills the tip)
+        marketLower.includes('win to nil') || marketLower.includes('win & clean') ||
+        marketLower.includes('win and clean') || pickLower.includes('win to nil') ||
+        // Clean Sheet — clean sheet can be broken any time before FT
+        marketLower.includes('clean sheet') || pickLower.includes('clean sheet') ||
+        // Draw No Bet — draw pushes, lead can be wiped out before FT
+        marketLower.includes('draw no bet') || pickLower.includes('draw no bet') ||
+        // HT/FT double result — always wait for FT
+        marketLower.includes('half-time') || marketLower.includes('ht/ft') ||
+        /^[12x]\/[12x]$/i.test(pickLower);
 
       if (!waitForFinalWhistle || liveStatus === 'finished') {
         const earlyResult = checkPickResult(pick, hs, as_);
