@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { requireAdmin } from '@/lib/admin-auth';
 import { hasPermission } from '@/lib/permissions';
 import { setUserRoleOverride } from '@/lib/user-role-overrides';
 import {
@@ -9,19 +8,13 @@ import {
 } from '@/lib/tipster-applications-store';
 import { getTemplate as getEmailTemplate } from '@/lib/email-templates-store';
 import { renderTemplate, sendMail } from '@/lib/mailer';
-import { mockUsers } from '@/lib/mock-data';
+import { queryOne } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 interface Ctx { params: Promise<{ id: string }> }
 
-/**
- * PATCH { decision: 'approve' | 'reject', note?, grantVerified? }
- *
- * Admin (or anyone with admin.users.role permission) approves or rejects an
- * application. Approval flips the user's role to `tipster` immediately.
- */
 export async function PATCH(request: NextRequest, ctx: Ctx) {
   const me = await getCurrentUser();
   if (!me || !hasPermission(me.role, 'admin.users.role')) {
@@ -58,17 +51,21 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: 'review failed' }, { status: 500 });
   }
 
-  // On approval — promote the user's role so they can post tips immediately.
   if (decision === 'approve') {
     setUserRoleOverride(updated.userId, 'tipster');
   }
 
-  // ─── Notify the applicant by email — best effort, never blocks the response. ──
+  // Notify applicant by email — best effort, never blocks the response.
   try {
-    const recipient =
-      updated.email ||
-      existing.email ||
-      mockUsers.find(u => u.id === updated.userId || u.username === updated.username)?.email;
+    // Prefer email from the application record, fall back to DB lookup
+    let recipient = updated.email || existing.email;
+    if (!recipient) {
+      const dbUser = await queryOne<{ email: string }>(
+        'SELECT email FROM users WHERE id = ? LIMIT 1',
+        [updated.userId]
+      );
+      recipient = dbUser?.email;
+    }
 
     if (recipient) {
       const tplKey = decision === 'approve' ? 'tipster_approved' : 'tipster_rejected';

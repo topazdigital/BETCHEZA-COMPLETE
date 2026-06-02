@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
-import { getFakeTipsters, getFakeTipsterById } from '@/lib/fake-tipsters';
 import {
   getTopTipsterThisWeek,
   computeRealTipsterStats,
   computeRealRoi,
   computeRealStreak,
 } from '@/lib/auto-tips-store';
+import { getFakeTipsters, getFakeTipsterById } from '@/lib/fake-tipsters';
 import { tipsterHref } from '@/lib/utils/slug';
 import { getFeaturedConfig } from '@/lib/featured-store';
 import { getUpcomingMatches, getMatchById } from '@/lib/api/unified-sports-api';
+import { query } from '@/lib/db';
 import type { UnifiedMatch } from '@/lib/api/unified-sports-api';
 
 export const runtime = 'nodejs';
@@ -18,6 +19,69 @@ export const runtime = 'nodejs';
 const HOME_CACHE_TTL = 30_000;
 let _homeCache: { data: unknown; ts: number } | null = null;
 let _homeRefreshing = false;
+
+interface DbTipsterRow {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  country_code: string | null;
+  win_rate: number | null;
+  roi: number | null;
+  total_tips: number | null;
+  won_tips: number | null;
+  lost_tips: number | null;
+  streak: number | null;
+  is_pro: number | null;
+  is_verified: number | null;
+  followers_count: number | null;
+}
+
+async function getTopDbTipsters(limit = 4) {
+  try {
+    const result = await query<DbTipsterRow>(
+      `SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.bio,
+              u.country_code, u.is_verified,
+              t.win_rate, t.roi, t.total_tips, t.won_tips, t.lost_tips,
+              t.streak, t.is_pro, t.followers_count
+         FROM users u
+         LEFT JOIN tipster_profiles t ON t.user_id = u.id
+         WHERE u.role = 'tipster'
+         ORDER BY t.win_rate DESC, t.roi DESC
+         LIMIT ?`,
+      [limit]
+    );
+    if (result.rows.length > 0) {
+      return result.rows.map(row => ({
+        id: row.user_id,
+        username: row.username,
+        displayName: row.display_name || row.username,
+        avatar: row.avatar_url,
+        winRate: Number(row.win_rate ?? 0),
+        streak: Number(row.streak ?? 0),
+        roi: Number(row.roi ?? 0),
+        totalTips: Number(row.total_tips ?? 0),
+      }));
+    }
+  } catch { /* fall through to fake tipsters */ }
+
+  // Fall back to fake tipsters (seeded in DB as is_fake=1) sorted by winRate
+  return getFakeTipsters()
+    .slice()
+    .sort((a, b) => b.winRate - a.winRate || b.roi - a.roi)
+    .slice(0, limit)
+    .map(t => ({
+      id: t.id,
+      username: t.username,
+      displayName: t.displayName,
+      avatar: t.avatar ?? null,
+      winRate: t.winRate,
+      streak: t.streak,
+      roi: t.roi,
+      totalTips: t.totalTips,
+    }));
+}
 
 async function buildHomePayload(): Promise<unknown> {
   const [allMatches, featuredConfig] = await Promise.all([
@@ -45,55 +109,77 @@ async function buildHomePayload(): Promise<unknown> {
     timestamp: new Date().toISOString(),
   };
 
-  const fakes = getFakeTipsters();
-  const topTipsters = fakes
-    .slice()
-    .sort((a, b) => b.winRate - a.winRate)
-    .slice(0, 4)
-    .map(t => ({
-      id: t.id, username: t.username, displayName: t.displayName,
-      winRate: t.winRate, streak: t.streak, roi: t.roi,
-      totalTips: t.totalTips, avatar: t.avatar ?? null,
-    }));
+  // Use real DB tipsters
+  const topTipsters = await getTopDbTipsters(4);
 
+  // Tipster of the week — use real performance data
   let tipsterOfWeek: Record<string, unknown> | null = null;
   const best = getTopTipsterThisWeek();
-  if (!best) {
-    const top = fakes.slice().sort((a, b) => b.winRate - a.winRate)[0];
-    if (top) {
-      tipsterOfWeek = {
-        tipster: {
-          id: top.id, username: top.username, displayName: top.displayName,
-          avatar: top.avatar ?? null, bio: top.bio, winRate: top.winRate,
-          roi: top.roi, streak: top.streak, wonTips: top.wonTips,
-          lostTips: top.lostTips, totalTips: top.totalTips,
-          isPro: top.isPro, verified: top.isVerified, countryCode: top.countryCode,
-          href: tipsterHref(top.username, top.username),
-        },
-        weeklyWon: top.wonTips, weeklyLost: top.lostTips,
-        weeklyTotal: top.totalTips, weeklyWinRate: top.winRate,
-        isWeekly: false, performanceVerified: false,
-      };
+  if (best) {
+    // Try to get DB user first, fall back to fake tipster profile for display
+    let tipsterInfo: { username: string; displayName: string; avatar: string | null; bio: string | null; isPro: boolean; verified: boolean; countryCode: string | null } | null = null;
+    try {
+      const dbRows = await query<{ username: string; display_name: string | null; avatar_url: string | null; bio: string | null; is_verified: number | null; country_code: string | null }>(
+        'SELECT username, display_name, avatar_url, bio, is_verified, country_code FROM users WHERE id = ? LIMIT 1',
+        [best.tipsterId]
+      );
+      const dbRow = dbRows.rows[0];
+      if (dbRow) {
+        tipsterInfo = {
+          username: dbRow.username,
+          displayName: dbRow.display_name || dbRow.username,
+          avatar: dbRow.avatar_url,
+          bio: dbRow.bio,
+          isPro: false,
+          verified: !!dbRow.is_verified,
+          countryCode: dbRow.country_code,
+        };
+      }
+    } catch { /* ignore */ }
+
+    if (!tipsterInfo) {
+      const fake = getFakeTipsterById(best.tipsterId);
+      if (fake) {
+        tipsterInfo = {
+          username: fake.username,
+          displayName: fake.displayName,
+          avatar: fake.avatar ?? null,
+          bio: fake.bio,
+          isPro: fake.isPro,
+          verified: fake.isVerified,
+          countryCode: fake.countryCode,
+        };
+      }
     }
-  } else {
-    const fake = getFakeTipsterById(best.tipsterId);
-    if (fake) {
+
+    if (tipsterInfo) {
       const allTime = computeRealTipsterStats(best.tipsterId);
       tipsterOfWeek = {
         tipster: {
-          id: fake.id, username: fake.username, displayName: fake.displayName,
-          avatar: fake.avatar ?? null, bio: fake.bio,
-          winRate: best.winRate, roi: best.roi,
+          id: best.tipsterId,
+          username: tipsterInfo.username,
+          displayName: tipsterInfo.displayName,
+          avatar: tipsterInfo.avatar,
+          bio: tipsterInfo.bio,
+          winRate: best.winRate,
+          roi: best.roi,
           streak: computeRealStreak(best.tipsterId),
-          wonTips: best.won, lostTips: best.lost, totalTips: best.total,
-          allTimeWinRate: allTime.winRate, allTimeRoi: computeRealRoi(best.tipsterId),
-          allTimeWon: allTime.won, allTimeLost: allTime.lost,
-          isPro: fake.isPro, verified: fake.isVerified,
-          countryCode: fake.countryCode,
-          href: tipsterHref(fake.username, fake.username),
+          wonTips: best.won,
+          lostTips: best.lost,
+          totalTips: best.total,
+          allTimeWinRate: allTime.winRate,
+          allTimeRoi: computeRealRoi(best.tipsterId),
+          allTimeWon: allTime.won,
+          allTimeLost: allTime.lost,
+          isPro: tipsterInfo.isPro,
+          verified: tipsterInfo.verified,
+          countryCode: tipsterInfo.countryCode,
+          href: tipsterHref(tipsterInfo.username, tipsterInfo.username),
         },
-        weeklyWon: best.won, weeklyLost: best.lost,
-        weeklyTotal: best.total, weeklyWinRate: best.winRate,
+        weeklyWon: best.won,
+        weeklyLost: best.lost,
+        weeklyTotal: best.total,
+        weeklyWinRate: best.winRate,
         isWeekly: best.isWeekly,
         performanceVerified: allTime.won + allTime.lost >= 10,
       };
@@ -145,48 +231,7 @@ async function getCachedHomePayload(): Promise<unknown> {
   return data;
 }
 
-
-// ─── Featured helpers (mirrors /api/featured logic) ───────────────────────────
-const TIPSTERS = [
-  { id: '1', displayName: 'KingOfTips',   rank: 1, isPremium: true,  verified: true,  followers: 1523, roi: 12.4, winRate: 68.4 },
-  { id: '2', displayName: 'AcePredicts',  rank: 2, isPremium: true,  verified: true,  followers: 982,  roi: 15.8, winRate: 72.1 },
-  { id: '3', displayName: 'LuckyStriker', rank: 3, isPremium: false, verified: false, followers: 678,  roi: 9.2,  winRate: 60.7 },
-  { id: '4', displayName: 'EuroExpert',   rank: 4, isPremium: true,  verified: true,  followers: 534,  roi: 7.5,  winRate: 58.3 },
-  { id: '5', displayName: 'GoalMachine',  rank: 8, isPremium: false, verified: false, followers: 312,  roi: 5.3,  winRate: 58.2 },
-  { id: '6', displayName: 'BetWizard',    rank: 6, isPremium: true,  verified: true,  followers: 1102, roi: 18.1, winRate: 69.7 },
-];
-const PREDICTIONS = [
-  { prediction: 'Home Win',            market: 'Match Result (1X2)' },
-  { prediction: 'Away Win',            market: 'Match Result (1X2)' },
-  { prediction: 'Draw',                market: 'Match Result (1X2)' },
-  { prediction: 'Both Teams to Score', market: 'BTTS' },
-  { prediction: 'Over 2.5 Goals',      market: 'Over/Under 2.5' },
-  { prediction: 'Under 2.5 Goals',     market: 'Over/Under 2.5' },
-  { prediction: 'Home or Draw (1X)',   market: 'Double Chance' },
-  { prediction: 'Away or Draw (X2)',   market: 'Double Chance' },
-];
-
-function seededRandom(seed: number) {
-  const x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-}
-function hashCode(str: string) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
-  return Math.abs(hash);
-}
-function bestTipFor(matchId: string) {
-  const seed = hashCode(matchId);
-  let best: { tipster: typeof TIPSTERS[0]; prediction: string; market: string; odds: number; confidence: number } | null = null;
-  for (let i = 0; i < 4; i++) {
-    const tipster = TIPSTERS[Math.floor(seededRandom(seed + i * 37) * TIPSTERS.length)];
-    const { prediction, market } = PREDICTIONS[Math.floor(seededRandom(seed + i * 53) * PREDICTIONS.length)];
-    const odds = Math.round((1.4 + seededRandom(seed + i * 17) * 2.8) * 100) / 100;
-    const confidence = 55 + Math.floor(seededRandom(seed + i * 43) * 40);
-    if (!best || confidence > best.confidence) best = { tipster, prediction, market, odds, confidence };
-  }
-  return best!;
-}
+// ─── Featured helpers ─────────────────────────────────────────────────────────
 function toFeaturedItem(match: UnifiedMatch, pinned: boolean) {
   return {
     matchId: match.id,
@@ -200,7 +245,6 @@ function toFeaturedItem(match: UnifiedMatch, pinned: boolean) {
       league: { name: match.league.name, country: match.league.country },
       sport: { name: match.sport.name, slug: match.sport.slug },
     },
-    tip: bestTipFor(match.id),
   };
 }
 

@@ -110,14 +110,13 @@ export async function GET(request: NextRequest) {
          LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     );
-    rows = (list as unknown as { rows?: DbTipster[] }).rows ?? (list as unknown as DbTipster[]);
+    rows = list.rows;
 
     const c = await query<{ n: number }>(
       `SELECT COUNT(*) AS n FROM users u LEFT JOIN tipster_profiles t ON t.user_id = u.id ${whereClause}`,
       params,
     );
-    const cRows = (c as unknown as { rows?: { n: number }[] }).rows ?? (c as unknown as { n: number }[]);
-    total = Number(cRows?.[0]?.n ?? 0);
+    total = Number(c.rows?.[0]?.n ?? 0);
   } catch {
     rows = []; total = 0;
   }
@@ -129,8 +128,7 @@ export async function GET(request: NextRequest) {
       `SELECT DISTINCT user_id FROM tips WHERE created_at >= NOW() - INTERVAL 24 HOUR`,
       [],
     );
-    const ar = (activeRows as unknown as { rows?: { user_id: number }[] }).rows ?? (activeRows as unknown as { user_id: number }[]);
-    for (const r of ar) activeTodayIds.add(Number(r.user_id));
+    for (const r of activeRows.rows) activeTodayIds.add(Number(r.user_id));
   } catch { /* tips table may not exist */ }
 
   let tipsters = rows.map(row => ({ ...shape(row), activeToday: activeTodayIds.has(row.user_id) }));

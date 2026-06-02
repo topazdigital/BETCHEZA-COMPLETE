@@ -43,13 +43,13 @@ externalPort = 80
 
 [userenv.shared]
 DISABLE_MOCK_MATCHES = "true"
-NEXT_PUBLIC_APP_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
-NEXT_PUBLIC_BASE_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
+NEXT_PUBLIC_APP_URL = "https://betcheza.co.ke"
+NEXT_PUBLIC_BASE_URL = "https://betcheza.co.ke"
 NEXT_PUBLIC_SITE_URL = "https://betcheza.co.ke"
 SITE_URL = "https://betcheza.co.ke"
-OAUTH_SITE_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
+OAUTH_SITE_URL = "https://betcheza.co.ke"
 INTERNAL_BASE_URL = "http://localhost:5000"
-APP_URL = "https://51db4dd3-2f89-4b60-a737-d10ed631bd67-00-giiz8kks02xy.kirk.replit.dev"
+APP_URL = "https://betcheza.co.ke"
 DB_HOST = "157.250.205.180"
 DB_NAME = "admin_betcheza"
 DB_PORT = "3306"
@@ -64,6 +64,7 @@ DB_USER = "admin_betcheza"
 FOOTBALL_DATA_API_KEY = "a88e7138cd4747c299e34ebd2ba8d970"
 SPORTSGAMEODDS_API_KEY = "56b729df59f151a4c45c15059c5ba402"
 PAYHERO_BASIC_TOKEN = "Basic WnFYVlJQQWZjd2k5aWxJWDAwNmY6MEdrVXFLMkJnSmtBWlNMdEFDZllEWVVxQktESnNpYW80UXV0cW1uOQ=="
+NODE_ENV = "development"
 
 [deployment]
 deploymentTarget = "autoscale"

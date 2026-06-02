@@ -114,13 +114,13 @@ function mapHotMatch(m: CamelMatch, sport: SportMeta = SOCCER_META): UnifiedMatc
     homeTeam: {
       id: `camel1_h_${m.id}`,
       name: m.home_team.name_en || m.home_team.name,
-      shortName: m.home_team.name_en || m.home_team.name,
+      shortName: (m.home_team.name_en || m.home_team.name).slice(0, 50),
       logo: m.home_team.logo || undefined,
     },
     awayTeam: {
       id: `camel1_a_${m.id}`,
       name: m.away_team.name_en || m.away_team.name,
-      shortName: m.away_team.name_en || m.away_team.name,
+      shortName: (m.away_team.name_en || m.away_team.name).slice(0, 50),
       logo: m.away_team.logo || undefined,
     },
     kickoffTime: kickoff,
@@ -157,12 +157,12 @@ function mapFaceoff(f: FaceoffMatch, sport: SportMeta = SOCCER_META): UnifiedMat
     homeTeam: {
       id: `camel1f_h_${f.faceoffId}`,
       name: f.homeTeam,
-      shortName: f.homeTeam,
+      shortName: f.homeTeam.slice(0, 50),
     },
     awayTeam: {
       id: `camel1f_a_${f.faceoffId}`,
       name: f.awayTeam,
-      shortName: f.awayTeam,
+      shortName: f.awayTeam.slice(0, 50),
     },
     kickoffTime: kickoff,
     status: 'scheduled',

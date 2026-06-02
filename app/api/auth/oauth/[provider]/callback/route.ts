@@ -3,47 +3,6 @@ import { getOAuthConfig, getOAuthSiteUrl, type OAuthProvider } from '@/lib/oauth
 import { PROVIDERS, exchangeCodeForToken, fetchOAuthProfile } from '@/lib/oauth-providers';
 import { setAuthCookie } from '@/lib/auth';
 import { queryOne, execute } from '@/lib/db';
-import fs from 'fs';
-import path from 'path';
-
-// ── File-based user store for no-DB fallback (dev / DB-unavailable mode) ──────
-const USERS_FILE = path.join(process.cwd(), '.local', 'state', 'oauth-users.json');
-function readLocalUsers(): DbUser[] {
-  try {
-    if (!fs.existsSync(USERS_FILE)) return [];
-    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')) as DbUser[];
-  } catch { return []; }
-}
-function writeLocalUsers(users: DbUser[]): void {
-  try {
-    fs.mkdirSync(path.dirname(USERS_FILE), { recursive: true });
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  } catch { /* non-fatal */ }
-}
-function localFindOrCreate(opts: { provider: OAuthProvider; providerId: string; email?: string; name?: string; avatarUrl?: string }): DbUser {
-  const users = readLocalUsers();
-  // Find by provider ID or email
-  let found = opts.provider === 'google'
-    ? users.find(u => u.google_id === opts.providerId)
-    : users.find(u => u.email === opts.email);
-  if (!found && opts.email) found = users.find(u => u.email === opts.email);
-  if (found) return found;
-  // Create new local user
-  const newUser: DbUser = {
-    id: Date.now(),
-    email: opts.email || `${opts.provider}_${opts.providerId}@oauth.local`,
-    username: (opts.email?.split('@')[0] || `user_${Date.now()}`).toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20) || `user_${Date.now()}`,
-    display_name: opts.name || opts.email?.split('@')[0] || 'User',
-    avatar_url: opts.avatarUrl || null,
-    role: 'user',
-    balance: 0,
-    is_verified: !!opts.email,
-    google_id: opts.provider === 'google' ? opts.providerId : null,
-  };
-  users.push(newUser);
-  writeLocalUsers(users);
-  return newUser;
-}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -177,18 +136,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   if (!profile?.providerId) return await errorRedirect(req, `${p}_profile_failed`);
 
   const oauthOpts = { provider: p, providerId: profile.providerId, email: profile.email, name: profile.name, avatarUrl: profile.avatarUrl };
-  let user = await dbFindOrCreate(oauthOpts);
+  const user = await dbFindOrCreate(oauthOpts);
   if (!user) {
-    // DB unavailable — fall back to local file store so OAuth still works
-    console.warn(`[oauth-callback] DB unavailable for ${p} login, using local fallback`);
-    user = localFindOrCreate(oauthOpts);
+    console.error(`[oauth-callback] DB unavailable for ${p} login — cannot create/find user`);
+    return await errorRedirect(req, `${p}_db_error`);
   }
 
   await setAuthCookie({ userId: user.id, email: user.email, role: user.role });
 
   const next = req.cookies.get(NEXT_COOKIE)?.value || '/';
-  // Build redirect base from site URL / forwarded headers — never use req.url
-  // (req.url is the internal http://localhost:5001/... address behind the proxy).
   const siteUrl = await getOAuthSiteUrl();
   const baseUrl = siteUrl || (() => {
     const proto = req.headers.get('x-forwarded-proto') || 'https';

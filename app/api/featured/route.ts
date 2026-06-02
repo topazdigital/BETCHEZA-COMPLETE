@@ -6,6 +6,7 @@ import {
   getMatchById,
   type UnifiedMatch,
 } from '@/lib/api/unified-sports-api';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 30;
@@ -31,57 +32,68 @@ async function getCachedFeaturedPayload(builder: () => Promise<unknown>): Promis
   return data;
 }
 
-// Mirror of /api/matches/[id]/tips TIPSTERS so featured panel uses the
-// same author pool with the same "rank" semantics.
-const TIPSTERS = [
-  { id: '1', displayName: 'KingOfTips',  rank: 1, isPremium: true,  verified: true,  followers: 1523, roi: 12.4, winRate: 68.4 },
-  { id: '2', displayName: 'AcePredicts', rank: 2, isPremium: true,  verified: true,  followers: 982,  roi: 15.8, winRate: 72.1 },
-  { id: '3', displayName: 'LuckyStriker',rank: 3, isPremium: false, verified: false, followers: 678,  roi: 9.2,  winRate: 60.7 },
-  { id: '4', displayName: 'EuroExpert',  rank: 4, isPremium: true,  verified: true,  followers: 534,  roi: 7.5,  winRate: 58.3 },
-  { id: '5', displayName: 'GoalMachine', rank: 8, isPremium: false, verified: false, followers: 312,  roi: 5.3,  winRate: 58.2 },
-  { id: '6', displayName: 'BetWizard',   rank: 6, isPremium: true,  verified: true,  followers: 1102, roi: 18.1, winRate: 69.7 },
-];
-
-const PREDICTIONS = [
-  { prediction: 'Home Win',             market: 'Match Result (1X2)' },
-  { prediction: 'Away Win',             market: 'Match Result (1X2)' },
-  { prediction: 'Draw',                 market: 'Match Result (1X2)' },
-  { prediction: 'Both Teams to Score',  market: 'BTTS' },
-  { prediction: 'Over 2.5 Goals',       market: 'Over/Under 2.5' },
-  { prediction: 'Under 2.5 Goals',      market: 'Over/Under 2.5' },
-  { prediction: 'Home or Draw (1X)',    market: 'Double Chance' },
-  { prediction: 'Away or Draw (X2)',    market: 'Double Chance' },
-];
-
-function seededRandom(seed: number) {
-  const x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-}
-function hashCode(str: string) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
-  return Math.abs(hash);
+interface DbAutoTip {
+  id: string;
+  match_id: string;
+  tipster_id: number;
+  market: string;
+  prediction: string;
+  odds: number;
+  confidence: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_pro: number | null;
+  is_verified: number | null;
+  win_rate: number | null;
+  roi: number | null;
+  followers_count: number | null;
 }
 
-interface BestTip {
-  tipster: typeof TIPSTERS[number];
+async function getBestTipForMatch(matchId: string): Promise<{
+  tipster: { id: number; displayName: string; username: string; rank: number; isPremium: boolean; verified: boolean; followers: number; roi: number; winRate: number };
   prediction: string;
   market: string;
   odds: number;
   confidence: number;
-}
-
-function bestTipFor(matchId: string): BestTip {
-  const seed = hashCode(matchId);
-  let best: BestTip | null = null;
-  for (let i = 0; i < 4; i++) {
-    const tipster = TIPSTERS[Math.floor(seededRandom(seed + i * 37) * TIPSTERS.length)];
-    const { prediction, market } = PREDICTIONS[Math.floor(seededRandom(seed + i * 53) * PREDICTIONS.length)];
-    const odds = Math.round((1.4 + seededRandom(seed + i * 17) * 2.8) * 100) / 100;
-    const confidence = 55 + Math.floor(seededRandom(seed + i * 43) * 40);
-    if (!best || confidence > best.confidence) best = { tipster, prediction, market, odds, confidence };
+} | null> {
+  try {
+    const result = await query<DbAutoTip>(
+      `SELECT at.id, at.match_id, at.tipster_id, at.market, at.prediction,
+              at.odds, at.confidence,
+              u.username, u.display_name, u.avatar_url,
+              tp.is_pro, u.is_verified, tp.win_rate, tp.roi, tp.followers_count
+         FROM auto_tips at
+         JOIN users u ON u.id = at.tipster_id
+         LEFT JOIN tipster_profiles tp ON tp.user_id = at.tipster_id
+         WHERE at.match_id = ? AND at.status = 'pending'
+         ORDER BY at.confidence DESC
+         LIMIT 1`,
+      [matchId]
+    );
+    const rows = result.rows;
+    const tip = rows[0];
+    if (!tip) return null;
+    return {
+      tipster: {
+        id: tip.tipster_id,
+        displayName: tip.display_name || tip.username,
+        username: tip.username,
+        rank: 1,
+        isPremium: !!tip.is_pro,
+        verified: !!tip.is_verified,
+        followers: Number(tip.followers_count ?? 0),
+        roi: Number(tip.roi ?? 0),
+        winRate: Number(tip.win_rate ?? 0),
+      },
+      prediction: tip.prediction,
+      market: tip.market,
+      odds: Number(tip.odds),
+      confidence: Number(tip.confidence),
+    };
+  } catch {
+    return null;
   }
-  return best!;
 }
 
 interface FeaturedItem {
@@ -96,10 +108,17 @@ interface FeaturedItem {
     league: { name: string; country?: string };
     sport: { name: string; slug: string };
   };
-  tip: BestTip;
+  tip: {
+    tipster: { id: number; displayName: string; username: string; rank: number; isPremium: boolean; verified: boolean; followers: number; roi: number; winRate: number };
+    prediction: string;
+    market: string;
+    odds: number;
+    confidence: number;
+  } | null;
 }
 
-function toFeatured(match: UnifiedMatch, pinned: boolean): FeaturedItem {
+async function toFeatured(match: UnifiedMatch, pinned: boolean): Promise<FeaturedItem> {
+  const tip = await getBestTipForMatch(match.id);
   return {
     matchId: match.id,
     pinned,
@@ -112,7 +131,7 @@ function toFeatured(match: UnifiedMatch, pinned: boolean): FeaturedItem {
       league: { name: match.league.name, country: match.league.country },
       sport: { name: match.sport.name, slug: match.sport.slug },
     },
-    tip: bestTipFor(match.id),
+    tip,
   };
 }
 
@@ -132,7 +151,7 @@ async function buildFeaturedPayload() {
     try {
       const m = await getMatchById(id);
       if (m) {
-        pinned.push(toFeatured(m, true));
+        pinned.push(await toFeatured(m, true));
         seen.add(id);
       }
     } catch (e) {
@@ -141,7 +160,7 @@ async function buildFeaturedPayload() {
     if (pinned.length >= config.limit) break;
   }
 
-  // 2. Fill remaining slots from upcoming matches that pass criteria.
+  // 2. Fill remaining slots from upcoming matches that have real auto-tips.
   const remaining = Math.max(0, config.limit - pinned.length);
   const auto: FeaturedItem[] = [];
   if (remaining > 0) {
@@ -174,16 +193,15 @@ async function buildFeaturedPayload() {
       });
 
     for (const m of filtered) {
-      const tip = bestTipFor(m.id);
-      if (tip.confidence < config.minConfidence) continue;
-      if (tip.odds < config.minOdds || tip.odds > config.maxOdds) continue;
-      if (config.topTipsterOnly && tip.tipster.rank > 5) continue;
-      auto.push({ ...toFeatured(m, false), tip });
       if (auto.length >= remaining) break;
+      const item = await toFeatured(m, false);
+      if (!item.tip) continue; // only include matches with real tips
+      if (item.tip.confidence < config.minConfidence) continue;
+      if (item.tip.odds < config.minOdds || item.tip.odds > config.maxOdds) continue;
+      auto.push(item);
     }
 
-    // Sort auto picks by confidence desc.
-    auto.sort((a, b) => b.tip.confidence - a.tip.confidence);
+    auto.sort((a, b) => (b.tip?.confidence ?? 0) - (a.tip?.confidence ?? 0));
   }
 
   return {

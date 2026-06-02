@@ -1,44 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { mockUsers } from '@/lib/mock-data';
 import { getUserRoleOverride } from '@/lib/user-role-overrides';
 import {
   createApplication,
   listApplicationsForUser,
 } from '@/lib/tipster-applications-store';
+import { queryOne } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-/**
- * GET — return the current user's own applications so the apply page can show
- * "pending review" / "approved on …" status next to the form.
- */
+async function getUserRole(userId: number): Promise<string> {
+  const override = getUserRoleOverride(userId);
+  if (override) return override;
+  try {
+    const dbUser = await queryOne<{ role: string }>('SELECT role FROM users WHERE id = ? LIMIT 1', [userId]);
+    return dbUser?.role || 'user';
+  } catch {
+    return 'user';
+  }
+}
+
 export async function GET() {
   const auth = await getCurrentUser();
   if (!auth) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   const apps = await listApplicationsForUser(auth.userId);
-  const role = getUserRoleOverride(auth.userId)
-    || mockUsers.find(u => u.id === auth.userId)?.role
-    || 'user';
+  const role = await getUserRole(auth.userId);
   return NextResponse.json({ applications: apps, currentRole: role });
 }
 
-/**
- * POST — submit a new tipster application. Anyone signed-in can apply.
- * Already-tipsters and admins are blocked (no need to apply).
- */
 export async function POST(request: NextRequest) {
   const auth = await getCurrentUser();
   if (!auth) {
     return NextResponse.json({ error: 'You must be signed in to apply.' }, { status: 401 });
   }
 
-  const role = getUserRoleOverride(auth.userId)
-    || mockUsers.find(u => u.id === auth.userId)?.role
-    || 'user';
+  const role = await getUserRole(auth.userId);
   if (role === 'tipster' || role === 'admin' || role === 'moderator' || role === 'editor') {
     return NextResponse.json(
       { error: 'You already have a tipster (or higher) role on this account.' },
@@ -66,7 +65,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Block duplicate pending applications from the same user.
   const existing = await listApplicationsForUser(auth.userId);
   if (existing.some(a => a.status === 'pending')) {
     return NextResponse.json(
@@ -75,12 +73,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const profile = mockUsers.find(u => u.id === auth.userId);
+  // Get user info from DB for the application
+  let username = auth.username || `user-${auth.userId}`;
+  let displayName = auth.displayName || 'User';
+  let email: string | undefined;
+  try {
+    const dbUser = await queryOne<{ username: string; display_name: string; email: string }>(
+      'SELECT username, display_name, email FROM users WHERE id = ? LIMIT 1',
+      [auth.userId]
+    );
+    if (dbUser) {
+      username = dbUser.username || username;
+      displayName = dbUser.display_name || displayName;
+      email = dbUser.email;
+    }
+  } catch { /* use auth fallbacks */ }
+
   const row = await createApplication({
     userId: auth.userId,
-    username: auth.username || profile?.username || `user-${auth.userId}`,
-    displayName: auth.displayName || profile?.display_name || 'User',
-    email: profile?.email,
+    username,
+    displayName,
+    email,
     pitch,
     specialties,
     experience: experience || undefined,
