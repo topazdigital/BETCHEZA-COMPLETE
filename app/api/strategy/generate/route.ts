@@ -24,7 +24,6 @@ function getOpenAI(): OpenAI | null {
 }
 
 function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date; odds?: { home: number; draw: number; away: number } | null }): StrategyPick {
-  // Use real bookmaker odds — never Math.random(). Pick the side with best value in 1.30–2.50.
   let odds = 1.65;
   let pick = match.homeTeam.name;
   let market = '1X2';
@@ -93,41 +92,117 @@ export async function POST(req: NextRequest) {
     const targetMatches = soccerMatches.filter((m) => {
       const matchDate = new Date(m.kickoffTime);
       return matchDate.toDateString() === dayDate.toDateString();
-    }).slice(0, 20);
+    }).slice(0, 30);
 
-    const matchList = (targetMatches.length > 0 ? targetMatches : soccerMatches.slice(0, 20))
-      .map((m) => `${m.homeTeam.name} vs ${m.awayTeam.name} (${m.league.name}, ${new Date(m.kickoffTime).toUTCString()}${m.odds ? `, odds: H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''})`)
+    const matchList = (targetMatches.length > 0 ? targetMatches : soccerMatches.slice(0, 30))
+      .map((m) => `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${m.odds ? ` | Odds: H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''}`)
       .join('\n');
+
+    const today = new Date(dayData.date).toDateString();
 
     const openai = getOpenAI();
     if (openai && matchList) {
-      const prompt = `You are a professional football betting analyst for Betcheza, a Kenyan sports tipster platform.
+      const prompt = `You are an elite football intelligence analyst for Betcheza, a serious investment-grade sports tipster platform in Kenya. Your selections are treated as real financial investments — not entertainment. Losses are costly. Your job is NOT to chase odds but to find the most genuinely predictable outcomes using deep contextual reasoning.
 
-Strategy context: Day ${targetDay} — stake KES ${dayData.stake.toLocaleString()}, target win KES ${dayData.targetWin.toLocaleString()}.
+Today's date: ${today}
+Strategy Day ${targetDay} — Stake: KES ${dayData.stake.toLocaleString()}, Target: KES ${dayData.targetWin.toLocaleString()}
 
-GOAL: Select 1–5 football picks so that the COMBINED/ACCUMULATED ODDS (all individual odds multiplied together) falls STRICTLY between 3.00 and 4.00.
+═══════════════════════════════════════════
+STEP 1: DEEP MATCH INVESTIGATION (do this for EVERY match before selecting any)
+═══════════════════════════════════════════
 
-ODDS RULES — Critical:
-- Use REALISTIC bookmaker-style decimal odds (e.g. 1.73, 1.87, 2.10, 1.62 — NOT round numbers like 1.5, 2.0, 3.0)
-- Where odds are listed in the match data (H=/D=/A=), use those exact bookmaker odds for your pick
-- Where no odds are listed, estimate market-realistic odds: strong home favourites 1.35–1.75, slight favourites 1.80–2.20, even matches 2.50–3.10, underdogs 3.25+
-- Aim for picks in the 1.60–2.20 range each — 2 or 3 such picks combine naturally to 3.00–4.00
+For each match, mentally investigate these critical factors in order:
 
-ANALYSIS RULES:
-- Be specific: mention form runs ("6 wins in last 8 home games"), H2H stats, or league position context
-- Double Chance or BTTS markets boost confidence on tight games
-- Avoid picks from finished or live matches
+**A. MOTIVATION & STAKES ANALYSIS (Most Important)**
+Ask yourself: What does each team ACTUALLY need from this game?
+- Has either team ALREADY won the league/title? (e.g., if PSG already lifted the trophy 2 weeks ago, they will rotate and rest key players — do NOT back them as favourites)
+- Has either team already been relegated or promoted with nothing left to fight for?
+- Is this a dead rubber — where the result has zero effect on final standings?
+- Is the favourite going into a Cup Final or European fixture within 3–5 days? (They WILL rotate their best XI — this is a massive upset signal)
+- Is the underdog fighting for survival (relegation play-off, last chance)? A desperate underdog vs a complacent champion is a RED FLAG on the favourite
+- Has the "favourite" not won in their last 3–4 games while the "underdog" is on a winning run?
 
-Available matches for Day ${targetDay} (${dayData.date}):
-${matchList || 'No specific matches found — use your football knowledge for this date'}
+**B. SQUAD & ROTATION RISK**
+- End of season: clubs that have secured everything often play youth/fringe squads
+- Upcoming continental fixtures: coaches publicly announce rotation — if you know a manager rests players for big games, weight this heavily
+- Key player suspensions or injuries that the odds may not fully reflect yet
 
-Return ONLY a valid JSON array of 1–5 picks. All odds multiplied MUST equal 3.00–4.00:
-[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO string","pick":"...","market":"...","odds":1.87,"confidence":"High","reasoning":"Specific tactical reasoning here"}]`;
+**C. FORM IN CONTEXT (not just raw form)**
+- Is the team's recent form AT HOME or AWAY? A team with 5 wins may have won all 5 at home but lost 5 away
+- Are they in good form because they played weak opposition?
+- Is their goalkeeper or striker suspended for THIS specific game?
+
+**D. HEAD-TO-HEAD PATTERNS**
+- Does the "underdog" historically perform well against this specific opponent?
+- Is there a local derby dynamic where form goes out the window?
+- Has the home team historically struggled against this style of play?
+
+**E. MARKET INTELLIGENCE**
+- Where are the bookmakers genuinely uncertain? (odds close to evens = neither team strongly favoured by the market)
+- Is there significant value in a market OTHER than the match winner? e.g., if both teams are poor defensively → Over 2.5; if both teams are desperate → BTTS; if the home team always wins but scores exactly 1 goal → Asian Handicap or correct score consideration
+- Any odds movement? (line movement towards underdog = sharp money)
+
+═══════════════════════════════════════════
+STEP 2: RED FLAG ELIMINATIONS
+═══════════════════════════════════════════
+
+IMMEDIATELY DISCARD any match where:
+✗ The favourite has already secured title/promotion/safety AND the game is meaningless to them
+✗ The favourite has a Cup Final or major European game within 5 days (rotation risk is near certain)
+✗ The match is between two teams who are both safe, both mid-table, and neither has pride or derby motivation
+✗ You cannot construct a clear, evidence-based reason WHY the predicted outcome happens
+✗ The only reason to pick it is "they have better odds" or "they are the bigger club" with no contextual support
+
+═══════════════════════════════════════════
+STEP 3: PICK THE BEST MARKET PER MATCH (not just 1X2)
+═══════════════════════════════════════════
+
+After selecting a match that passes your investigation, choose the MOST LOGICAL market — not the default:
+- **1X2 Win**: Only when motivation is clear and the team has genuine need to win
+- **Double Chance (1X or X2)**: When the favourite might draw due to complacency/rotation but unlikely to lose
+- **Over/Under Goals**: When both teams NEED goals (chasing wins, must score) OR both teams are defensively solid (under)
+- **BTTS Yes**: When both teams have attacking obligation (e.g. both chasing wins, or derby matches)  
+- **BTTS No**: When one team is likely to keep a clean sheet (dominant home team vs relegated side)
+- **Asian Handicap**: When one team is heavily favoured but exact victory margin is predictable
+- **Underdog Win**: ONLY when you have a compelling specific reason (motivation reversal, rotation by opponent, form gap hidden by table position, historical head-to-head pattern)
+
+═══════════════════════════════════════════
+STEP 4: BUILD THE ACCUMULATOR
+═══════════════════════════════════════════
+
+Select 1–5 picks where ALL individual odds multiplied together = STRICTLY between 3.00 and 4.20.
+- Use the EXACT bookmaker odds provided where available (H=/D=/A=)
+- A single match can qualify alone if its odds are in the 3.00–4.20 range
+- 2–3 picks combining to 3.00–4.20 is ideal
+- Quality over quantity: 2 picks you are CERTAIN about beats 5 picks that are guesses
+- For confidence: "High" = you have 3+ strong contextual reasons; "Medium" = 1–2 reasons; never output a pick with no real reason
+
+═══════════════════════════════════════════
+AVAILABLE MATCHES FOR ${today}:
+═══════════════════════════════════════════
+${matchList || 'No specific match data available — use your football knowledge for this date'}
+
+═══════════════════════════════════════════
+OUTPUT FORMAT — Return ONLY valid JSON, no markdown, no explanation outside JSON:
+═══════════════════════════════════════════
+[
+  {
+    "homeTeam": "...",
+    "awayTeam": "...",
+    "league": "...",
+    "matchTime": "ISO 8601 string",
+    "pick": "...",
+    "market": "1X2 | Double Chance | Over/Under | BTTS | Asian Handicap | ...",
+    "odds": 1.87,
+    "confidence": "High | Medium",
+    "reasoning": "Specific contextual reasoning: what each team needs, motivation level, any rotation/suspension risk, why THIS market, why THIS outcome. Minimum 2 sentences."
+  }
+]`;
 
       const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: process.env.OPENAI_MODEL || 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 1200,
+        max_completion_tokens: 2500,
       });
 
       const raw = completion.choices?.[0]?.message?.content || '[]';
