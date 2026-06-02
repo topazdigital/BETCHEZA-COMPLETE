@@ -324,41 +324,137 @@ function mapPostRows(rows: PostRow[], likedSet: Set<string>): FeedPost[] {
   }));
 }
 
+// ─── COMMUNITY POST SEEDER ────────────────────────────────────────────────────
+// Keeps the community feed lively by generating posts from fake tipsters'
+// auto_tips when the feed_posts table is empty.
+
+const gSeed = globalThis as { __feedSeededAt?: number };
+const SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // Re-seed at most every 6 hours
+
+const POST_TEMPLATES = [
+  (match: string, pick: string, odds: string) => `Backing ${pick} in ${match} 🔥 Odds at ${odds} — let's get it! #tips`,
+  (match: string, pick: string, odds: string) => `My tip for ${match}: ${pick} @ ${odds} 📊 Looking solid today`,
+  (match: string, pick: string, odds: string) => `${match} → going with ${pick} here. ${odds} is great value! ⚽`,
+  (match: string, pick: string, odds: string) => `Lock it in: ${pick} | ${match} | ${odds} 🎯 #footballtips`,
+  (match: string, pick: string, odds: string) => `Hot tip: ${pick} in ${match}. Confidence is HIGH 💪 Odds: ${odds}`,
+  (match: string, pick: string, odds: string) => `Analysis done. ${pick} in ${match} @ ${odds}. Don't miss this one 🚀`,
+  (match: string, pick: string, odds: string) => `${pick} for ${match}. Form says this is the play. ${odds} 📈 #valuebets`,
+  (match: string, pick: string, odds: string) => `Dropping this pick: ${pick} | ${match} | ${odds} — should be a banker ✅`,
+];
+
+async function seedCommunityPostsFromTips(): Promise<boolean> {
+  if (!hasDb()) return false;
+  const now = Date.now();
+  if (gSeed.__feedSeededAt && now - gSeed.__feedSeededAt < SEED_INTERVAL_MS) return false;
+  gSeed.__feedSeededAt = now;
+
+  try {
+    const tips = await query<{
+      tipster_id: number;
+      match_title: string;
+      pick: string;
+      odds: number;
+    }>(
+      `SELECT at.tipster_id, at.match_title, at.pick, at.odds
+       FROM auto_tips at
+       WHERE at.tipster_id >= 1000
+         AND at.status = 'pending'
+         AND at.kickoff >= NOW()
+         AND at.kickoff <= DATE_ADD(NOW(), INTERVAL 5 DAY)
+       GROUP BY at.tipster_id, at.match_title
+       ORDER BY at.kickoff ASC, RAND()
+       LIMIT 40`,
+      [],
+    );
+
+    if (tips.rows.length === 0) return false;
+
+    const { getFakeTipsterById } = await import('./fake-tipsters');
+
+    for (const tip of tips.rows) {
+      const ft = getFakeTipsterById(tip.tipster_id);
+      if (!ft) continue;
+
+      // Deterministic post ID so INSERT IGNORE prevents duplicates on re-seed
+      const slug = tip.match_title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16);
+      const postId = `fp_${tip.tipster_id}_${slug}`;
+
+      const tplIdx = (tip.tipster_id + tip.match_title.length) % POST_TEMPLATES.length;
+      const content = POST_TEMPLATES[tplIdx](
+        tip.match_title,
+        tip.pick,
+        Number(tip.odds).toFixed(2),
+      );
+
+      const hoursAgo = (tip.tipster_id % 20) + 1;
+      const likes = Math.floor((tip.tipster_id % 18) + Math.random() * 8);
+
+      await query(
+        `INSERT IGNORE INTO feed_posts
+          (id, user_id, author_name, author_avatar, content, match_id, match_title,
+           pick, odds, image_url, room_id, likes, comment_count, created_at)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0,
+           DATE_SUB(NOW(), INTERVAL ? HOUR))`,
+        [
+          postId, tip.tipster_id, ft.displayName, ft.avatar || null,
+          content, tip.match_title.slice(0, 255), tip.pick,
+          Number(tip.odds), likes, hoursAgo,
+        ],
+      ).catch(() => {});
+    }
+    return true;
+  } catch (e) {
+    console.warn('[feed] seedCommunityPostsFromTips error:', e);
+    gSeed.__feedSeededAt = 0; // Allow retry on next request
+    return false;
+  }
+}
+
+const POSTS_QUERY = (limit: number) => ({
+  withHashtags: `
+    SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
+           fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
+           fp.room_id,
+           fp.likes, fp.comment_count, fp.created_at,
+           u.role AS author_role, u.username AS author_username,
+           GROUP_CONCAT(fh.tag ORDER BY fh.id SEPARATOR ',') AS hashtags
+    FROM feed_posts fp
+    LEFT JOIN users u ON u.id = fp.user_id
+    LEFT JOIN feed_hashtags fh ON fh.post_id = fp.id
+    GROUP BY fp.id
+    ORDER BY fp.created_at DESC LIMIT ${limit}`,
+  withoutHashtags: `
+    SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
+           fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
+           NULL AS room_id,
+           fp.likes, fp.comment_count, fp.created_at,
+           u.role AS author_role, u.username AS author_username,
+           NULL AS hashtags
+    FROM feed_posts fp
+    LEFT JOIN users u ON u.id = fp.user_id
+    ORDER BY fp.created_at DESC LIMIT ${limit}`,
+});
+
 export async function listPosts(limit = 50, viewerId?: number | null): Promise<FeedPost[]> {
   if (hasDb()) {
     try {
-      let r = await query<PostRow>(
-        `SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
-                 fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
-                 fp.room_id,
-                 fp.likes, fp.comment_count, fp.created_at,
-                 u.role AS author_role, u.username AS author_username,
-                 GROUP_CONCAT(fh.tag ORDER BY fh.id SEPARATOR ',') AS hashtags
-          FROM feed_posts fp
-          LEFT JOIN users u ON u.id = fp.user_id
-          LEFT JOIN feed_hashtags fh ON fh.post_id = fp.id
-          GROUP BY fp.id
-          ORDER BY fp.created_at DESC LIMIT ?`,
-        [limit],
-      ).catch(async (e: { code?: string }) => {
+      const q = POSTS_QUERY(limit);
+      let r = await query<PostRow>(q.withHashtags, []).catch(async (e: { code?: string }) => {
         if (e?.code === 'ER_NO_SUCH_TABLE') {
           console.log('[feed] feed_hashtags table missing — creating it now');
           await ensureFeedHashtagsTable().catch(() => {});
-          return query<PostRow>(
-            `SELECT fp.id, fp.user_id, fp.author_name, fp.author_avatar, fp.content,
-                     fp.match_id, fp.match_title, fp.pick, fp.odds, fp.image_url,
-                     NULL AS room_id,
-                     fp.likes, fp.comment_count, fp.created_at,
-                     u.role AS author_role, u.username AS author_username,
-                     NULL AS hashtags
-              FROM feed_posts fp
-              LEFT JOIN users u ON u.id = fp.user_id
-              ORDER BY fp.created_at DESC LIMIT ?`,
-            [limit],
-          );
+          return query<PostRow>(q.withoutHashtags, []);
         }
         throw e;
       });
+
+      if (r.rows.length === 0) {
+        // Feed is empty — seed activity from fake tipsters and re-query
+        const seeded = await seedCommunityPostsFromTips();
+        if (seeded) {
+          r = await query<PostRow>(q.withHashtags, []).catch(() => ({ rows: [] as PostRow[] }));
+        }
+      }
 
       if (r.rows.length > 0) {
         let likedSet = new Set<string>();

@@ -108,9 +108,15 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
   const minTipsRule = (comp.ruleConfig ?? []).find((r: { type: string }) => r.type === 'min_tips');
   const minTipsRequired = minTipsRule ? Number((minTipsRule as { value?: number }).value ?? 1) : 1;
 
+  // Show a leaderboard preview even for upcoming competitions when they are
+  // scoped to a league or specific kickoff window — fake tipsters already have
+  // picks for those matches, so there is real data to display.
+  const isLeagueScopedComp = !!(comp.leagueId || comp.leagueName || comp.matchKickoffFrom);
+  const shouldComputeLeaderboard = started || isLeagueScopedComp;
+
   const [currentUser, leaderboard] = await Promise.all([
     getCurrentUser(),
-    started
+    shouldComputeLeaderboard
       ? computeLeaderboard({
           startDate: comp.startDate,
           endDate: comp.endDate,
@@ -121,7 +127,9 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           matchKickoffTo: comp.matchKickoffTo,
           minTips: 1,
           limit: 500,
-          allowedUserIds: joinedUserIds,
+          // For upcoming comps: don't restrict to joined users — show anyone
+          // with qualifying tips so visitors can see activity before joining.
+          allowedUserIds: started ? joinedUserIds : null,
         })
       : Promise.resolve([]),
   ]);

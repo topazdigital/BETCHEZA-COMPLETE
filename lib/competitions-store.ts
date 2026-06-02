@@ -503,7 +503,24 @@ export async function updateCompetition(id: number, patch: Partial<NewCompetitio
   const rawStatus = patch.status !== undefined ? patch.status : cur.status;
   const dbStatus = rawStatus === 'completed' ? 'finished' : rawStatus;
 
-  await execute(`
+  const pName        = patch.name ?? cur.name;
+  const pDesc        = patch.description ?? cur.description;
+  const pStart       = patch.startDate ?? cur.startDate;
+  const pEnd         = patch.endDate ?? cur.endDate;
+  const pPool        = patch.prizePool !== undefined ? Number(patch.prizePool) : cur.prizePool;
+  const pFee         = patch.entryFee !== undefined ? Number(patch.entryFee) : cur.entryFee;
+  const pMax         = patch.maxParticipants !== undefined ? Number(patch.maxParticipants) : cur.maxParticipants;
+  const pType        = patch.type ?? cur.type;
+  const pSport       = patch.sportFocus ?? cur.sportFocus;
+  const pLeagueId    = patch.leagueId !== undefined ? (patch.leagueId ?? null) : (cur.leagueId ?? null);
+  const pLeagueName  = patch.leagueName !== undefined ? (patch.leagueName ?? null) : (cur.leagueName ?? null);
+  const pCurrency    = patch.currency ?? cur.currency;
+  const pKickFrom    = patch.matchKickoffFrom !== undefined ? (patch.matchKickoffFrom ?? null) : (cur.matchKickoffFrom ?? null);
+  const pKickTo      = patch.matchKickoffTo !== undefined ? (patch.matchKickoffTo ?? null) : (cur.matchKickoffTo ?? null);
+  const pRoundBased  = patch.roundBased !== undefined ? (patch.roundBased ? 1 : 0) : (cur.roundBased ? 1 : 0);
+  const pRuleConfig  = patch.ruleConfig ? JSON.stringify(patch.ruleConfig) : (cur.ruleConfig ? JSON.stringify(cur.ruleConfig) : null);
+
+  const upd = await execute(`
     UPDATE competitions SET
       name = ?,
       description = ?,
@@ -526,30 +543,33 @@ export async function updateCompetition(id: number, patch: Partial<NewCompetitio
       rule_config = ?
     WHERE id = ?
   `, [
-    patch.name ?? cur.name,
-    patch.description ?? cur.description,
-    patch.startDate ?? cur.startDate,
-    patch.endDate ?? cur.endDate,
-    patch.prizePool !== undefined ? Number(patch.prizePool) : cur.prizePool,
-    patch.entryFee !== undefined ? Number(patch.entryFee) : cur.entryFee,
-    patch.maxParticipants !== undefined ? Number(patch.maxParticipants) : cur.maxParticipants,
-    dbStatus,
-    JSON.stringify(rules),
-    patch.type ?? cur.type,
-    patch.sportFocus ?? cur.sportFocus,
-    patch.leagueId !== undefined ? (patch.leagueId ?? null) : (cur.leagueId ?? null),
-    patch.leagueName !== undefined ? (patch.leagueName ?? null) : (cur.leagueName ?? null),
-    patch.currency ?? cur.currency,
-    JSON.stringify(prizes),
-    patch.matchKickoffFrom !== undefined ? (patch.matchKickoffFrom ?? null) : (cur.matchKickoffFrom ?? null),
-    patch.matchKickoffTo !== undefined ? (patch.matchKickoffTo ?? null) : (cur.matchKickoffTo ?? null),
-    patch.roundBased !== undefined ? (patch.roundBased ? 1 : 0) : (cur.roundBased ? 1 : 0),
-    patch.ruleConfig ? JSON.stringify(patch.ruleConfig) : (cur.ruleConfig ? JSON.stringify(cur.ruleConfig) : null),
+    pName, pDesc, pStart, pEnd, pPool, pFee, pMax,
+    dbStatus, JSON.stringify(rules), pType, pSport, pLeagueId, pLeagueName,
+    pCurrency, JSON.stringify(prizes), pKickFrom, pKickTo, pRoundBased, pRuleConfig,
     id,
   ]);
 
+  let realId = id;
+
+  if (upd.affectedRows === 0) {
+    // Competition only exists in memory (e.g. seeded before DB was available).
+    // Insert it into DB now so the edit is persisted and future edits work correctly.
+    const ins = await execute(`
+      INSERT INTO competitions
+        (name, description, start_date, end_date, prize_pool, entry_fee, max_participants,
+         status, rules, type, sport_focus, league_id, league_name, currency,
+         prize_breakdown, slug, match_kickoff_from, match_kickoff_to, round_based, rule_config, kicked_users)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `, [
+      pName, pDesc, pStart, pEnd, pPool, pFee, pMax,
+      dbStatus, JSON.stringify(rules), pType, pSport, pLeagueId, pLeagueName,
+      pCurrency, JSON.stringify(prizes), cur.slug, pKickFrom, pKickTo, pRoundBased, pRuleConfig,
+    ]);
+    realId = ins.insertId;
+  }
+
   invalidateCache();
-  return getCompetitionByIdAsync(id) as Promise<Competition>;
+  return (await getCompetitionByIdAsync(realId)) ?? null;
 }
 
 export async function deleteCompetition(id: number): Promise<boolean> {

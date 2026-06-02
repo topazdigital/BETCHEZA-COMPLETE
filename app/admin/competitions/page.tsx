@@ -19,6 +19,7 @@ interface AdminCompetition {
   id: number
   slug: string
   name: string
+  description?: string
   type: string
   status: 'upcoming' | 'active' | 'completed'
   endDate: string
@@ -323,7 +324,7 @@ export default function AdminCompetitionsPage() {
     const toLocal = (iso: string | null | undefined) =>
       iso ? new Date(iso).toISOString().slice(0, 16) : ''
     setEditForm({
-      name: c.name, description: '',
+      name: c.name, description: c.description || '',
       status: c.status, entryFee: String(c.entryFee),
       prizePool: String(c.prizePool), maxParticipants: String(c.maxParticipants),
       startDate: toLocal(c.startDate), endDate: toLocal(c.endDate), currency: c.currency || 'KES',
