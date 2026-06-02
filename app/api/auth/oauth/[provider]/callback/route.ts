@@ -177,8 +177,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   if (!profile?.providerId) return await errorRedirect(req, `${p}_profile_failed`);
 
   const oauthOpts = { provider: p, providerId: profile.providerId, email: profile.email, name: profile.name, avatarUrl: profile.avatarUrl };
-  const user = await dbFindOrCreate(oauthOpts);
-  if (!user) return await errorRedirect(req, `${p}_db_unavailable`);
+  let user = await dbFindOrCreate(oauthOpts);
+  if (!user) {
+    // DB unavailable — fall back to local file store so OAuth still works
+    console.warn(`[oauth-callback] DB unavailable for ${p} login, using local fallback`);
+    user = localFindOrCreate(oauthOpts);
+  }
 
   await setAuthCookie({ userId: user.id, email: user.email, role: user.role });
 
