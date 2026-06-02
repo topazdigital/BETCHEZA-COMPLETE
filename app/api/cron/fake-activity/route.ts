@@ -26,6 +26,7 @@ function hasLiveOdds(
   markets?: Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }> | null,
 ): boolean {
   const p = pick.toLowerCase();
+  const isOverPick = p.startsWith('over ');
 
   // Check market selections first
   if (markets && markets.length > 0) {
@@ -37,7 +38,8 @@ function hasLiveOdds(
           (p === 'away win' && (sl === 'away' || sl === '2' || sl === 'away win')) ||
           (p === 'draw' && (sl === 'draw' || sl === 'x')) ||
           (p === 'both teams score' && (sl === 'yes' || sl === 'btts yes' || sl.includes('both teams'))) ||
-          (p === 'over 2.5 goals' && (sl === 'over 2.5' || sl === 'over' || sl.includes('over 2.5')))
+          // Generic "Over X.Y [unit]" — match any over/totals selection
+          (isOverPick && (sl === 'over' || sl.startsWith('over ')))
         ) {
           if (sel.odds >= 1.01) return true;
         }
@@ -61,6 +63,7 @@ function resolveOddsForPick(
   markets?: Array<{ key?: string; name: string; selections: Array<{ label: string; odds: number }> }> | null,
 ): number {
   const p = pick.toLowerCase();
+  const isOverPick = p.startsWith('over ');
 
   // 1. Try to match pick against market selections first (most accurate)
   if (markets && markets.length > 0) {
@@ -72,7 +75,8 @@ function resolveOddsForPick(
           (p === 'away win' && (sl === 'away' || sl === '2' || sl === 'away win')) ||
           (p === 'draw' && (sl === 'draw' || sl === 'x')) ||
           (p === 'both teams score' && (sl === 'yes' || sl === 'btts yes' || sl.includes('both teams'))) ||
-          (p === 'over 2.5 goals' && (sl === 'over 2.5' || sl === 'over' || sl.includes('over 2.5')))
+          // Generic "Over X.Y [unit]" — match any over/totals selection
+          (isOverPick && (sl === 'over' || sl.startsWith('over ')))
         ) {
           if (sel.odds >= 1.01) return sel.odds;
         }
@@ -94,7 +98,15 @@ function resolveOddsForPick(
     'draw': 3.20,
     'over 2.5 goals': 1.75,
     'both teams score': 1.85,
+    'over 8.5 runs': 1.82,
+    'over 215.5 points': 1.88,
+    'over 5.5 goals': 1.80,
+    'over 47.5 points': 1.85,
+    'over 22.5 games': 1.78,
+    'over 150.5 points': 1.84,
   };
+  // Any other "Over X.Y [unit]" totals pick — realistic default
+  if (isOverPick && !(p in base)) return 1.82;
   return base[p] ?? 2.00;
 }
 
@@ -123,6 +135,31 @@ function smartPick(matchId: string, homeTeam: string, awayTeam: string, sport?: 
 
   const allowDraw = !NO_DRAW_SPORTS.has(sport || '');
 
+  // Sport-specific totals line and language
+  const sportSlug = (sport || '').toLowerCase().replace(/[\s_-]/g, '');
+  let totalsLine = 'Over 2.5 Goals';
+  let totalsRationale = `High-scoring encounters characterise this fixture.`;
+  let bttsRationale = `Both attacks are in form — expect goals at both ends.`;
+  if (sportSlug === 'baseball' || sportSlug === 'mlb') {
+    totalsLine = 'Over 8.5 Runs';
+    totalsRationale = `Both offences have been productive — expect a high-scoring game.`;
+  } else if (sportSlug === 'basketball' || sportSlug === 'nba' || sportSlug === 'ncaab') {
+    totalsLine = 'Over 215.5 Points';
+    totalsRationale = `Fast pace and strong offences should push the total over.`;
+  } else if (sportSlug === 'hockey' || sportSlug === 'nhl' || sportSlug === 'icehockey') {
+    totalsLine = 'Over 5.5 Goals';
+    totalsRationale = `Open, attacking hockey predicted — both goalies have been shaky.`;
+  } else if (sportSlug === 'americanfootball' || sportSlug === 'nfl' || sportSlug === 'ncaaf') {
+    totalsLine = 'Over 47.5 Points';
+    totalsRationale = `Both offences are in rhythm and defences have been leaky.`;
+  } else if (sportSlug === 'tennis') {
+    totalsLine = 'Over 22.5 Games';
+    totalsRationale = `Closely matched players — expect a long competitive match.`;
+  } else if (sportSlug === 'volleyball') {
+    totalsLine = 'Over 150.5 Points';
+    totalsRationale = `Both sides are strong attackers — high-scoring rally play expected.`;
+  }
+
   // Weighted pick table
   type WPick = { pick: string; weight: number; rationale: string };
   const table: WPick[] = allowDraw
@@ -130,13 +167,13 @@ function smartPick(matchId: string, homeTeam: string, awayTeam: string, sport?: 
         { pick: 'Home Win',          weight: 42, rationale: `${homeTeam} have strong home form and H2H advantage.` },
         { pick: 'Draw',              weight: 24, rationale: `Both sides are evenly matched — a draw looks likely.` },
         { pick: 'Away Win',          weight: 22, rationale: `${awayTeam} travel well and their recent form is excellent.` },
-        { pick: 'Both Teams Score',  weight:  7, rationale: `Both attacks are in form — expect goals at both ends.` },
-        { pick: 'Over 2.5 Goals',    weight:  5, rationale: `High-scoring encounters characterise this fixture.` },
+        { pick: 'Both Teams Score',  weight:  7, rationale: bttsRationale },
+        { pick: totalsLine,          weight:  5, rationale: totalsRationale },
       ]
     : [
         { pick: 'Home Win',          weight: 52, rationale: `${homeTeam} are heavy favourites on home turf.` },
         { pick: 'Away Win',          weight: 38, rationale: `${awayTeam} are the stronger side on paper.` },
-        { pick: 'Over 2.5 Goals',    weight: 10, rationale: `High-scoring encounters in this competition.` },
+        { pick: totalsLine,          weight: 10, rationale: totalsRationale },
       ];
 
   const total = table.reduce((s, x) => s + x.weight, 0);

@@ -5,6 +5,7 @@ import {
   settleTipsByTeamNames,
   settleStaleAutoTips,
   bulkResettleWithRealData,
+  fixSportSpecificMarkets,
   type TipMatchData,
 } from '@/lib/auto-tips-store';
 import { getMatchById, getAllMatches } from '@/lib/api/unified-sports-api';
@@ -124,6 +125,11 @@ export async function GET(req: Request) {
         settleTipsByTeamNames(m.homeTeam.name, m.awayTeam.name, m.homeScore, m.awayScore, md);
       }
     }
+    // Fix any tips that have sport-inappropriate markets (e.g. Double Chance on baseball)
+    // before settling, so the settlement logic receives correct market/prediction data.
+    const marketFixed = fixSportSpecificMarkets();
+    if (marketFixed > 0) console.log(`[settle-tips] sport-market fix: ${marketFixed} tips normalised`);
+
     // Bulk-resettle ALL tips (pending, probabilistic, or previously wrong) using full data
     const corrected = bulkResettleWithRealData(fullRealResults, now);
     console.log(`[settle-tips] bulk-resettle corrected: ${corrected} tips`);

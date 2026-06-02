@@ -104,6 +104,38 @@ function normTeam(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// Sports that never end in a draw — Double Chance / BTTS / Draw markets are invalid for these
+const NO_DRAW_SPORTS = new Set([
+  'basketball', 'tennis', 'baseball', 'hockey', 'mma', 'boxing',
+  'american-football', 'americanfootball', 'nfl', 'nba', 'mlb', 'nhl',
+  'volleyball', 'darts', 'snooker', 'esports',
+]);
+
+function isNoDrawSport(sport?: string): boolean {
+  if (!sport) return false;
+  const s = sport.toLowerCase().replace(/[\s_-]/g, '');
+  return NO_DRAW_SPORTS.has(s);
+}
+
+/**
+ * Returns true if the market is appropriate for the given sport.
+ * Prevents soccer-specific markets (Double Chance, BTTS, etc.) being used
+ * for no-draw sports like baseball, basketball, tennis, hockey.
+ */
+function isSportAppropriateMarket(sport: string | undefined, marketName: string, marketKey?: string): boolean {
+  if (!sport || !isNoDrawSport(sport)) return true; // soccer/rugby/cricket: all markets OK
+  const mn = marketName.toLowerCase();
+  const mk = (marketKey || '').toLowerCase();
+  // These markets require draws or are soccer-specific — not valid for no-draw sports
+  if (mk === 'dc' || mn.includes('double chance')) return false;
+  if (mk === 'btts' || mn.includes('both teams to score') || mn === 'btts') return false;
+  if (mn.includes('clean sheet') || mn.includes('win to nil')) return false;
+  if (mn.includes('draw no bet') || mk === 'dnb') return false;
+  if (mn.includes('correct score') || mn.includes('exact score')) return false;
+  if (mn.includes('half-time') && mn.includes('full-time')) return false;
+  return true;
+}
+
 function applyKnownResults(tips: GeneratedTip[]): boolean {
   let changed = false;
   for (const tip of tips) {
@@ -115,7 +147,7 @@ function applyKnownResults(tips: GeneratedTip[]): boolean {
       const homeMatch = th === kh || kh.includes(th) || th.includes(kh);
       const awayMatch = ta === ka || ka.includes(ta) || ta.includes(ka);
       if (homeMatch && awayMatch) {
-        const outcome = determineTipOutcome(tip.prediction, kr.homeScore, kr.awayScore, tip.market);
+        const outcome = determineTipOutcome(tip.prediction, kr.homeScore, kr.awayScore, tip.market, undefined, tip.sport);
         if (outcome && outcome !== tip.status) {
           tip.status = outcome;
           tip.settledByProb = false;
@@ -253,7 +285,7 @@ export function addKnownResult(
       const homeMatch = th === kh || kh.includes(th) || th.includes(kh);
       const awayMatch = ta === ka || ka.includes(ta) || ta.includes(ka);
       if (homeMatch && awayMatch) {
-        const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
+        const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData, tip.sport);
         if (outcome && outcome !== tip.status) {
           tip.status = outcome;
           tip.settledByProb = false;
@@ -456,9 +488,18 @@ export function seedTipsForMatch(ctx: MatchContext): GeneratedTip[] {
     let odds: number;
 
     if (ctx.markets && ctx.markets.length > 0) {
-      // Use real bookmaker market odds only
-      const m = ctx.markets[Math.floor(r() * ctx.markets.length)];
-      const sel = m.selections[Math.floor(r() * m.selections.length)];
+      // Use real bookmaker market odds — filter to sport-appropriate markets only
+      // (prevents Double Chance / BTTS / Draw markets being used for baseball/basketball/tennis)
+      const sportSlug = (ctx.sport || '').toLowerCase();
+      const suitableMarkets = ctx.markets.filter(mk =>
+        isSportAppropriateMarket(sportSlug, mk.name, mk.key) &&
+        mk.selections && mk.selections.length > 0 &&
+        mk.selections.some(s => s.odds > 1.01)
+      );
+      const marketsPool = suitableMarkets.length > 0 ? suitableMarkets : ctx.markets;
+      const m = marketsPool[Math.floor(r() * marketsPool.length)];
+      const validSels = m.selections.filter(s => s.odds > 1.01);
+      const sel = (validSels.length > 0 ? validSels : m.selections)[Math.floor(r() * (validSels.length || m.selections.length))];
       prediction = sel.label;
       market = m.name;
       marketKey = m.key;
@@ -724,11 +765,18 @@ function determineTipOutcome(
   awayScore: number,
   market?: string,
   matchData?: TipMatchData,
+  sport?: string,
 ): 'won' | 'lost' | null {
   const total = homeScore + awayScore;
-  // Normalise: lowercase, collapse multiple spaces, strip leading/trailing whitespace
-  const pred = prediction.toLowerCase().replace(/\s+/g, ' ').trim();
   const mkt = (market || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  // Normalise prediction: lowercase, collapse spaces, strip "marketKey:" prefix
+  // (fake-activity cron stores predictions as "dc:Away or Draw" — strip the "dc:" part)
+  let rawPred = prediction.toLowerCase().replace(/\s+/g, ' ').trim();
+  const prefixEnd = rawPred.indexOf(':');
+  if (prefixEnd > 0 && prefixEnd <= 8 && !/^\d/.test(rawPred)) {
+    rawPred = rawPred.slice(prefixEnd + 1).trim();
+  }
+  const pred = rawPred;
 
   // ── Half-Time Result ─────────────────────────────────────────────────────
   // Must come FIRST — before 1X2 — because HT markets may use "draw", "home win" etc.
@@ -1243,7 +1291,7 @@ export function settleStaleAutoTips(
         }
 
         if (!real) continue;
-        const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
+        const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real, tip.sport);
         if (outcome && (outcome !== tip.status || tip.settledByProb)) {
           tip.status = outcome;
           tip.settledByProb = false;
@@ -1286,7 +1334,7 @@ export function settleStaleAutoTips(
 
       // Use real match result if available (exact or fuzzy matched)
       if (real2) {
-        const outcome = determineTipOutcome(tip.prediction, real2.homeScore, real2.awayScore, tip.market, real2);
+        const outcome = determineTipOutcome(tip.prediction, real2.homeScore, real2.awayScore, tip.market, real2, tip.sport);
         if (outcome) { tip.status = outcome; tip.settledByProb = false; changed = true; continue; }
       }
 
@@ -1337,7 +1385,10 @@ export function settleStaleAutoTips(
         mktLow.includes('team to score') || mktLow.includes('to score') ||
         // Odd/Even goals — 50/50, win rate irrelevant
         mktLow.includes('odd/even') || mktLow.includes('odd or even') ||
-        predLow === 'odd' || predLow === 'even';
+        predLow === 'odd' || predLow === 'even' ||
+        // Double Chance (1X / X2 / 12) — directional market: win rate doesn't tell you
+        // which direction the tipster backed. Must always settle from real scores.
+        mktLow.includes('double chance') || mktLow === 'dc';
       if (needsRealData) continue; // leave pending — real data will settle these correctly
 
       // Fallback: probabilistic using tipster win rate — ONLY for simple 1X2 / match winner
@@ -1405,7 +1456,7 @@ export function bulkResettleWithRealData(
         continue;
       }
 
-      const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real);
+      const outcome = determineTipOutcome(tip.prediction, real.homeScore, real.awayScore, tip.market, real, tip.sport);
       if (!outcome) continue; // cannot determine — leave as-is (HT with no HT data, etc.)
 
       if (outcome !== tip.status || tip.settledByProb) {
@@ -1446,7 +1497,7 @@ export function settleTipWithResult(matchId: string, homeScore: number, awayScor
       changed = true;
       continue;
     }
-    const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
+    const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData, tip.sport);
     if (outcome && outcome !== tip.status) {
       tip.status = outcome;
       tip.settledByProb = false;
@@ -1489,7 +1540,7 @@ export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeSc
         changed = true;
         continue;
       }
-      const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData);
+      const outcome = determineTipOutcome(tip.prediction, homeScore, awayScore, tip.market, matchData, tip.sport);
       if (outcome && outcome !== tip.status) {
         tip.status = outcome;
         tip.settledByProb = false;
@@ -1507,6 +1558,105 @@ export function settleTipsByTeamNames(homeTeam: string, awayTeam: string, homeSc
       for (const t of list) updates.push({ id: t.id, status: t.status, settledByProb: !!t.settledByProb });
     syncStatusesToDb(updates);
   }
+}
+
+/**
+ * Fix existing auto-tips that have sport-inappropriate markets.
+ * For no-draw sports (baseball, basketball, tennis, hockey) with soccer-specific markets:
+ *  - Double Chance X2 → normalized to "Away Win" Moneyline (same settlement direction)
+ *  - Double Chance 1X → normalized to "Home Win" Moneyline
+ *  - Double Chance 12 → kept (any decisive result = always true in no-draw sports)
+ *  - BTTS / Draw No Bet for no-draw sports → voided (market doesn't apply)
+ * All affected tips that were probabilistically (incorrectly) settled are reset to
+ * pending so the next settle-tips cron run can re-settle them with real scores.
+ * Returns count of tips modified.
+ */
+export function fixSportSpecificMarkets(): number {
+  let fixed = 0;
+  for (const list of stores.byMatch.values()) {
+    for (const tip of list) {
+      if (!tip.sport || !isNoDrawSport(tip.sport)) continue;
+      const mktLow = tip.market.toLowerCase();
+      const mkLow = (tip.marketKey || '').toLowerCase();
+
+      // Fix: Double Chance for no-draw sports
+      if (mkLow === 'dc' || mktLow.includes('double chance')) {
+        let predLow = tip.prediction.toLowerCase().trim();
+        // Strip market key prefix (e.g., "dc:Away or Draw" → "Away or Draw")
+        if (predLow.indexOf(':') > 0 && predLow.indexOf(':') <= 8) {
+          predLow = predLow.slice(predLow.indexOf(':') + 1).trim();
+        }
+        const isX2 = predLow === 'x2' || predLow === 'away or draw' ||
+          predLow === 'away/draw' || predLow.includes('away or draw') ||
+          (predLow.includes('away') && predLow.includes('draw'));
+        const is1X = predLow === '1x' || predLow === 'home or draw' ||
+          predLow === 'home/draw' || predLow.includes('home or draw') ||
+          (predLow.includes('home') && predLow.includes('draw') && !predLow.includes('away'));
+        // 12 (Home or Away, either wins) — valid in no-draw sports, just rename to Moneyline Either
+        const is12 = predLow === '12' || predLow === 'home or away' || predLow === '1 or 2';
+
+        if (isX2) {
+          tip.market = 'Moneyline';
+          tip.marketKey = 'h2h';
+          tip.prediction = 'Away Win';
+          // Reset to pending if it was prob-settled (so real data can re-settle it)
+          if (tip.settledByProb || tip.status === 'pending') {
+            tip.status = 'pending';
+            tip.settledByProb = false;
+          }
+          fixed++;
+        } else if (is1X) {
+          tip.market = 'Moneyline';
+          tip.marketKey = 'h2h';
+          tip.prediction = 'Home Win';
+          if (tip.settledByProb || tip.status === 'pending') {
+            tip.status = 'pending';
+            tip.settledByProb = false;
+          }
+          fixed++;
+        } else if (is12) {
+          // 12 (Home or Away wins) = always won in no-draw sports — keep as Double Chance 12
+          // so determineTipOutcome still hits the "homeScore !== awayScore" check correctly.
+          // Just reset to pending if prob-settled wrongly.
+          if (tip.settledByProb) {
+            tip.status = 'pending';
+            tip.settledByProb = false;
+            fixed++;
+          }
+        }
+        continue;
+      }
+
+      // Void BTTS for no-draw sports (doesn't make sense — e.g. baseball scoring is different)
+      if (mkLow === 'btts' || mktLow.includes('both teams to score')) {
+        if (tip.status === 'pending' || tip.settledByProb) {
+          tip.status = 'void';
+          tip.settledByProb = false;
+          fixed++;
+        }
+        continue;
+      }
+
+      // Void Draw No Bet for no-draw sports (draw refund doesn't apply)
+      if (mkLow === 'dnb' || mktLow.includes('draw no bet')) {
+        if (tip.status === 'pending' || tip.settledByProb) {
+          tip.status = 'void';
+          tip.settledByProb = false;
+          fixed++;
+        }
+      }
+    }
+  }
+
+  if (fixed > 0) {
+    persist();
+    const updates: Array<{ id: string; status: GeneratedTip['status']; settledByProb: boolean }> = [];
+    for (const list of stores.byMatch.values())
+      for (const t of list) updates.push({ id: t.id, status: t.status, settledByProb: !!t.settledByProb });
+    syncStatusesToDb(updates);
+    console.log(`[auto-tips] fixSportSpecificMarkets: normalised ${fixed} tips`);
+  }
+  return fixed;
 }
 
 export function getKnownFakeTipsters(): FakeTipster[] {
