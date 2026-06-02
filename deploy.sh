@@ -77,7 +77,12 @@ npm install --prefer-offline
 echo -e "${YELLOW}[3/5] Building...${NC}"
 # Clear stale Next.js build cache before every deploy to prevent partial-build
 # artifacts from causing TypeScript or module-resolution failures.
-rm -rf "$APP_DIR/.next"
+# Use || true so a locked/busy file doesn't abort the script (set -e is active).
+rm -rf "$APP_DIR/.next" 2>/dev/null || {
+  echo -e "${YELLOW}  rm -rf .next had issues — retrying with find...${NC}"
+  find "$APP_DIR/.next" -type f -delete 2>/dev/null || true
+  find "$APP_DIR/.next" -type d -empty -delete 2>/dev/null || true
+}
 # Give the build process extra heap — Next.js (especially with turbopack and
 # many routes) can exceed the default 512 MB Node.js limit.
 NODE_OPTIONS='--max-old-space-size=4096' npm run build

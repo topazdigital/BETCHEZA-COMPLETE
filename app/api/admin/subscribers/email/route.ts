@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listEmailSubscribers } from '@/lib/notification-store';
 import { getSiteSettings } from '@/lib/site-settings';
+import { renderTemplate } from '@/lib/mailer';
+import { query } from '@/lib/db';
 import nodemailer from 'nodemailer';
 
 export const dynamic = 'force-dynamic';
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
     allEmails = emailOverride;
   } else {
     const subs = await listEmailSubscribers();
-    allEmails = subs.filter(s => !s.unsubscribedAt).map(s => s.email);
+    allEmails = subs.filter(s => s.active).map(s => s.email);
   }
 
   const totalCount = allEmails.length;
@@ -48,27 +50,51 @@ export async function POST(req: NextRequest) {
   const smtpPass = emailCfg.smtpPass || process.env.SMTP_PASS;
   const fromEmail = emailCfg.fromEmail || process.env.FROM_EMAIL || smtpUser || 'noreply@betcheza.co.ke';
   const fromName = emailCfg.siteName || 'Betcheza';
+  const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
 
   if (!smtpHost || !smtpUser || !smtpPass) {
     return NextResponse.json({ error: 'SMTP not configured. Set SMTP settings in Admin → Settings.' }, { status: 503 });
+  }
+
+  // Build a name lookup map (email → username) for personalisation.
+  // Falls back gracefully if DB is unavailable.
+  const nameMap = new Map<string, string>();
+  try {
+    const placeholders = batch.map(() => '?').join(',');
+    const r = await query<{ email: string; username: string }>(
+      `SELECT email, username FROM users WHERE email IN (${placeholders})`,
+      batch,
+    );
+    for (const row of r.rows) {
+      if (row.email && row.username) nameMap.set(row.email.toLowerCase(), row.username);
+    }
+  } catch {
+    // non-fatal — personalisation falls back to 'there'
   }
 
   const transporter = nodemailer.createTransport({
     host: smtpHost,
     port: smtpPort,
     secure: smtpPort === 465,
+    requireTLS: smtpPort !== 465,
     auth: { user: smtpUser, pass: smtpPass },
+    tls: { rejectUnauthorized: false },
   });
 
   let sent = 0;
   let failed = 0;
   for (const email of batch) {
     try {
+      const name = nameMap.get(email.toLowerCase()) || 'there';
+      const vars: Record<string, string> = { name, email, siteUrl };
+      const renderedSubject = renderTemplate(subject, vars);
+      const renderedHtml = renderTemplate(html, vars);
+
       await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to: email,
-        subject,
-        html,
+        subject: renderedSubject,
+        html: renderedHtml,
       });
       sent++;
     } catch {

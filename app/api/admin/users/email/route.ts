@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { hasPermission } from '@/lib/permissions';
 import { query } from '@/lib/db';
-import { sendMail } from '@/lib/mailer';
+import { sendMail, renderTemplate } from '@/lib/mailer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,25 +31,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, sent: 0, failed: 0, done: true, total: userIds.length });
   }
 
-  // Fetch emails from DB for this batch of IDs
+  // Fetch emails + usernames from DB for this batch of IDs
   const placeholders = batchIds.map(() => '?').join(',');
-  let emails: string[] = [];
+  let users: { email: string; username: string }[] = [];
   try {
-    const r = await query<{ email: string }>(
-      `SELECT email FROM users WHERE id IN (${placeholders}) AND email IS NOT NULL AND email != ''`,
+    const r = await query<{ email: string; username: string }>(
+      `SELECT email, username FROM users WHERE id IN (${placeholders}) AND email IS NOT NULL AND email != ''`,
       batchIds
     );
-    emails = r.rows.map(u => u.email).filter(Boolean);
+    users = r.rows.filter(u => u.email);
   } catch (e) {
     console.error('[admin/users/email] DB lookup failed:', e);
     return NextResponse.json({ success: false, error: 'Failed to fetch user emails' }, { status: 500 });
   }
 
+  const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+
   let sent = 0;
   let failed = 0;
-  for (const to of emails) {
+  for (const u of users) {
     try {
-      const res = await sendMail({ to, subject, html: html || `<p>${text}</p>`, text: text || subject });
+      const vars: Record<string, string> = { name: u.username || 'there', email: u.email, siteUrl };
+      const renderedSubject = renderTemplate(subject, vars);
+      const renderedHtml = renderTemplate(html || `<p>${text}</p>`, vars);
+      const renderedText = renderTemplate(text || subject, vars);
+      const res = await sendMail({ to: u.email, subject: renderedSubject, html: renderedHtml, text: renderedText });
       if (res.ok) sent++;
       else failed++;
     } catch {
