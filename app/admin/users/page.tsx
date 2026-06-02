@@ -120,6 +120,128 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   );
 }
 
+// ─── Email Templates ─────────────────────────────────────────────────────────
+interface EmailTemplate {
+  id: string;
+  label: string;
+  subject: string;
+  body: (name: string) => string;
+}
+
+const EMAIL_TEMPLATES: EmailTemplate[] = [
+  {
+    id: 'welcome',
+    label: '👋 Welcome',
+    subject: 'Welcome to Betcheza — Your Journey Starts Here!',
+    body: (name) => `Hi ${name},
+
+Welcome to Betcheza! We're thrilled to have you join our community of smart football bettors.
+
+Here's what you can do right now:
+• Browse today's AI-powered match predictions
+• Follow top tipsters and see their track records
+• Join challenges and compete with other members
+• Try our 3 Daily Odds Strategy — a 7-day compounding plan
+
+If you have any questions, just reply to this email and we'll help you get started.
+
+Happy betting,
+The Betcheza Team`,
+  },
+  {
+    id: 'strategy_picks',
+    label: '🎯 Strategy Picks Ready',
+    subject: "Today's 3 Daily Odds Picks Are Live — Don't Miss Out",
+    body: (name) => `Hi ${name},
+
+Today's picks for the 3 Daily Odds Strategy are now live on Betcheza!
+
+Our AI has analysed today's matches and selected picks with combined odds between 3.0–4.0. Log in now to see the full analysis and reasoning behind each selection.
+
+👉 View today's picks: https://betcheza.co.ke/strategy
+
+Not yet subscribed? Join for just KES 5,000/week and get access to all 7 days of the compounding plan instantly.
+
+Good luck today,
+The Betcheza Team`,
+  },
+  {
+    id: 'sub_confirm',
+    label: '✅ Subscription Confirmed',
+    subject: 'Your Betcheza Strategy Subscription Is Active',
+    body: (name) => `Hi ${name},
+
+Great news — your subscription to the 3 Daily Odds Strategy is now active!
+
+Your 7-day plan starts today. Here's what to expect:
+• Day 1: KES 1,000 stake → KES 3,000 target
+• Day 7: KES 20,000 stake → KES 60,000 target
+• All picks posted daily with full AI analysis
+
+View your active plan: https://betcheza.co.ke/strategy
+
+Remember, this is an investment strategy — only stake what you're comfortable with. The AI selects the highest-confidence picks each day.
+
+Let's make this week count,
+The Betcheza Team`,
+  },
+  {
+    id: 'sub_expiry',
+    label: '⏰ Subscription Expiring',
+    subject: "Your Betcheza Strategy Subscription Expires Tomorrow",
+    body: (name) => `Hi ${name},
+
+This is a quick reminder that your 3 Daily Odds Strategy subscription expires tomorrow.
+
+To keep access to daily picks and continue your compounding plan, renew now for just KES 5,000/week via M-Pesa.
+
+👉 Renew here: https://betcheza.co.ke/strategy
+
+Don't break the streak — subscribe again and we'll pick up right where you left off.
+
+See you tomorrow,
+The Betcheza Team`,
+  },
+  {
+    id: 'day_win',
+    label: '🏆 Day Won — Congrats',
+    subject: "We Won Today — Day Result Is In! 🎉",
+    body: (name) => `Hi ${name},
+
+Fantastic news — today's 3 Daily Odds picks came through!
+
+All picks settled as wins. Log in to Betcheza to check your returns and see tomorrow's picks.
+
+👉 View results: https://betcheza.co.ke/strategy
+
+Keep compounding — the strategy is working. See you tomorrow for the next day!
+
+The Betcheza Team`,
+  },
+  {
+    id: 'new_feature',
+    label: '🚀 New Feature',
+    subject: "Something New on Betcheza You'll Want to See",
+    body: (name) => `Hi ${name},
+
+We've been working hard to make Betcheza even better, and we're excited to share what's new.
+
+[Describe the new feature here]
+
+Log in and check it out: https://betcheza.co.ke
+
+As always, thank you for being part of the Betcheza community. Your feedback helps us improve every day.
+
+The Betcheza Team`,
+  },
+  {
+    id: 'custom',
+    label: '✏️ Custom (blank)',
+    subject: '',
+    body: () => '',
+  },
+];
+
 // ─── Email / Batch Email Modal ────────────────────────────────────────────────
 function EmailModal({
   userIds,
@@ -130,6 +252,7 @@ function EmailModal({
   targetUser?: AdminUser;
   onClose: () => void;
 }) {
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [batchSize, setBatchSize] = useState(50);
@@ -139,6 +262,16 @@ function EmailModal({
   const [countdown, setCountdown] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isBulk = !targetUser;
+
+  function applyTemplate(templateId: string) {
+    const tpl = EMAIL_TEMPLATES.find(t => t.id === templateId);
+    if (!tpl) return;
+    setSelectedTemplate(templateId);
+    // For single-user emails, use their real name; for bulk use a placeholder
+    const name = targetUser?.displayName || '{{name}}';
+    setSubject(tpl.subject);
+    setBody(tpl.body(name));
+  }
 
   const sendBatch = useCallback(async (batchIndex: number) => {
     setStatus('sending');
@@ -222,13 +355,42 @@ function EmailModal({
         <div className="space-y-3 p-4">
           {status === 'idle' && (
             <>
+              {/* Template selector */}
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Template (optional)</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {EMAIL_TEMPLATES.map(tpl => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => applyTemplate(tpl.id)}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                        selectedTemplate === tpl.id
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-muted/40 text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                      )}
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+                {selectedTemplate && selectedTemplate !== 'custom' && (
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Template loaded — edit the subject and message below as needed.
+                    {!targetUser && ' Replace '}
+                    {!targetUser && <span className="font-mono bg-muted px-1 rounded">{'{{name}}'}</span>}
+                    {!targetUser && ' with each recipient\'s name automatically.'}
+                  </p>
+                )}
+              </div>
               <div>
                 <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Subject *</label>
                 <Input className="h-8 text-xs" placeholder="Email subject..." value={subject} onChange={e => setSubject(e.target.value)} />
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Message *</label>
-                <Textarea className="min-h-[120px] text-xs" placeholder="Write your message here..." value={body} onChange={e => setBody(e.target.value)} />
+                <Textarea className="min-h-[140px] text-xs font-mono" placeholder="Write your message here..." value={body} onChange={e => setBody(e.target.value)} />
               </div>
               {isBulk && (
                 <div className="grid grid-cols-2 gap-2">

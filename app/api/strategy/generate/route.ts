@@ -154,17 +154,26 @@ IMMEDIATELY DISCARD any match where:
 ✗ The only reason to pick it is "they have better odds" or "they are the bigger club" with no contextual support
 
 ═══════════════════════════════════════════
-STEP 3: PICK THE BEST MARKET PER MATCH (not just 1X2)
+STEP 3: PICK THE BEST MARKET PER MATCH — ANY MARKET IS VALID
 ═══════════════════════════════════════════
 
-After selecting a match that passes your investigation, choose the MOST LOGICAL market — not the default:
-- **1X2 Win**: Only when motivation is clear and the team has genuine need to win
-- **Double Chance (1X or X2)**: When the favourite might draw due to complacency/rotation but unlikely to lose
-- **Over/Under Goals**: When both teams NEED goals (chasing wins, must score) OR both teams are defensively solid (under)
-- **BTTS Yes**: When both teams have attacking obligation (e.g. both chasing wins, or derby matches)  
-- **BTTS No**: When one team is likely to keep a clean sheet (dominant home team vs relegated side)
-- **Asian Handicap**: When one team is heavily favoured but exact victory margin is predictable
-- **Underdog Win**: ONLY when you have a compelling specific reason (motivation reversal, rotation by opponent, form gap hidden by table position, historical head-to-head pattern)
+After selecting a match that passes your investigation, choose the SINGLE MOST LOGICAL market for that specific match. You are NOT limited to any particular market type. Use whichever market gives the highest probability of winning given the match context. This includes but is not limited to:
+
+- **1X2 (Home/Draw/Away)** — when one outcome is clearly more likely
+- **Double Chance (1X, X2, 12)** — covers two of three outcomes
+- **Draw No Bet** — eliminates draw risk on a clear favourite
+- **Both Teams to Score (Yes/No)** — based on defensive records and motivations
+- **Over/Under Goals** (1.5, 2.5, 3.5, 4.5) — based on scoring patterns
+- **Asian Handicap / Goal Line** — when margin of victory matters
+- **First Team to Score** — when one team's attack vs the other's poor start is clear
+- **Win to Nil** — when a dominant team faces a toothless attack
+- **Correct Score** — only if you have unusually high conviction
+- **Half-time / Full-time** — when half-time trajectory is predictable
+- **Total Corners, Cards** — if match context strongly indicates it (e.g. aggressive styles)
+- **Anytime Goalscorer** — if a specific player is almost certain to score
+- **Any other market** — if it is the most logical bet given your investigation
+
+The best market is whichever has the HIGHEST actual probability of winning based on evidence — NOT the one with the best-looking odds. Odds follow from your conviction, not the other way around.
 
 ═══════════════════════════════════════════
 STEP 4: BUILD THE ACCUMULATOR

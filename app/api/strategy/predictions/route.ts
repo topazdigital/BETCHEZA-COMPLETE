@@ -357,29 +357,70 @@ async function autoGenerateTodayPicks(weekId: string, todayStr: string, dayNumbe
           `${m.homeTeam.name} vs ${m.awayTeam.name} (${m.league.name}${m.odds ? `, H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''})`
         ).join('\n');
 
-      const prompt = `You are a football betting analyst for the Betcheza "3 Daily Odds" Strategy.
+      const prompt = `You are a professional football analyst and betting strategist for the Betcheza "3 Daily Odds" Strategy.
 
 Date: ${today.toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
-Day ${dayNumber} — stake KES ${plan.stake.toLocaleString()}, target KES ${plan.targetWin.toLocaleString()}.
+Day ${dayNumber} — stake KES ${plan.stake.toLocaleString()}, target win KES ${plan.targetWin.toLocaleString()}.
+Goal: select 1–5 picks with COMBINED (multiplied) odds between 3.00 and 4.00.
 
-Select 1–5 football picks so that the COMBINED MULTIPLIED ODDS fall between 3.00 and 4.00.
-Example: 2 picks at 1.80 each = 3.24 combined. Or 1 pick at 3.50 = 3.50.
-You may use ANY market available in the odds (1X2 Home/Draw/Away, Double Chance, BTTS Yes/No, Over/Under 2.5, Asian Handicap, etc).
-Choose markets that offer the best value based on the odds provided — do not limit to one market type.
-Only use odds that are actually listed for the match — never invent odds.
+═══════════════════════════════════════════
+DEEP INVESTIGATION — for EACH match in the list
+═══════════════════════════════════════════
 
-Matches:
-${matchList}
+STEP 1 — MOTIVATION & STAKES
+Ask: Does each team actually NEED a result today?
+- Is one team fighting relegation, chasing a title, needing a win for European qualification?
+- Is the other team already safe, already relegated, or already champions?
+- A team with nothing to play for is dangerous to back — skip it or downgrade confidence.
+- A team desperate for 3 points has elevated motivation — prefer these.
 
-Return ONLY a JSON array (1–5 picks):
-[{"homeTeam":"...","awayTeam":"...","league":"...","matchTime":"ISO","pick":"...","market":"...","odds":1.85,"confidence":"High","reasoning":"..."}]
+STEP 2 — ROTATION & SQUAD RISK  
+Ask: Will this team field their strongest XI?
+- Is there a more important match 3–4 days later (cup final, European tie, derby)?
+- Do they have the squad depth to rotate and still win comfortably?
+- Rotation by a strong team against a weaker opponent = LOWER confidence in a win, but possibly still BTTS No or a handicap.
+- Rotation by both teams = uncertain, skip.
 
-REQUIRED: product of all odds must be between 3.00 and 4.00.`;
+STEP 3 — CONTEXTUAL FORM & H2H
+- Look at recent form (last 5 matches): winning runs, defensive records, goal-scoring patterns.
+- Head-to-head: does this fixture historically produce goals or is it low-scoring?
+- Home advantage: is this team significantly stronger at home than away?
+
+STEP 4 — MARKET SELECTION (ANY MARKET IS VALID)
+Choose the market that best fits the evidence. You are NOT limited to any list. Use whichever gives the highest probability:
+1X2 Win, Double Chance, Draw No Bet, BTTS Yes/No, Over/Under (1.5/2.5/3.5), Asian Handicap, First Team to Score, Win to Nil, Correct Score, HT/FT, Corners, Cards, Goalscorer, or any other available market.
+
+RED FLAGS — ELIMINATE THESE MATCHES:
+✗ Title already secured AND opponent is safe/mid-table → skip (dead rubber)
+✗ Both teams have nothing to play for → skip
+✗ Team is rotating before a bigger match AND the backup XI isn't clearly better than the opponent
+✗ You cannot construct a clear evidence-based reason WHY your pick wins
+
+═══════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════
+
+Return ONLY a JSON array (1–5 picks) with no explanation outside the JSON.
+Each pick must have:
+- homeTeam, awayTeam, league (strings)
+- matchTime (ISO datetime string from the match list)
+- pick (e.g. "Arsenal Win", "Over 2.5 Goals", "BTTS Yes", "Draw No Bet Napoli")
+- market (e.g. "1X2", "Over/Under 2.5", "BTTS", "Double Chance", "Asian Handicap")
+- odds (number — ONLY use odds actually listed in the match data, never invent)
+- confidence ("High", "Medium", or "Low")
+- reasoning (2–3 sentence explanation of WHY this pick wins, referencing motivation, rotation, form, or H2H)
+
+REQUIRED: the product of all odds MUST be between 3.00 and 4.00.
+Example with 2 picks: 1.80 × 1.80 = 3.24 ✓
+Example with 1 pick: 3.50 ✓
+
+Matches available today:
+${matchList}`;
 
       const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: process.env.OPENAI_MODEL || 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 1200,
+        max_completion_tokens: 2000,
       });
 
       const raw = completion.choices?.[0]?.message?.content || '[]';

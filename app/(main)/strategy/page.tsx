@@ -178,15 +178,21 @@ function DayCard({
   planItem,
   isLocked,
   isYesterday,
+  isSettled,
+  isBrowserFuture,
+  isAdmin,
   onSubscribe,
 }: {
   day: DayPrediction;
   planItem: typeof WEEK_PLAN[0];
   isLocked?: boolean;
   isYesterday?: boolean;
+  isSettled?: boolean;
+  isBrowserFuture?: boolean;
+  isAdmin?: boolean;
   onSubscribe?: () => void;
 }) {
-  const [open, setOpen] = useState(day.status === 'active' || isYesterday === true);
+  const [open, setOpen] = useState(day.status === 'active' || isYesterday === true || isSettled === true);
   const isActive = day.status === 'active';
   const isCompleted = day.status === 'completed';
 
@@ -281,7 +287,14 @@ function DayCard({
 
       {open && (
         <div className="border-t border-border px-3 pb-3 pt-3 sm:px-4 space-y-2">
-          {isLocked && !isYesterday ? (
+          {/* Browser hasn't hit midnight for this day yet — hide from non-admins */}
+          {isBrowserFuture && !isAdmin ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center text-muted-foreground">
+              <Clock className="h-8 w-8 opacity-30" />
+              <p className="text-sm font-medium">Available at midnight your time</p>
+              <p className="text-xs">Picks for this day unlock once your clock reaches {new Date(day.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}.</p>
+            </div>
+          ) : isLocked ? (
             <div className="flex flex-col items-center gap-3 py-4 text-center text-muted-foreground">
               <Lock className="h-6 w-6 opacity-40" />
               {day.status === 'active' ? (
@@ -1108,15 +1121,31 @@ export default function StrategyPage() {
             }))).map((day, i) => {
               const isToday = day.status === 'active';
               const isYesterday = i === yesterdayPlanIndex;
-              // Today's picks unlock for everyone at 21:00 EAT (18:00 UTC) regardless of
-              // settlement status — waiting for every pick to settle caused the day to
-              // stay locked all evening when live-score results came in late.
+
+              // ── Browser timezone: use user's local clock, not server EAT ──
+              // "Today" in the user's own timezone determines what they can see.
+              const browserTodayStr = new Intl.DateTimeFormat('en-CA').format(new Date()); // 'YYYY-MM-DD' local
+              // A day whose date is tomorrow or later in the user's browser hasn't started yet
+              const isBrowserFuture = day.date > browserTodayStr;
+
+              // ── Settled = always visible to everyone ──
+              // Once picks have a known win/loss result, there's no reason to hide them.
+              const isSettled = (day.result === 'win' || day.result === 'loss') &&
+                day.picks.length > 0 && day.picks.every(p => p.result === 'win' || p.result === 'loss');
+
+              // ── 9 PM EAT free reveal — today's picks free for all after cutoff ──
               const nowUTC = Date.now();
               const eatHour = Math.floor(((nowUTC % 86400000) + 3 * 3600000) / 3600000) % 24;
-              const pastEveningCutoff = eatHour >= 21; // 9 PM EAT
+              const pastEveningCutoff = eatHour >= 21;
               const todayFreeAfterCutoff = isToday && pastEveningCutoff;
-              // Non-subscribers: locked for today until 9 PM EAT, always locked for upcoming days
-              const isLocked = !hasAccess && !isYesterday && !todayFreeAfterCutoff && (day.status === 'upcoming' || isToday);
+
+              // ── Lock logic ──
+              // Settled → never locked for anyone
+              // Yesterday (free preview) → unlocked for non-subscribers
+              // Today after 9pm EAT → unlocked for non-subscribers
+              // Everything else for non-subscribers → locked
+              const isLocked = !isSettled && !hasAccess && !isYesterday &&
+                !todayFreeAfterCutoff && (day.status === 'upcoming' || isToday);
 
               return (
                 <DayCard
@@ -1125,6 +1154,9 @@ export default function StrategyPage() {
                   planItem={WEEK_PLAN[i]}
                   isLocked={isLocked}
                   isYesterday={!hasAccess && isYesterday}
+                  isSettled={isSettled}
+                  isBrowserFuture={isBrowserFuture && !isSettled}
+                  isAdmin={isAdmin}
                   onSubscribe={() => setShowSubscribeModal(true)}
                 />
               );
