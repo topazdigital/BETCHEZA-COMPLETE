@@ -70,6 +70,7 @@ function ConfidenceDot({ value }: { value: number }) {
 
 function FavoritedTipCard({ item }: { item: FeaturedItem }) {
   const { match, tip, pinned } = item
+  if (!tip) return null
   const t = new Date(match.kickoffTime)
   const isToday = t.toDateString() === new Date().toDateString()
   const timeLabel = isToday
@@ -172,7 +173,7 @@ export function FavoritedTipsPanel() {
         </Button>
       </div>
       <div className="space-y-2">
-        {data.items.slice(0, 5).map(item => (
+        {data.items.filter(item => item.tip).slice(0, 5).map(item => (
           <FavoritedTipCard key={item.matchId} item={item} />
         ))}
       </div>

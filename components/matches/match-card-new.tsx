@@ -200,7 +200,7 @@ export function MatchCardNew({
 
   if (variant === 'compact') {
     const aiPickArr = (match.odds && !isFinished && !isLive)
-      ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name, match.markets, match.homeTeam.form, match.awayTeam.form)
+      ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name, match.markets, match.homeTeam.form, match.awayTeam.form, match.sport.slug)
       : [];
     const aiPick = aiPickArr[0] ?? null;
 
@@ -565,6 +565,7 @@ export function MatchCardNew({
             markets={match.markets}
             homeForm={match.homeTeam.form}
             awayForm={match.awayTeam.form}
+            sport={match.sport.slug}
           />
         </div>
       )}
@@ -627,6 +628,7 @@ function computeSmartPick(
   markets?: MatchMarket[],
   homeForm?: string,
   awayForm?: string,
+  sport?: string,
 ): SmartPick[] {
   // ── Shared probability decomposition ─────────────────────────────────────
   const rawH = 1 / Math.max(odds.home, 1.01);
@@ -651,6 +653,22 @@ function computeSmartPick(
   const lowGoals     = expectedGoals < 2.05;
   const highGoals    = expectedGoals > 3.05;
 
+  const _sportNorm = (sport || '').toLowerCase().replace(/[\s_-]/g, '');
+  const noDrawSport = new Set([
+    'basketball', 'tennis', 'baseball', 'hockey', 'icehockey', 'mma', 'boxing',
+    'americanfootball', 'nfl', 'nba', 'mlb', 'nhl', 'volleyball', 'darts', 'snooker', 'esports',
+  ]).has(_sportNorm);
+  const isHockey = _sportNorm === 'icehockey' || _sportNorm === 'hockey' || _sportNorm === 'nhl';
+
+  function totalsUnit(): string {
+    if (_sportNorm === 'basketball' || _sportNorm === 'nba') return 'Points';
+    if (_sportNorm === 'baseball' || _sportNorm === 'mlb') return 'Runs';
+    if (_sportNorm === 'americanfootball' || _sportNorm === 'nfl') return 'Points';
+    if (_sportNorm === 'tennis') return 'Games';
+    if (_sportNorm === 'volleyball') return 'Points';
+    return 'Goals';
+  }
+
   // Remove bookmaker margin and return normalised per-outcome probabilities
   function marginFreeProbs(outcomes: MarketOutcome[]): Array<MarketOutcome & { prob: number }> {
     const valid = outcomes.filter(o => o.price > 1.01);
@@ -659,11 +677,13 @@ function computeSmartPick(
     return valid.map(o => ({ ...o, prob: (1 / o.price) / vig }));
   }
 
-  // Map API market key → human-readable category label
+  // Map API market key → human-readable category label (sport-aware)
   function mktCategory(key: string, name: string): string {
     const k = key.toLowerCase();
+    const u = totalsUnit();
     if (k === 'h2h') return 'Match Winner';
-    if (k === 'spreads' || k === 'asian_handicap') return 'Asian Handicap';
+    if (k === 'spreads') return noDrawSport && !isHockey ? 'Point Spread' : 'Asian Handicap';
+    if (k === 'asian_handicap') return 'Asian Handicap';
     if (k === 'double_chance') return 'Double Chance';
     if (k === 'dnb' || k === 'draw_no_bet') return 'Draw No Bet';
     if (k === 'btts') return 'BTTS';
@@ -678,21 +698,33 @@ function computeSmartPick(
     if (k === 'first_team_to_score') return 'First to Score';
     if (k === 'goal_first_half') return '1st Half Goal';
     if (k.startsWith('clean_sheet')) return 'Clean Sheet';
-    if (/totals_0[_-]5/.test(k) || (k === 'totals' && name.includes('0.5'))) return 'O/U 0.5 Goals';
-    if (/totals_1[_-]5/.test(k) || (k === 'totals' && name.includes('1.5'))) return 'O/U 1.5 Goals';
-    if (/totals_2[_-]5/.test(k) || (k === 'totals' && name.includes('2.5'))) return 'O/U 2.5 Goals';
-    if (/totals_3[_-]5/.test(k) || (k === 'totals' && name.includes('3.5'))) return 'O/U 3.5 Goals';
-    if (/totals_4[_-]5/.test(k) || (k === 'totals' && name.includes('4.5'))) return 'O/U 4.5 Goals';
-    if (k === 'totals_1h' || k === 'totals_h1') return '1st Half Goals';
-    if (k === 'totals_2h' || k === 'totals_h2') return '2nd Half Goals';
+    if (/totals_0[_-]5/.test(k) || (k === 'totals' && name.includes('0.5'))) return `O/U 0.5 ${u}`;
+    if (/totals_1[_-]5/.test(k) || (k === 'totals' && name.includes('1.5'))) return `O/U 1.5 ${u}`;
+    if (/totals_2[_-]5/.test(k) || (k === 'totals' && name.includes('2.5'))) return `O/U 2.5 ${u}`;
+    if (/totals_3[_-]5/.test(k) || (k === 'totals' && name.includes('3.5'))) return `O/U 3.5 ${u}`;
+    if (/totals_4[_-]5/.test(k) || (k === 'totals' && name.includes('4.5'))) return `O/U 4.5 ${u}`;
+    if (k === 'totals_1h' || k === 'totals_h1') return `1st Half ${u}`;
+    if (k === 'totals_2h' || k === 'totals_h2') return `2nd Half ${u}`;
     if (k.startsWith('corners_')) return 'Corners';
     if (k.startsWith('corners_total') || k === 'corners') return 'Corners';
     if (k.startsWith('race_corners')) return 'Corners Race';
-    if (k.startsWith('totals_1q')) return '1st Qtr Goals';
-    if (k.startsWith('totals_')) return 'Total Goals';
-    if (k === 'totals') return 'Total Goals';
+    if (k.startsWith('totals_1q')) return `1st Qtr ${u}`;
+    if (k.startsWith('totals_')) return `Total ${u}`;
+    if (k === 'totals') return `Total ${u}`;
     return name || key;
   }
+
+  // Soccer-only market categories — not valid for no-draw sports (basketball, baseball, tennis…)
+  // Ice hockey keeps Goals markets but drops draw-specific ones
+  const SOCCER_ONLY_CATS = new Set([
+    'Double Chance', 'Draw No Bet', 'BTTS', 'BTTS & Result', 'HT/FT', 'Correct Score',
+    'Win to Nil', 'Clean Sheet', 'Odd/Even Goals', '1st Half Goal', 'HT Result',
+    'O/U 0.5 Goals', 'O/U 1.5 Goals', 'O/U 2.5 Goals', 'O/U 3.5 Goals', 'O/U 4.5 Goals',
+    '1st Half Goals', '2nd Half Goals', 'Total Goals',
+  ]);
+  const HOCKEY_INVALID_CATS = new Set([
+    'Double Chance', 'BTTS & Result', 'HT/FT', 'Correct Score', 'Win to Nil', 'Odd/Even Goals',
+  ]);
 
   // Normalise generic "Home"/"Away" outcome names to team names
   function outcomeLabel(name: string): string {
@@ -724,6 +756,13 @@ function computeSmartPick(
       if (conf < 50) continue; // below coin-flip — not a pick
 
       const category = mktCategory(key, mkt.name);
+
+      // Skip markets that are inappropriate for this sport
+      if (noDrawSport) {
+        if (!isHockey && SOCCER_ONLY_CATS.has(category)) continue;
+        if (isHockey && HOCKEY_INVALID_CATS.has(category)) continue;
+      }
+
       const label = outcomeLabel(best.name);
 
       // De-duplicate: keep only the highest-confidence candidate per category
@@ -752,7 +791,7 @@ function computeSmartPick(
     if (existing < 0 || candidates[existing].confidence < conf) {
       const entry: Candidate =
         h === max ? { pick: '1', label: `${homeTeam.split(' ')[0]} to Win`, market: 'Match Winner', confidence: conf, price: odds.home }
-        : d === max && odds.draw ? { pick: 'X', label: 'Draw', market: 'Match Winner', confidence: conf, price: odds.draw ?? 3 }
+        : d === max && odds.draw && !noDrawSport ? { pick: 'X', label: 'Draw', market: 'Match Winner', confidence: conf, price: odds.draw ?? 3 }
         : { pick: '2', label: `${awayTeam.split(' ')[0]} to Win`, market: 'Match Winner', confidence: conf, price: odds.away };
       if (existing >= 0) candidates[existing] = entry;
       else candidates.push(entry);
@@ -946,6 +985,7 @@ function SmartBetBadge({
   markets,
   homeForm,
   awayForm,
+  sport,
 }: {
   odds: { home: number; draw?: number; away: number };
   homeTeam: string;
@@ -954,9 +994,10 @@ function SmartBetBadge({
   markets?: MatchMarket[];
   homeForm?: string;
   awayForm?: string;
+  sport?: string;
 }) {
   const [idx, setIdx] = useState(0);
-  const picks = computeSmartPick(odds, homeTeam, awayTeam, markets, homeForm, awayForm);
+  const picks = computeSmartPick(odds, homeTeam, awayTeam, markets, homeForm, awayForm, sport);
   if (!picks.length) return null;
   const count = picks.length;
   const sp = picks[Math.min(idx, count - 1)];

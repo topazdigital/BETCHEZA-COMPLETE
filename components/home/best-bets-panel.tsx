@@ -277,11 +277,35 @@ function marginFreeProbs(outcomes: MatchMarketOutcome[]): Array<MatchMarketOutco
   return valid.map(o => ({ ...o, prob: (1 / o.price) / vig }))
 }
 
-/** Map API market key to a normalised category label. */
-function mktCategory(key: string, name: string): string {
+const NO_DRAW_SPORTS_SET = new Set([
+  'basketball', 'tennis', 'baseball', 'hockey', 'icehockey', 'mma', 'boxing',
+  'americanfootball', 'nfl', 'nba', 'mlb', 'nhl', 'volleyball', 'darts', 'snooker', 'esports',
+])
+
+function normSportSlug(slug?: string) {
+  return (slug || '').toLowerCase().replace(/[\s_-]/g, '')
+}
+
+function sportTotalsUnit(slug?: string): string {
+  const s = normSportSlug(slug)
+  if (s === 'basketball' || s === 'nba') return 'Points'
+  if (s === 'baseball' || s === 'mlb') return 'Runs'
+  if (s === 'americanfootball' || s === 'nfl') return 'Points'
+  if (s === 'tennis') return 'Games'
+  if (s === 'volleyball') return 'Points'
+  return 'Goals'
+}
+
+/** Map API market key to a normalised category label (sport-aware). */
+function mktCategory(key: string, name: string, sportSlug?: string): string {
   const k = key.toLowerCase()
+  const u = sportTotalsUnit(sportSlug)
+  const sn = normSportSlug(sportSlug)
+  const isNoDrawSport = NO_DRAW_SPORTS_SET.has(sn)
+  const isHockey = sn === 'icehockey' || sn === 'hockey' || sn === 'nhl'
   if (k === 'h2h') return 'Match Winner'
-  if (k === 'spreads' || k === 'asian_handicap') return 'Asian Handicap'
+  if (k === 'spreads') return isNoDrawSport && !isHockey ? 'Point Spread' : 'Asian Handicap'
+  if (k === 'asian_handicap') return 'Asian Handicap'
   if (k === 'double_chance') return 'Double Chance'
   if (k === 'dnb' || k === 'draw_no_bet') return 'Draw No Bet'
   if (k === 'btts') return 'BTTS'
@@ -295,18 +319,29 @@ function mktCategory(key: string, name: string): string {
   if (k === 'first_team_to_score') return 'First to Score'
   if (k === 'goal_first_half') return '1st Half Goal'
   if (k.startsWith('clean_sheet')) return 'Clean Sheet'
-  if (/totals_0[_-]5/.test(k) || (k === 'totals' && name.includes('0.5'))) return 'O/U 0.5 Goals'
-  if (/totals_1[_-]5/.test(k) || (k === 'totals' && name.includes('1.5'))) return 'O/U 1.5 Goals'
-  if (/totals_2[_-]5/.test(k) || (k === 'totals' && name.includes('2.5'))) return 'O/U 2.5 Goals'
-  if (/totals_3[_-]5/.test(k) || (k === 'totals' && name.includes('3.5'))) return 'O/U 3.5 Goals'
-  if (/totals_4[_-]5/.test(k) || (k === 'totals' && name.includes('4.5'))) return 'O/U 4.5 Goals'
-  if (k === 'totals_1h' || k === 'totals_h1') return '1st Half Goals'
-  if (k === 'totals_2h' || k === 'totals_h2') return '2nd Half Goals'
+  if (/totals_0[_-]5/.test(k) || (k === 'totals' && name.includes('0.5'))) return `O/U 0.5 ${u}`
+  if (/totals_1[_-]5/.test(k) || (k === 'totals' && name.includes('1.5'))) return `O/U 1.5 ${u}`
+  if (/totals_2[_-]5/.test(k) || (k === 'totals' && name.includes('2.5'))) return `O/U 2.5 ${u}`
+  if (/totals_3[_-]5/.test(k) || (k === 'totals' && name.includes('3.5'))) return `O/U 3.5 ${u}`
+  if (/totals_4[_-]5/.test(k) || (k === 'totals' && name.includes('4.5'))) return `O/U 4.5 ${u}`
+  if (k === 'totals_1h' || k === 'totals_h1') return `1st Half ${u}`
+  if (k === 'totals_2h' || k === 'totals_h2') return `2nd Half ${u}`
   if (k.startsWith('corners_')) return 'Corners'
-  if (k.startsWith('totals_')) return 'Total Goals'
-  if (k === 'totals') return 'Total Goals'
+  if (k.startsWith('totals_')) return `Total ${u}`
+  if (k === 'totals') return `Total ${u}`
   return name || key
 }
+
+// Soccer-only markets that should be hidden for no-draw sports
+const SOCCER_ONLY_MARKETS = new Set([
+  'Double Chance', 'Draw No Bet', 'BTTS', 'BTTS & Result', 'HT/FT', 'Correct Score',
+  'Win to Nil', 'Clean Sheet', 'Odd/Even Goals', '1st Half Goal', 'HT Result',
+  'O/U 0.5 Goals', 'O/U 1.5 Goals', 'O/U 2.5 Goals', 'O/U 3.5 Goals', 'O/U 4.5 Goals',
+  '1st Half Goals', '2nd Half Goals', 'Total Goals',
+])
+const HOCKEY_INVALID_MARKETS = new Set([
+  'Double Chance', 'BTTS & Result', 'HT/FT', 'Correct Score', 'Win to Nil', 'Odd/Even Goals',
+])
 
 function buildBestBets(matches: MatchLite[]): Pick[] {
   const todayDate = new Date()
@@ -435,6 +470,11 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
     interface MarketCandidate { market: string; selection: string; odds: number; confidence: number; score: number }
     const mktCandidates: MarketCandidate[] = []
 
+    const sportSlug = m.sport?.slug
+    const _sn = normSportSlug(sportSlug)
+    const isNoDrawSport = NO_DRAW_SPORTS_SET.has(_sn)
+    const isHockeySport = _sn === 'icehockey' || _sn === 'hockey' || _sn === 'nhl'
+
     if (m.markets && m.markets.length > 0) {
       for (const mkt of m.markets) {
         const key = (mkt.key || '').toLowerCase()
@@ -446,7 +486,14 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
         const best = probs.reduce((a, b) => b.prob > a.prob ? b : a)
         const conf = Math.round(best.prob * 100)
         if (conf < 50) continue
-        const category = mktCategory(key, mkt.name)
+        const category = mktCategory(key, mkt.name, sportSlug)
+
+        // Skip soccer-specific markets for no-draw sports
+        if (isNoDrawSport) {
+          if (!isHockeySport && SOCCER_ONLY_MARKETS.has(category)) continue
+          if (isHockeySport && HOCKEY_INVALID_MARKETS.has(category)) continue
+        }
+
         const score = marketScore(conf, category, best.name, best.price)
         const existing = mktCandidates.findIndex(c => c.market === category)
         const entry: MarketCandidate = { market: category, selection: best.name, odds: best.price, confidence: conf, score }
@@ -464,7 +511,8 @@ function buildBestBets(matches: MatchLite[]): Pick[] {
       const winnerOdds = winner === "home" ? m.odds.home : m.odds.away
       const winnerName = winner === "home" ? m.homeTeam.name : m.awayTeam.name
       if (winnerP >= 0.45) {
-        if (m.odds.draw && drawP > 0.27 && winnerP < 0.6) {
+        // Double Chance is only valid for soccer (has draws); no-draw sports get Match Winner
+        if (!isNoDrawSport && m.odds.draw && drawP > 0.27 && winnerP < 0.6) {
           const dcPrice = 1 / (winnerP + drawP)
           mktCandidates.push({
             market: "Double Chance", selection: `${winnerName} or Draw`,
