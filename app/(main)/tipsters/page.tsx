@@ -444,7 +444,6 @@ export default function TipstersPage() {
           </div>
         )}
       </div>
-      </div>
       {/* Right sidebar banners — desktop only */}
       <aside className="hidden xl:block w-64 shrink-0 border-l border-border">
         <div className="sticky top-14 p-3">
