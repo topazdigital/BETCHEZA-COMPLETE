@@ -47,7 +47,7 @@ export function useFavoritedTips() {
     { refreshInterval: 60_000, revalidateOnFocus: false, dedupingInterval: 30_000, keepPreviousData: true },
   )
   return {
-    items: data?.enabled && Array.isArray(data?.items) ? data.items : [],
+    items: data?.enabled && Array.isArray(data?.items) ? data.items.filter((it: FeaturedItem) => it.tip != null && it.match != null) : [],
     isLoading,
     error,
   }
@@ -273,6 +273,7 @@ export function MyTipsPanel() {
 
 export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
   const { match, tip, pinned } = item
+  if (!tip || !match) return null
   const t = new Date(match.kickoffTime)
   const time = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   const isMatchToday = t.toDateString() === new Date().toDateString()
@@ -280,9 +281,10 @@ export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
     ? null
     : t.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
 
+  const conf = tip.confidence ?? 0
   const confColor =
-    tip.confidence >= 80 ? "text-emerald-500" :
-    tip.confidence >= 65 ? "text-amber-500" :
+    conf >= 80 ? "text-emerald-500" :
+    conf >= 65 ? "text-amber-500" :
     "text-rose-400"
 
   return (
@@ -302,7 +304,7 @@ export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
           {time}{day ? ` · ${day}` : ''}
         </span>
       </div>
-      <p className="mb-2 truncate text-[11px] text-muted-foreground">{match.league.name}</p>
+      <p className="mb-2 truncate text-[11px] text-muted-foreground">{match.league?.name}</p>
       <div className="mb-3 space-y-1.5">
         <div className="flex items-center gap-2">
           <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} size="sm" />
@@ -316,7 +318,7 @@ export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
       <div className="mt-auto rounded-lg border border-border bg-muted/40 p-2 space-y-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{tip.market}</span>
-          <span className={cn("text-xs font-bold", confColor)}>{tip.confidence}%</span>
+          <span className={cn("text-xs font-bold", confColor)}>{conf}%</span>
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-semibold truncate flex items-center gap-1 min-w-0">
@@ -325,15 +327,15 @@ export function FavoritedTipMarqueeCard({ item }: { item: FeaturedItem }) {
           </span>
           <span className="text-sm font-bold text-primary flex items-center gap-1 shrink-0">
             <TrendingUp className="h-3.5 w-3.5" />
-            {tip.odds.toFixed(2)}
+            {(tip.odds ?? 0).toFixed(2)}
           </span>
         </div>
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
           <span className="flex items-center gap-1 truncate">
-            {tip.tipster.displayName}
-            {tip.tipster.verified && <BadgeCheck className="h-3 w-3 text-primary" />}
+            {tip.tipster?.displayName}
+            {tip.tipster?.verified && <BadgeCheck className="h-3 w-3 text-primary" />}
           </span>
-          <span>#{tip.tipster.rank}</span>
+          <span>{tip.tipster?.rank != null ? `#${tip.tipster.rank}` : ''}</span>
         </div>
       </div>
     </Link>

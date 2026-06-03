@@ -206,7 +206,7 @@ async function buildFeaturedPayload() {
 
   return {
     enabled: true,
-    items: [...pinned, ...auto.slice(0, remaining)],
+    items: [...pinned.filter(p => p.tip != null), ...auto.slice(0, remaining)],
     config,
   };
 }

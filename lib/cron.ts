@@ -126,6 +126,26 @@ function isStrategyTime(): boolean {
 const LIVE_SCORES_EVERY_N_TICKS = 1; // every 5-min tick (fast enough for goal alerts)
 const FAKE_ACTIVITY_EVERY_N_TICKS = 3; // every 15 min
 const FAKE_VOTES_EVERY_N_TICKS = 6;    // every 30 min
+const SETTLE_TIPS_EVERY_N_TICKS = 6;   // every 30 min — settles old pending auto-tips
+
+async function runSettleTips(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/settle-tips`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
+    });
+    if (!r.ok) {
+      console.warn('[cron] settle-tips failed:', r.status);
+    } else {
+      const data = await r.json() as { ok?: boolean; settled?: number; corrected?: number };
+      if ((data.settled ?? 0) > 0) {
+        console.log(`[cron] settle-tips: settled ${data.settled} tips`);
+      }
+    }
+  } catch (e) {
+    console.warn('[cron] settle-tips error', e instanceof Error ? e.message : e);
+  }
+}
 
 async function runFakeActivity(): Promise<void> {
   try {
@@ -225,6 +245,10 @@ async function tick(): Promise<void> {
     void runFakeVotes();
   }
 
+  if (state.tickCount % SETTLE_TIPS_EVERY_N_TICKS === 0) {
+    void runSettleTips();
+  }
+
   if (state.tickCount % JACKPOT_SYNC_EVERY_N_TICKS === 0) {
     void runJackpotSync();
   }
@@ -257,6 +281,7 @@ export function startCron(): void {
   setTimeout(() => { void runMatchReminders(); }, 120_000);   // 2 min
   setTimeout(() => { void runJackpotSync(); }, 180_000);       // 3 min
   setTimeout(() => { void runFakeActivity(); }, 90_000);       // 90 s — seed initial feed posts
+  setTimeout(() => { void runSettleTips(); }, 300_000);        // 5 min — clear any stale pending tips on startup
 
   // Auto-post daily strategy on startup if it hasn't been posted today yet
   // and it's past 9am EAT (6am UTC)
@@ -281,5 +306,5 @@ export function startCron(): void {
   }, 270_000); // 4.5 min (after daily-strategy has had time to run)
 
   state.timer = setInterval(() => { void tick(); }, TICK_MS);
-  console.log('[cron] started — match-reminders (5 min), live-scores (5 min), fake-activity (15 min), fake-votes (30 min), jackpot-sync (60 min), daily-strategy + tip-of-the-day (9am EAT)');
+  console.log('[cron] started — match-reminders (5 min), live-scores (5 min), fake-activity (15 min), fake-votes (30 min), settle-tips (30 min), jackpot-sync (60 min), daily-strategy + tip-of-the-day (9am EAT)');
 }

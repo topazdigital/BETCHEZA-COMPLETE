@@ -251,14 +251,14 @@ async function settleRecentPendingStrategyPicks() {
   const now = Date.now();
   const TWO_HOURS_MS = 2 * 3600_000;
 
-  // Build ISO dates for the last 7 days (full week coverage)
+  // Build ISO dates for the last 30 days (full coverage — old pending picks get settled)
   const nairobi = (offsetDays: number) => {
     const d = new Date(now + offsetDays * 86_400_000);
     const s = d.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }).split(',')[0];
     const [mo, dy, yr] = s.split('/');
     return `${yr}-${mo.padStart(2, '0')}-${dy.padStart(2, '0')}`;
   };
-  const dates = [nairobi(0), nairobi(-1), nairobi(-2), nairobi(-3), nairobi(-4), nairobi(-5), nairobi(-6)];
+  const dates = Array.from({ length: 30 }, (_, i) => nairobi(-i));
 
   // Check if any of the recent days have pending picks before hitting the DB
   let rows: { id: number; date: string; day_number: number; picks: string; status: string }[] = [];
@@ -333,7 +333,16 @@ async function settleRecentPendingStrategyPicks() {
         const awayOk = vAn === pAn || vAn.includes(pAn) || pAn.includes(vAn) || matchTeamWords(v.awayTeam, pick.awayTeam);
         if (homeOk && awayOk) { scored = v; break; }
       }
-      if (!scored) return pick;
+      // For picks older than 7 days with no match data found, force-settle as lost
+      const SEVEN_DAYS_MS = 7 * 24 * 3600_000;
+      if (!scored) {
+        if (now - kickoff > SEVEN_DAYS_MS) {
+          // Match data no longer available; mark void so it doesn't stay pending forever
+          changed = true;
+          return { ...pick, result: 'void' as const, liveStatus: 'finished' as const, actualScore: 'N/A' };
+        }
+        return pick;
+      }
 
       const result = checkPickResult(pick, scored.homeScore, scored.awayScore, forceSettle);
       if (!result) return pick;

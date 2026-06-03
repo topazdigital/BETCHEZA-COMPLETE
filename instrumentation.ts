@@ -145,6 +145,9 @@ export async function register() {
 
       // Widen teams.short_name to avoid "Data too long" errors from ESPN abbreviations
       await query(`ALTER TABLE teams MODIFY COLUMN short_name VARCHAR(100) DEFAULT NULL`).catch(() => {});
+      // Widen api_id columns to avoid "Data too long" errors from long ESPN event IDs
+      await query(`ALTER TABLE teams MODIFY COLUMN api_id VARCHAR(255) DEFAULT NULL`).catch(() => {});
+      await query(`ALTER TABLE leagues MODIFY COLUMN api_id VARCHAR(255) DEFAULT NULL`).catch(() => {});
 
       console.log('[instrumentation] DB migrations applied (community_rooms + room_id)');
 

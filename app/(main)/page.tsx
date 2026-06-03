@@ -670,7 +670,7 @@ export default function HomePage() {
                               <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Win Rate</div>
                             </div>
                             <div className="rounded-lg bg-primary/10 py-1">
-                              <div className="text-base font-bold text-primary">{tipster.roi >= 0 ? '+' : ''}{tipster.roi}%</div>
+                              <div className="text-base font-bold text-primary">{(tipster.roi ?? 0) >= 0 ? '+' : ''}{tipster.roi ?? 0}%</div>
                               <div className="text-[9px] uppercase tracking-wide text-muted-foreground">ROI</div>
                             </div>
                           </div>

@@ -23,7 +23,7 @@ function LiveSlide({ matches, totalCount }: { matches: Match[]; totalCount: numb
       </div>
       <div className="space-y-3">
         {matches.map(match => {
-          const tickerLabel = liveStatusLabel(match.sport.slug, match.status, match.minute);
+          const tickerLabel = liveStatusLabel(match.sport?.slug ?? 'football', match.status, match.minute);
           return (
             <Link
               key={match.id}
@@ -31,7 +31,7 @@ function LiveSlide({ matches, totalCount }: { matches: Match[]; totalCount: numb
               className="block rounded-lg bg-card/50 p-3 transition-colors hover:bg-card"
             >
               <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                <span className="truncate">{match.sport.icon} {match.league.name}</span>
+                <span className="truncate">{match.sport?.icon} {match.league?.name}</span>
                 <span className={cn(
                   'ml-2 shrink-0 font-mono font-bold',
                   match.status === 'halftime'
@@ -85,7 +85,7 @@ function FeaturedSlide({ matches }: { matches: Match[] }) {
             className="block rounded-lg bg-card/50 p-3 transition-colors hover:bg-card"
           >
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span className="truncate">{match.sport.icon} {match.league.name}</span>
+              <span className="truncate">{match.sport?.icon} {match.league?.name}</span>
               <span className="ml-2 shrink-0">
                 {new Date(match.kickoffTime).toLocaleTimeString('en-US', {
                   hour: '2-digit',
