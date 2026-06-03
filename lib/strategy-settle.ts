@@ -271,7 +271,78 @@ export function checkPickResult(
     return bothScored ? 'win' : 'loss'; // default yes
   }
 
-  return null; // unrecognised market
+  // ── Asian Handicap / Handicap ───────────────────────────────────────────────
+  // Settlement logic: if the team name is in the pick, we check if that team
+  // won the match. For fractional handicap lines (±0.25, ±0.75) we simplify
+  // to a win/loss determination on the non-push leg. A draw on a whole-number
+  // handicap (±0) is treated as a push/void (null = keep pending).
+  if (
+    market.includes('asian handicap') || market.includes('asian handicap') ||
+    market === 'handicap' || market.includes('handicap') || market === 'ah'
+  ) {
+    // Parse optional handicap line from pick string, e.g. "Barracas Central -0.5", "+1.0"
+    const lineMatch = pickRaw.match(/([+-]?\d+\.?\d*)\s*$/);
+    const line = lineMatch ? parseFloat(lineMatch[1]) : 0;
+
+    // Determine which team is picked (home or away)
+    const pickIsHome =
+      (homeNorm.length > 2 && (pickNorm.includes(homeNorm) || homeNorm.includes(pickNorm))) ||
+      matchTeamWords(pick.homeTeam, pickRaw);
+    const pickIsAway =
+      (awayNorm.length > 2 && (pickNorm.includes(awayNorm) || awayNorm.includes(pickNorm))) ||
+      matchTeamWords(pick.awayTeam, pickRaw);
+
+    // Apply handicap to the score: positive line benefits the picked team
+    const adjustedHome = pickIsHome ? homeScore + line : homeScore;
+    const adjustedAway = pickIsAway ? awayScore + line : awayScore;
+
+    const adjHomeWin = adjustedHome > adjustedAway;
+    const adjAwayWin = adjustedAway > adjustedHome;
+    const adjDraw   = adjustedHome === adjustedAway;
+
+    if (pickIsHome) {
+      if (adjDraw && Number.isInteger(line)) return null; // whole-number line draw = push
+      return adjHomeWin ? 'win' : 'loss';
+    }
+    if (pickIsAway) {
+      if (adjDraw && Number.isInteger(line)) return null; // whole-number line draw = push
+      return adjAwayWin ? 'win' : 'loss';
+    }
+
+    // Fallback: no team name matched — can't settle
+    return null;
+  }
+
+  // ── Match Winner / Moneyline ────────────────────────────────────────────────
+  if (
+    market === 'match winner' || market === 'moneyline' || market === 'to win' ||
+    market.includes('match winner') || market.includes('moneyline')
+  ) {
+    if (homeNorm.length > 2 && pickNorm.includes(homeNorm)) return homeWin ? 'win' : 'loss';
+    if (awayNorm.length > 2 && pickNorm.includes(awayNorm)) return awayWin ? 'win' : 'loss';
+    if (matchTeamWords(pick.homeTeam, pickRaw)) return homeWin ? 'win' : 'loss';
+    if (matchTeamWords(pick.awayTeam, pickRaw)) return awayWin ? 'win' : 'loss';
+    return null;
+  }
+
+  // ── Generic team-name fallback for any unrecognised market ─────────────────
+  // If the pick exactly matches or strongly contains a team name, treat it as
+  // a simple match-winner prediction. This handles markets like "Half-Time Result",
+  // "Win Either Half", exotic accumulators, etc. where the AI picks a team name.
+  if (homeNorm.length > 2 && (pickNorm === homeNorm || homeNorm.includes(pickNorm) || pickNorm.includes(homeNorm))) {
+    return homeWin ? 'win' : 'loss';
+  }
+  if (awayNorm.length > 2 && (pickNorm === awayNorm || awayNorm.includes(pickNorm) || pickNorm.includes(awayNorm))) {
+    return awayWin ? 'win' : 'loss';
+  }
+  if (matchTeamWords(pick.homeTeam, pickRaw) && !matchTeamWords(pick.awayTeam, pickRaw)) {
+    return homeWin ? 'win' : 'loss';
+  }
+  if (matchTeamWords(pick.awayTeam, pickRaw) && !matchTeamWords(pick.homeTeam, pickRaw)) {
+    return awayWin ? 'win' : 'loss';
+  }
+
+  return null; // unrecognised market and no team name match
 }
 
 /**

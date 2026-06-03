@@ -4,6 +4,8 @@ import Link from 'next/link';
 import BookmakerCards from './bookmaker-cards';
 import { JackpotNotifyButton } from '@/components/jackpots/jackpot-notify-button';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Kenya Jackpot Predictions Today | Free AI Tips — Betcheza',
   description: 'Free AI-powered jackpot predictions for all Kenyan bookmakers. SportPesa Midweek & Mega Jackpot, Betika Grand Jackpot, OdiBets, Betin, Mozzartbet tips — updated daily with confidence ratings.',

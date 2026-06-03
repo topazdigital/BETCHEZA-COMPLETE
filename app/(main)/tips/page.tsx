@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { TipsFeedClient } from '@/components/tips/tips-feed-client';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   searchParams?: Promise<{ sport?: string; day?: string }> | { sport?: string; day?: string };
 }

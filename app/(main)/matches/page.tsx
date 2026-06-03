@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import MatchesClientPage from './_matches-client';
 
+export const dynamic = 'force-dynamic';
+
 const SITE_NAME = 'Betcheza';
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
 

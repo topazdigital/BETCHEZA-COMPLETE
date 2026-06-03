@@ -297,6 +297,39 @@ async function settleRecentPendingStrategyPicks() {
         homeTeam: hn, awayTeam: an,
       });
     }
+
+    // Also merge in the Results page cache as a secondary fallback source.
+    // This covers matches that the live-score API has dropped from its feed
+    // (e.g. South American leagues, rate-limited providers) but whose scores
+    // were captured when the match was live or when a user visited /results.
+    const gResults = globalThis as {
+      __resultsCache?: {
+        data: Array<{
+          homeTeam: { name: string };
+          awayTeam: { name: string };
+          homeScore: number | null;
+          awayScore: number | null;
+          status: string;
+        }>;
+        ts: number;
+      };
+    };
+    if (gResults.__resultsCache?.data) {
+      for (const m of gResults.__resultsCache.data) {
+        if (m.status !== 'finished') continue;
+        if (typeof m.homeScore !== 'number' || typeof m.awayScore !== 'number') continue;
+        const hn = m.homeTeam?.name || '';
+        const an = m.awayTeam?.name || '';
+        if (!hn || !an) continue;
+        const key = `${normalizeTeam(hn)}_${normalizeTeam(an)}`;
+        if (!finishedScores.has(key)) {
+          finishedScores.set(key, {
+            homeScore: m.homeScore, awayScore: m.awayScore,
+            homeTeam: hn, awayTeam: an,
+          });
+        }
+      }
+    }
   } catch { return; }
 
   for (const row of pendingRows) {

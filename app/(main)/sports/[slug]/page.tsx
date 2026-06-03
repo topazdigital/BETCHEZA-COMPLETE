@@ -2,9 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ALL_SPORTS } from '@/lib/sports-data';
 
-export function generateStaticParams() {
-  return ALL_SPORTS.map(s => ({ slug: s.slug }));
-}
+export const dynamic = 'force-dynamic';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
 
