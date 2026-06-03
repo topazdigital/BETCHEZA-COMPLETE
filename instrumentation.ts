@@ -162,7 +162,80 @@ export async function register() {
       await query(`ALTER TABLE teams MODIFY COLUMN api_id VARCHAR(255) DEFAULT NULL`).catch(() => {});
       await query(`ALTER TABLE leagues MODIFY COLUMN api_id VARCHAR(255) DEFAULT NULL`).catch(() => {});
 
-      console.log('[instrumentation] DB migrations applied (community_rooms + room_id)');
+      // ── Challenges table — create + add all columns ──────────────────────────
+      await query(`
+        CREATE TABLE IF NOT EXISTS challenges (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          match_id VARCHAR(200) NOT NULL DEFAULT '',
+          match_home_team VARCHAR(150) NOT NULL DEFAULT '',
+          match_away_team VARCHAR(150) NOT NULL DEFAULT '',
+          match_home_logo TEXT NULL,
+          match_away_logo TEXT NULL,
+          match_league VARCHAR(200) NOT NULL DEFAULT '',
+          match_sport VARCHAR(60) NOT NULL DEFAULT 'football',
+          match_kickoff DATETIME NULL,
+          match_status VARCHAR(30) NOT NULL DEFAULT 'scheduled',
+          challenger_id INT NOT NULL,
+          challenged_id INT NULL,
+          challenger_pick VARCHAR(500) NOT NULL DEFAULT '',
+          challenged_pick VARCHAR(500) NULL,
+          stake_kes INT NOT NULL DEFAULT 0,
+          platform_fee_pct INT NOT NULL DEFAULT 10,
+          status VARCHAR(30) NOT NULL DEFAULT 'pending',
+          escrow_status VARCHAR(30) NOT NULL DEFAULT 'none',
+          is_fake TINYINT(1) NOT NULL DEFAULT 0,
+          winner_id INT NULL,
+          draw_refunded TINYINT(1) NOT NULL DEFAULT 0,
+          is_public TINYINT(1) NOT NULL DEFAULT 1,
+          watchers INT NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_status (status),
+          INDEX idx_match_id (match_id),
+          INDEX idx_challenger (challenger_id),
+          INDEX idx_fake (is_fake)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `).catch(() => {});
+      // Add any missing columns to existing challenges table (idempotent)
+      const challengeAlters = [
+        `ALTER TABLE challenges ADD COLUMN match_home_logo TEXT NULL`,
+        `ALTER TABLE challenges ADD COLUMN match_away_logo TEXT NULL`,
+        `ALTER TABLE challenges ADD COLUMN match_home_team VARCHAR(150) NOT NULL DEFAULT ''`,
+        `ALTER TABLE challenges ADD COLUMN match_away_team VARCHAR(150) NOT NULL DEFAULT ''`,
+        `ALTER TABLE challenges ADD COLUMN match_league VARCHAR(200) NOT NULL DEFAULT ''`,
+        `ALTER TABLE challenges ADD COLUMN match_sport VARCHAR(60) NOT NULL DEFAULT 'football'`,
+        `ALTER TABLE challenges ADD COLUMN match_kickoff DATETIME NULL`,
+        `ALTER TABLE challenges ADD COLUMN match_status VARCHAR(30) NOT NULL DEFAULT 'scheduled'`,
+        `ALTER TABLE challenges ADD COLUMN challenged_pick VARCHAR(500) NULL`,
+        `ALTER TABLE challenges MODIFY COLUMN challenger_pick VARCHAR(500) NOT NULL DEFAULT ''`,
+        `ALTER TABLE challenges MODIFY COLUMN challenged_pick VARCHAR(500) NULL`,
+        `ALTER TABLE challenges ADD COLUMN stake_kes INT NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN platform_fee_pct INT NOT NULL DEFAULT 10`,
+        `ALTER TABLE challenges ADD COLUMN escrow_status VARCHAR(30) NOT NULL DEFAULT 'none'`,
+        `ALTER TABLE challenges ADD COLUMN is_fake TINYINT(1) NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN winner_id INT NULL`,
+        `ALTER TABLE challenges ADD COLUMN draw_refunded TINYINT(1) NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 1`,
+        `ALTER TABLE challenges ADD COLUMN watchers INT NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN challenged_id INT NULL`,
+      ];
+      for (const sql of challengeAlters) {
+        await query(sql, []).catch(() => {});
+      }
+      // Community votes table for challenge voting
+      await query(`
+        CREATE TABLE IF NOT EXISTS community_votes (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          challenge_id INT NOT NULL,
+          user_id INT NOT NULL,
+          vote VARCHAR(30) NOT NULL DEFAULT 'challenger',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_vote (challenge_id, user_id),
+          INDEX idx_cv_challenge (challenge_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `).catch(() => {});
+
+      console.log('[instrumentation] DB migrations applied (community_rooms + room_id + challenges)');
 
       // 4b. Backfill room_id on existing fake-tipster posts (user_id >= 1000)
       //     that were created before rooms existed. Match rules:
