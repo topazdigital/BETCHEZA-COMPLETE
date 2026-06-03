@@ -476,7 +476,102 @@ export async function settleChallenge(id: number, homeScore: number, awayScore: 
     fs.challenges[idx] = { ...fs.challenges[idx], status: 'settled', winnerId, drawRefunded, escrowStatus: 'settled', matchStatus: 'finished', updatedAt: new Date().toISOString() };
     persistFile();
   }
+
+  // Push notification to challenge watchers
+  try {
+    const { sendPushToTopic } = await import('./push-sender');
+    const matchLabel = `${ch.matchHomeTeam} vs ${ch.matchAwayTeam}`;
+    const resultLabel = drawRefunded ? 'Draw — stakes refunded' : winnerId === ch.challengerId
+      ? `${ch.challenger?.displayName || 'Challenger'} wins!`
+      : `${ch.challenged?.displayName || 'Opponent'} wins!`;
+    await sendPushToTopic(`challenge_${id}`, {
+      title: `⚔️ Challenge Settled: ${matchLabel}`,
+      body: resultLabel,
+      url: '/challenges',
+    });
+  } catch { /* non-critical */ }
+
   return { ok: true, winnerId, draw: drawRefunded };
+}
+
+// ─── Watchers ─────────────────────────────────────────────────────────────────
+
+export async function incrementWatchers(id: number): Promise<void> {
+  await ensureMigrated();
+  if (hasDb()) {
+    try {
+      await query(`UPDATE challenges SET watchers = watchers + 1 WHERE id = ?`, [id]);
+      return;
+    } catch { /* fallback */ }
+  }
+  const fs = loadFile();
+  const idx = fs.challenges.findIndex(x => x.id === id);
+  if (idx >= 0) { fs.challenges[idx] = { ...fs.challenges[idx], watchers: (fs.challenges[idx].watchers || 0) + 1 }; persistFile(); }
+}
+
+// ─── Community votes ──────────────────────────────────────────────────────────
+
+async function ensureVotesTable(): Promise<void> {
+  if (!hasDb()) return;
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS community_votes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        challenge_id INT NOT NULL,
+        user_id INT NOT NULL,
+        side VARCHAR(20) NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_vote (challenge_id, user_id),
+        INDEX idx_cv_challenge (challenge_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `, []);
+  } catch { /* exists */ }
+}
+
+export async function getCommunityVotes(challengeId: number, userId?: number): Promise<{
+  challengerVotes: number; opponentVotes: number; userVote: string | null;
+}> {
+  await ensureVotesTable();
+  if (hasDb()) {
+    try {
+      const { rows: counts } = await query<{ side: string; cnt: number }>(
+        `SELECT side, COUNT(*) as cnt FROM community_votes WHERE challenge_id = ? GROUP BY side`,
+        [challengeId]
+      );
+      let challengerVotes = 0; let opponentVotes = 0;
+      for (const r of counts) {
+        if (r.side === 'challenger') challengerVotes = Number(r.cnt);
+        else if (r.side === 'opponent') opponentVotes = Number(r.cnt);
+      }
+      let userVote: string | null = null;
+      if (userId) {
+        const { rows: uv } = await query<{ side: string }>(
+          `SELECT side FROM community_votes WHERE challenge_id = ? AND user_id = ?`,
+          [challengeId, userId]
+        );
+        if (uv.length) userVote = uv[0].side;
+      }
+      return { challengerVotes, opponentVotes, userVote };
+    } catch { /* fallback */ }
+  }
+  return { challengerVotes: 0, opponentVotes: 0, userVote: null };
+}
+
+export async function voteCommunity(challengeId: number, userId: number, side: 'challenger' | 'opponent'): Promise<{
+  ok: boolean; challengerVotes: number; opponentVotes: number; userVote: string;
+}> {
+  await ensureVotesTable();
+  if (hasDb()) {
+    try {
+      await query(
+        `INSERT INTO community_votes (challenge_id, user_id, side) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE side = VALUES(side)`,
+        [challengeId, userId, side]
+      );
+    } catch { /* ignore */ }
+  }
+  const result = await getCommunityVotes(challengeId, userId);
+  return { ok: true, ...result, userVote: result.userVote || side };
 }
 
 // ─── Auto-settle cron ─────────────────────────────────────────────────────────

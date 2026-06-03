@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
 import { pickOptionsForSport } from '@/lib/challenge-picks';
+import { isPushSupported, ensurePushSubscribed } from '@/lib/push-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -485,6 +486,49 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
   );
 }
 
+// ─── Watch Button ─────────────────────────────────────────────────────────────
+
+function WatchButton({ challengeId, initialWatchers }: { challengeId: number; initialWatchers: number }) {
+  const [watching, setWatching] = useState(false);
+  const [count, setCount] = useState(initialWatchers);
+  const [busy, setBusy] = useState(false);
+  const storageKey = `watched_challenge_${challengeId}`;
+
+  useEffect(() => {
+    setWatching(!!localStorage.getItem(storageKey));
+  }, [storageKey]);
+
+  async function handleWatch() {
+    if (watching || busy) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/challenges/${challengeId}/watch`, { method: 'POST' });
+      setCount(c => c + 1);
+      setWatching(true);
+      localStorage.setItem(storageKey, '1');
+      if (isPushSupported()) {
+        await ensurePushSubscribed({ topics: [`challenge_${challengeId}`, 'challenge_results'] });
+      }
+    } catch { /* ignore */ } finally { setBusy(false); }
+  }
+
+  return (
+    <button
+      onClick={handleWatch}
+      disabled={watching || busy}
+      title={watching ? 'Watching — you\'ll get a push notification when this settles' : 'Watch this challenge and get notified when it settles'}
+      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors border ${
+        watching
+          ? 'border-purple-700/50 bg-purple-900/20 text-purple-300 cursor-default'
+          : 'border-gray-700 bg-gray-800/60 text-gray-400 hover:border-gray-500 hover:text-white'
+      }`}
+    >
+      <span className={watching ? 'text-purple-400' : 'text-gray-500'}>👁</span>
+      <span>{count > 0 ? count : ''}{watching ? ' Watching' : ' Watch'}</span>
+    </button>
+  );
+}
+
 // ─── Challenge Card ───────────────────────────────────────────────────────────
 
 function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
@@ -516,16 +560,27 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
             <span className="text-xs text-gray-400 truncate">{challenge.matchLeague}</span>
             {isFake && <span className="text-xs text-gray-600 shrink-0">· Demo</span>}
           </div>
-          {/* Status badge */}
-          {settled ? (
-            isDraw
-              ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-700/30 text-yellow-300 border border-yellow-700/50 shrink-0">🤝 Draw</span>
-              : <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-700/30 text-purple-300 border border-purple-700/50 shrink-0">✅ Settled</span>
-          ) : active ? (
-            <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-700/30 text-green-300 border border-green-700/50 animate-pulse shrink-0">⚔️ Active</span>
-          ) : (
-            <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-700/30 text-blue-300 border border-blue-700/50 shrink-0">Open</span>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Watcher button — only on open/active challenges */}
+            {!settled && (
+              <WatchButton challengeId={challenge.id} initialWatchers={challenge.watchers} />
+            )}
+            {settled && challenge.watchers > 0 && (
+              <span className="flex items-center gap-1 text-xs text-gray-600">
+                <span>👁</span><span>{challenge.watchers}</span>
+              </span>
+            )}
+            {/* Status badge */}
+            {settled ? (
+              isDraw
+                ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-700/30 text-yellow-300 border border-yellow-700/50">🤝 Draw</span>
+                : <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-700/30 text-purple-300 border border-purple-700/50">✅ Settled</span>
+            ) : active ? (
+              <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-700/30 text-green-300 border border-green-700/50 animate-pulse">⚔️ Active</span>
+            ) : (
+              <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-700/30 text-blue-300 border border-blue-700/50">Open</span>
+            )}
+          </div>
         </div>
 
         {/* Teams */}
