@@ -1,19 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getChallenges, createChallenge, seedFakeChallengesIfEmpty, isFakeUserId, type ScoringMethod } from '@/lib/challenges-store';
+import {
+  getChallenges, createChallenge, seedFakeChallengesFromMatches,
+  isFakeUserId, type MatchSnapshot,
+} from '@/lib/challenges-store';
 import { getBalance, debit } from '@/lib/wallet-store';
 import { dispatchNotification } from '@/lib/notification-dispatcher';
 import { query } from '@/lib/db';
+import { getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 
+// Seed fake challenges in the background (non-blocking) — only once per server lifetime
+let _seedDone = false;
+function seedInBackground() {
+  if (_seedDone) return;
+  _seedDone = true;
+  (async () => {
+    try {
+      const all = await getAllMatches();
+      const upcoming = all
+        .filter(m => {
+          const s = (m.status || '').toLowerCase();
+          return s === 'scheduled' || s === 'upcoming' || s === '';
+        })
+        .slice(0, 8)
+        .map(m => {
+          const leagueName = typeof m.league === 'string' ? m.league : (m.league as { name?: string })?.name || '';
+          const sportObj = typeof m.sport === 'object' ? m.sport as { name?: string; slug?: string } : null;
+          const sportSlug = sportObj?.slug || String(m.sport || 'football').toLowerCase();
+          return {
+            id: m.id,
+            homeTeam: m.homeTeam?.name || 'Home',
+            awayTeam: m.awayTeam?.name || 'Away',
+            homeLogo: m.homeTeam?.logo || null,
+            awayLogo: m.awayTeam?.logo || null,
+            league: leagueName,
+            sport: sportSlug,
+            kickoff: m.kickoffTime || m.date || null,
+            status: m.status || 'scheduled',
+            homeScore: m.homeScore ?? null,
+            awayScore: m.awayScore ?? null,
+          } as MatchSnapshot;
+        });
+      await seedFakeChallengesFromMatches(upcoming);
+    } catch { /* non-fatal */ }
+  })();
+}
+
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get('status') || 'all';
+  // Kick off background seeding without awaiting
+  seedInBackground();
   try {
-    seedFakeChallengesIfEmpty();
-    const challenges = await getChallenges(status as 'all' | 'pending' | 'active' | 'finished' | 'cancelled');
+    const challenges = await getChallenges(status as 'all' | 'pending' | 'active' | 'settled' | 'cancelled');
     return NextResponse.json({ challenges });
-  } catch {
+  } catch (e) {
+    console.error('[challenges GET]', e);
     return NextResponse.json({ challenges: [] });
   }
 }
@@ -24,93 +67,76 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json() as {
-      title?: string;
-      description?: string;
-      sport?: string;
-      scoringMethod?: ScoringMethod;
-      startDate?: string;
-      endDate?: string;
+      matchId?: string;
+      matchSnapshot?: MatchSnapshot;
+      challengerPick?: string;
       opponentId?: number | null;
       stakeKes?: number;
       isPublic?: boolean;
-      maxTips?: number;
-      matchScope?: string;
     };
 
-    if (!body.title?.trim()) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    if (!body.matchId?.trim()) {
+      return NextResponse.json({ error: 'Please select a match for this challenge' }, { status: 400 });
     }
-    if (!body.startDate || !body.endDate) {
-      return NextResponse.json({ error: 'Start and end dates are required' }, { status: 400 });
+    if (!body.matchSnapshot?.homeTeam) {
+      return NextResponse.json({ error: 'Match details are required' }, { status: 400 });
     }
-    if (body.endDate <= body.startDate) {
-      return NextResponse.json({ error: 'End date must be after start date' }, { status: 400 });
+    if (!body.challengerPick?.trim()) {
+      return NextResponse.json({ error: 'Please select your prediction' }, { status: 400 });
     }
 
     const stakeKes = Math.max(0, Math.round(body.stakeKes ?? 0));
     const opponentId = body.opponentId || null;
 
-    // Block: fake tipster cannot challenge real user
-    if (opponentId && !isFakeUserId(opponentId) && isFakeUserId(user.id)) {
-      return NextResponse.json({ error: 'Fake tipsters cannot challenge real users.' }, { status: 400 });
-    }
-    if (opponentId && isFakeUserId(opponentId) && !isFakeUserId(user.id)) {
-      return NextResponse.json({ error: 'You cannot challenge a fake tipster with a real money stake.' }, { status: 400 });
+    // Block fake vs real mixing
+    if (opponentId !== null) {
+      if (!isFakeUserId(opponentId) && isFakeUserId(user.id)) {
+        return NextResponse.json({ error: 'Fake tipsters cannot challenge real users.' }, { status: 400 });
+      }
     }
 
-    // Check + lock challenger wallet funds
+    // Wallet check and debit for real users with stake
     if (stakeKes > 0 && !isFakeUserId(user.id)) {
       const balance = getBalance(user.id);
       if (balance < stakeKes) {
-        const topUpNeeded = stakeKes - balance;
         return NextResponse.json({
           error: 'Insufficient wallet balance',
           insufficientBalance: true,
-          topUpNeeded,
+          topUpNeeded: stakeKes - balance,
           walletBalance: balance,
           stakeKes,
         }, { status: 402 });
       }
-      const result = debit(user.id, stakeKes, {
+      const debitResult = debit(user.id, stakeKes, {
         type: 'competition_entry',
-        description: `Challenge stake locked: ${body.title?.trim()}`,
-        meta: { challengeCreation: true },
+        description: `Challenge stake: ${body.matchSnapshot.homeTeam} vs ${body.matchSnapshot.awayTeam}`,
+        meta: { matchId: body.matchId, pick: body.challengerPick },
       });
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error, insufficientBalance: true, walletBalance: result.balance, stakeKes }, { status: 402 });
+      if (!debitResult.ok) {
+        return NextResponse.json({ error: debitResult.error, insufficientBalance: true, walletBalance: debitResult.balance, stakeKes }, { status: 402 });
       }
     }
 
     const challenge = await createChallenge({
-      title: body.title.trim(),
-      description: body.description?.trim(),
-      sport: body.sport || 'football',
-      scoringMethod: body.scoringMethod || 'win_rate',
-      startDate: body.startDate,
-      endDate: body.endDate,
+      matchId: body.matchId.trim(),
+      matchSnapshot: body.matchSnapshot,
       challengerId: user.id,
-      opponentId,
+      challengerPick: body.challengerPick.trim(),
+      challengedId: opponentId,
       stakeKes,
       isPublic: body.isPublic !== false,
-      maxTips: body.maxTips || 10,
-      isFakeChallenge: false,
-      matchScope: body.matchScope,
+      isFake: false,
     });
 
     // Notify named opponent
     if (opponentId && !isFakeUserId(opponentId)) {
       try {
-        let opponentEmail: string | null = null;
-        try {
-          const rows = await query<{ email: string }>(`SELECT email FROM users WHERE id = ? LIMIT 1`, [opponentId]);
-          opponentEmail = rows.rows[0]?.email || null;
-        } catch {}
+        const { rows } = await query<{ email: string }>(`SELECT email FROM users WHERE id = ? LIMIT 1`, [opponentId]);
+        const email = rows[0]?.email || null;
         await dispatchNotification({
-          userId: opponentId,
-          email: opponentEmail,
-          type: 'system',
+          userId: opponentId, email, type: 'system',
           title: '⚔️ You\'ve been challenged!',
-          content: `${user.displayName || user.username} has challenged you to "${challenge.title}"${stakeKes > 0 ? ` with a KES ${stakeKes.toLocaleString()} stake` : ''}.`,
+          content: `${user.displayName || user.username} challenged you to predict ${body.matchSnapshot.homeTeam} vs ${body.matchSnapshot.awayTeam}${stakeKes > 0 ? ` — KES ${stakeKes.toLocaleString()} stake` : ''}.`,
           link: '/challenges',
         });
       } catch { /* non-fatal */ }

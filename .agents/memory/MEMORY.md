@@ -12,3 +12,4 @@
 - [Roster null-safety](roster-null-safety.md) — roster.starting can be undefined even when roster is non-null (API omits it); always use (roster.starting || []).slice() everywhere; buildPitchData guards with !roster.starting?.length
 - [Tips feed null guards](tips-feed-nulls.md) — tip.tipster can be null at runtime despite interface; BestBetCard/TipCard must return null early; sportCounts can be null before first SWR response
 - [teams.short_name column width](db-short-name.md) — short_name was VARCHAR(50); ESPN abbreviations can exceed that; widened to VARCHAR(100) via instrumentation.ts ALTER TABLE migration
+- [Challenges system architecture](challenges-system.md) — real-match pick battles; client-safe picks in lib/challenge-picks.ts; API seeds fake challenges async/non-blocking; isFakeUserId lives in fake-tipsters.ts

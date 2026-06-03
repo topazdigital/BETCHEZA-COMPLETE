@@ -390,6 +390,11 @@ export function regenerateFakeTipsters(count = 100, seed?: number): FakeTipster[
  * Pick a sub-set of tipsters who would plausibly post on a given match.
  * Popular leagues (top tier in big countries) attract more action.
  */
+/** All fake tipsters have IDs >= 1000. Real users have IDs < 1000. */
+export function isFakeUserId(userId: number): boolean {
+  return userId >= 1000;
+}
+
 export function pickTipstersForMatch(matchId: string, leagueTier: number, popularity = 1): FakeTipster[] {
   const rand = rng(hashStr(matchId));
   // Base count: 1–3, scaled by popularity (top leagues 4–9 tipsters).
