@@ -13,3 +13,4 @@
 - [Tips feed null guards](tips-feed-nulls.md) — tip.tipster can be null at runtime despite interface; BestBetCard/TipCard must return null early; sportCounts can be null before first SWR response
 - [teams.short_name column width](db-short-name.md) — short_name was VARCHAR(50); ESPN abbreviations can exceed that; widened to VARCHAR(100) via instrumentation.ts ALTER TABLE migration
 - [Challenges system architecture](challenges-system.md) — real-match pick battles; client-safe picks in lib/challenge-picks.ts; API seeds fake challenges async/non-blocking; isFakeUserId lives in fake-tipsters.ts
+- [Challenges UI rules](challenges-ui-rules.md) — fake tipsters must NEVER show "Demo" labels; always render isFake tipsters identically to real users; match-search returns deterministic fallback odds for football; pick buttons show odds inline

@@ -9,6 +9,12 @@ import { isPushSupported, ensurePushSubscribed } from '@/lib/push-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface MatchOdds {
+  home: number;
+  draw: number;
+  away: number;
+}
+
 interface MatchOption {
   id: string;
   homeTeam: string;
@@ -22,6 +28,7 @@ interface MatchOption {
   status: string;
   homeScore: number | null;
   awayScore: number | null;
+  odds?: MatchOdds;
 }
 
 interface Participant {
@@ -92,6 +99,16 @@ function countdown(iso: string | null): string {
   return `${m}m`;
 }
 
+// Map a pick value to its odds from the match odds object
+function getPickOdds(pickValue: string, odds?: MatchOdds): number | null {
+  if (!odds) return null;
+  const p = pickValue.toLowerCase();
+  if (p === 'home win') return odds.home > 0 ? odds.home : null;
+  if (p === 'draw') return odds.draw > 0 ? odds.draw : null;
+  if (p === 'away win') return odds.away > 0 ? odds.away : null;
+  return null;
+}
+
 // ─── Team Logo ────────────────────────────────────────────────────────────────
 
 function TeamLogo({ src, name, size = 28 }: { src: string | null; name: string; size?: number }) {
@@ -109,6 +126,27 @@ function TeamLogo({ src, name, size = 28 }: { src: string | null; name: string; 
   return (
     <Image src={src} alt={name} width={size} height={size}
       className="rounded-full object-contain shrink-0 bg-gray-800"
+      style={{ width: size, height: size }} onError={() => setErr(true)} unoptimized />
+  );
+}
+
+// ─── Participant Avatar ───────────────────────────────────────────────────────
+
+function ParticipantAvatar({ avatar, name, size = 28 }: { avatar: string | null; name: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  if (!avatar || err) {
+    return (
+      <div
+        className="rounded-full bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center font-bold text-white shrink-0"
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+      >
+        {name.slice(0, 2).toUpperCase()}
+      </div>
+    );
+  }
+  return (
+    <Image src={avatar} alt={name} width={size} height={size}
+      className="rounded-full object-cover shrink-0 bg-gray-800"
       style={{ width: size, height: size }} onError={() => setErr(true)} unoptimized />
   );
 }
@@ -149,7 +187,6 @@ function MatchSearch({ onSelect }: { onSelect: (m: MatchOption) => void }) {
     timer.current = setTimeout(() => search(q), q ? 300 : 0);
   }, [q, search]);
 
-  // Load initial on mount
   useEffect(() => { search(''); }, [search]);
 
   useEffect(() => {
@@ -285,6 +322,29 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
                     <span className="text-xs font-medium text-white text-center leading-tight max-w-[72px]">{selectedMatch.awayTeam}</span>
                   </div>
                 </div>
+                {/* Odds row */}
+                {selectedMatch.odds && (selectedMatch.odds.home > 0 || selectedMatch.odds.away > 0) && (
+                  <div className="mt-3 pt-2.5 border-t border-gray-700 flex justify-center gap-3">
+                    {selectedMatch.odds.home > 0 && (
+                      <div className="flex flex-col items-center">
+                        <span className="text-xs text-gray-500">1 Home</span>
+                        <span className="text-sm font-bold text-white">{selectedMatch.odds.home.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {selectedMatch.odds.draw > 0 && (
+                      <div className="flex flex-col items-center">
+                        <span className="text-xs text-gray-500">X Draw</span>
+                        <span className="text-sm font-bold text-white">{selectedMatch.odds.draw.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {selectedMatch.odds.away > 0 && (
+                      <div className="flex flex-col items-center">
+                        <span className="text-xs text-gray-500">2 Away</span>
+                        <span className="text-sm font-bold text-white">{selectedMatch.odds.away.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -297,12 +357,20 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
                 <div key={group} className="mb-3">
                   <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">{group}</div>
                   <div className="flex flex-wrap gap-2">
-                    {opts.map(o => (
-                      <button key={o.value} onClick={() => setPick(o.value)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${pick === o.value ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/30' : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'}`}>
-                        {o.label}
-                      </button>
-                    ))}
+                    {opts.map(o => {
+                      const odd = getPickOdds(o.value, selectedMatch.odds);
+                      return (
+                        <button key={o.value} onClick={() => setPick(o.value)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all flex flex-col items-center leading-tight ${pick === o.value ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/30' : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'}`}>
+                          <span>{o.label}</span>
+                          {odd !== null && (
+                            <span className={`text-xs font-bold mt-0.5 ${pick === o.value ? 'text-blue-200' : 'text-yellow-400'}`}>
+                              {odd.toFixed(2)}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -338,8 +406,8 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
                   <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
                 </button>
                 <div>
-                  <div className="text-sm font-medium text-white">{isPublic ? 'Open challenge' : 'Private challenge'}</div>
-                  <div className="text-xs text-gray-400">{isPublic ? 'Any tipster can accept' : 'Invite a specific opponent'}</div>
+                  <div className="text-sm font-medium text-white">{isPublic ? 'Open challenge — any tipster can accept' : 'Private challenge — invite only'}</div>
+                  <div className="text-xs text-gray-400">{isPublic ? 'Goes live on the Open tab for everyone to see' : 'Share your link to invite a specific opponent'}</div>
                 </div>
               </div>
             </div>
@@ -408,7 +476,10 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-          <h2 className="text-lg font-bold text-white">Accept Challenge</h2>
+          <div>
+            <h2 className="text-lg font-bold text-white">⚔️ Accept Challenge</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Pick the opposite — may the best tipster win</p>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
         <div className="p-5 space-y-4">
@@ -431,22 +502,21 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
             </div>
           </div>
 
-          {/* Opponent's pick */}
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-800/50 border border-gray-700">
-            <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
-              {(challenge.challenger?.displayName || '?').slice(0, 2).toUpperCase()}
-            </div>
+          {/* Challenger's pick */}
+          <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gray-800/50 border border-gray-700">
+            <ParticipantAvatar avatar={challenge.challenger?.avatar ?? null} name={challenge.challenger?.displayName || '?'} size={32} />
             <div className="flex-1 text-sm">
-              <span className="font-semibold text-white">{challenge.challenger?.displayName}</span>
-              <span className="text-gray-400"> picked </span>
-              <PickBadge pick={challenge.challengerPick} />
+              <div className="font-semibold text-white text-sm">{challenge.challenger?.displayName || `User #${challenge.challengerId}`}</div>
+              <div className="text-gray-400 text-xs mt-0.5">
+                called <PickBadge pick={challenge.challengerPick} />
+              </div>
             </div>
-            <div className="text-gray-600 font-bold">vs you</div>
+            <div className="text-xs text-gray-500 font-medium">their pick</div>
           </div>
 
           {/* Pick selector */}
           <div>
-            <label className="block text-sm font-semibold text-gray-300 mb-2">Your Prediction</label>
+            <label className="block text-sm font-semibold text-gray-300 mb-2">Your Counter-Pick</label>
             {Object.entries(grouped).map(([group, opts]) => (
               <div key={group} className="mb-3">
                 <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide">{group}</div>
@@ -455,8 +525,8 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
                     const taken = o.value === challenge.challengerPick;
                     return (
                       <button key={o.value} onClick={() => !taken && setPick(o.value)} disabled={taken}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${taken ? 'opacity-30 cursor-not-allowed bg-gray-800 border-gray-700 text-gray-400' : pick === o.value ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'}`}>
-                        {o.label}{taken ? ' ✗' : ''}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${taken ? 'opacity-25 cursor-not-allowed bg-gray-800 border-gray-700 text-gray-400' : pick === o.value ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'}`}>
+                        {o.label}{taken ? ' (taken)' : ''}
                       </button>
                     );
                   })}
@@ -467,8 +537,8 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
 
           {challenge.stakeKes > 0 && (
             <div className="p-3 rounded-lg bg-yellow-900/20 border border-yellow-800/40 text-xs text-yellow-300">
-              ⚠️ Accepting will lock <strong>KES {challenge.stakeKes.toLocaleString()}</strong> from your wallet.
-              Winner gets <strong>KES {payout.toLocaleString()}</strong>. Draw = full refund.
+              ⚠️ Accepting locks <strong>KES {challenge.stakeKes.toLocaleString()}</strong> from your wallet.
+              Winner takes <strong>KES {payout.toLocaleString()}</strong> · Draw = full refund.
             </div>
           )}
 
@@ -478,7 +548,7 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-gray-800 text-gray-300 font-medium hover:bg-gray-700 transition-colors">Cancel</button>
           <button onClick={handleAccept} disabled={!pick || submitting}
             className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold transition-colors">
-            {submitting ? 'Accepting…' : `Accept & Lock${challenge.stakeKes > 0 ? ` KES ${challenge.stakeKes.toLocaleString()}` : ''}`}
+            {submitting ? 'Accepting…' : `Accept${challenge.stakeKes > 0 ? ` · KES ${challenge.stakeKes.toLocaleString()}` : ' Challenge'}`}
           </button>
         </div>
       </div>
@@ -516,7 +586,7 @@ function WatchButton({ challengeId, initialWatchers }: { challengeId: number; in
     <button
       onClick={handleWatch}
       disabled={watching || busy}
-      title={watching ? 'Watching — you\'ll get a push notification when this settles' : 'Watch this challenge and get notified when it settles'}
+      title={watching ? 'Watching — you\'ll be notified when this settles' : 'Watch and get notified when this settles'}
       className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors border ${
         watching
           ? 'border-purple-700/50 bg-purple-900/20 text-purple-300 cursor-default'
@@ -537,7 +607,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
   onAccept: (c: Challenge) => void;
   onCancel: (id: number) => void;
 }) {
-  const { challengerId, challengedId, winnerId, drawRefunded, status, isFake } = challenge;
+  const { challengerId, challengedId, winnerId, drawRefunded, status } = challenge;
   const settled = status === 'settled';
   const active = status === 'active';
   const pending = status === 'pending';
@@ -556,12 +626,9 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
       {/* Match row */}
       <div className="px-4 pt-3 pb-2.5 border-b border-gray-800/60">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xs text-gray-400 truncate">{challenge.matchLeague}</span>
-            {isFake && <span className="text-xs text-gray-600 shrink-0">· Demo</span>}
-          </div>
+          <span className="text-xs text-gray-400 truncate">{challenge.matchLeague}</span>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Watcher button — only on open/active challenges */}
+            {/* Watcher button */}
             {!settled && (
               <WatchButton challengeId={challenge.id} initialWatchers={challenge.watchers} />
             )}
@@ -578,7 +645,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
             ) : active ? (
               <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-700/30 text-green-300 border border-green-700/50 animate-pulse">⚔️ Active</span>
             ) : (
-              <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-700/30 text-blue-300 border border-blue-700/50">Open</span>
+              <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-700/30 text-blue-300 border border-blue-700/50">🔓 Open</span>
             )}
           </div>
         </div>
@@ -586,7 +653,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
         {/* Teams */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <TeamLogo src={challenge.matchHomeLogo} name={challenge.matchHomeTeam} size={32} />
+            <TeamLogo src={challenge.matchHomeLogo} name={challenge.matchHomeTeam} size={30} />
             <span className="text-sm font-semibold text-white truncate">{challenge.matchHomeTeam}</span>
           </div>
           <div className="text-center shrink-0">
@@ -600,7 +667,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
           </div>
           <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
             <span className="text-sm font-semibold text-white truncate text-right">{challenge.matchAwayTeam}</span>
-            <TeamLogo src={challenge.matchAwayLogo} name={challenge.matchAwayTeam} size={32} />
+            <TeamLogo src={challenge.matchAwayLogo} name={challenge.matchAwayTeam} size={30} />
           </div>
         </div>
       </div>
@@ -611,13 +678,15 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
           {/* Challenger */}
           <div className={`flex-1 rounded-xl p-3 border ${challengerWon ? 'bg-green-900/20 border-green-700/50' : isDraw ? 'bg-yellow-900/10 border-yellow-700/30' : settled ? 'bg-gray-800/30 border-gray-700/30' : 'bg-gray-800/50 border-gray-700/50'}`}>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                {(challenge.challenger?.displayName || '?').slice(0, 2).toUpperCase()}
-              </div>
+              <ParticipantAvatar
+                avatar={challenge.challenger?.avatar ?? null}
+                name={challenge.challenger?.displayName || `U${challengerId}`}
+                size={28}
+              />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-white truncate">{challenge.challenger?.displayName || `User #${challengerId}`}</div>
                 <div className="text-xs text-gray-500">
-                  {challenge.challenger?.isFake ? 'Demo' : `${challenge.challenger?.won ?? 0}W / ${challenge.challenger?.lost ?? 0}L`}
+                  {challenge.challenger?.won ?? 0}W / {challenge.challenger?.lost ?? 0}L
                 </div>
               </div>
               {challengerWon && <span className="text-base shrink-0">🏆</span>}
@@ -637,18 +706,20 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
           </div>
 
           {/* Challenged */}
-          <div className={`flex-1 rounded-xl p-3 border ${challengedWon ? 'bg-green-900/20 border-green-700/50' : isDraw ? 'bg-yellow-900/10 border-yellow-700/30' : settled ? 'bg-gray-800/30 border-gray-700/30' : 'bg-gray-800/50 border-gray-700/50'}`}>
+          <div className={`flex-1 rounded-xl p-3 border ${challengedWon ? 'bg-green-900/20 border-green-700/50' : isDraw ? 'bg-yellow-900/10 border-yellow-700/30' : settled ? 'bg-gray-800/30 border-gray-700/30' : challenge.challenged ? 'bg-gray-800/50 border-gray-700/50' : 'bg-gray-800/30 border-dashed border-gray-600'}`}>
             {challenge.challenged ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
                   {challengedWon && <span className="text-base shrink-0">🏆</span>}
-                  <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                    {(challenge.challenged.displayName || '?').slice(0, 2).toUpperCase()}
-                  </div>
+                  <ParticipantAvatar
+                    avatar={challenge.challenged.avatar ?? null}
+                    name={challenge.challenged.displayName || `U${challengedId}`}
+                    size={28}
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-white truncate">{challenge.challenged.displayName}</div>
                     <div className="text-xs text-gray-500">
-                      {challenge.challenged.isFake ? 'Demo' : `${challenge.challenged.won ?? 0}W / ${challenge.challenged.lost ?? 0}L`}
+                      {challenge.challenged.won ?? 0}W / {challenge.challenged.lost ?? 0}L
                     </div>
                   </div>
                 </div>
@@ -658,12 +729,15 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
                 }
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
-                <div className="text-xs text-gray-500">Waiting for opponent</div>
+              /* Open slot — any tipster can join */
+              <div className="flex flex-col items-center justify-center h-full gap-1.5 text-center py-1">
+                <div className="text-lg">🎯</div>
+                <div className="text-xs font-semibold text-gray-300">Open slot</div>
+                <div className="text-xs text-gray-500">Any tipster can join</div>
                 {canAccept && (
                   <button onClick={() => onAccept(challenge)}
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors">
-                    Accept
+                    className="mt-1 px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-green-900/30">
+                    ⚔️ Join
                   </button>
                 )}
               </div>
@@ -675,23 +749,17 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
         {settled && challenge.stakeKes > 0 && (
           <div className="mt-2.5 text-center text-xs">
             {isDraw ? (
-              <span className="text-yellow-400">Both stakes refunded · Match was a draw on this pick</span>
+              <span className="text-yellow-400">Both stakes refunded · Match ended in a draw on this market</span>
             ) : winnerId ? (
-              isFake ? (
-                <span className="text-gray-400">
-                  Demo: {winnerId === challengerId ? challenge.challenger?.displayName : challenge.challenged?.displayName} would have won KES {payout.toLocaleString()}
-                </span>
-              ) : (
-                <span className="text-green-400 font-medium">
-                  KES {payout.toLocaleString()} paid out · Platform fee KES {(challenge.stakeKes * 2 - payout).toLocaleString()} collected
-                </span>
-              )
+              <span className="text-green-400 font-medium">
+                {winnerId === challengerId ? challenge.challenger?.displayName : challenge.challenged?.displayName} won KES {payout.toLocaleString()} 🏆
+              </span>
             ) : null}
           </div>
         )}
 
         {/* Action buttons */}
-        {(canAccept && !challenge.challenged) || canCancel ? (
+        {((canAccept && !challenge.challenged) || canCancel) && (
           <div className="mt-3 flex gap-2">
             {canAccept && !challenge.challenged && (
               <button onClick={() => onAccept(challenge)}
@@ -706,7 +774,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel }: {
               </button>
             )}
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -757,6 +825,13 @@ export default function ChallengesPage() {
     mutate();
   };
 
+  // Switch to "Open" tab automatically when there are open challenges but none live
+  useEffect(() => {
+    if (!isLoading && stats.live === 0 && stats.open > 0 && statusTab === 'active') {
+      setStatusTab('pending');
+    }
+  }, [isLoading, stats.live, stats.open, statusTab]);
+
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-6xl mx-auto px-4 py-6">
@@ -800,7 +875,13 @@ export default function ChallengesPage() {
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Sport</div>
               <div className="flex flex-col gap-1">
-                {[{ label: 'All', value: '' }, { label: '⚽ Football', value: 'football' }, { label: '🏀 Basketball', value: 'basketball' }, { label: '🎾 Tennis', value: 'tennis' }, { label: '🏏 Cricket', value: 'cricket' }].map(t => (
+                {[
+                  { label: 'All', value: '' },
+                  { label: '⚽ Football', value: 'football' },
+                  { label: '🏀 Basketball', value: 'basketball' },
+                  { label: '🎾 Tennis', value: 'tennis' },
+                  { label: '🏏 Cricket', value: 'cricket' },
+                ].map(t => (
                   <button key={t.value} onClick={() => setSportFilter(t.value)}
                     className={`text-left px-3 py-1.5 rounded-lg text-sm transition-colors ${sportFilter === t.value ? 'bg-blue-600 text-white font-medium' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
                     {t.label}
@@ -813,11 +894,11 @@ export default function ChallengesPage() {
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">How It Works</div>
               <ol className="space-y-2.5 text-xs text-gray-400 list-decimal list-inside">
-                <li>Choose a real upcoming match on the site</li>
+                <li>Choose a real upcoming match</li>
                 <li>Pick your prediction — 1X2, Over/Under, BTTS…</li>
                 <li>Set your KES stake · Opponent matches it</li>
                 <li>Match ends → correct pick wins 90% of pot</li>
-                <li>Draw (both right or both wrong) = full refund, no fee</li>
+                <li>Draw (both right or both wrong) = full refund</li>
               </ol>
             </div>
           </div>
@@ -853,7 +934,11 @@ export default function ChallengesPage() {
                   {statusTab === 'active' ? 'No live battles right now' : statusTab === 'pending' ? 'No open challenges' : 'No settled challenges yet'}
                 </div>
                 <p className="text-sm text-gray-500 mb-4">
-                  {statusTab === 'settled' ? 'Challenges settle automatically when their match finishes.' : 'Be the first — pick a match and post a challenge.'}
+                  {statusTab === 'settled'
+                    ? 'Challenges settle automatically when the match finishes.'
+                    : statusTab === 'pending'
+                    ? 'Post a challenge and let other tipsters accept it.'
+                    : 'Challenges go live once a second tipster accepts.'}
                 </p>
                 {user && statusTab !== 'settled' && (
                   <button onClick={() => setShowCreate(true)}
