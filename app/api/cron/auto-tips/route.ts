@@ -19,6 +19,81 @@ export const runtime = 'nodejs';
  *   - other markets  → random pick (or skip ~30% of the time for realism)
  */
 
+/**
+ * Build a weighted random picker for crowd votes using odds-derived probabilities.
+ *
+ * People massively overback favourites. The algorithm:
+ *  1. Read home/draw/away odds from the match's 1X2 market.
+ *  2. Convert to implied probabilities (1/odds) and normalise.
+ *  3. Apply crowd amplification (power 1.6) — the favourite gets a much bigger
+ *     share than raw implied odds suggest (favourite-longshot bias in voting).
+ *  4. Add a small home-crowd bias (+4 pp).
+ *
+ * Fallback: if odds are missing, uses a sensible home-leaning split.
+ */
+function buildOddsBasedPicker(match: any): () => VotePick {
+  const AMPLIFICATION = 1.6;
+  const HOME_BIAS = 0.04;
+
+  // Detect sport — no draw in basketball, tennis, etc.
+  const sport = (match.sport?.slug || match.sport || '').toLowerCase();
+  const hasDraw = !['basketball', 'tennis', 'baseball', 'hockey', 'mma', 'boxing', 'american-football'].includes(sport);
+
+  // Find h2h/1x2 market
+  const markets: any[] = match.markets || [];
+  const h2h = markets.find((mk: any) => {
+    const k = (mk.key || '').toLowerCase();
+    const n = (mk.name || '').toLowerCase();
+    return k.includes('h2h') || k.includes('1x2') || k === 'match_winner' ||
+           n.includes('1x2') || n.includes('match result') || n.includes('match winner');
+  });
+
+  let homeOdds = 0, drawOdds = 0, awayOdds = 0;
+  if (h2h) {
+    for (const o of h2h.outcomes || []) {
+      const n = (o.name || '').toLowerCase();
+      if (n === 'home' || n === '1' || n === 'home win') homeOdds = o.price;
+      else if (n === 'draw' || n === 'x') drawOdds = o.price;
+      else if (n === 'away' || n === '2' || n === 'away win') awayOdds = o.price;
+    }
+  }
+
+  let homeShare: number, drawShare: number, awayShare: number;
+
+  if (homeOdds > 1 && awayOdds > 1) {
+    const iHome = 1 / homeOdds;
+    const iDraw = hasDraw && drawOdds > 1 ? 1 / drawOdds : 0;
+    const iAway = 1 / awayOdds;
+    const totalI = iHome + iDraw + iAway;
+    const pH = iHome / totalI, pD = iDraw / totalI, pA = iAway / totalI;
+
+    // Crowd amplification
+    const aH = Math.pow(pH, AMPLIFICATION);
+    const aD = Math.pow(pD, AMPLIFICATION);
+    const aA = Math.pow(pA, AMPLIFICATION);
+    const totalA = aH + aD + aA;
+
+    homeShare = aH / totalA + HOME_BIAS;
+    drawShare = hasDraw ? Math.max(0.03, aD / totalA - HOME_BIAS / 2) : 0;
+    awayShare = Math.max(0.02, aA / totalA - HOME_BIAS / 2);
+    const t = homeShare + drawShare + awayShare;
+    homeShare /= t; drawShare /= t; awayShare /= t;
+  } else {
+    // Fallback: sensible home-leaning default
+    homeShare = 0.52; drawShare = hasDraw ? 0.26 : 0; awayShare = 1 - homeShare - drawShare;
+  }
+
+  // Build a cumulative distribution for weighted random pick
+  const thresholdDraw = homeShare + drawShare;
+
+  return () => {
+    const r = Math.random();
+    if (r < homeShare) return 'home';
+    if (hasDraw && r < thresholdDraw) return 'draw';
+    return 'away';
+  };
+}
+
 /** Derive a crowd-vote pick from a market key + outcome name */
 function derivePick(marketKey: string, outcomeName: string): VotePick | null {
   const mk = (marketKey || '').toLowerCase();
@@ -125,16 +200,17 @@ export async function GET(request: NextRequest) {
     planned.push({ matchId: String(m.id), tipsters: tipsters.map(t => t.id), outcomes });
   }
 
-  // Also seed random votes from "background fans" (non-tipster crowd) for
-  // matches that have very few votes, to make the widget look active.
+  // Seed "background fan" votes using odds-based logic so the crowd
+  // distribution looks realistic (heavy favourite gets the most votes).
   if (!dry) {
     for (const m of matches.slice(0, 10)) {
       const fanCount = 3 + Math.floor(Math.random() * 8);
-      const picks: VotePick[] = ['home', 'draw', 'away'];
+      // Extract h2h odds so favourites get proportionally more votes
+      const oddsBasedPick = buildOddsBasedPicker(m);
       for (let i = 0; i < fanCount; i++) {
         try {
           const voterId = `fan_seed_${m.id}_${i}_${Math.floor(Date.now() / 86400000)}`;
-          const pick = picks[Math.floor(Math.random() * picks.length)];
+          const pick = oddsBasedPick();
           const result = await castVote(String(m.id), voterId, pick);
           if (result.ok) votesCount++;
         } catch { /* ignore */ }

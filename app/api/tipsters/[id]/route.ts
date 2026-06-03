@@ -349,6 +349,7 @@ function bootstrapTipsterTipsFromMatches(
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  try {
   const { id } = await context.params;
 
   // Resolve tipster from the fake-tipster catalogue (id 1000+) or @username.
@@ -472,4 +473,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   return NextResponse.json(response);
+  } catch (err) {
+    console.error('[tipsters/[id]] Unhandled error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
