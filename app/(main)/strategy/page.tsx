@@ -1254,44 +1254,60 @@ export default function StrategyPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border text-[10px] text-muted-foreground uppercase tracking-wide">
-                    <th className="px-3 py-2 text-left font-medium">Day</th>
-                    <th className="px-3 py-2 text-right font-medium">Stake</th>
-                    <th className="px-3 py-2 text-right font-medium text-green-500">Win</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Day</th>
+                    <th className="px-3 py-2.5 text-right font-medium">Stake</th>
+                    <th className="px-3 py-2.5 text-right font-medium text-blue-500">Save</th>
+                    <th className="px-3 py-2.5 text-right font-medium text-green-500">Win</th>
                   </tr>
                 </thead>
                 <tbody>
                   {WEEK_PLAN.map((p) => {
+                    const dayData = current?.days?.find(d => d.day === p.day);
                     const todayDayNum = current?.days?.find(d => d.status === 'active')?.day;
                     const isCurrentDay = todayDayNum === p.day;
+                    const result = dayData?.result;
                     return (
                       <tr key={p.day} className={cn(
                         'border-b border-border/50 last:border-0 transition-colors',
-                        isCurrentDay ? 'bg-primary/8' : 'hover:bg-muted/20'
+                        isCurrentDay ? 'bg-primary/8' :
+                        result === 'win' ? 'bg-green-500/5' :
+                        result === 'loss' ? 'bg-red-500/5' :
+                        'hover:bg-muted/20'
                       )}>
-                        <td className="px-3 py-2 font-medium">
+                        <td className="px-3 py-2.5 font-medium">
                           <div className="flex items-center gap-1.5">
-                            {isCurrentDay && <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />}
-                            <span className={isCurrentDay ? 'text-primary font-bold' : ''}>D{p.day}</span>
+                            <span className={cn(
+                              'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                              isCurrentDay ? 'bg-primary text-primary-foreground' :
+                              result === 'win' ? 'bg-green-500 text-white' :
+                              result === 'loss' ? 'bg-red-500 text-white' :
+                              'bg-muted text-muted-foreground'
+                            )}>
+                              {result === 'win' ? '✓' : result === 'loss' ? '✗' : p.day}
+                            </span>
+                            <span className={cn('font-semibold', isCurrentDay ? 'text-primary' : '')}>D{p.day}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-muted-foreground">{p.stake.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right font-mono font-bold text-green-500">{p.targetWin.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-muted-foreground">{p.stake.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-blue-500 font-semibold">{p.save > 0 ? p.save.toLocaleString() : '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-green-500">{p.targetWin.toLocaleString()}</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr className="bg-muted/30 text-[10px] font-semibold border-t border-border">
-                    <td className="px-3 py-2 text-muted-foreground">Total</td>
-                    <td className="px-3 py-2 text-right font-mono text-muted-foreground">54,000</td>
-                    <td className="px-3 py-2 text-right font-mono text-green-600">108,000</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">Total</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-muted-foreground">{WEEK_PLAN.reduce((s, p) => s + p.stake, 0).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-blue-500">{WEEK_PLAN.reduce((s, p) => s + p.save, 0).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-green-600">{WEEK_PLAN.reduce((s, p) => s + p.targetWin, 0).toLocaleString()}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
             <div className="px-3 pb-2.5 pt-1.5">
               <p className="text-[10px] text-muted-foreground leading-relaxed">
-                Save a portion each day — total savings KES 49,000. Stake only what you can afford to lose.
+                Save a portion each day — total savings KES {WEEK_PLAN.reduce((s, p) => s + p.save, 0).toLocaleString()}. Stake only what you can afford to lose.
               </p>
             </div>
           </div>

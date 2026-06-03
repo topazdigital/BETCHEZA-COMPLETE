@@ -138,11 +138,11 @@ function ManualPickEditor({
   );
 }
 
-function DayPanel({ day, weekId, onRefresh }: { day: DayPrediction; weekId: string; onRefresh: () => void }) {
+function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction; weekId: string; onRefresh: () => void; isHistorical?: boolean }) {
   const [open, setOpen] = useState(day.status === 'active');
   const [mode, setMode] = useState<'view' | 'manual' | 'ai'>('view');
   const [manualPicks, setManualPicks] = useState<Partial<StrategyPick>[]>([EMPTY_PICK()]);
-  const [scheduledFor, setScheduledFor] = useState('');
+  const [scheduledFor, setScheduledFor] = useState(isHistorical ? (day.date || '') : '');
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingResult, setSavingResult] = useState(false);
@@ -309,19 +309,26 @@ function DayPanel({ day, weekId, onRefresh }: { day: DayPrediction; weekId: stri
                 <button onClick={() => setMode('view')} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
               </div>
 
-              {/* Schedule option */}
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1.5">
-                  <Calendar className="h-3.5 w-3.5" /> Schedule for a specific date (optional)
-                </label>
-                <input
-                  type="date"
-                  value={scheduledFor}
-                  onChange={e => setScheduledFor(e.target.value)}
-                  className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">Leave empty to post for today. Set a future date to schedule (AI won&apos;t override scheduled days).</p>
-              </div>
+              {/* Schedule option — hidden for historical days (date is fixed) */}
+              {!isHistorical && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1.5">
+                    <Calendar className="h-3.5 w-3.5" /> Schedule for a specific date (optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduledFor}
+                    onChange={e => setScheduledFor(e.target.value)}
+                    className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Leave empty to post for today. Set a future date to schedule (AI won&apos;t override scheduled days).</p>
+                </div>
+              )}
+              {isHistorical && day.date && (
+                <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+                  Editing past day: <strong>{day.date}</strong>. Picks will be saved under this date.
+                </div>
+              )}
 
               <ManualPickEditor picks={manualPicks} onChange={setManualPicks} />
 
@@ -503,6 +510,16 @@ export default function AdminStrategyPage() {
   );
 
   const current = data?.current;
+  const past = data?.past || [];
+  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
+
+  const allWeeks: Array<WeeklyStrategy & { label: string }> = [];
+  if (current) allWeeks.push({ ...current, label: 'Current Week' });
+  past.forEach((w, i) => allWeeks.push({ ...w, label: i === 0 ? 'Last Week' : `${new Date(w.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` }));
+
+  const activeWeekId = selectedWeekId ?? current?.weekId ?? null;
+  const displayedWeek = allWeeks.find(w => w.weekId === activeWeekId) ?? allWeeks[0];
+  const isHistorical = displayedWeek?.weekId !== current?.weekId;
 
   return (
     <div className="p-4 max-w-3xl">
@@ -530,16 +547,56 @@ export default function AdminStrategyPage() {
         <ResettleButton onDone={mutate} />
       </div>
 
+      {/* Week selector */}
+      {!isLoading && allWeeks.length > 1 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {allWeeks.map((w) => {
+            const wins = w.days.filter(d => d.result === 'win').length;
+            const losses = w.days.filter(d => d.result === 'loss').length;
+            const isActive = w.weekId === activeWeekId;
+            return (
+              <button
+                key={w.weekId}
+                onClick={() => setSelectedWeekId(w.weekId)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+                  isActive
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                )}
+              >
+                <Calendar className="h-3 w-3" />
+                {w.label}
+                {(wins > 0 || losses > 0) && (
+                  <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold', isActive ? 'bg-white/20' : 'bg-muted')}>
+                    {wins}W/{losses}L
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {isHistorical && displayedWeek && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <Calendar className="h-3.5 w-3.5 shrink-0" />
+          <span>Editing past week of <strong>{new Date(displayedWeek.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>. Changes apply to the specific dates shown in each day.</span>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground py-8">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading...
         </div>
-      ) : (
+      ) : displayedWeek ? (
         <div className="space-y-3">
-          {current?.days.map((day) => (
-            <DayPanel key={day.day} day={day} weekId={current.weekId} onRefresh={mutate} />
+          {displayedWeek.days.map((day) => (
+            <DayPanel key={`${displayedWeek.weekId}-${day.day}`} day={day} weekId={displayedWeek.weekId} onRefresh={mutate} isHistorical={isHistorical} />
           ))}
         </div>
+      ) : (
+        <div className="py-8 text-center text-sm text-muted-foreground">No strategy data found.</div>
       )}
     </div>
   );
