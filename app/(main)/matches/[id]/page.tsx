@@ -1181,7 +1181,7 @@ export default function MatchDetailPage({ params }: PageProps) {
   }
 
   const { bookmakerOdds, lineups, h2h, standings, news, leaders, matchEvents, segmentBreakdown, teamStats, hasRealOdds, hasTeamStats } = data
-  const sport = match.sport.slug
+  const sport = match.sport?.slug ?? 'soccer'
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -2923,7 +2923,7 @@ function MarketsSection({ match, isFinished, onShareTip }: { match: MatchDetails
 
   // 'football' is the slug for soccer (European football) in this app's database.
   // Use tabs only for soccer matches with enough markets to warrant grouping.
-  const isSoccer = match.sport.slug === 'football' || match.sport.slug === 'soccer'
+  const isSoccer = (match.sport?.slug === 'football' || match.sport?.slug === 'soccer')
 
   const priorityKeys = MARKET_GROUP_ORDER.map(g => g.key)
   const orderedBase = [
@@ -3094,7 +3094,7 @@ function MatchInfoRail({
 }) {
   const timezone = getBrowserTimezone()
   const NO_DRAW = new Set(['basketball', 'baseball', 'tennis', 'mma'])
-  const isTwoWay = NO_DRAW.has(match.sport.slug)
+  const isTwoWay = NO_DRAW.has(match.sport?.slug ?? '')
   const consensus = bookmakerOdds.length > 0 ? bookmakerOdds[0] : null
   const allRows = standings.flatMap(g => g.rows)
   // Fuzzy team-name match: ESPN's standings sometimes return a slightly

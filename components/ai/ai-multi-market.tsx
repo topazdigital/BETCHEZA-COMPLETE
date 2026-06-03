@@ -1,7 +1,7 @@
 "use client"
 
 import { Brain, Sparkles, Check, X, MinusCircle, TrendingUp, Lightbulb } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef } from "react"
 import { cn } from "@/lib/utils"
 
 interface Market {

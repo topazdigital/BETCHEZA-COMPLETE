@@ -1017,7 +1017,7 @@ export default function StrategyPage() {
   const expiresDate = access?.expiresAt ? new Date(access.expiresAt) : null;
 
   return (
-    <div className="mx-auto max-w-2xl px-3 py-4 sm:px-4 sm:py-6">
+    <div className="w-full px-3 py-4 sm:px-4 sm:py-6">
       {/* Subscribe Modal */}
       <SubscribeModal
         open={showSubscribeModal}

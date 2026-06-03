@@ -74,11 +74,13 @@ const nextConfig = {
     ]
   },
   async headers() {
+    const isDev = process.env.NODE_ENV !== 'production';
     return [
       {
-        // Next.js static assets are content-hashed — safe to cache forever
+        // In production, Next.js static assets are content-hashed — safe to cache forever.
+        // In development, Turbopack reuses chunk filenames, so we must not cache immutably.
         source: '/_next/static/:path*',
-        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+        headers: [{ key: 'Cache-Control', value: isDev ? 'public, max-age=0, must-revalidate' : 'public, max-age=31536000, immutable' }],
       },
       {
         source: '/:path*.png',
