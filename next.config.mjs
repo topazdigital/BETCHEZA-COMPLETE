@@ -168,6 +168,12 @@ const nextConfig = {
         ],
       },
       {
+        // HTML pages — never cache in shared/CDN caches; browsers get fresh on every nav.
+        // This ensures every visitor (including repeat visitors) always sees latest content.
+        source: '/:path((?!_next|api|.*\\.(?:js|css|png|jpg|jpeg|webp|avif|svg|ico|woff2?|ttf|otf|mp4|webm|json|txt|xml|map)).*)',
+        headers: [{ key: 'Cache-Control', value: 'no-cache, must-revalidate' }],
+      },
+      {
         source: '/(.*)',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },

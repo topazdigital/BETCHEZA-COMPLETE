@@ -241,4 +241,19 @@ export async function register() {
       console.warn('[instrumentation] matches cache warm-up failed:', e);
     }
   }, 500);
+
+  // Deferred settle-tips run: fires 15s after startup so that:
+  //   1. The in-memory auto-tips store has had time to load from DB
+  //   2. The matches cache is warm with real scores
+  // This ensures tips from past matches are settled correctly immediately
+  // on restart, without waiting up to 30 minutes for the cron cycle.
+  setTimeout(async () => {
+    try {
+      const base = process.env.INTERNAL_BASE_URL || 'http://localhost:5000';
+      await fetch(`${base}/api/cron/settle-tips`, { signal: AbortSignal.timeout(30_000) });
+      console.log('[instrumentation] startup settle-tips triggered');
+    } catch (e) {
+      console.warn('[instrumentation] startup settle-tips failed:', e);
+    }
+  }, 15_000);
 }

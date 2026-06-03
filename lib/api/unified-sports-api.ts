@@ -4110,19 +4110,26 @@ async function fetchOddsForSport(sportKey: string): Promise<TheOddsApiEvent[]> {
  */
 let _sgoIndexCache: Map<string, { odds: MatchOdds; markets: Market[] }> | null = null;
 let _sgoIndexCachedAt = 0;
-const SGO_INDEX_CACHE_MS = 30 * 60 * 1000; // rebuild at most once per 30 min
+// Rebuild every 10 min; if cache was empty (rate-limit at startup), retry after 2 min
+const SGO_INDEX_CACHE_MS = 10 * 60 * 1000;
+const SGO_INDEX_EMPTY_RETRY_MS = 2 * 60 * 1000;
 
 async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
-  // Return cached index if it's still fresh — protects against cron thrashing
-  if (_sgoIndexCache && Date.now() - _sgoIndexCachedAt < SGO_INDEX_CACHE_MS) {
+  // If we have a non-empty cache and it's still fresh, return it
+  const age = Date.now() - _sgoIndexCachedAt;
+  const cacheValid = _sgoIndexCache && _sgoIndexCache.size > 0
+    ? age < SGO_INDEX_CACHE_MS
+    : age < SGO_INDEX_EMPTY_RETRY_MS;
+  if (_sgoIndexCache !== null && cacheValid) {
     return _sgoIndexCache;
   }
 
   try {
     const { fetchSgoBulkMatchOdds } = await import('@/lib/api/sportsgameodds');
     const now = new Date();
-    // today from midnight UTC
-    const startsAfter = now.toISOString().split('T')[0] + 'T00:00:00Z';
+    // 4 days back to catch recently finished matches for settlement
+    const startDate = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000);
+    const startsAfter = startDate.toISOString().split('T')[0] + 'T00:00:00Z';
     // 3 days ahead end of day
     const endDate = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
     const startsBefore = endDate.toISOString().split('T')[0] + 'T23:59:59Z';

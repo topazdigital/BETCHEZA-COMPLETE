@@ -1155,7 +1155,7 @@ export default function StrategyPage() {
   const expiresDate = access?.expiresAt ? new Date(access.expiresAt) : null;
 
   return (
-    <div className="w-full px-3 py-4 sm:px-4 sm:py-6 max-w-[1400px] mx-auto">
+    <div className="w-full px-3 py-4 sm:px-4 sm:py-6">
       {/* Subscribe Modal */}
       <SubscribeModal
         open={showSubscribeModal}
@@ -1202,7 +1202,7 @@ export default function StrategyPage() {
       </div>
 
       {/* ── 3-Column Layout ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_250px] gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,280px)_1fr_minmax(220px,280px)] gap-5 items-start">
 
         {/* ═══════════════════════════════════════════════
             LEFT SIDEBAR — Plan overview + subscription
