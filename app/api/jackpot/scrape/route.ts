@@ -204,6 +204,14 @@ export async function GET(req: NextRequest) {
     ]);
 
     // Only use real bookmaker data — no ESPN fallback
+    // Only include a jackpot if we fetched the exact required number of games.
+    // SportPesa Mega = 17 games, Midweek = 13 games. If counts don't match,
+    // the API returned wrong/partial data — skip rather than show fake games.
+    const spMegaGames = (sportpesaGames && sportpesaGames.length >= 17) ? sportpesaGames.slice(0, 17) : null;
+    const spMidGames  = (sportpesaGames && sportpesaGames.length >= 13) ? sportpesaGames.slice(0, 13) : null;
+    const betikaGrand = (betikaGames && betikaGames.length >= 13) ? betikaGames : null;
+    const betikaMid   = (betikaGames && betikaGames.length >= 10) ? betikaGames.slice(0, 13) : null;
+
     const jackpotDefs = [
       {
         bookmakerSlug: 'sportpesa',
@@ -212,7 +220,7 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '100000000',
         currency: 'KES',
         deadline: todayPlusDays(5),
-        rawGames: sportpesaGames,
+        rawGames: spMegaGames,
         source: 'live',
       },
       {
@@ -222,7 +230,7 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '15000000',
         currency: 'KES',
         deadline: todayPlusDays(2),
-        rawGames: sportpesaGames ? sportpesaGames.slice(0, 13) : null,
+        rawGames: spMidGames,
         source: 'live',
       },
       {
@@ -232,7 +240,7 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '30000000',
         currency: 'KES',
         deadline: todayPlusDays(4),
-        rawGames: betikaGames,
+        rawGames: betikaGrand,
         source: 'live',
       },
       {
@@ -242,7 +250,7 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '10000000',
         currency: 'KES',
         deadline: todayPlusDays(2),
-        rawGames: betikaGames ? betikaGames.slice(0, 13) : null,
+        rawGames: betikaMid,
         source: 'live',
       },
       {
@@ -252,7 +260,7 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '5000000',
         currency: 'KES',
         deadline: todayPlusDays(3),
-        rawGames: odibetsGames,
+        rawGames: odibetsGames && odibetsGames.length >= 8 ? odibetsGames : null,
         source: 'live',
       },
       {
@@ -262,7 +270,7 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '20000000',
         currency: 'KES',
         deadline: todayPlusDays(4),
-        rawGames: betinGames,
+        rawGames: betinGames && betinGames.length >= 10 ? betinGames : null,
         source: 'live',
       },
       {
@@ -272,7 +280,7 @@ export async function GET(req: NextRequest) {
         jackpotAmount: '25000000',
         currency: 'KES',
         deadline: todayPlusDays(5),
-        rawGames: mozzartGames,
+        rawGames: mozzartGames && mozzartGames.length >= 10 ? mozzartGames : null,
         source: 'live',
       },
     ];

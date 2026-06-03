@@ -103,6 +103,7 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [avatarSaving, setAvatarSaving] = useState(false);
@@ -179,6 +180,31 @@ export default function SettingsPage() {
       toast.error('Network error — please try again');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB'); return; }
+    setPhotoUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/users/me/avatar', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Upload failed'); return; }
+      const url = data.avatarUrl as string;
+      setAvatarUrl(url);
+      updateUser({ avatarUrl: url });
+      refreshUser();
+      toast.success('Profile photo updated');
+    } catch {
+      toast.error('Network error — please try again');
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -314,15 +340,29 @@ export default function SettingsPage() {
                   {(user.displayName ?? user.email ?? 'U').slice(0, 1).toUpperCase()}
                 </div>
               )}
-              {avatarSaving && (
+              {(avatarSaving || photoUploading) && (
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                   <Spinner className="h-5 w-5 text-white" />
                 </div>
               )}
             </div>
-            <div>
+            <div className="space-y-1.5">
               <p className="text-sm font-medium">Current photo</p>
-              <p className="text-xs text-muted-foreground">Pick one from the options below</p>
+              <p className="text-xs text-muted-foreground">Upload your own photo or pick one below</p>
+              <label className={cn(
+                'inline-flex items-center gap-1.5 cursor-pointer rounded-md border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors',
+                photoUploading && 'opacity-50 pointer-events-none',
+              )}>
+                <Camera className="h-3 w-3" />
+                {photoUploading ? 'Uploading…' : 'Upload photo'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handlePhotoUpload}
+                  disabled={photoUploading || avatarSaving}
+                />
+              </label>
             </div>
           </div>
 

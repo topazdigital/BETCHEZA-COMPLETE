@@ -17,6 +17,12 @@ import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
+import dynamic from 'next/dynamic';
+
+const SidebarBanners = dynamic(
+  () => import('@/components/home/sidebar-banners').then(m => ({ default: m.SidebarBanners })),
+  { ssr: false, loading: () => null },
+);
 
 // ───────────────────── types & helpers ─────────────────────
 interface Tipster {
@@ -141,7 +147,8 @@ export default function TipstersPage() {
     : null;
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-w-0">
         <div className="px-3 py-2.5 pb-24">
           {/* Header */}
           <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -437,5 +444,13 @@ export default function TipstersPage() {
           </div>
         )}
       </div>
+      </div>
+      {/* Right sidebar banners — desktop only */}
+      <aside className="hidden xl:block w-64 shrink-0 border-l border-border">
+        <div className="sticky top-14 p-3">
+          <SidebarBanners />
+        </div>
+      </aside>
+    </div>
   );
 }

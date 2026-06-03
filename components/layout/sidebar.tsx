@@ -32,7 +32,7 @@ export function Sidebar() {
 
   return (
     <aside className="hidden w-64 shrink-0 border-r border-border bg-card lg:block">
-      <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-4">
+      <div className="sticky top-14 h-[calc(100vh-3.5rem)] p-4">
         {/* Sports Filter */}
         <div className="mb-6">
           <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">

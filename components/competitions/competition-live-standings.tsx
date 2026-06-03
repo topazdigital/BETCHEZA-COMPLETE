@@ -33,6 +33,8 @@ interface Props {
   initialParticipants: Participant[]
   currentUserId?: number | null
   isActive: boolean
+  isCompleted?: boolean
+  isUpcoming?: boolean
   leagueName?: string | null
   sportFocus?: string | null
   matchKickoffFrom?: string | null
@@ -74,6 +76,7 @@ function buildPrizeByRank(prizes: Array<{ place: string; amount: number }>): Rec
 
 export function CompetitionLiveStandings({
   slug, initialParticipants, currentUserId, isActive,
+  isCompleted = false, isUpcoming = false,
   leagueName, sportFocus, matchKickoffFrom, matchKickoffTo,
   prizes, currency = 'KES', minimumTips = 1,
 }: Props) {
@@ -129,7 +132,7 @@ export function CompetitionLiveStandings({
       <div className="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">
         <h2 className="text-xs font-bold uppercase tracking-wide flex items-center gap-1.5">
           <Trophy className="h-3.5 w-3.5 text-warning" />
-          {isActive ? 'Live Standings' : 'Final Standings'}
+          {isActive ? 'Current Standings' : isCompleted ? 'Final Standings' : 'Standings'}
           {isActive && inWindow && (
             <span className="flex items-center gap-1 ml-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />

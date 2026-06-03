@@ -10,6 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
+import dynamic from 'next/dynamic';
+
+const SidebarBanners = dynamic(
+  () => import('@/components/home/sidebar-banners').then(m => ({ default: m.SidebarBanners })),
+  { ssr: false, loading: () => null },
+);
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -210,7 +216,8 @@ export default function LeaderboardPage() {
   }, [apiData]);
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-w-0">
       <div className="px-3 py-2.5">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
@@ -490,6 +497,13 @@ export default function LeaderboardPage() {
           </TabsContent>
         </Tabs>
       </div>
+      </div>
+      {/* Right sidebar banners — desktop only */}
+      <aside className="hidden xl:block w-64 shrink-0 border-l border-border">
+        <div className="sticky top-14 p-3">
+          <SidebarBanners />
+        </div>
+      </aside>
     </div>
   );
 }

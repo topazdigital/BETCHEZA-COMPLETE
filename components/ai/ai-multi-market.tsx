@@ -76,13 +76,26 @@ export function AIMultiMarket({
   // bookmaker pricing for the SELECTION (price still shown so users see value).
   const [mode, setMode] = useState<'odds' | 'smart'>('smart')
 
-  const picks = useMemo(
-    () =>
+  // Lock picks once computed so they don't change when async data (h2h, form) arrives later.
+  // This prevents different users seeing different predictions for the same match.
+  const lockedPicksRef = useRef<Record<string, MarketPick[]>>({})
+
+  const picks = useMemo(() => {
+    // Require odds before computing — without them predictions are meaningless
+    if (!odds) return []
+    const cacheKey = `${homeTeam}|${awayTeam}|${mode}`
+    if (lockedPicksRef.current[cacheKey]?.length) {
+      return lockedPicksRef.current[cacheKey]
+    }
+    const computed =
       mode === 'smart'
         ? buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
-        : buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null }),
-    [mode, homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets, lineups],
-  )
+        : buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
+    if (computed.length > 0) {
+      lockedPicksRef.current[cacheKey] = computed
+    }
+    return computed
+  }, [mode, homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets, lineups])
 
   const isFinal =
     (status === 'finished' || status === 'final' || status === 'ft' || status === 'ended') &&
@@ -514,7 +527,7 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
     picks.push({
       market: "Correct Score (Lean)",
       pick: cs,
-      confidence: 18 + Math.round(Math.random() * 8),
+      confidence: 18 + (Math.abs(homeTeam.charCodeAt(0) - awayTeam.charCodeAt(0)) % 8),
       reason: `Most-likely scoreline given a ~${avgGoals.toFixed(1)}-goal expectation.`,
       evalKey: 'cs_lean',
       scoreLean: cs,

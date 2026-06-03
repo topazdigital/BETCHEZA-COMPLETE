@@ -765,6 +765,47 @@ function SubscribeModal({
   );
 }
 
+const PAST_WEEKS_INITIAL = 3;
+
+function PastWeeksSection({ past }: { past: WeeklyStrategy[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? past : past.slice(0, PAST_WEEKS_INITIAL);
+  const hidden = past.length - PAST_WEEKS_INITIAL;
+  return (
+    <div className="mt-8">
+      <h2 className="mb-3 flex items-center gap-2 font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+        <Coins className="h-4 w-4" /> Past Weeks
+      </h2>
+      <div className="space-y-3">
+        {visible.map((week) => {
+          const wins = week.days.filter((d) => d.result === 'win').length;
+          const losses = week.days.filter((d) => d.result === 'loss').length;
+          const pending = week.days.filter((d) => !d.result).length;
+          return (
+            <PastWeekCard key={week.weekId} week={week} wins={wins} losses={losses} pending={pending} />
+          );
+        })}
+      </div>
+      {!showAll && hidden > 0 && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="mt-3 w-full rounded-lg border border-border bg-muted/30 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/60 transition-colors"
+        >
+          Show {hidden} older week{hidden !== 1 ? 's' : ''}
+        </button>
+      )}
+      {showAll && past.length > PAST_WEEKS_INITIAL && (
+        <button
+          onClick={() => setShowAll(false)}
+          className="mt-3 w-full rounded-lg border border-border bg-muted/30 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/60 transition-colors"
+        >
+          Show less
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PastWeekCard({ week, wins, losses, pending }: {
   week: WeeklyStrategy;
   wins: number;
@@ -1177,23 +1218,7 @@ export default function StrategyPage() {
       )}
 
       {/* Past weeks */}
-      {past.length > 0 && (
-        <div className="mt-8">
-          <h2 className="mb-3 flex items-center gap-2 font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-            <Coins className="h-4 w-4" /> Past Weeks
-          </h2>
-          <div className="space-y-3">
-            {past.map((week) => {
-              const wins = week.days.filter((d) => d.result === 'win').length;
-              const losses = week.days.filter((d) => d.result === 'loss').length;
-              const pending = week.days.filter((d) => !d.result).length;
-              return (
-                <PastWeekCard key={week.weekId} week={week} wins={wins} losses={losses} pending={pending} />
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {past.length > 0 && <PastWeeksSection past={past} />}
     </div>
   );
 }

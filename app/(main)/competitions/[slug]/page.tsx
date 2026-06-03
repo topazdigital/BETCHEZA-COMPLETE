@@ -543,6 +543,8 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
           initialParticipants={participants}
           currentUserId={currentUser?.userId ?? null}
           isActive={comp.status === 'active'}
+          isCompleted={comp.status === 'completed'}
+          isUpcoming={comp.status === 'upcoming'}
           leagueName={comp.leagueName}
           sportFocus={comp.sportFocus}
           matchKickoffFrom={comp.matchKickoffFrom ?? null}
