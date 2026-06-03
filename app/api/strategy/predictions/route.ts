@@ -249,15 +249,30 @@ async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
           scheduledFor: row.scheduled_for || null,
         };
       });
+      // Calculate actual weekly P&L: order matters because losing on day 6
+      // vs day 1 produces very different outcomes (earlier wins accumulate).
+      let weeklyProfit = 0;
+      let totalSavings = 0;
+      let totalWinnings = 0;
+      for (const day of days) {
+        if (day.result === 'win') {
+          weeklyProfit += day.targetWin - day.stake;
+          totalWinnings += day.targetWin;
+          totalSavings += day.save;
+        } else if (day.result === 'loss') {
+          weeklyProfit -= day.stake;
+        }
+      }
+
       weeks.push({
         weekId: wid,
         weekStart: weekStart.toISOString().slice(0, 10),
         weekEnd: weekEnd.toISOString().slice(0, 10),
         days,
         generatedAt: new Date().toISOString(),
-        totalSavings: 0,
-        totalWinnings: 0,
-        weeklyProfit: 0,
+        totalSavings,
+        totalWinnings,
+        weeklyProfit,
       });
     }
   } catch { }

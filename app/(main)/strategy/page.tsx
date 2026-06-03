@@ -813,6 +813,9 @@ function PastWeekCard({ week, wins, losses, pending }: {
   pending: number;
 }) {
   const [open, setOpen] = useState(false);
+  const hasSettled = wins + losses > 0;
+  const pl = week.weeklyProfit;
+  const plPositive = pl >= 0;
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -825,9 +828,19 @@ function PastWeekCard({ week, wins, losses, pending }: {
             <p className="font-semibold text-sm">
               Week of {new Date(week.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {wins} wins · {losses} losses{pending > 0 ? ` · ${pending} pending` : ''}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-xs text-muted-foreground">
+                {wins} wins · {losses} losses{pending > 0 ? ` · ${pending} pending` : ''}
+              </p>
+              {hasSettled && (
+                <span className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                  plPositive ? 'bg-green-500/15 text-green-600' : 'bg-red-500/15 text-red-600'
+                )}>
+                  {plPositive ? '+' : ''}KES {Math.abs(pl).toLocaleString()}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -958,6 +971,14 @@ function PastWeeksSidebar({ past }: { past: WeeklyStrategy[] }) {
         const successRate = allSettled && week.days.length > 0
           ? Math.round((wins / week.days.length) * 100) : null;
 
+        const pl = week.weeklyProfit;
+        const plPositive = pl >= 0;
+        const plAbs = Math.abs(pl);
+        const plLabel = plAbs >= 1000
+          ? `${plPositive ? '+' : '-'}${(plAbs / 1000).toFixed(plAbs % 1000 === 0 ? 0 : 1)}K`
+          : `${plPositive ? '+' : '-'}${plAbs}`;
+        const hasSettled = wins + losses > 0;
+
         return (
           <div key={week.weekId} className="rounded-xl border border-border bg-card overflow-hidden">
             <button
@@ -989,6 +1010,14 @@ function PastWeeksSidebar({ past }: { past: WeeklyStrategy[] }) {
               </div>
               <div className="flex items-center gap-1.5 shrink-0 ml-2">
                 <span className="text-[10px] text-muted-foreground">{wins}W/{losses}L</span>
+                {hasSettled && (
+                  <span className={cn(
+                    'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                    plPositive ? 'bg-green-500/15 text-green-600' : 'bg-red-500/15 text-red-600'
+                  )}>
+                    {plLabel}
+                  </span>
+                )}
                 {isOpen
                   ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
                   : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}

@@ -5,6 +5,16 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
+  // Prevent unhandled promise rejections and uncaught exceptions from
+  // crashing the Node.js process (which would cause Apache 503 errors).
+  // Log them instead so we can diagnose the root cause without downtime.
+  process.on('unhandledRejection', (reason: unknown) => {
+    console.error('[process] unhandledRejection — process kept alive:', reason);
+  });
+  process.on('uncaughtException', (err: Error) => {
+    console.error('[process] uncaughtException — process kept alive:', err?.message, err?.stack);
+  });
+
   // Seed env-backed API keys + SMTP into the shared memory settings store so
   // getApiKey() and getSiteSettings() can resolve them immediately — without
   // requiring the admin to open Settings and click Save first.
