@@ -3,6 +3,12 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Keep HTTP connections alive so Apache/proxies don't get "Service Unavailable"
+  // when connections are dropped between requests
+  serverExternalPackages: ['mysql2'],
+  httpAgentOptions: {
+    keepAlive: true,
+  },
   images: {
     formats: ['image/webp', 'image/avif'],
     minimumCacheTTL: 604800,

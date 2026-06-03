@@ -939,6 +939,144 @@ function PastWeekCard({ week, wins, losses, pending }: {
   );
 }
 
+/* ────────────────────────────────────────────────────────── */
+/* Compact right-sidebar past weeks list                    */
+/* ────────────────────────────────────────────────────────── */
+function PastWeeksSidebar({ past }: { past: WeeklyStrategy[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const INITIAL = 4;
+  const visible = showAll ? past : past.slice(0, INITIAL);
+
+  return (
+    <div className="space-y-2">
+      {visible.map((week) => {
+        const wins = week.days.filter(d => d.result === 'win').length;
+        const losses = week.days.filter(d => d.result === 'loss').length;
+        const isOpen = expanded === week.weekId;
+        const allSettled = week.days.every(d => d.result === 'win' || d.result === 'loss');
+        const successRate = allSettled && week.days.length > 0
+          ? Math.round((wins / week.days.length) * 100) : null;
+
+        return (
+          <div key={week.weekId} className="rounded-xl border border-border bg-card overflow-hidden">
+            <button
+              onClick={() => setExpanded(isOpen ? null : week.weekId)}
+              className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-muted/30 transition-colors text-left"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-semibold truncate">
+                  {new Date(week.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {week.days.map(d => (
+                    <div
+                      key={d.day}
+                      className={cn('h-2 w-2 rounded-full shrink-0',
+                        d.result === 'win' ? 'bg-green-500' :
+                        d.result === 'loss' ? 'bg-red-500' : 'bg-muted')}
+                      title={`Day ${d.day}: ${d.result || 'pending'}`}
+                    />
+                  ))}
+                  {successRate !== null && (
+                    <span className={cn('text-[10px] font-bold ml-0.5',
+                      successRate >= 70 ? 'text-green-600' :
+                      successRate >= 50 ? 'text-amber-600' : 'text-red-500')}>
+                      {successRate}%
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                <span className="text-[10px] text-muted-foreground">{wins}W/{losses}L</span>
+                {isOpen
+                  ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+              </div>
+            </button>
+
+            {isOpen && (
+              <div className="border-t border-border px-3 pb-3 pt-2 space-y-1.5">
+                {week.days.map((day, i) => {
+                  const planItem = WEEK_PLAN[i] || WEEK_PLAN[0];
+                  return (
+                    <div key={day.day} className={cn(
+                      'rounded-lg border px-2.5 py-2',
+                      day.result === 'win' ? 'border-green-500/30 bg-green-500/5' :
+                      day.result === 'loss' ? 'border-red-500/30 bg-red-500/5' :
+                      'border-border bg-muted/20'
+                    )}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                            day.result === 'win' ? 'bg-green-500 text-white' :
+                            day.result === 'loss' ? 'bg-red-500 text-white' :
+                            'bg-muted text-muted-foreground')}>
+                            {day.result === 'win' ? '✓' : day.result === 'loss' ? '✗' : `${day.day}`}
+                          </div>
+                          <span className="text-[11px] font-semibold">D{day.day}</span>
+                          <span className="text-[10px] text-muted-foreground">{new Date(day.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-green-500">{planItem.targetWin.toLocaleString()}</span>
+                      </div>
+                      {day.picks.length > 0 && (
+                        <div className="space-y-1 mt-1">
+                          {day.picks.map(pick => (
+                            <div key={pick.id} className={cn(
+                              'rounded border px-2 py-1 text-[10px]',
+                              pick.result === 'win' ? 'border-green-500/20 bg-green-500/5' :
+                              pick.result === 'loss' ? 'border-red-500/20 bg-red-500/5' :
+                              'border-border'
+                            )}>
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <PickResultIcon result={pick.result} />
+                                  <span className="truncate font-medium">{pick.homeTeam} vs {pick.awayTeam}</span>
+                                </div>
+                                <span className="font-mono font-bold text-primary shrink-0">@{pick.odds.toFixed(2)}</span>
+                              </div>
+                              <div className="flex items-center gap-1 mt-0.5 pl-5">
+                                <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">{pick.market}</span>
+                                <span className="text-muted-foreground">{pick.pick}</span>
+                              </div>
+                            </div>
+                          ))}
+                          {day.combinedOdds > 0 && (
+                            <p className="text-right text-[10px] text-muted-foreground pt-0.5">
+                              Combined: <span className="font-mono font-bold text-primary">{day.combinedOdds.toFixed(2)}x</span>
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {!showAll && past.length > INITIAL && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full rounded-lg border border-border bg-muted/20 py-2 text-[11px] font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+        >
+          Show {past.length - INITIAL} more week{past.length - INITIAL !== 1 ? 's' : ''}
+        </button>
+      )}
+      {showAll && past.length > INITIAL && (
+        <button
+          onClick={() => setShowAll(false)}
+          className="w-full rounded-lg border border-border bg-muted/20 py-2 text-[11px] font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+        >
+          Show less
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface AccessInfo {
   hasAccess: boolean;
   expiresAt?: string;
@@ -1017,7 +1155,7 @@ export default function StrategyPage() {
   const expiresDate = access?.expiresAt ? new Date(access.expiresAt) : null;
 
   return (
-    <div className="w-full px-3 py-4 sm:px-4 sm:py-6">
+    <div className="w-full px-3 py-4 sm:px-4 sm:py-6 max-w-[1400px] mx-auto">
       {/* Subscribe Modal */}
       <SubscribeModal
         open={showSubscribeModal}
@@ -1027,7 +1165,7 @@ export default function StrategyPage() {
         balanceLoading={access === null}
       />
 
-      {/* Header */}
+      {/* ── Page Header ── */}
       <div className="mb-5">
         <div className="flex items-center justify-between gap-2 mb-1">
           <div className="flex items-center gap-2">
@@ -1063,162 +1201,202 @@ export default function StrategyPage() {
         )}
       </div>
 
-      {/* Active subscription badge */}
-      {hasAccess && expiresDate && (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-green-500/30 bg-green-500/8 px-3 py-2">
-          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-            <ShieldCheck className="h-4 w-4" />
-            <span className="font-semibold">Active subscription</span>
-            <span className="text-xs text-muted-foreground">— {daysRemaining} day{daysRemaining !== 1 ? 's' : ''} remaining</span>
-          </div>
-          <span className="text-[11px] text-muted-foreground">Renews by {expiresDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-        </div>
-      )}
+      {/* ── 3-Column Layout ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_250px] gap-5 items-start">
 
-      {/* How subscription works — for non-subscribers */}
-      {!hasAccess && (
-        <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
-          <p className="font-semibold flex items-center gap-1.5"><Info className="h-3.5 w-3.5" /> How the weekly subscription works</p>
-          <p>Pay KES 5,000 and your <strong>personal 7-day plan starts immediately</strong> — today becomes Day 1 for you. Renew every 7 days to keep access. Yesterday&apos;s picks are always free below.</p>
-        </div>
-      )}
+        {/* ═══════════════════════════════════════════════
+            LEFT SIDEBAR — Plan overview + subscription
+            ═══════════════════════════════════════════════ */}
+        <aside className="lg:sticky lg:top-4 space-y-3">
 
-      {/* Subscribe CTA — top of page for non-subscribers */}
-      {!hasAccess && (
-        <button
-          onClick={() => setShowSubscribeModal(true)}
-          className="mb-5 w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
-        >
-          <CreditCard className="h-4 w-4" />
-          Subscribe — KES 5,000 / week via M-Pesa
-        </button>
-      )}
-
-      {/* Weekly plan overview */}
-      <div className="mb-3 overflow-hidden rounded-xl border border-border bg-card">
-        <div className="border-b border-border bg-muted/30 px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <Trophy className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold">Weekly Plan Overview</span>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
-                <th className="px-4 py-2 text-left font-medium">Day</th>
-                <th className="px-4 py-2 text-right font-medium">Stake</th>
-                <th className="px-4 py-2 text-right font-medium text-blue-500">Save</th>
-                <th className="px-4 py-2 text-right font-medium text-green-500">Win</th>
-              </tr>
-            </thead>
-            <tbody>
-              {WEEK_PLAN.map((p) => (
-                <tr key={p.day} className="border-b border-border/50 last:border-0">
-                  <td className="px-4 py-2 font-medium">Day {p.day}</td>
-                  <td className="px-4 py-2 text-right font-mono">{formatKES(p.stake)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-blue-500">{p.save > 0 ? formatKES(p.save) : '–'}</td>
-                  <td className="px-4 py-2 text-right font-mono font-bold text-green-500">{formatKES(p.targetWin)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-muted/30 text-xs font-semibold">
-                <td className="px-4 py-2">Total</td>
-                <td className="px-4 py-2 text-right font-mono text-muted-foreground">KES 54,000</td>
-                <td className="px-4 py-2 text-right font-mono text-blue-500">KES 49,000</td>
-                <td className="px-4 py-2 text-right font-mono text-green-600">KES 108,000</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-
-      <div className="mb-2 flex items-center gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-        <Info className="h-3 w-3 shrink-0" />
-        This is a strategy guide, not a guarantee. Betting involves risk — only stake what you can afford to lose. Picks are AI-assisted, not financial advice.
-      </div>
-
-      {/* Current week days */}
-      {!isLoading && current && (
-        <div className="mt-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-semibold">
-                Week of {new Date(current.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
-              </span>
+          {/* Active subscription badge */}
+          {hasAccess && expiresDate && (
+            <div className="flex flex-col gap-1 rounded-xl border border-green-500/30 bg-green-500/8 px-3 py-2.5">
+              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                <ShieldCheck className="h-4 w-4 shrink-0" />
+                <span className="font-semibold">Active subscription</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground pl-6">
+                <span>{daysRemaining} day{daysRemaining !== 1 ? 's' : ''} remaining</span>
+                <span>Renews {expiresDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+              </div>
             </div>
-            {!hasAccess && (
-              <span className="text-[11px] text-muted-foreground italic">Yesterday free · Subscribe for today</span>
-            )}
+          )}
+
+          {/* How it works — non-subscribers */}
+          {!hasAccess && (
+            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
+              <p className="font-semibold flex items-center gap-1.5"><Info className="h-3.5 w-3.5 shrink-0" /> How it works</p>
+              <p>Pay KES 5,000 and your <strong>personal 7-day plan starts immediately</strong>. Yesterday&apos;s picks are always free.</p>
+            </div>
+          )}
+
+          {/* Subscribe CTA */}
+          {!hasAccess && (
+            <button
+              onClick={() => setShowSubscribeModal(true)}
+              className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
+            >
+              <CreditCard className="h-4 w-4" />
+              Subscribe — KES 5,000
+            </button>
+          )}
+
+          {/* Weekly Plan Overview table */}
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <div className="border-b border-border bg-muted/30 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold">Weekly Plan</span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-[10px] text-muted-foreground uppercase tracking-wide">
+                    <th className="px-3 py-2 text-left font-medium">Day</th>
+                    <th className="px-3 py-2 text-right font-medium">Stake</th>
+                    <th className="px-3 py-2 text-right font-medium text-green-500">Win</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {WEEK_PLAN.map((p) => {
+                    const todayDayNum = current?.days?.find(d => d.status === 'active')?.day;
+                    const isCurrentDay = todayDayNum === p.day;
+                    return (
+                      <tr key={p.day} className={cn(
+                        'border-b border-border/50 last:border-0 transition-colors',
+                        isCurrentDay ? 'bg-primary/8' : 'hover:bg-muted/20'
+                      )}>
+                        <td className="px-3 py-2 font-medium">
+                          <div className="flex items-center gap-1.5">
+                            {isCurrentDay && <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />}
+                            <span className={isCurrentDay ? 'text-primary font-bold' : ''}>D{p.day}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-muted-foreground">{p.stake.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-green-500">{p.targetWin.toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-muted/30 text-[10px] font-semibold border-t border-border">
+                    <td className="px-3 py-2 text-muted-foreground">Total</td>
+                    <td className="px-3 py-2 text-right font-mono text-muted-foreground">54,000</td>
+                    <td className="px-3 py-2 text-right font-mono text-green-600">108,000</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div className="px-3 pb-2.5 pt-1.5">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Save a portion each day — total savings KES 49,000. Stake only what you can afford to lose.
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            {(current?.days || WEEK_PLAN.map((p, i) => ({
-              day: p.day, date: '', picks: [], combinedOdds: 0,
-              status: 'upcoming' as const,
-              stake: p.stake, save: p.save, targetWin: p.targetWin,
-            }))).map((day, i) => {
-              // ── Browser timezone: use user's local clock, not server EAT ──
-              // "Today" in the user's own timezone determines what they can see.
-              const browserTodayStr = new Intl.DateTimeFormat('en-CA').format(new Date()); // 'YYYY-MM-DD' local
-
-              // Guard: if the DB has multiple days with status='active', only the one
-              // whose date actually matches today gets the TODAY badge.
-              const isToday = day.status === 'active' && (!day.date || day.date === browserTodayStr);
-              const isYesterday = i === yesterdayPlanIndex;
-
-              // A day whose date is tomorrow or later in the user's browser hasn't started yet
-              const isBrowserFuture = day.date > browserTodayStr;
-
-              // ── Settled = always visible to everyone ──
-              // Once picks have a known win/loss result, there's no reason to hide them.
-              const isSettled = (day.result === 'win' || day.result === 'loss') &&
-                day.picks.length > 0 && day.picks.every(p => p.result === 'win' || p.result === 'loss');
-
-              // ── 9 PM EAT free reveal — today's picks free for all after cutoff ──
-              const nowUTC = Date.now();
-              const eatHour = Math.floor(((nowUTC % 86400000) + 3 * 3600000) / 3600000) % 24;
-              const pastEveningCutoff = eatHour >= 21;
-              const todayFreeAfterCutoff = isToday && pastEveningCutoff;
-
-              // ── Lock logic ──
-              // Settled → never locked for anyone
-              // Yesterday (free preview) → unlocked for non-subscribers
-              // Today after 9pm EAT → unlocked for non-subscribers
-              // Everything else for non-subscribers → locked
-              const isLocked = !isSettled && !hasAccess && !isYesterday &&
-                !todayFreeAfterCutoff && (day.status === 'upcoming' || isToday);
-
-              return (
-                <DayCard
-                  key={day.day}
-                  day={day}
-                  planItem={WEEK_PLAN[i]}
-                  isLocked={isLocked}
-                  isYesterday={!hasAccess && isYesterday}
-                  isSettled={isSettled}
-                  isBrowserFuture={isBrowserFuture && !isSettled}
-                  isAdmin={isAdmin}
-                  onSubscribe={() => setShowSubscribeModal(true)}
-                />
-              );
-            })}
+          {/* Disclaimer */}
+          <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+            <Info className="h-3 w-3 shrink-0 mt-0.5" />
+            <span>Strategy guide only — not a guarantee. AI-assisted, not financial advice.</span>
           </div>
-        </div>
-      )}
 
-      {/* Renewal notice */}
-      {hasAccess && daysRemaining !== undefined && daysRemaining <= 2 && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
-          <RefreshCw className="h-4 w-4 shrink-0" />
-          <span>Your subscription expires in <strong>{daysRemaining} day{daysRemaining !== 1 ? 's' : ''}</strong>. Renew to keep access to the daily picks.</span>
-        </div>
-      )}
+          {/* Renewal notice */}
+          {hasAccess && daysRemaining !== undefined && daysRemaining <= 2 && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
+              <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+              <span>Expires in <strong>{daysRemaining} day{daysRemaining !== 1 ? 's' : ''}</strong>. Renew to keep access.</span>
+            </div>
+          )}
+        </aside>
 
-      {/* Past weeks */}
-      {past.length > 0 && <PastWeeksSection past={past} />}
+        {/* ═══════════════════════════════════════════════
+            CENTER — Current week daily picks
+            ═══════════════════════════════════════════════ */}
+        <main className="min-w-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">Loading picks…</span>
+            </div>
+          ) : current ? (
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold">
+                    Week of {new Date(current.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
+                  </span>
+                </div>
+                {!hasAccess && (
+                  <span className="text-[11px] text-muted-foreground italic">Yesterday free · Subscribe for today</span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {(current?.days || WEEK_PLAN.map((p) => ({
+                  day: p.day, date: '', picks: [], combinedOdds: 0,
+                  status: 'upcoming' as const,
+                  stake: p.stake, save: p.save, targetWin: p.targetWin,
+                }))).map((day, i) => {
+                  const browserTodayStr = new Intl.DateTimeFormat('en-CA').format(new Date());
+                  const isToday = day.status === 'active' && (!day.date || day.date === browserTodayStr);
+                  const isYesterday = i === yesterdayPlanIndex;
+                  const isBrowserFuture = day.date > browserTodayStr;
+                  const isSettled = (day.result === 'win' || day.result === 'loss') &&
+                    day.picks.length > 0 && day.picks.every(p => p.result === 'win' || p.result === 'loss');
+                  const nowUTC = Date.now();
+                  const eatHour = Math.floor(((nowUTC % 86400000) + 3 * 3600000) / 3600000) % 24;
+                  const pastEveningCutoff = eatHour >= 21;
+                  const todayFreeAfterCutoff = isToday && pastEveningCutoff;
+                  const isLocked = !isSettled && !hasAccess && !isYesterday &&
+                    !todayFreeAfterCutoff && (day.status === 'upcoming' || isToday);
+
+                  return (
+                    <DayCard
+                      key={day.day}
+                      day={day}
+                      planItem={WEEK_PLAN[i]}
+                      isLocked={isLocked}
+                      isYesterday={!hasAccess && isYesterday}
+                      isSettled={isSettled}
+                      isBrowserFuture={isBrowserFuture && !isSettled}
+                      isAdmin={isAdmin}
+                      onSubscribe={() => setShowSubscribeModal(true)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
+              <Circle className="h-10 w-10 opacity-20" />
+              <p className="text-sm">No picks available yet. Check back shortly.</p>
+            </div>
+          )}
+        </main>
+
+        {/* ═══════════════════════════════════════════════
+            RIGHT SIDEBAR — Past weeks
+            ═══════════════════════════════════════════════ */}
+        <aside className="min-w-0">
+          {past.length > 0 ? (
+            <div>
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                <Coins className="h-4 w-4" /> Past Weeks
+              </h2>
+              <PastWeeksSidebar past={past} />
+            </div>
+          ) : (
+            <div className="hidden lg:flex flex-col items-center gap-2 py-10 text-center text-muted-foreground/40">
+              <Coins className="h-8 w-8" />
+              <p className="text-xs">Past weeks will appear here</p>
+            </div>
+          )}
+        </aside>
+
+      </div>
     </div>
   );
 }
