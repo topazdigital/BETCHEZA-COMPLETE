@@ -81,6 +81,14 @@ const LiveMarquee = dynamic(
   () => import('@/components/home/live-marquee').then(m => ({ default: m.LiveMarquee })),
   { ssr: false, loading: () => <div className="h-24 rounded-xl bg-muted/30 animate-pulse" /> }
 );
+const SidebarBanners = dynamic(
+  () => import('@/components/home/sidebar-banners').then(m => ({ default: m.SidebarBanners })),
+  { ssr: false }
+);
+const MobileBannerStrip = dynamic(
+  () => import('@/components/home/sidebar-banners').then(m => ({ default: m.MobileBannerStrip })),
+  { ssr: false }
+);
 
 interface ApiTipster {
   id: number;
@@ -361,6 +369,8 @@ export default function HomePage() {
             <MyTipsPanel />
             {/* Favorited Tips */}
             {isIdle && <FavoritedTipsPanel />}
+            {/* Promotional banners */}
+            {isIdle && <SidebarBanners />}
           </div>
         </aside>
 
@@ -485,6 +495,13 @@ export default function HomePage() {
                   </div>
                 )}
               </section>
+
+              {/* Promotional banner strip — mobile only; sidebars handle desktop */}
+              {isIdle && (
+                <div className="mb-4 lg:hidden">
+                  <MobileBannerStrip />
+                </div>
+              )}
 
               {/* My Tips + Favorited Tips — mobile only; on lg+ they live in the left sidebar */}
               <div className="mb-4 lg:hidden space-y-3">
@@ -836,10 +853,11 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* RIGHT PANEL — Best Bets (xl+) */}
+        {/* RIGHT PANEL — Best Bets + Banners (xl+) */}
         <aside className="hidden xl:block w-72 shrink-0 border-l border-border">
-          <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
+          <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3 space-y-3">
             {isIdle ? <BestBetsPanel matches={todayMatches} /> : <PanelSkeleton />}
+            {isIdle && <SidebarBanners />}
           </div>
         </aside>
 

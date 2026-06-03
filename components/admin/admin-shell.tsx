@@ -91,6 +91,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/affiliate-clicks", label: "Affiliates", icon: MousePointerClick },
       { href: "/admin/subscribers", label: "Subscribers", icon: Mail },
       { href: "/admin/notifications", label: "Notifications", icon: Bell },
+      { href: "/admin/banners", label: "Banners", icon: Newspaper },
       { href: "/admin/ads", label: "Ads", icon: Megaphone },
     ],
   },
