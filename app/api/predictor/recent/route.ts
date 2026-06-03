@@ -10,8 +10,9 @@ export async function GET(request: Request) {
   await ensureSeeded();
   // Settle any predictions whose matches have now finished (best-effort, non-blocking)
   settlePredictions().catch(() => {});
+  // Only surface winning predictions — never show lost or pending to visitors
   return NextResponse.json(
-    { predictions: listPredictions(limit) },
+    { predictions: listPredictions(limit, 'won') },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

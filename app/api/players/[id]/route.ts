@@ -70,7 +70,11 @@ const SPORT_PATHS = [
 async function fetchAthlete(sportPath: string, id: string): Promise<ESPNAthlete | null> {
   const url = `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/athletes/${id}`;
   try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' }, next: { revalidate: 1800 } });
+    const r = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      next: { revalidate: 1800 },
+      signal: AbortSignal.timeout(4000),
+    });
     if (!r.ok) return null;
     const data = (await r.json()) as ESPNAthleteResponse;
     return data.athlete ?? null;
@@ -266,14 +270,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
   const id = extractNumericId(rawId);
 
-  // Probe sports endpoints in parallel — first hit wins.
-  const probe = await Promise.all(
-    SPORT_PATHS.map(async (p) => {
-      const a = await fetchAthlete(p, id);
-      return a ? { sportPath: p, athlete: a } : null;
-    }),
-  );
-  let found = probe.find((x): x is { sportPath: string; athlete: ESPNAthlete } => !!x);
+  // Probe sports endpoints in small batches — first hit wins.
+  // Batching prevents 72+ simultaneous outbound requests that cause 503/timeout.
+  const BATCH = 8;
+  let found: { sportPath: string; athlete: ESPNAthlete } | undefined;
+  for (let i = 0; i < SPORT_PATHS.length && !found; i += BATCH) {
+    const batch = SPORT_PATHS.slice(i, i + BATCH);
+    const results = await Promise.all(
+      batch.map(async (p) => {
+        const a = await fetchAthlete(p, id);
+        return a ? { sportPath: p, athlete: a } : null;
+      }),
+    );
+    found = results.find((x): x is { sportPath: string; athlete: ESPNAthlete } => !!x) ?? undefined;
+  }
 
   // Fallback: try the league-agnostic "core" endpoint per sport.
   if (!found) {

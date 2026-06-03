@@ -643,6 +643,62 @@ export async function GET(req: NextRequest) {
       } catch (e) { results.errors.push(`generic-post: ${e}`); }
     }
 
+    // ── Fake challenge creation ───────────────────────────────────────────────
+    // Periodically create new fake challenges so the Challenges page always
+    // looks busy. One new challenge every ~4 cron ticks (roughly once per hour).
+    try {
+      if (Math.random() < 0.25) {
+        const { createChallenge, getChallenges } = await import('@/lib/challenges-store');
+        const { getFakeTipsters } = await import('@/lib/fake-tipsters');
+        const fakeTipsters = getFakeTipsters();
+        if (fakeTipsters.length >= 2) {
+          const existing = await getChallenges('all');
+          const activeCount = existing.filter(c => c.status === 'active' || c.status === 'pending').length;
+          // Keep between 3 and 10 active/pending challenges at all times
+          if (activeCount < 8) {
+            const CHALLENGE_TITLES = [
+              'Weekend EPL Showdown', 'UCL Group Stage Battle', 'La Liga Prediction Cup',
+              'Bundesliga ROI Challenge', 'Top 5 Leagues Streak War', 'Friday Night Accas',
+              'Saturday Banker Challenge', 'African Cup Tipster Duel', 'NBA Points Battle',
+              'Value Bets Only Challenge', 'Serie A Prediction Duel', 'Ligue 1 Showdown',
+              'Over 2.5 Goals Challenge', 'BTTS Specialist Battle', 'Asian Handicap Masters',
+              'World Cup 2026 Qualifier Tips', 'Top Scorer Prediction Cup', 'Double Chance Experts',
+            ];
+            const SPORTS_LIST = ['football', 'football', 'football', 'football', 'basketball', 'football'];
+            const SCORING_LIST: Array<'win_rate' | 'roi' | 'streak'> = ['win_rate', 'roi', 'streak', 'win_rate', 'win_rate', 'roi'];
+            const PRIZES = ['KES 2,000', 'KES 5,000', null, 'KES 1,000', 'KES 3,000', null];
+            const idx = Math.floor(Math.random() * CHALLENGE_TITLES.length);
+            const scoringIdx = Math.floor(Math.random() * SCORING_LIST.length);
+            const shuffled = [...fakeTipsters].sort(() => Math.random() - 0.5);
+            const challenger = shuffled[0];
+            const opponent = shuffled[1];
+            const startOffset = Math.random() < 0.5 ? 0 : -Math.floor(Math.random() * 3);
+            const duration = 3 + Math.floor(Math.random() * 11); // 3-13 days
+            const startDate = new Date(now + startOffset * 86400000).toISOString().slice(0, 10);
+            const endDate = new Date(now + (startOffset + duration) * 86400000).toISOString().slice(0, 10);
+
+            await createChallenge({
+              title: CHALLENGE_TITLES[idx],
+              description: `Fake challenge between ${challenger.displayName} and ${opponent.displayName}. Best ${SCORING_LIST[scoringIdx].replace('_', ' ')} wins.`,
+              sport: SPORTS_LIST[scoringIdx],
+              scoringMethod: SCORING_LIST[scoringIdx],
+              startDate,
+              endDate,
+              challengerId: challenger.id,
+              opponentId: opponent.id,
+              stakePts: [50, 100, 200, 500][Math.floor(Math.random() * 4)],
+              prizePool: PRIZES[Math.floor(Math.random() * PRIZES.length)] ?? undefined,
+              isPublic: true,
+              maxTips: 10 + Math.floor(Math.random() * 11),
+            });
+            void results; // reference to suppress lint
+          }
+        }
+      }
+    } catch (e) {
+      results.errors.push(`fake-challenges: ${e}`);
+    }
+
     g.__fakeActivityLastRun = now;
     return NextResponse.json({ ok: true, ...results, settled });
   } catch (error) {

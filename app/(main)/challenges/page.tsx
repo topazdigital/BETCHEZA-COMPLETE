@@ -6,7 +6,8 @@ import useSWR, { mutate } from 'swr';
 import {
   Swords, Trophy, Crown, Flame, Clock, Plus, Users, ChevronRight,
   CheckCircle2, X, Search, Loader2, AlertCircle, Calendar, Target,
-  TrendingUp, Star, ThumbsUp
+  TrendingUp, Star, ThumbsUp, HelpCircle, Zap, BarChart2, Award,
+  BookOpen, Shield, ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,14 +39,35 @@ const SPORTS = [
   { value: 'darts', label: '🎯 Darts' },
   { value: 'snooker', label: '🎱 Snooker' },
   { value: 'motorsport', label: '🏎️ Motorsport' },
-  { value: 'athletics', label: '🏃 Athletics' },
-  { value: 'swimming', label: '🏊 Swimming' },
 ];
 
 const SCORING = [
   { value: 'win_rate', label: 'Win Rate', desc: 'Most correct picks wins' },
   { value: 'roi', label: 'ROI', desc: 'Best return on investment wins' },
   { value: 'streak', label: 'Streak', desc: 'Longest consecutive win streak wins' },
+];
+
+const HOW_IT_WORKS = [
+  {
+    icon: <Target className="h-4 w-4 text-primary" />,
+    title: 'Pick a Battle',
+    desc: 'Choose your sport, a date window, and scoring method — win rate, ROI, or streak.',
+  },
+  {
+    icon: <Swords className="h-4 w-4 text-red-500" />,
+    title: 'Challenge or Go Open',
+    desc: 'Name a specific tipster as opponent, or open it so anyone can accept.',
+  },
+  {
+    icon: <BarChart2 className="h-4 w-4 text-blue-500" />,
+    title: 'Post Tips Live',
+    desc: 'Both tipsters post picks during the challenge window. Scores update in real-time.',
+  },
+  {
+    icon: <Trophy className="h-4 w-4 text-amber-500" />,
+    title: 'Best Tipster Wins',
+    desc: 'Top performer on your chosen metric wins the stake and community bragging rights.',
+  },
 ];
 
 function AvatarCircle({ displayName, avatar, size = 'md' }: { displayName: string; avatar?: string | null; size?: 'sm' | 'md' | 'lg' }) {
@@ -566,6 +588,219 @@ function CreateChallengeModal({ onClose, onCreated }: { onClose: () => void; onC
   );
 }
 
+function LeftSidebar({ challenges, isLoading }: { challenges: Challenge[]; isLoading: boolean }) {
+  const live = challenges.filter(c => c.status === 'active');
+  const pending = challenges.filter(c => c.status === 'pending');
+  const finished = challenges.filter(c => c.status === 'finished');
+
+  const topChallengers = challenges
+    .filter(c => c.challenger)
+    .map(c => ({ name: c.challenger!.displayName, winRate: c.challenger!.tips > 0 ? Math.round((c.challenger!.won / c.challenger!.tips) * 100) : 0, streak: c.challenger!.streak }))
+    .sort((a, b) => b.winRate - a.winRate)
+    .slice(0, 5);
+
+  return (
+    <aside className="space-y-4">
+      {/* Stats */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <h3 className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Arena Stats</h3>
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse inline-block" />
+              Live Battles
+            </div>
+            <span className="text-sm font-bold">{isLoading ? '–' : live.length}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Clock className="h-3 w-3 text-amber-500" />
+              Upcoming
+            </div>
+            <span className="text-sm font-bold">{isLoading ? '–' : pending.length}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Trophy className="h-3 w-3 text-primary" />
+              Completed
+            </div>
+            <span className="text-sm font-bold">{isLoading ? '–' : finished.length}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Users className="h-3 w-3 text-blue-500" />
+              Total Watchers
+            </div>
+            <span className="text-sm font-bold">{isLoading ? '–' : challenges.reduce((a, c) => a + c.watchers, 0)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <BookOpen className="h-3.5 w-3.5" /> How It Works
+        </h3>
+        <div className="space-y-3">
+          {HOW_IT_WORKS.map((step, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold">
+                {i + 1}
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                  {step.icon}
+                  {step.title}
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground leading-relaxed">{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Scoring methods */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <Shield className="h-3.5 w-3.5" /> Scoring Methods
+        </h3>
+        <div className="space-y-2.5">
+          <div className="rounded-lg bg-muted/40 p-2.5">
+            <div className="text-[11px] font-bold text-emerald-600">Win Rate</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Most correct predictions out of total tips posted. Great for consistency.</div>
+          </div>
+          <div className="rounded-lg bg-muted/40 p-2.5">
+            <div className="text-[11px] font-bold text-blue-600">ROI</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Best return based on odds collected. Rewards high-value picks, not just easy wins.</div>
+          </div>
+          <div className="rounded-lg bg-muted/40 p-2.5">
+            <div className="text-[11px] font-bold text-amber-600">Streak</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Longest consecutive winning run. High risk, high drama — one miss ends your run.</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function RightSidebar({ challenges, isLoading, onCreateChallenge }: { challenges: Challenge[]; isLoading: boolean; onCreateChallenge: () => void }) {
+  const topByWatchers = [...challenges].sort((a, b) => b.watchers - a.watchers).slice(0, 4);
+  const recentFinished = challenges.filter(c => c.status === 'finished' && c.winner).slice(0, 3);
+
+  const topChallengers = challenges
+    .flatMap(c => [c.challenger, c.opponent])
+    .filter((p): p is NonNullable<typeof p> => !!p && p.tips > 0)
+    .map(p => ({ name: p.displayName, winRate: Math.round((p.won / p.tips) * 100), streak: p.streak, tips: p.tips }))
+    .sort((a, b) => b.winRate - a.winRate)
+    .reduce((acc, cur) => {
+      if (!acc.find(x => x.name === cur.name)) acc.push(cur);
+      return acc;
+    }, [] as { name: string; winRate: number; streak: number; tips: number }[])
+    .slice(0, 5);
+
+  return (
+    <aside className="space-y-4">
+      {/* Create challenge CTA */}
+      <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Swords className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-bold">Ready to Compete?</h3>
+        </div>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          Challenge any tipster on the platform or open a battle for anyone to accept. Set your stake and let the predictions decide.
+        </p>
+        <Button size="sm" className="w-full gap-1.5" onClick={onCreateChallenge}>
+          <Plus className="h-3.5 w-3.5" /> Create Challenge
+        </Button>
+      </div>
+
+      {/* Top tipsters in challenges */}
+      {topChallengers.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            <Award className="h-3.5 w-3.5 text-amber-500" /> Top Challengers
+          </h3>
+          <div className="space-y-2">
+            {topChallengers.map((t, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className={cn(
+                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black',
+                  i === 0 ? 'bg-amber-500 text-white' :
+                  i === 1 ? 'bg-zinc-400 text-white' :
+                  i === 2 ? 'bg-amber-700/70 text-white' :
+                  'bg-muted text-muted-foreground'
+                )}>
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold truncate">{t.name}</div>
+                  <div className="text-[10px] text-muted-foreground">{t.tips} tips</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className={cn('text-xs font-bold tabular-nums', t.winRate >= 60 ? 'text-emerald-600' : t.winRate >= 50 ? 'text-blue-600' : 'text-muted-foreground')}>
+                    {t.winRate}%
+                  </div>
+                  {t.streak > 2 && (
+                    <div className="flex items-center justify-end gap-0.5 text-[10px] text-amber-600">
+                      <Flame className="h-2.5 w-2.5" />{t.streak}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Most watched */}
+      {topByWatchers.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            <TrendingUp className="h-3.5 w-3.5 text-blue-500" /> Most Watched
+          </h3>
+          <div className="space-y-2.5">
+            {topByWatchers.map(c => (
+              <div key={c.id} className="rounded-lg bg-muted/30 p-2.5">
+                <div className="text-[11px] font-bold leading-tight line-clamp-1">{c.title}</div>
+                <div className="mt-1 flex items-center justify-between">
+                  <div className="text-[10px] text-muted-foreground">
+                    {c.challenger?.displayName || '?'} vs {c.opponent?.displayName || 'Open'}
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <Users className="h-2.5 w-2.5" />{c.watchers}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Prize pools */}
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+        <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+          <Crown className="h-3.5 w-3.5" /> Active Prize Pools
+        </h3>
+        {isLoading ? (
+          <div className="text-[10px] text-muted-foreground">Loading...</div>
+        ) : (
+          <div className="space-y-1.5">
+            {challenges.filter(c => c.prizePool && c.status !== 'cancelled').slice(0, 4).map(c => (
+              <div key={c.id} className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground truncate pr-2 flex-1">{c.title}</span>
+                <span className="font-bold text-amber-600 shrink-0">{c.prizePool}</span>
+              </div>
+            ))}
+            {challenges.filter(c => c.prizePool).length === 0 && (
+              <p className="text-[10px] text-muted-foreground">No prize pool challenges yet. Create one!</p>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 export default function ChallengesPage() {
   const { isAuthenticated } = useAuth();
   const { open: openAuthModal } = useAuthModal();
@@ -582,7 +817,6 @@ export default function ChallengesPage() {
 
   const live = filtered.filter(c => c.status === 'active');
   const pending = filtered.filter(c => c.status === 'pending');
-  const upcoming = [...live, ...pending];
   const finished = filtered.filter(c => c.status === 'finished');
 
   function handleCreate() {
@@ -607,7 +841,7 @@ export default function ChallengesPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-3 py-5 md:px-5">
+    <div className="px-3 py-5 md:px-5">
       {showCreate && (
         <CreateChallengeModal
           onClose={() => setShowCreate(false)}
@@ -615,13 +849,14 @@ export default function ChallengesPage() {
         />
       )}
 
+      {/* Page header */}
       <div className="mb-5 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Swords className="h-6 w-6 text-primary" /> Tipster Challenges
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Head-to-head prediction battles between tipsters. Watch live challenges or create your own.
+            Head-to-head prediction battles. Watch live challenges or create your own.
           </p>
         </div>
         <Button onClick={handleCreate} className="shrink-0 gap-1.5">
@@ -629,137 +864,135 @@ export default function ChallengesPage() {
         </Button>
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        {[
-          { label: 'Live Now', value: live.length, icon: <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse inline-block" /> },
-          { label: 'Upcoming', value: pending.length, icon: <Clock className="h-3.5 w-3.5 text-amber-500" /> },
-          { label: 'Completed', value: finished.length, icon: <Trophy className="h-3.5 w-3.5 text-primary" /> },
-        ].map((s, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card px-3 py-2.5 text-center">
-            <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground mb-0.5">
-              {s.icon} {s.label}
-            </div>
-            <div className="text-xl font-bold">{isLoading ? '–' : s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Sport filter */}
-      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        <button
-          onClick={() => setSportFilter('all')}
-          className={cn(
-            'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-            sportFilter === 'all'
-              ? 'bg-primary text-primary-foreground'
-              : 'border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
-          )}
-        >
-          All Sports
-        </button>
-        {SPORTS.map(s => (
-          <button
-            key={s.value}
-            onClick={() => setSportFilter(s.value)}
-            className={cn(
-              'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-              sportFilter === s.value
-                ? 'bg-primary text-primary-foreground'
-                : 'border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
-            )}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      {/* Three-column layout */}
+      <div className="flex gap-5">
+        {/* Left sidebar */}
+        <div className="hidden lg:block w-60 shrink-0">
+          <LeftSidebar challenges={challenges} isLoading={isLoading} />
         </div>
-      ) : (
-        <Tabs defaultValue="live" className="space-y-4">
-          <TabsList className="w-full">
-            <TabsTrigger value="live" className="flex-1">
-              Live {live.length > 0 && <span className="ml-1.5 rounded-full bg-red-500/20 px-1.5 text-red-600 text-[10px] font-bold">{live.length}</span>}
-            </TabsTrigger>
-            <TabsTrigger value="upcoming" className="flex-1">
-              Upcoming {pending.length > 0 && <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 text-amber-600 text-[10px] font-bold">{pending.length}</span>}
-            </TabsTrigger>
-            <TabsTrigger value="finished" className="flex-1">Finished</TabsTrigger>
-          </TabsList>
 
-          <TabsContent value="live" className="space-y-3">
-            {live.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
-                <Swords className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm font-semibold">No live challenges right now</p>
-                <p className="mt-1 text-xs text-muted-foreground">Check back on match days or create one yourself.</p>
-                <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={handleCreate}>
-                  <Plus className="h-3.5 w-3.5" /> Create one
-                </Button>
-              </div>
-            ) : live.map(c => <ChallengeCard key={c.id} c={c} onWatch={handleWatch} />)}
-          </TabsContent>
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          {/* Sport filter */}
+          <div className="mb-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <button
+              onClick={() => setSportFilter('all')}
+              className={cn(
+                'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                sportFilter === 'all'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
+              )}
+            >
+              All Sports
+            </button>
+            {SPORTS.slice(0, 8).map(s => (
+              <button
+                key={s.value}
+                onClick={() => setSportFilter(s.value)}
+                className={cn(
+                  'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                  sportFilter === s.value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'border border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
 
-          <TabsContent value="upcoming" className="space-y-3">
-            {pending.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
-                <Calendar className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm font-semibold">No upcoming challenges</p>
-                <p className="mt-1 text-xs text-muted-foreground">Be the first to kick one off.</p>
-                <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={handleCreate}>
-                  <Plus className="h-3.5 w-3.5" /> Create challenge
-                </Button>
-              </div>
-            ) : (
-              <>
-                {pending.map(c => (
-                  <div key={c.id} className="space-y-2">
-                    <ChallengeCard c={c} />
-                    {!c.opponentId && isAuthenticated && (
-                      <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" onClick={() => handleAccept(c.id)}>
-                        <Swords className="h-3.5 w-3.5" /> Accept this Challenge
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <div className="rounded-xl border border-dashed border-border bg-card p-4 flex items-center gap-3">
-                  <AlertCircle className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div className="text-xs text-muted-foreground">
-                    Want to run your own challenge? Hit <strong>Challenge</strong> above to set one up in minutes.
-                  </div>
-                </div>
-              </>
-            )}
-          </TabsContent>
-
-          <TabsContent value="finished" className="space-y-3">
-            {finished.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
-                <Trophy className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm font-semibold">No finished challenges yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">Completed challenges will appear here.</p>
-              </div>
-            ) : finished.map(c => <ChallengeCard key={c.id} c={c} />)}
-          </TabsContent>
-        </Tabs>
-      )}
-
-      <div className="mt-6 rounded-2xl border border-border bg-card p-4">
-        <h2 className="mb-3 text-sm font-bold">How Challenges Work</h2>
-        <div className="grid gap-3 sm:grid-cols-3 text-xs text-muted-foreground">
-          {[
-            { icon: <Target className="h-5 w-5 text-primary" />, title: 'Pick a Battle', desc: 'Choose a sport, fixture window, and scoring method (win rate, ROI, or streak).' },
-            { icon: <Swords className="h-5 w-5 text-red-500" />, title: 'Invite or Open', desc: 'Challenge a specific tipster or open it to all — first to accept joins as opponent.' },
-            { icon: <Trophy className="h-5 w-5 text-amber-500" />, title: 'Compete & Win', desc: 'Post your tips live. The score updates in real-time. Top performer wins the stake.' },
-          ].map((s, i) => (
-            <div key={i} className="rounded-lg bg-muted/40 p-3">
-              <div className="mb-1">{s.icon}</div>
-              <div className="font-semibold text-foreground text-[11px] mb-0.5">{s.title}</div>
-              <div>{s.desc}</div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ))}
+          ) : (
+            <Tabs defaultValue="live" className="space-y-4">
+              <TabsList className="w-full">
+                <TabsTrigger value="live" className="flex-1">
+                  Live {live.length > 0 && <span className="ml-1.5 rounded-full bg-red-500/20 px-1.5 text-red-600 text-[10px] font-bold">{live.length}</span>}
+                </TabsTrigger>
+                <TabsTrigger value="upcoming" className="flex-1">
+                  Upcoming {pending.length > 0 && <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 text-amber-600 text-[10px] font-bold">{pending.length}</span>}
+                </TabsTrigger>
+                <TabsTrigger value="finished" className="flex-1">Finished</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="live" className="space-y-3">
+                {live.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+                    <Swords className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm font-semibold">No live challenges right now</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Check back on match days or create one yourself.</p>
+                    <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={handleCreate}>
+                      <Plus className="h-3.5 w-3.5" /> Create one
+                    </Button>
+                  </div>
+                ) : live.map(c => <ChallengeCard key={c.id} c={c} onWatch={handleWatch} />)}
+              </TabsContent>
+
+              <TabsContent value="upcoming" className="space-y-3">
+                {pending.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+                    <Calendar className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm font-semibold">No upcoming challenges</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Be the first to kick one off.</p>
+                    <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={handleCreate}>
+                      <Plus className="h-3.5 w-3.5" /> Create challenge
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {pending.map(c => (
+                      <div key={c.id} className="space-y-2">
+                        <ChallengeCard c={c} />
+                        {!c.opponentId && isAuthenticated && (
+                          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" onClick={() => handleAccept(c.id)}>
+                            <Swords className="h-3.5 w-3.5" /> Accept this Challenge
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <div className="rounded-xl border border-dashed border-border bg-card p-4 flex items-center gap-3">
+                      <AlertCircle className="h-5 w-5 text-muted-foreground shrink-0" />
+                      <div className="text-xs text-muted-foreground">
+                        Want to run your own challenge? Hit <strong>Challenge</strong> above to set one up in minutes.
+                      </div>
+                    </div>
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="finished" className="space-y-3">
+                {finished.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+                    <Trophy className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm font-semibold">No finished challenges yet</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Completed challenges will appear here.</p>
+                  </div>
+                ) : finished.map(c => <ChallengeCard key={c.id} c={c} />)}
+              </TabsContent>
+            </Tabs>
+          )}
+
+          {/* Mobile-only How it works */}
+          <div className="mt-6 lg:hidden rounded-2xl border border-border bg-card p-4">
+            <h2 className="mb-3 text-sm font-bold">How Challenges Work</h2>
+            <div className="grid gap-3 sm:grid-cols-2 text-xs text-muted-foreground">
+              {HOW_IT_WORKS.map((s, i) => (
+                <div key={i} className="rounded-lg bg-muted/40 p-3">
+                  <div className="mb-1">{s.icon}</div>
+                  <div className="font-semibold text-foreground text-[11px] mb-0.5">{s.title}</div>
+                  <div>{s.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right sidebar */}
+        <div className="hidden xl:block w-60 shrink-0">
+          <RightSidebar challenges={challenges} isLoading={isLoading} onCreateChallenge={handleCreate} />
         </div>
       </div>
     </div>

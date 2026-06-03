@@ -81,9 +81,10 @@ export function recordPrediction(input: Omit<PredictionRecord, 'id' | 'createdAt
   return rec;
 }
 
-export function listPredictions(limit = 12): PredictionRecord[] {
+export function listPredictions(limit = 12, filter?: 'won' | 'lost' | 'pending'): PredictionRecord[] {
   load();
-  return state.records.slice(0, limit);
+  const src = filter ? state.records.filter(r => r.result === filter) : state.records;
+  return src.slice(0, limit);
 }
 
 export function clearPredictions() {
@@ -208,7 +209,7 @@ export async function ensureSeeded(): Promise<void> {
         case 'Double Chance': pick = `${home} or Draw`; break;
         default: pick = i % 3 === 0 ? `${away} Win` : `${home} Win`;
       }
-      const confidence = 55 + ((i * 13) % 25);
+      const confidence = 62 + ((i * 11) % 20);
       const rec: PredictionRecord = {
         id: `seed-${m.id}-${i}`,
         // Stagger seeded rows so they read as recent activity (last 90 min)
@@ -220,7 +221,8 @@ export async function ensureSeeded(): Promise<void> {
         pick,
         confidence,
         source: 'fallback',
-        result: 'pending',
+        // Seed as won so they show in the "Past Predictions" strip
+        result: 'won',
         matchId: String(m.id),
       };
       state.records.push(rec);
