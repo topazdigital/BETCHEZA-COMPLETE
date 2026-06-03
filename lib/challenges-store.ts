@@ -1,8 +1,13 @@
 import { query, getPool } from './db';
 import { fileStoreGet, fileStoreSet } from './file-store';
+import { getFakeTipsters } from './fake-tipsters';
+import { getBalance, debit, credit } from './wallet-store';
 
 export type ScoringMethod = 'win_rate' | 'roi' | 'streak';
 export type ChallengeStatus = 'pending' | 'active' | 'finished' | 'cancelled';
+export type EscrowStatus = 'none' | 'challenger_locked' | 'both_locked' | 'settled' | 'refunded';
+
+export const PLATFORM_WALLET_ID = 0; // platform fee account
 
 export interface ChallengeParticipant {
   userId: number;
@@ -14,6 +19,7 @@ export interface ChallengeParticipant {
   lost: number;
   streak: number;
   roi: number;
+  isFake?: boolean;
 }
 
 export interface Challenge {
@@ -28,7 +34,11 @@ export interface Challenge {
   challengerId: number;
   opponentId: number | null;
   winnerId: number | null;
-  stakePts: number;
+  stakeKes: number;
+  platformFeePct: number;
+  escrowStatus: EscrowStatus;
+  isFakeChallenge: boolean;
+  drawRefunded: boolean;
   prizePool: string | null;
   isPublic: boolean;
   maxTips: number;
@@ -38,6 +48,7 @@ export interface Challenge {
   challenger: ChallengeParticipant | null;
   opponent: ChallengeParticipant | null;
   createdAt: string;
+  matchScope?: string | null;
 }
 
 export interface CreateChallengeInput {
@@ -49,10 +60,12 @@ export interface CreateChallengeInput {
   endDate: string;
   challengerId: number;
   opponentId?: number | null;
-  stakePts?: number;
+  stakeKes?: number;
   prizePool?: string;
   isPublic?: boolean;
   maxTips?: number;
+  isFakeChallenge?: boolean;
+  matchScope?: string;
 }
 
 function hasDb(): boolean {
@@ -71,12 +84,17 @@ interface FileChallenge {
   challengerId: number;
   opponentId: number | null;
   winnerId: number | null;
-  stakePts: number;
+  stakeKes: number;
+  platformFeePct: number;
+  escrowStatus: EscrowStatus;
+  isFakeChallenge: boolean;
+  drawRefunded: boolean;
   prizePool: string | null;
   isPublic: boolean;
   maxTips: number;
   watchers: number;
   createdAt: string;
+  matchScope?: string | null;
 }
 
 interface FileVote { challengeId: number; userId: number; side: 'challenger' | 'opponent' }
@@ -98,97 +116,8 @@ function persistToDisk() {
   try { fileStoreSet('challenges', { challenges: cStore.challenges, nextId: cStore.nextId }); } catch {}
 }
 
-const FAKE_TIPSTER_PAIRS: { challenger: { id: number; name: string; streak: number }; opponent: { id: number; name: string; streak: number } }[] = [
-  { challenger: { id: 1001, name: 'Victor Okoye', streak: 7 }, opponent: { id: 1002, name: 'James Kariuki', streak: 4 } },
-  { challenger: { id: 1003, name: 'Amara Diallo', streak: 5 }, opponent: { id: 1004, name: 'Kwame Asante', streak: 9 } },
-  { challenger: { id: 1005, name: 'Luca Romano', streak: 3 }, opponent: { id: 1006, name: 'Mehmet Yilmaz', streak: 6 } },
-  { challenger: { id: 1007, name: 'Ivan Petrov', streak: 11 }, opponent: { id: 1008, name: 'Carlos Mendez', streak: 8 } },
-];
-
-const FAKE_CHALLENGE_TEMPLATES: { title: string; description: string; sport: string; scoringMethod: ScoringMethod }[] = [
-  { title: 'EPL Prediction Showdown', description: 'Who can nail the most Premier League results this weekend?', sport: 'football', scoringMethod: 'win_rate' },
-  { title: 'Champions League ROI Battle', description: 'Best return on investment across all UCL fixtures wins.', sport: 'football', scoringMethod: 'roi' },
-  { title: 'NBA Hot Streak Challenge', description: 'Longest consecutive winning run across NBA picks this week.', sport: 'basketball', scoringMethod: 'streak' },
-  { title: 'Weekend Warrior Cup', description: 'Multi-sport clash — highest win rate across football & basketball.', sport: 'football', scoringMethod: 'win_rate' },
-];
-
-const FAKE_TIPSTER_BY_ID = new Map<number, { name: string; streak: number }>();
-FAKE_TIPSTER_PAIRS.forEach(p => {
-  FAKE_TIPSTER_BY_ID.set(p.challenger.id, { name: p.challenger.name, streak: p.challenger.streak });
-  FAKE_TIPSTER_BY_ID.set(p.opponent.id, { name: p.opponent.name, streak: p.opponent.streak });
-});
-
-function buildFakeParticipant(id: number, name: string, streak: number, wonRate = 0.62): ChallengeParticipant {
-  const total = 40 + Math.floor(Math.abs((id * 17) % 60));
-  const won = Math.round(total * wonRate);
-  return {
-    userId: id,
-    username: name.toLowerCase().replace(/\s/g, '_'),
-    displayName: name,
-    avatar: null,
-    tips: total,
-    won,
-    lost: total - won,
-    streak,
-    roi: Math.round((wonRate * 1.9 - 1) * 100) / 10,
-  };
-}
-
-export function seedFakeChallengesIfEmpty(): void {
-  if (cStore.challenges.length > 0) return;
-  const now = new Date();
-
-  const statuses: ChallengeStatus[] = ['active', 'active', 'pending', 'finished'];
-
-  FAKE_CHALLENGE_TEMPLATES.forEach((tpl, i) => {
-    const pair = FAKE_TIPSTER_PAIRS[i];
-    const status = statuses[i];
-    const startOffset = status === 'finished' ? -10 : status === 'active' ? -3 : 1;
-    const endOffset = status === 'finished' ? -1 : 7;
-    const start = new Date(now); start.setDate(start.getDate() + startOffset);
-    const end = new Date(now); end.setDate(end.getDate() + endOffset);
-
-    const id = cStore.nextId++;
-    const votesC = 30 + Math.floor(Math.abs((id * 13) % 50));
-    const votesO = 20 + Math.floor(Math.abs((id * 7) % 40));
-
-    const entry: FileChallenge = {
-      id,
-      title: tpl.title,
-      description: tpl.description,
-      sport: tpl.sport,
-      scoringMethod: tpl.scoringMethod,
-      startDate: start.toISOString().slice(0, 10),
-      endDate: end.toISOString().slice(0, 10),
-      status,
-      challengerId: pair.challenger.id,
-      opponentId: pair.opponent.id,
-      winnerId: status === 'finished' ? pair.challenger.id : null,
-      stakePts: [100, 250, 50, 500][i] || 100,
-      prizePool: ['KES 2,000', 'KES 5,000', null, 'KES 10,000'][i] || null,
-      isPublic: true,
-      maxTips: [10, 15, 8, 20][i] || 10,
-      watchers: 10 + Math.floor(Math.abs((id * 11) % 90)),
-      createdAt: start.toISOString(),
-    };
-    cStore.challenges.push(entry);
-
-    // Seed some community votes for realism
-    vStore.push({ challengeId: id, userId: 9001 + i, side: 'challenger' });
-    vStore.push({ challengeId: id, userId: 9010 + i, side: 'opponent' });
-    for (let v = 0; v < Math.min(votesC - 1, 5); v++) {
-      vStore.push({ challengeId: id, userId: 8000 + i * 10 + v, side: 'challenger' });
-    }
-    for (let v = 0; v < Math.min(votesO - 1, 4); v++) {
-      vStore.push({ challengeId: id, userId: 7000 + i * 10 + v, side: 'opponent' });
-    }
-  });
-
-  persistToDisk();
-}
-
-function fakePart(userId: number, displayName: string, streak = 0): ChallengeParticipant {
-  return { userId, username: displayName.toLowerCase().replace(/\s/g, '_'), displayName, avatar: null, tips: 0, won: 0, lost: 0, streak, roi: 0 };
+function fakePart(userId: number, displayName: string, streak = 0, isFake = false): ChallengeParticipant {
+  return { userId, username: displayName.toLowerCase().replace(/\s+/g, '_').slice(0, 20), displayName, avatar: null, tips: 0, won: 0, lost: 0, streak, roi: 0, isFake };
 }
 
 function shapeFromDb(row: Record<string, unknown>, challenger: ChallengeParticipant | null, opponent: ChallengeParticipant | null): Challenge {
@@ -204,7 +133,11 @@ function shapeFromDb(row: Record<string, unknown>, challenger: ChallengeParticip
     challengerId: Number(row.challenger_id),
     opponentId: row.opponent_id ? Number(row.opponent_id) : null,
     winnerId: row.winner_id ? Number(row.winner_id) : null,
-    stakePts: Number(row.stake_pts || 0),
+    stakeKes: Number(row.stake_kes || row.stake_pts || 0),
+    platformFeePct: Number(row.platform_fee_pct || 10),
+    escrowStatus: (row.escrow_status as EscrowStatus) || 'none',
+    isFakeChallenge: Boolean(row.is_fake_challenge),
+    drawRefunded: Boolean(row.draw_refunded),
     prizePool: row.prize_pool ? String(row.prize_pool) : null,
     isPublic: Boolean(row.is_public),
     maxTips: Number(row.max_tips || 10),
@@ -214,11 +147,31 @@ function shapeFromDb(row: Record<string, unknown>, challenger: ChallengeParticip
     challenger,
     opponent,
     createdAt: String(row.created_at || ''),
+    matchScope: row.match_scope ? String(row.match_scope) : null,
   };
 }
 
 async function buildParticipant(userId: number | null): Promise<ChallengeParticipant | null> {
   if (!userId) return null;
+  if (userId >= 1000) {
+    const fakes = getFakeTipsters();
+    const ft = fakes.find(f => f.id === userId);
+    if (ft) {
+      return {
+        userId: ft.id,
+        username: ft.username,
+        displayName: ft.displayName,
+        avatar: ft.avatar,
+        tips: ft.totalTips,
+        won: ft.wonTips,
+        lost: ft.lostTips,
+        streak: ft.streak,
+        roi: ft.roi,
+        isFake: true,
+      };
+    }
+    return fakePart(userId, `Tipster${userId}`, 2, true);
+  }
   if (hasDb()) {
     try {
       const { rows } = await query<{
@@ -248,12 +201,86 @@ async function buildParticipant(userId: number | null): Promise<ChallengePartici
         lost: r.lost_tips,
         streak: r.streak,
         roi: Number(r.roi),
+        isFake: false,
       };
     } catch {
       return null;
     }
   }
-  return fakePart(userId, `User#${userId}`);
+  return fakePart(userId, `User#${userId}`, 0, false);
+}
+
+export function seedFakeChallengesIfEmpty(): void {
+  if (cStore.challenges.length > 0) return;
+  const fakeTipsters = getFakeTipsters();
+  if (fakeTipsters.length < 8) return;
+
+  const now = new Date();
+  const statuses: ChallengeStatus[] = ['active', 'active', 'pending', 'finished'];
+
+  const templates = [
+    { title: 'EPL Prediction Showdown', description: 'Who can nail the most Premier League results this weekend?', sport: 'football', scoringMethod: 'win_rate' as ScoringMethod, stakeKes: 500 },
+    { title: 'Champions League ROI Battle', description: 'Best return on investment across all UCL fixtures wins.', sport: 'football', scoringMethod: 'roi' as ScoringMethod, stakeKes: 1000 },
+    { title: 'NBA Hot Streak Challenge', description: 'Longest consecutive winning run across NBA picks this week.', sport: 'basketball', scoringMethod: 'streak' as ScoringMethod, stakeKes: 0 },
+    { title: 'Weekend Warrior Cup', description: 'Multi-sport clash — highest win rate across football & basketball.', sport: 'football', scoringMethod: 'win_rate' as ScoringMethod, stakeKes: 2000 },
+  ];
+
+  templates.forEach((tpl, i) => {
+    const ft1 = fakeTipsters[i * 2];
+    const ft2 = fakeTipsters[i * 2 + 1];
+    const status = statuses[i];
+    const startOffset = status === 'finished' ? -10 : status === 'active' ? -3 : 1;
+    const endOffset = status === 'finished' ? -1 : 7;
+    const start = new Date(now); start.setDate(start.getDate() + startOffset);
+    const end = new Date(now); end.setDate(end.getDate() + endOffset);
+
+    const id = cStore.nextId++;
+    const entry: FileChallenge = {
+      id,
+      title: tpl.title,
+      description: tpl.description,
+      sport: tpl.sport,
+      scoringMethod: tpl.scoringMethod,
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      status,
+      challengerId: ft1.id,
+      opponentId: ft2.id,
+      winnerId: status === 'finished' ? ft1.id : null,
+      stakeKes: tpl.stakeKes,
+      platformFeePct: 10,
+      escrowStatus: status === 'finished' ? 'settled' : status === 'active' ? 'both_locked' : 'none',
+      isFakeChallenge: true,
+      drawRefunded: false,
+      prizePool: tpl.stakeKes > 0 ? `KES ${(tpl.stakeKes * 2 * 0.9).toLocaleString()}` : null,
+      isPublic: true,
+      maxTips: [10, 15, 8, 20][i] || 10,
+      watchers: 10 + Math.floor(Math.abs((id * 11) % 90)),
+      createdAt: start.toISOString(),
+    };
+    cStore.challenges.push(entry);
+
+    vStore.push({ challengeId: id, userId: 9001 + i, side: 'challenger' });
+    vStore.push({ challengeId: id, userId: 9010 + i, side: 'opponent' });
+    for (let v = 0; v < 5; v++) {
+      vStore.push({ challengeId: id, userId: 8000 + i * 10 + v, side: 'challenger' });
+    }
+    for (let v = 0; v < 4; v++) {
+      vStore.push({ challengeId: id, userId: 7000 + i * 10 + v, side: 'opponent' });
+    }
+  });
+
+  persistToDisk();
+}
+
+function shapeFileChallenge(c: FileChallenge, challenger: ChallengeParticipant | null, opponent: ChallengeParticipant | null): Challenge {
+  return {
+    ...c,
+    votesChallenger: vStore.filter(v => v.challengeId === c.id && v.side === 'challenger').length,
+    votesOpponent: vStore.filter(v => v.challengeId === c.id && v.side === 'opponent').length,
+    challenger,
+    opponent,
+  };
 }
 
 export async function getChallenges(status?: ChallengeStatus | 'all'): Promise<Challenge[]> {
@@ -277,20 +304,26 @@ export async function getChallenges(status?: ChallengeStatus | 'all'): Promise<C
         })
       );
       return challenges;
-    } catch {
-      // fall through
-    }
+    } catch { /* fall through */ }
   }
-  // file fallback
   let list = cStore.challenges;
   if (status && status !== 'all') list = list.filter((c) => c.status === status);
-  return list.map((c) => ({
-    ...c,
-    votesChallenger: vStore.filter(v => v.challengeId === c.id && v.side === 'challenger').length,
-    votesOpponent: vStore.filter(v => v.challengeId === c.id && v.side === 'opponent').length,
-    challenger: (() => { const p = FAKE_TIPSTER_BY_ID.get(c.challengerId); return p ? buildFakeParticipant(c.challengerId, p.name, p.streak) : fakePart(c.challengerId, `Tipster${c.challengerId}`, 3); })(),
-    opponent: c.opponentId ? (() => { const p = FAKE_TIPSTER_BY_ID.get(c.opponentId!); return p ? buildFakeParticipant(c.opponentId!, p.name, p.streak) : fakePart(c.opponentId!, `Tipster${c.opponentId}`, 1); })() : null,
-  }));
+  const fakes = getFakeTipsters();
+  const fakeMap = new Map(fakes.map(f => [f.id, f]));
+
+  return list.map((c) => {
+    const ft1 = fakeMap.get(c.challengerId);
+    const ft2 = c.opponentId ? fakeMap.get(c.opponentId) : null;
+    const challenger: ChallengeParticipant | null = ft1
+      ? { userId: ft1.id, username: ft1.username, displayName: ft1.displayName, avatar: ft1.avatar, tips: ft1.totalTips, won: ft1.wonTips, lost: ft1.lostTips, streak: ft1.streak, roi: ft1.roi, isFake: true }
+      : fakePart(c.challengerId, `Tipster${c.challengerId}`, 2, true);
+    const opponent: ChallengeParticipant | null = c.opponentId
+      ? ft2
+        ? { userId: ft2.id, username: ft2.username, displayName: ft2.displayName, avatar: ft2.avatar, tips: ft2.totalTips, won: ft2.wonTips, lost: ft2.lostTips, streak: ft2.streak, roi: ft2.roi, isFake: true }
+        : fakePart(c.opponentId, `Tipster${c.opponentId}`, 1, true)
+      : null;
+    return shapeFileChallenge(c, challenger, opponent);
+  });
 }
 
 export async function getChallengeById(id: number): Promise<Challenge | null> {
@@ -308,23 +341,35 @@ export async function getChallengeById(id: number): Promise<Challenge | null> {
   }
   const c = cStore.challenges.find((x) => x.id === id);
   if (!c) return null;
-  return {
-    ...c,
-    votesChallenger: vStore.filter(v => v.challengeId === c.id && v.side === 'challenger').length,
-    votesOpponent: vStore.filter(v => v.challengeId === c.id && v.side === 'opponent').length,
-    challenger: fakePart(c.challengerId, `Tipster${c.challengerId}`, 3),
-    opponent: c.opponentId ? fakePart(c.opponentId, `Tipster${c.opponentId}`, 1) : null,
-  };
+  const [challenger, opponent] = await Promise.all([
+    buildParticipant(c.challengerId),
+    c.opponentId ? buildParticipant(c.opponentId) : Promise.resolve(null),
+  ]);
+  return shapeFileChallenge(c, challenger, opponent);
 }
 
 export async function createChallenge(input: CreateChallengeInput): Promise<Challenge> {
+  const stakeKes = input.stakeKes ?? 0;
+  const prizePool = stakeKes > 0 ? `KES ${(stakeKes * 2 * 0.9).toLocaleString()}` : (input.prizePool || null);
+
   if (hasDb()) {
     try {
+      await query(`
+        ALTER TABLE tipster_challenges
+          ADD COLUMN IF NOT EXISTS stake_kes INT NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS platform_fee_pct INT NOT NULL DEFAULT 10,
+          ADD COLUMN IF NOT EXISTS escrow_status VARCHAR(30) NOT NULL DEFAULT 'none',
+          ADD COLUMN IF NOT EXISTS is_fake_challenge TINYINT(1) NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS draw_refunded TINYINT(1) NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS match_scope VARCHAR(255) DEFAULT NULL
+      `).catch(() => {});
+
       const result = await query<{ insertId: number }>(
         `INSERT INTO tipster_challenges
           (title, description, sport, scoring_method, start_date, end_date, status,
-           challenger_id, opponent_id, stake_pts, prize_pool, is_public, max_tips, watchers)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, 0)`,
+           challenger_id, opponent_id, stake_kes, stake_pts, platform_fee_pct,
+           escrow_status, is_fake_challenge, prize_pool, is_public, max_tips, watchers, match_scope)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, 10, ?, ?, ?, ?, ?, 0, ?)`,
         [
           input.title,
           input.description || null,
@@ -334,17 +379,20 @@ export async function createChallenge(input: CreateChallengeInput): Promise<Chal
           input.endDate,
           input.challengerId,
           input.opponentId || null,
-          input.stakePts || 0,
-          input.prizePool || null,
+          stakeKes,
+          stakeKes,
+          stakeKes > 0 ? 'challenger_locked' : 'none',
+          input.isFakeChallenge ? 1 : 0,
+          prizePool,
           input.isPublic !== false ? 1 : 0,
           input.maxTips || 10,
+          input.matchScope || null,
         ]
       );
-      const created = await getChallengeById(result[0]?.insertId || 0);
+      const created = await getChallengeById((result as unknown as { insertId: number }).insertId || 0);
       if (created) return created;
     } catch { /* fall through */ }
   }
-  // file fallback
   const id = cStore.nextId++;
   const now = new Date().toISOString();
   const entry: FileChallenge = {
@@ -359,48 +407,84 @@ export async function createChallenge(input: CreateChallengeInput): Promise<Chal
     challengerId: input.challengerId,
     opponentId: input.opponentId || null,
     winnerId: null,
-    stakePts: input.stakePts || 0,
-    prizePool: input.prizePool || null,
+    stakeKes,
+    platformFeePct: 10,
+    escrowStatus: stakeKes > 0 ? 'challenger_locked' : 'none',
+    isFakeChallenge: input.isFakeChallenge ?? false,
+    drawRefunded: false,
+    prizePool,
     isPublic: input.isPublic !== false,
     maxTips: input.maxTips || 10,
     watchers: 0,
     createdAt: now,
+    matchScope: input.matchScope || null,
   };
   cStore.challenges.unshift(entry);
   persistToDisk();
-  return {
-    ...entry,
-    votesChallenger: 0,
-    votesOpponent: 0,
-    challenger: fakePart(input.challengerId, `Tipster${input.challengerId}`),
-    opponent: input.opponentId ? fakePart(input.opponentId, `Tipster${input.opponentId}`) : null,
-  };
+  const [challenger, opponent] = await Promise.all([
+    buildParticipant(entry.challengerId),
+    entry.opponentId ? buildParticipant(entry.opponentId) : Promise.resolve(null),
+  ]);
+  return shapeFileChallenge(entry, challenger, opponent);
 }
 
-export async function acceptChallenge(challengeId: number, userId: number): Promise<boolean> {
+export async function acceptChallenge(challengeId: number, userId: number): Promise<{ ok: boolean; error?: string }> {
   if (hasDb()) {
     try {
+      const ch = await getChallengeById(challengeId);
+      if (!ch || ch.status !== 'pending' || ch.challengerId === userId) {
+        return { ok: false, error: 'Cannot accept this challenge' };
+      }
+      if (ch.opponentId && ch.opponentId !== userId) {
+        return { ok: false, error: 'This challenge is directed at another tipster' };
+      }
+      if (ch.stakeKes > 0) {
+        const bal = getBalance(userId);
+        if (bal < ch.stakeKes) {
+          return { ok: false, error: `Insufficient balance. You need KES ${ch.stakeKes.toLocaleString()}, you have KES ${bal.toLocaleString()}.` };
+        }
+        debit(userId, ch.stakeKes, { type: 'competition_entry', description: `Challenge stake: ${ch.title}`, meta: { challengeId } });
+      }
       await query(
-        `UPDATE tipster_challenges SET opponent_id = ?, status = 'active', updated_at = NOW()
-         WHERE id = ? AND opponent_id IS NULL AND status = 'pending' AND challenger_id != ?`,
-        [userId, challengeId, userId]
+        `UPDATE tipster_challenges SET opponent_id = ?, status = 'active', escrow_status = ?, updated_at = NOW()
+         WHERE id = ? AND status = 'pending' AND challenger_id != ?`,
+        [userId, ch.stakeKes > 0 ? 'both_locked' : 'none', challengeId, userId]
       );
-      return true;
-    } catch { return false; }
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String(e) }; }
   }
   const c = cStore.challenges.find((x) => x.id === challengeId);
-  if (!c || c.opponentId || c.status !== 'pending' || c.challengerId === userId) return false;
+  if (!c || c.status !== 'pending' || c.challengerId === userId) return { ok: false, error: 'Cannot accept' };
+  if (c.opponentId && c.opponentId !== userId) return { ok: false, error: 'Challenge is directed at someone else' };
+  if (c.stakeKes > 0) {
+    const bal = getBalance(userId);
+    if (bal < c.stakeKes) {
+      return { ok: false, error: `Insufficient balance. Need KES ${c.stakeKes.toLocaleString()}, have KES ${bal.toLocaleString()}.` };
+    }
+    debit(userId, c.stakeKes, { type: 'competition_entry', description: `Challenge stake: ${c.title}`, meta: { challengeId } });
+  }
   c.opponentId = userId;
   c.status = 'active';
+  c.escrowStatus = c.stakeKes > 0 ? 'both_locked' : 'none';
   persistToDisk();
-  return true;
+  return { ok: true };
 }
 
 export async function cancelChallenge(challengeId: number, userId: number): Promise<boolean> {
   if (hasDb()) {
     try {
+      const ch = await getChallengeById(challengeId);
+      if (!ch || ch.challengerId !== userId) return false;
+      if (!['pending', 'active'].includes(ch.status)) return false;
+      if (ch.stakeKes > 0 && ch.escrowStatus === 'challenger_locked') {
+        credit(userId, ch.stakeKes, { type: 'refund', description: `Challenge cancelled: ${ch.title}`, meta: { challengeId } });
+      }
+      if (ch.stakeKes > 0 && ch.escrowStatus === 'both_locked' && ch.opponentId) {
+        credit(userId, ch.stakeKes, { type: 'refund', description: `Challenge cancelled: ${ch.title}`, meta: { challengeId } });
+        credit(ch.opponentId, ch.stakeKes, { type: 'refund', description: `Challenge cancelled: ${ch.title}`, meta: { challengeId } });
+      }
       await query(
-        `UPDATE tipster_challenges SET status = 'cancelled', updated_at = NOW()
+        `UPDATE tipster_challenges SET status = 'cancelled', escrow_status = 'refunded', updated_at = NOW()
          WHERE id = ? AND challenger_id = ? AND status IN ('pending','active')`,
         [challengeId, userId]
       );
@@ -408,10 +492,60 @@ export async function cancelChallenge(challengeId: number, userId: number): Prom
     } catch { return false; }
   }
   const c = cStore.challenges.find((x) => x.id === challengeId && x.challengerId === userId);
-  if (!c) return false;
+  if (!c || !['pending', 'active'].includes(c.status)) return false;
+  if (c.stakeKes > 0 && c.escrowStatus === 'challenger_locked') {
+    credit(userId, c.stakeKes, { type: 'refund', description: `Challenge cancelled: ${c.title}`, meta: { challengeId } });
+  }
+  if (c.stakeKes > 0 && c.escrowStatus === 'both_locked' && c.opponentId) {
+    credit(userId, c.stakeKes, { type: 'refund', description: `Challenge cancelled: ${c.title}`, meta: { challengeId } });
+    credit(c.opponentId, c.stakeKes, { type: 'refund', description: `Challenge cancelled: ${c.title}`, meta: { challengeId } });
+  }
   c.status = 'cancelled';
+  c.escrowStatus = 'refunded';
   persistToDisk();
   return true;
+}
+
+export async function settleChallenge(
+  challengeId: number,
+  winnerId: number | null,
+): Promise<{ ok: boolean; error?: string; isDraw?: boolean }> {
+  const ch = await getChallengeById(challengeId);
+  if (!ch) return { ok: false, error: 'Challenge not found' };
+  if (ch.status === 'finished' || ch.status === 'cancelled') return { ok: false, error: 'Already settled' };
+
+  const isDraw = winnerId === null;
+  const potKes = ch.stakeKes * 2;
+  const feeKes = isDraw ? 0 : Math.round(potKes * (ch.platformFeePct / 100));
+  const winnerGets = potKes - feeKes;
+
+  if (ch.stakeKes > 0 && !ch.isFakeChallenge) {
+    if (isDraw) {
+      if (ch.challengerId) credit(ch.challengerId, ch.stakeKes, { type: 'refund', description: `Challenge draw refund: ${ch.title}`, meta: { challengeId } });
+      if (ch.opponentId) credit(ch.opponentId, ch.stakeKes, { type: 'refund', description: `Challenge draw refund: ${ch.title}`, meta: { challengeId } });
+    } else {
+      if (winnerId) credit(winnerId, winnerGets, { type: 'prize_payout', description: `Challenge won: ${ch.title}`, meta: { challengeId, feeKes } });
+      credit(PLATFORM_WALLET_ID, feeKes, { type: 'adjustment', description: `Platform fee: ${ch.title}`, meta: { challengeId } });
+    }
+  }
+
+  if (hasDb()) {
+    try {
+      await query(
+        `UPDATE tipster_challenges SET status = 'finished', winner_id = ?, escrow_status = ?, draw_refunded = ?, updated_at = NOW() WHERE id = ?`,
+        [isDraw ? null : winnerId, 'settled', isDraw ? 1 : 0, challengeId]
+      );
+      return { ok: true, isDraw };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  }
+  const c = cStore.challenges.find((x) => x.id === challengeId);
+  if (!c) return { ok: false, error: 'Not found' };
+  c.status = 'finished';
+  c.winnerId = isDraw ? null : winnerId;
+  c.escrowStatus = 'settled';
+  c.drawRefunded = isDraw;
+  persistToDisk();
+  return { ok: true, isDraw };
 }
 
 export async function incrementWatchers(challengeId: number): Promise<void> {
@@ -496,7 +630,7 @@ export async function getCommunityVotes(
           `SELECT side FROM challenge_votes WHERE challenge_id = ? AND user_id = ? LIMIT 1`,
           [challengeId, userId],
         );
-        if (mv[0]) myVote = mv[0].side as 'challenger' | 'opponent';
+        if (mv.rows[0]) myVote = mv.rows[0].side as 'challenger' | 'opponent';
       }
       return { votesChallenger: vc, votesOpponent: vo, myVote };
     } catch { /* fall through */ }
@@ -505,4 +639,8 @@ export async function getCommunityVotes(
   const vo = vStore.filter(v => v.challengeId === challengeId && v.side === 'opponent').length;
   const myVoteEntry = userId ? vStore.find(v => v.challengeId === challengeId && v.userId === userId) : null;
   return { votesChallenger: vc, votesOpponent: vo, myVote: myVoteEntry?.side ?? null };
+}
+
+export function isFakeUserId(userId: number): boolean {
+  return userId >= 1000;
 }

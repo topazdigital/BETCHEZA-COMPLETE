@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
-import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck, RefreshCw, X, CreditCard, Bell, BellOff } from 'lucide-react';
+import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck, RefreshCw, X, CreditCard, Bell, BellOff, BarChart2 } from 'lucide-react';
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
+} from 'recharts';
 import { cn } from '@/lib/utils';
 import type { WeeklyStrategy, DayPrediction, StrategyPick } from '@/app/api/strategy/predictions/route';
 import { useAuth } from '@/contexts/auth-context';
@@ -1106,6 +1109,202 @@ function PastWeeksSidebar({ past }: { past: WeeklyStrategy[] }) {
   );
 }
 
+/* ────────────────────────────────────────────────────────── */
+/* Cumulative P&L Line Chart                                */
+/* ────────────────────────────────────────────────────────── */
+interface ChartPoint {
+  weekId: string;
+  weekStart: string;
+  weekLabel: string;
+  weekProfit: number;
+  cumulativePnL: number;
+  wins: number;
+  losses: number;
+}
+
+interface HistoryData {
+  chartPoints: ChartPoint[];
+  totalPnL: number;
+  totalWins: number;
+  totalLosses: number;
+  bestWeekProfit: number;
+  weeksTracked: number;
+}
+
+function CustomPnLTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: ChartPoint }> }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  const isPosWeek = d.weekProfit >= 0;
+  const isTotalPos = d.cumulativePnL >= 0;
+  return (
+    <div className="rounded-xl border border-border bg-background/95 backdrop-blur p-3 shadow-lg text-xs min-w-[160px]">
+      <p className="font-bold text-foreground mb-2">Week of {d.weekLabel}</p>
+      <div className="space-y-1">
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground">Week P&L</span>
+          <span className={cn('font-mono font-bold', isPosWeek ? 'text-emerald-600' : 'text-red-500')}>
+            {isPosWeek ? '+' : ''}KES {d.weekProfit.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground">Cumulative</span>
+          <span className={cn('font-mono font-bold', isTotalPos ? 'text-emerald-600' : 'text-red-500')}>
+            {isTotalPos ? '+' : ''}KES {d.cumulativePnL.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex justify-between gap-4 pt-1 border-t border-border">
+          <span className="text-muted-foreground">Days</span>
+          <span className="font-semibold">
+            <span className="text-emerald-600">{d.wins}W</span>
+            {' / '}
+            <span className="text-red-500">{d.losses}L</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CumulativePnLChart() {
+  const { data, isLoading } = useSWR<HistoryData>('/api/strategy/history', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 300_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-40 text-muted-foreground gap-2">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Loading performance history…</span>
+      </div>
+    );
+  }
+
+  const points = data?.chartPoints || [];
+  const totalPnL = data?.totalPnL || 0;
+  const totalWins = data?.totalWins || 0;
+  const totalLosses = data?.totalLosses || 0;
+  const bestWeek = data?.bestWeekProfit || 0;
+  const weeksTracked = data?.weeksTracked || 0;
+
+  if (points.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+        <BarChart2 className="h-8 w-8 opacity-30" />
+        <p className="text-sm">No historical data yet. Performance chart will appear after the first settled week.</p>
+      </div>
+    );
+  }
+
+  const isPosTotal = totalPnL >= 0;
+  const lineColor = isPosTotal ? '#22c55e' : '#ef4444';
+  const gradientId = 'pnlGradient';
+
+  return (
+    <div className="space-y-4">
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          {
+            label: 'Total P&L',
+            value: `${isPosTotal ? '+' : ''}KES ${Math.abs(totalPnL).toLocaleString()}`,
+            color: isPosTotal ? 'text-emerald-600' : 'text-red-500',
+            sub: `${weeksTracked} week${weeksTracked !== 1 ? 's' : ''} tracked`,
+          },
+          {
+            label: 'Days Won',
+            value: String(totalWins),
+            color: 'text-emerald-600',
+            sub: `${totalWins + totalLosses > 0 ? Math.round((totalWins / (totalWins + totalLosses)) * 100) : 0}% success rate`,
+          },
+          {
+            label: 'Days Lost',
+            value: String(totalLosses),
+            color: 'text-red-500',
+            sub: `across all weeks`,
+          },
+          {
+            label: 'Best Week',
+            value: `+KES ${bestWeek.toLocaleString()}`,
+            color: 'text-amber-600',
+            sub: 'single week profit',
+          },
+        ].map((s, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-3">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">{s.label}</div>
+            <div className={cn('text-base font-bold font-mono', s.color)}>{s.value}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Line chart */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cumulative P&L (KES)</span>
+          <span className={cn('text-xs font-bold font-mono', isPosTotal ? 'text-emerald-600' : 'text-red-500')}>
+            {isPosTotal ? '▲' : '▼'} KES {Math.abs(totalPnL).toLocaleString()} all-time
+          </span>
+        </div>
+        <div className="h-[220px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={points} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={lineColor} stopOpacity={0.2} />
+                  <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+              <XAxis
+                dataKey="weekLabel"
+                tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
+                axisLine={false} tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
+                axisLine={false} tickLine={false}
+                tickFormatter={(v) => `${v >= 0 ? '+' : ''}${(v / 1000).toFixed(0)}K`}
+                width={38}
+              />
+              <Tooltip content={<CustomPnLTooltip />} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '4 2' }} />
+              <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 2" opacity={0.5} />
+              <Line
+                type="monotone"
+                dataKey="cumulativePnL"
+                stroke={lineColor}
+                strokeWidth={2.5}
+                dot={(props: { cx: number; cy: number; payload: ChartPoint; index: number }) => {
+                  const isLast = props.index === points.length - 1;
+                  if (!isLast) return <circle key={`dot-${props.index}`} cx={props.cx} cy={props.cy} r={2.5} fill={lineColor} fillOpacity={0.7} />;
+                  return (
+                    <circle
+                      key={`dot-last-${props.index}`}
+                      cx={props.cx}
+                      cy={props.cy}
+                      r={5}
+                      fill={lineColor}
+                      stroke="hsl(var(--background))"
+                      strokeWidth={2}
+                    />
+                  );
+                }}
+                activeDot={{ r: 6, fill: lineColor, stroke: 'hsl(var(--background))', strokeWidth: 2 }}
+                isAnimationActive={true}
+                animationDuration={800}
+                animationEasing="ease-in-out"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="text-[10px] text-muted-foreground text-center mt-2">
+          P&L based on the 7-day compound strategy outcomes. Each point = one week. Win day: +KES (target − stake). Loss day: −KES (stake).
+        </p>
+      </div>
+    </div>
+  );
+}
+
 interface AccessInfo {
   hasAccess: boolean;
   expiresAt?: string;
@@ -1442,6 +1641,19 @@ export default function StrategyPage() {
         </aside>
 
       </div>
+
+      {/* ═══════════════════════════════════════════════
+          CUMULATIVE P&L CHART — Full-width below grid
+          ═══════════════════════════════════════════════ */}
+      <div className="mt-8 rounded-2xl border border-border bg-card p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <BarChart2 className="h-5 w-5 text-primary" />
+          <h2 className="text-base font-bold">Cumulative Performance</h2>
+          <span className="text-xs text-muted-foreground">— all-time P&amp;L across every settled week</span>
+        </div>
+        <CumulativePnLChart />
+      </div>
+
     </div>
   );
 }
