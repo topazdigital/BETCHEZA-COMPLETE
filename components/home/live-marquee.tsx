@@ -24,29 +24,10 @@ export function LiveMarquee({ matches, tips = [] }: { matches: Match[]; tips?: F
   const cards = entries.length;
   const duration = Math.max(28, cards * 9);
 
-  const MARQUEE_MIN = 4;
-  const shouldLoop = cards >= MARQUEE_MIN;
-  const cardsToRender = shouldLoop ? [...entries, ...entries] : entries;
-
-  if (!shouldLoop) {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cardsToRender.map((entry, idx) => (
-          <div
-            key={
-              entry.kind === 'live'
-                ? `live-${entry.match.id}-${idx}`
-                : `tip-${entry.tip.matchId}-${idx}`
-            }
-          >
-            {entry.kind === 'live'
-              ? <MatchCardNew match={entry.match} showSport />
-              : <FavoritedTipMarqueeCard item={entry.tip} />}
-          </div>
-        ))}
-      </div>
-    );
-  }
+  // Always use the sliding marquee; duplicate cards only when there are enough to loop
+  const MARQUEE_DUPE_MIN = 3;
+  const shouldDupe = cards >= MARQUEE_DUPE_MIN;
+  const cardsToRender = shouldDupe ? [...entries, ...entries] : entries;
 
   return (
     <div className="group relative overflow-hidden">

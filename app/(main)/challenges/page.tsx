@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
+import { useUserSettings } from '@/contexts/user-settings-context';
+import { formatTime, formatDate, isToday, isTomorrow } from '@/lib/utils/timezone';
 import { pickOptionsForSport, resolvePickOdds, maxPoints, parsePicks, pickOutcome } from '@/lib/challenge-picks';
 import type { PickSelection, PickOption } from '@/lib/challenge-picks';
 import { isPushSupported, ensurePushSubscribed } from '@/lib/push-client';
@@ -94,13 +96,12 @@ function useLiveStream(matchIds: string[], onAllFinished?: () => void): Record<s
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatKickoff(iso: string | null): string {
+function formatKickoff(iso: string | null, timezone = 'Africa/Nairobi'): string {
   if (!iso) return 'TBD';
   try {
-    return new Date(iso).toLocaleDateString('en-KE', {
-      weekday: 'short', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi',
-    });
+    const d = new Date(iso);
+    const dayLabel = isToday(d, timezone) ? 'Today' : isTomorrow(d, timezone) ? 'Tomorrow' : formatDate(d, timezone);
+    return `${dayLabel}, ${formatTime(d, timezone)}`;
   } catch { return iso; }
 }
 
@@ -712,6 +713,7 @@ function CreateModal({ onClose, onCreated, prefillOpponentId }: {
 function AcceptModal({ challenge, onClose, onAccepted }: {
   challenge: Challenge; onClose: () => void; onAccepted: () => void;
 }) {
+  const { settings: tzSettings } = useUserSettings();
   const [picks, setPicks] = useState<PickSelection[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -768,7 +770,7 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
               <span className="text-sm font-semibold text-foreground flex-1 truncate">{challenge.matchHomeTeam} vs {challenge.matchAwayTeam}</span>
               <TeamLogo src={challenge.matchAwayLogo} name={challenge.matchAwayTeam} size={24} />
             </div>
-            <div className="text-xs text-muted-foreground">{challenge.matchLeague} · {formatKickoff(challenge.matchKickoff)}</div>
+            <div className="text-xs text-muted-foreground">{challenge.matchLeague} · {formatKickoff(challenge.matchKickoff, tzSettings?.timezone || 'Africa/Nairobi')}</div>
           </div>
 
           <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
@@ -836,6 +838,8 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
   onAccept: (c: Challenge) => void; onCancel: (id: number) => void;
   liveData?: LiveMatchData;
 }) {
+  const { settings: tzSettings } = useUserSettings();
+  const tz = tzSettings.timezone || 'Africa/Nairobi';
   const { status, challengerId, challengedId, winnerId, drawRefunded } = challenge;
   const settled = status === 'settled';
   const active = status === 'active';
@@ -911,7 +915,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
               </>
             ) : challenge.matchKickoff ? (
               <>
-                <div className="text-xs text-muted-foreground">{formatKickoff(challenge.matchKickoff)}</div>
+                <div className="text-xs text-muted-foreground">{formatKickoff(challenge.matchKickoff, tz)}</div>
                 <div className="text-xs font-bold text-primary">{countdown(challenge.matchKickoff)}</div>
               </>
             ) : (
@@ -1171,10 +1175,12 @@ const TABS = [
   { label: '⚔️ Active', value: 'active' },
   { label: '🔓 Open', value: 'pending' },
   { label: '✅ Settled', value: 'settled' },
+  { label: '📜 History', value: 'history' },
 ];
 
 export default function ChallengesPage() {
   const { user } = useAuth();
+  const { settings: tzSettings } = useUserSettings();
   const searchParams = useSearchParams();
   const opponentParam = searchParams.get('opponent');
   const prefillOpponent = opponentParam ? parseInt(opponentParam, 10) : undefined;
@@ -1238,12 +1244,31 @@ export default function ChallengesPage() {
     return ld ? isMatchFinished(ld.status) : false;
   });
 
+  // Personal history: user's settled challenges sorted by date desc
+  const myHistory = useMemo(() => {
+    if (!user) return [];
+    return all
+      .filter(c => c.status === 'settled' && (c.challengerId === user.id || c.challengedId === user.id))
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [all, user]);
+
+  const myStats = useMemo(() => {
+    let wins = 0, losses = 0, draws = 0, earned = 0;
+    for (const c of myHistory) {
+      if (c.drawRefunded) { draws++; }
+      else if (c.winnerId === user?.id) { wins++; earned += Math.round(c.stakeKes * 2 * 0.9); }
+      else { losses++; }
+    }
+    return { wins, losses, draws, earned };
+  }, [myHistory, user]);
+
   const counts = {
     live: trulyLive.length,
     upcoming: upcomingActive.length,
     active: activeChallenges.length - awaitingSettlement.length, // visible active (live + upcoming)
     pending: all.filter(c => c.status === 'pending').length,
     settled: all.filter(c => c.status === 'settled').length,
+    history: myHistory.length,
   };
 
   // Auto-switch to pending tab if no active challenges
@@ -1252,6 +1277,7 @@ export default function ChallengesPage() {
   }, [isLoading, counts.active, counts.pending, tab]);
 
   const filtered = all.filter(c => {
+    if (tab === 'history') return false; // history has its own computed list
     if (c.status !== tab) return false;
     // In the Active tab, hide challenges whose match has already finished (awaiting settlement)
     if (tab === 'active') {
@@ -1392,7 +1418,90 @@ export default function ChallengesPage() {
               </div>
             )}
 
-            {!isLoading && sortedFiltered.length === 0 && (
+            {/* ── History Tab ── */}
+            {!isLoading && tab === 'history' && (
+              <div>
+                {!user ? (
+                  <div className="text-center py-16">
+                    <div className="text-5xl mb-4">📜</div>
+                    <div className="text-lg font-semibold text-foreground mb-1">Sign in to see your history</div>
+                    <p className="text-sm text-muted-foreground mb-4">Your past challenge results will appear here.</p>
+                    <a href="/login" className="inline-block px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold">Sign In</a>
+                  </div>
+                ) : myHistory.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="text-5xl mb-4">📜</div>
+                    <div className="text-lg font-semibold text-foreground mb-1">No challenge history yet</div>
+                    <p className="text-sm text-muted-foreground mb-4">Your settled challenges will appear here.</p>
+                    <button onClick={() => setShowCreate(true)}
+                      className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold transition-colors">
+                      + Create a Challenge
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Stats row */}
+                    <div className="grid grid-cols-4 gap-3 mb-5">
+                      {[
+                        { label: 'Wins', value: myStats.wins, cls: 'text-green-400' },
+                        { label: 'Losses', value: myStats.losses, cls: 'text-red-400' },
+                        { label: 'Draws', value: myStats.draws, cls: 'text-yellow-400' },
+                        { label: 'Earned', value: `KES ${myStats.earned.toLocaleString()}`, cls: 'text-primary text-sm' },
+                      ].map(s => (
+                        <div key={s.label} className="rounded-xl border border-border bg-card p-3 text-center">
+                          <div className={`text-xl font-extrabold ${s.cls}`}>{s.value}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-4">
+                      {myHistory.map(c => {
+                        const isMe = c.challengerId === user.id;
+                        const won = c.winnerId === user.id && !c.drawRefunded;
+                        const lost = c.winnerId !== null && c.winnerId !== user.id && !c.drawRefunded;
+                        const draw = c.drawRefunded;
+                        const opponent = isMe ? c.challenged : c.challenger;
+                        return (
+                          <div key={c.id} className={`rounded-xl border overflow-hidden ${
+                            won ? 'border-green-500/30 bg-green-500/5' :
+                            lost ? 'border-red-500/20 bg-red-500/5' :
+                            'border-border/50 bg-card/80'
+                          }`}>
+                            <div className="px-4 py-3 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <TeamLogo src={c.matchHomeLogo} name={c.matchHomeTeam} size={28} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-semibold text-foreground truncate">{c.matchHomeTeam} vs {c.matchAwayTeam}</div>
+                                  <div className="text-xs text-muted-foreground truncate">{c.matchLeague} · {formatKickoff(c.matchKickoff, tzSettings.timezone)}</div>
+                                </div>
+                                <TeamLogo src={c.matchAwayLogo} name={c.matchAwayTeam} size={28} />
+                              </div>
+                              <div className="shrink-0 text-right">
+                                {won && <div className="text-sm font-bold text-green-400">🏆 Won</div>}
+                                {lost && <div className="text-sm font-bold text-red-400">✗ Lost</div>}
+                                {draw && <div className="text-sm font-bold text-yellow-400">🤝 Draw</div>}
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  {c.stakeKes > 0 ? (won ? `+KES ${Math.round(c.stakeKes * 2 * 0.9).toLocaleString()}` : draw ? 'Refunded' : `-KES ${c.stakeKes.toLocaleString()}`) : 'Free'}
+                                </div>
+                              </div>
+                            </div>
+                            {opponent && (
+                              <div className="px-4 pb-3 flex items-center gap-2">
+                                <Avatar src={opponent.avatar ?? null} name={opponent.displayName || '?'} size={18} />
+                                <span className="text-xs text-muted-foreground">vs <span className="font-medium text-foreground">{opponent.displayName}</span></span>
+                                <span className="text-xs text-muted-foreground ml-auto">{new Date(c.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isLoading && tab !== 'history' && sortedFiltered.length === 0 && (
               <div className="text-center py-16">
                 <div className="text-5xl mb-4">⚔️</div>
                 <div className="text-lg font-semibold text-foreground mb-1">
@@ -1449,7 +1558,7 @@ export default function ChallengesPage() {
                   )}
                 </div>
               );
-            })() : (
+            })() : tab !== 'history' && (
               <div className="space-y-4">
                 {sortedFiltered.map(c => (
                   <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
