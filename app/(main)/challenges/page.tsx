@@ -120,6 +120,7 @@ function countdown(iso: string | null): string {
   const d = parseKickoff(iso);
   if (!d) return '';
   const diff = d.getTime() - Date.now();
+  if (diff <= -60 * 1000) return 'In Progress'; // 1+ min past kickoff → in progress
   if (diff <= 0) return 'Kick-off!';
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
@@ -845,7 +846,14 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
   const canAccept = pending && !!currentUserId && currentUserId !== challengerId && (!challengedId || challengedId === currentUserId);
   const canCancel = (pending || active) && currentUserId === challengerId;
 
-  const live = liveData ? isMatchLive(liveData.status) : false;
+  // Determine if match is live: trust liveData status when present, but also
+  // use kickoff time as a fallback for stale API statuses (e.g. "scheduled" after kickoff)
+  const kickoffMs = challenge.matchKickoff ? (parseKickoff(challenge.matchKickoff)?.getTime() ?? 0) : 0;
+  const nowMs = Date.now();
+  const withinMatchWindow = kickoffMs > 0 && nowMs >= kickoffMs && nowMs - kickoffMs < 3 * 60 * 60 * 1000;
+  const live = liveData
+    ? (isMatchLive(liveData.status) || (!isMatchFinished(liveData.status) && withinMatchWindow))
+    : withinMatchWindow;
   const finished = liveData ? isMatchFinished(liveData.status) : settled;
   const homeScore = liveData?.homeScore ?? null;
   const awayScore = liveData?.awayScore ?? null;
@@ -897,12 +905,18 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
             <span className="text-sm font-semibold text-foreground truncate">{challenge.matchHomeTeam}</span>
           </div>
           <div className="text-center shrink-0 px-2">
-            {live && liveData ? (
+            {live && liveData && liveData.homeScore !== null ? (
               <>
                 <div className="text-xl font-extrabold tabular-nums text-foreground leading-none">
                   {liveData.homeScore ?? 0} – {liveData.awayScore ?? 0}
                 </div>
                 <div className="text-xs text-red-400 font-bold">{liveData.minute ? `${liveData.minute}'` : 'LIVE'}</div>
+              </>
+            ) : live && !liveData ? (
+              // Kicked off but no score data yet
+              <>
+                <div className="text-xs text-muted-foreground">{formatKickoff(challenge.matchKickoff, tz)}</div>
+                <div className="text-xs font-bold text-red-400 animate-pulse">LIVE</div>
               </>
             ) : (finished || settled) && homeScore !== null ? (
               <>
@@ -911,6 +925,9 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
                 </div>
                 <div className="text-xs text-muted-foreground font-medium">FT</div>
               </>
+            ) : settled ? (
+              // Settled but no score stored — still show FT, never show "Kick-off!"
+              <div className="text-xs text-muted-foreground font-medium">FT</div>
             ) : challenge.matchKickoff ? (
               <>
                 <div className="text-xs text-muted-foreground">{formatKickoff(challenge.matchKickoff, tz)}</div>
@@ -1218,24 +1235,40 @@ export default function ChallengesPage() {
 
   const activeChallenges = all.filter(c => c.status === 'active');
 
-  // Split active challenges into truly live (match in progress) vs upcoming (match not started yet)
+  // Split active challenges into truly live (match in progress) vs upcoming (match not started yet).
+  // Kickoff time is used as the definitive authority when the API status is absent or stale
+  // (e.g. API still says "scheduled" after the match has already started).
   const trulyLive = activeChallenges.filter(c => {
     const ld = liveMap[c.matchId];
-    if (ld) return isMatchLive(ld.status); // trust live data status
-    // No live data — check kickoff time: only count as live if kickoff ≤ now and within 3h
-    if (!c.matchKickoff) return false;
-    const kickoff = parseKickoff(c.matchKickoff)?.getTime() ?? 0;
+    const kickoffMs = c.matchKickoff ? (parseKickoff(c.matchKickoff)?.getTime() ?? 0) : 0;
     const now = Date.now();
-    return now >= kickoff && now - kickoff < 3 * 60 * 60 * 1000;
+    const withinMatchWindow = kickoffMs > 0 && now >= kickoffMs && now - kickoffMs < 3 * 60 * 60 * 1000;
+
+    if (ld) {
+      if (isMatchLive(ld.status)) return true;
+      if (isMatchFinished(ld.status)) return false;
+      // API returned a stale/unknown status (e.g. "scheduled" after kickoff) — trust kickoff time
+      return withinMatchWindow;
+    }
+    // No live data at all — use kickoff time
+    return withinMatchWindow;
   });
 
   const upcomingActive = activeChallenges.filter(c => {
     const ld = liveMap[c.matchId];
-    if (ld) return !isMatchLive(ld.status) && !isMatchFinished(ld.status);
-    // No live data — treat as upcoming if kickoff is still in the future
-    if (!c.matchKickoff) return true; // no kickoff info → show as upcoming
-    const kickoff = parseKickoff(c.matchKickoff)?.getTime() ?? 0;
-    return Date.now() < kickoff;
+    const kickoffMs = c.matchKickoff ? (parseKickoff(c.matchKickoff)?.getTime() ?? 0) : 0;
+    const now = Date.now();
+    const kickedOff = kickoffMs > 0 && now >= kickoffMs;
+
+    if (ld) {
+      if (isMatchLive(ld.status)) return false;
+      if (isMatchFinished(ld.status)) return false;
+      // Stale/unknown status — treat as upcoming only if kickoff is still in the future
+      return !kickedOff;
+    }
+    // No live data — upcoming only if kickoff is in the future (or unknown)
+    if (!c.matchKickoff) return true;
+    return !kickedOff;
   });
 
   const awaitingSettlement = activeChallenges.filter(c => {
