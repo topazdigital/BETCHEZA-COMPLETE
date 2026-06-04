@@ -33,6 +33,20 @@ async function fetchScores(matchIds: string[]): Promise<Record<string, {
   return results;
 }
 
+// Trigger settlement for challenges whose matches have finished.
+// Runs in the background — does not block the SSE response.
+function triggerSettlement() {
+  (async () => {
+    try {
+      const { settlePendingChallenges } = await import('@/lib/challenges-store');
+      const result = await settlePendingChallenges();
+      if (result.settled > 0) {
+        console.log(`[points-stream] Auto-settled ${result.settled} challenge(s) after match finished`);
+      }
+    } catch { /* non-fatal */ }
+  })();
+}
+
 export async function GET(req: NextRequest) {
   const matchIds = (req.nextUrl.searchParams.get('matchIds') || '')
     .split(',')
@@ -52,6 +66,7 @@ export async function GET(req: NextRequest) {
     async start(controller) {
       let closed = false;
       let intervalId: ReturnType<typeof setInterval> | null = null;
+      let settlementTriggered = false;
 
       const send = (payload: unknown) => {
         if (closed) return;
@@ -68,10 +83,20 @@ export async function GET(req: NextRequest) {
 
           const allFinished = Object.values(data).length > 0 &&
             Object.values(data).every(d => isFinished(d.status));
-          if (allFinished && intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-            send({ finished: true });
+
+          if (allFinished) {
+            // Trigger real backend settlement the moment we detect all matches finished
+            if (!settlementTriggered) {
+              settlementTriggered = true;
+              triggerSettlement();
+            }
+
+            if (intervalId) {
+              clearInterval(intervalId);
+              intervalId = null;
+            }
+            // Tell the client: matches finished + challenges need a refresh
+            send({ finished: true, needsRefresh: true });
             try { controller.close(); } catch { /* already closed */ }
           }
         } catch { /* ignore */ }

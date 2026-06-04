@@ -851,6 +851,33 @@ export default function HomePage() {
               {isIdle && <NewsletterSection />}
             </>
           )}
+
+          {/* SEO content — always rendered for crawlers; provides headings + keyword-rich text */}
+          <section aria-label="About Betcheza" className="mt-6 rounded-2xl border border-border bg-card/50 p-5 text-sm text-muted-foreground">
+            <h2 className="mb-3 text-base font-bold text-foreground">Kenya&apos;s #1 Sports Betting Tips &amp; Predictions Platform</h2>
+            <p className="mb-3 leading-relaxed">
+              Betcheza is Kenya&apos;s most trusted sports betting tips and predictions platform, trusted by over 50,000 bettors across Kenya, Tanzania, Uganda, and beyond.
+              We combine expert tipster analysis with AI-powered football predictions to bring you accurate, data-driven betting tips every day.
+              Whether you need SportPesa jackpot tips, Betika grand jackpot predictions, or Odibets accumulator picks, Betcheza has you covered.
+            </p>
+            <h2 className="mb-2 text-sm font-bold text-foreground">Free AI Football Predictions &amp; Betting Tips</h2>
+            <p className="mb-3 leading-relaxed">
+              Our AI Predictor analyses team form, head-to-head records, player injuries, and live odds to generate high-accuracy football predictions.
+              Get free betting tips for the English Premier League, La Liga, Serie A, Bundesliga, Champions League, and the Kenya Premier League.
+              Every prediction includes detailed analysis — win probability, expected goals, both-teams-to-score odds, and over/under goals markets.
+            </p>
+            <h2 className="mb-2 text-sm font-bold text-foreground">SportPesa &amp; Betika Jackpot Tips</h2>
+            <p className="mb-3 leading-relaxed">
+              Win the SportPesa Mega Jackpot and Midweek Jackpot with our expert banker selections and full 13-game predictions.
+              We also provide complete Betika Grand Jackpot predictions (17 games), Odibets jackpot tips, Bahatibet jackpot analysis, and Wazabet accumulator tips.
+              Our jackpot tipsters have a proven track record with transparent, audited results you can verify.
+            </p>
+            <h2 className="mb-2 text-sm font-bold text-foreground">Tipster Community &amp; Leaderboard</h2>
+            <p className="leading-relaxed">
+              Join thousands of tipsters sharing football tips and sports predictions on Betcheza. Follow top-rated tipsters on the leaderboard, track their win rates and ROI, and copy their best picks.
+              Post your own tips, earn points for correct predictions, and compete in tipster challenges. Sign up free and start winning with Kenya&apos;s best sports betting community.
+            </p>
+          </section>
         </div>
 
         {/* RIGHT PANEL — Best Bets + Banners (xl+) */}

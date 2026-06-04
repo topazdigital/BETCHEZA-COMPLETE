@@ -55,9 +55,11 @@ const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 // ─── SSE Live-Points Hook ─────────────────────────────────────────────────────
 
-function useLiveStream(matchIds: string[]): Record<string, LiveMatchData> {
+function useLiveStream(matchIds: string[], onAllFinished?: () => void): Record<string, LiveMatchData> {
   const [liveMap, setLiveMap] = useState<Record<string, LiveMatchData>>({});
   const idsKey = matchIds.join(',');
+  const onAllFinishedRef = useRef(onAllFinished);
+  onAllFinishedRef.current = onAllFinished;
 
   useEffect(() => {
     if (!idsKey) return;
@@ -67,9 +69,17 @@ function useLiveStream(matchIds: string[]): Record<string, LiveMatchData> {
       es = new EventSource(url);
       es.onmessage = (e) => {
         try {
-          const payload = JSON.parse(e.data as string) as { data?: Record<string, LiveMatchData>; finished?: boolean };
+          const payload = JSON.parse(e.data as string) as {
+            data?: Record<string, LiveMatchData>;
+            finished?: boolean;
+            needsRefresh?: boolean;
+          };
           if (payload.data) setLiveMap(prev => ({ ...prev, ...payload.data }));
-          if (payload.finished) es.close();
+          if (payload.finished || payload.needsRefresh) {
+            // Challenges need to be re-fetched — matches finished, settlement triggered
+            onAllFinishedRef.current?.();
+            es.close();
+          }
         } catch { /* ignore parse errors */ }
       };
       es.onerror = () => { try { es.close(); } catch { /* ignore */ } };
@@ -1163,7 +1173,13 @@ export default function ChallengesPage() {
     () => all.filter(c => c.status === 'active').map(c => c.matchId).filter(Boolean),
     [all]
   );
-  const liveMap = useLiveStream(liveIds);
+  // When SSE detects all matches finished & settlement triggered, re-fetch challenges
+  const handleAllFinished = useCallback(() => {
+    // Small delay to let the server-side settlement complete before re-fetching
+    setTimeout(() => { mutate(); }, 2500);
+  }, [mutate]);
+
+  const liveMap = useLiveStream(liveIds, handleAllFinished);
 
   const counts = {
     active: all.filter(c => c.status === 'active').length,

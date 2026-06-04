@@ -659,25 +659,81 @@ async function fetchMatchResult(matchId: string): Promise<{ status: string; home
   } catch { return null; }
 }
 
-export async function settlePendingChallenges(): Promise<{ settled: number; skipped: number; errors: number }> {
-  await ensureMigrated();
-  const active = await getChallenges('active');
-  let settled = 0; let skipped = 0; let errors = 0;
+const FINISHED_STATUSES = new Set([
+  'finished', 'final', 'ft', 'full-time', 'complete', 'completed', 'ended',
+  'aet', 'pen', 'after extra time', 'after penalties',
+]);
 
+function isStatusFinished(status: string): boolean {
+  return FINISHED_STATUSES.has((status || '').toLowerCase());
+}
+
+export async function settlePendingChallenges(): Promise<{ settled: number; cancelled: number; skipped: number; errors: number }> {
+  await ensureMigrated();
+
+  // Process active challenges (both players picked) — determine winner
+  const active = await getChallenges('active');
+  // Process pending challenges (no opponent yet) — auto-cancel if match finished
+  const pending = await getChallenges('pending');
+
+  let settled = 0; let cancelled = 0; let skipped = 0; let errors = 0;
+
+  // ── Settle active challenges whose matches are finished ───────────────────
   for (const c of active) {
     if (!c.challengedPick || !c.matchId) { skipped++; continue; }
     try {
       const match = await fetchMatchResult(c.matchId);
       if (!match) { skipped++; continue; }
-      const s = (match.status || '').toLowerCase();
-      if (!['finished', 'final', 'ft', 'full-time', 'complete', 'completed'].includes(s)) { skipped++; continue; }
+      if (!isStatusFinished(match.status)) { skipped++; continue; }
       if (match.homeScore === null || match.awayScore === null) { skipped++; continue; }
       const res = await settleChallenge(c.id, match.homeScore, match.awayScore);
       if (res.ok) settled++;
       else errors++;
     } catch { errors++; }
   }
-  return { settled, skipped, errors };
+
+  // ── Auto-cancel pending challenges whose matches already finished ─────────
+  // No opponent accepted — refund challenger stake and close the challenge.
+  for (const c of pending) {
+    if (!c.matchId) { skipped++; continue; }
+    try {
+      const match = await fetchMatchResult(c.matchId);
+      if (!match) { skipped++; continue; }
+      if (!isStatusFinished(match.status)) { skipped++; continue; }
+
+      // Refund challenger stake if they had locked funds
+      if (c.stakeKes > 0 && !isFakeUserId(c.challengerId)) {
+        credit(c.challengerId, c.stakeKes, {
+          type: 'refund',
+          description: `Auto-cancelled challenge (match finished, no opponent): ${c.matchHomeTeam} vs ${c.matchAwayTeam}`,
+          meta: { challengeId: c.id },
+        });
+      }
+
+      // Mark cancelled in DB / file
+      if (hasDb()) {
+        try {
+          await query(
+            `UPDATE challenges SET status='cancelled', escrow_status='refunded', match_status='finished', updated_at=NOW() WHERE id=?`,
+            [c.id]
+          );
+        } catch { /* fallback to file */ }
+      }
+      const fs = loadFile();
+      const idx = fs.challenges.findIndex(x => x.id === c.id);
+      if (idx >= 0) {
+        fs.challenges[idx] = {
+          ...fs.challenges[idx],
+          status: 'cancelled', escrowStatus: 'refunded', matchStatus: 'finished',
+          updatedAt: new Date().toISOString(),
+        };
+        persistFile();
+      }
+      cancelled++;
+    } catch { errors++; }
+  }
+
+  return { settled, cancelled, skipped, errors };
 }
 
 // ─── Fake challenge seeding from real matches ─────────────────────────────────
@@ -685,25 +741,34 @@ export async function settlePendingChallenges(): Promise<{ settled: number; skip
 export async function seedFakeChallengesFromMatches(matches: MatchSnapshot[]): Promise<number> {
   await ensureMigrated();
 
-  // Only seed if fewer than 4 fake challenges exist
+  // Only seed if fewer than 4 ACTIVE/PENDING fake challenges exist.
+  // Settled fake challenges don't count — this allows re-seeding fresh matches.
   let existingFake = 0;
   if (hasDb()) {
     try {
-      const { rows } = await query<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM challenges WHERE is_fake = 1`, []);
+      const { rows } = await query<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM challenges WHERE is_fake = 1 AND status IN ('pending', 'active')`,
+        []
+      );
       existingFake = Number(rows[0]?.cnt || 0);
     } catch { /* ignore */ }
   } else {
     const fs = loadFile();
-    existingFake = fs.challenges.filter(c => c.isFake).length;
+    existingFake = fs.challenges.filter(c => c.isFake && (c.status === 'pending' || c.status === 'active')).length;
   }
   if (existingFake >= 4) return 0;
 
   const fakes = getFakeTipsters();
   if (fakes.length < 8) return 0;
 
+  // Accept scheduled, upcoming, AND live matches for seeding
   const upcoming = matches.filter(m => {
     const s = (m.status || '').toLowerCase();
-    return s === 'scheduled' || s === 'upcoming' || s === '' || !m.status;
+    return (
+      s === 'scheduled' || s === 'upcoming' || s === '' || !m.status ||
+      s === 'live' || s === '1h' || s === '2h' || s === 'ht' ||
+      s === 'inprogress' || s === 'halftime'
+    );
   }).slice(0, 6);
   if (upcoming.length === 0) return 0;
 

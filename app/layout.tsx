@@ -503,7 +503,10 @@ export async function generateMetadata(): Promise<Metadata> {
       };
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  // Ensure we always have both www and non-www variants for self-referential hreflang
+  const wwwUrl = siteUrl.includes('www.') ? siteUrl : siteUrl.replace('https://', 'https://www.');
   const canonicalPath = pathname === '/' ? '' : pathname.split('?')[0];
+  const pathSuffix = canonicalPath;
 
   return {
     title: {
@@ -516,10 +519,14 @@ export async function generateMetadata(): Promise<Metadata> {
     creator: settings.site_name,
     metadataBase: new URL(siteUrl),
     alternates: {
-      canonical: `${siteUrl}${canonicalPath}`,
+      canonical: `${siteUrl}${pathSuffix}`,
       languages: {
-        'en-KE': `${siteUrl}${canonicalPath}`,
-        'x-default': `${siteUrl}${canonicalPath}`,
+        // Primary locale (non-www canonical)
+        'en-KE': `${siteUrl}${pathSuffix}`,
+        'x-default': `${siteUrl}${pathSuffix}`,
+        // www self-referential alternate — fixes "self-referential alternate link missing" for
+        // crawlers visiting www.betcheza.co.ke so they see a hreflang pointing to themselves
+        'en': `${wwwUrl}${pathSuffix || '/'}`,
       },
     },
     robots: seoEntry?.noIndex ? { index: false, follow: false } : undefined,

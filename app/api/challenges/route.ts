@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import {
   getChallenges, createChallenge, seedFakeChallengesFromMatches,
-  isFakeUserId, type MatchSnapshot,
+  settlePendingChallenges, isFakeUserId, type MatchSnapshot,
 } from '@/lib/challenges-store';
 import type { PickSelection } from '@/lib/challenge-picks';
 import { getBalance, debit } from '@/lib/wallet-store';
@@ -12,17 +12,24 @@ import { getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 
-let _seedDone = false;
+// ─── Background seed throttle (re-seed every 10 min so fresh matches always appear) ──
+let _lastSeedAt = 0;
 function seedInBackground() {
-  if (_seedDone) return;
-  _seedDone = true;
+  const now = Date.now();
+  if (now - _lastSeedAt < 10 * 60 * 1000) return;
+  _lastSeedAt = now;
   (async () => {
     try {
       const all = await getAllMatches();
-      const upcoming = all
+      // Seed for upcoming AND live matches so challenges always have fresh battles
+      const seedable = all
         .filter(m => {
           const s = (m.status || '').toLowerCase();
-          return s === 'scheduled' || s === 'upcoming' || s === '';
+          return (
+            s === 'scheduled' || s === 'upcoming' || s === '' ||
+            s === 'live' || s === '1h' || s === '2h' || s === 'ht' ||
+            s === 'inprogress' || s === 'halftime'
+          );
         })
         .slice(0, 8)
         .map(m => {
@@ -43,13 +50,37 @@ function seedInBackground() {
             awayScore: m.awayScore ?? null,
           } as MatchSnapshot;
         });
-      await seedFakeChallengesFromMatches(upcoming);
+      await seedFakeChallengesFromMatches(seedable);
     } catch { /* non-fatal */ }
+  })();
+}
+
+// ─── Background settlement throttle (auto-settle every 2 min) ────────────────
+let _lastSettleAt = 0;
+let _settleRunning = false;
+function settleInBackground() {
+  const now = Date.now();
+  if (_settleRunning || now - _lastSettleAt < 2 * 60 * 1000) return;
+  _settleRunning = true;
+  _lastSettleAt = now;
+  (async () => {
+    try {
+      const result = await settlePendingChallenges();
+      if (result.settled > 0 || result.cancelled > 0) {
+        console.log(`[challenges] Auto-settled ${result.settled}, auto-cancelled ${result.cancelled} challenge(s)`);
+        // Reset seed throttle so new fake challenges can be seeded for fresh matches
+        _lastSeedAt = 0;
+      }
+    } catch { /* non-fatal */ } finally {
+      _settleRunning = false;
+    }
   })();
 }
 
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get('status') || 'all';
+  // Auto-settle finished challenges before returning, then seed fresh ones
+  settleInBackground();
   seedInBackground();
   try {
     const challenges = await getChallenges(status as 'all' | 'pending' | 'active' | 'settled' | 'cancelled');
@@ -82,7 +113,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Match details are required' }, { status: 400 });
     }
 
-    // Accept multi-picks array or fall back to legacy single pick
     const picks: PickSelection[] = body.picks?.length
       ? body.picks
       : body.challengerPick
