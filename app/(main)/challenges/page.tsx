@@ -53,6 +53,35 @@ interface LiveMatchData {
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
+// ─── SSE Live-Points Hook ─────────────────────────────────────────────────────
+
+function useLiveStream(matchIds: string[]): Record<string, LiveMatchData> {
+  const [liveMap, setLiveMap] = useState<Record<string, LiveMatchData>>({});
+  const idsKey = matchIds.join(',');
+
+  useEffect(() => {
+    if (!idsKey) return;
+    const url = `/api/challenges/points-stream?matchIds=${encodeURIComponent(idsKey)}`;
+    let es: EventSource;
+    try {
+      es = new EventSource(url);
+      es.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data as string) as { data?: Record<string, LiveMatchData>; finished?: boolean };
+          if (payload.data) setLiveMap(prev => ({ ...prev, ...payload.data }));
+          if (payload.finished) es.close();
+        } catch { /* ignore parse errors */ }
+      };
+      es.onerror = () => { try { es.close(); } catch { /* ignore */ } };
+    } catch { /* SSE not supported or blocked */ }
+    return () => { try { es?.close(); } catch { /* ignore */ } };
+  // idsKey is a stable primitive dep — reconnect only when match set changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+
+  return liveMap;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatKickoff(iso: string | null): string {
@@ -219,8 +248,20 @@ function PointsBar({
   challengerName: string; challengedName: string;
   finished: boolean;
 }) {
+  const [flash, setFlash] = useState(false);
+  const prevScoreRef = useRef<string | null>(null);
   const cPts = calcLivePoints(challengerPicks, homeScore, awayScore);
   const oPts = calcLivePoints(challengedPicks, homeScore, awayScore);
+
+  useEffect(() => {
+    const key = `${homeScore}-${awayScore}`;
+    if (prevScoreRef.current !== null && prevScoreRef.current !== key) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 800);
+      return () => clearTimeout(t);
+    }
+    prevScoreRef.current = key;
+  }, [homeScore, awayScore]);
   const cMax = maxPoints(challengerPicks);
   const oMax = maxPoints(challengedPicks);
   const totalMax = Math.max(cMax + oMax, 0.01);
@@ -248,27 +289,27 @@ function PointsBar({
   }
 
   return (
-    <div>
+    <div className={flash ? 'animate-pulse' : ''}>
       <div className="flex justify-between items-center text-xs mb-1.5">
-        <span className={`font-bold tabular-nums ${leading === 'challenger' ? 'text-green-400' : 'text-blue-400'}`}>
+        <span className={`font-bold tabular-nums transition-colors duration-500 ${leading === 'challenger' ? 'text-green-400' : 'text-blue-400'}`}>
           {challengerName.split(' ')[0]}: {cPts.toFixed(2)} pts
         </span>
         {leading !== 'tie' ? (
           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${finished ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
-            {finished ? (leading === 'challenger' ? '🏆 Won' : '🏆 Won') : '⚡ Leading'}
+            {finished ? '🏆 Won' : '⚡ Leading'}
           </span>
         ) : (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">
             {finished ? '🤝 Draw' : '⚖️ Tied'}
           </span>
         )}
-        <span className={`font-bold tabular-nums ${leading === 'opponent' ? 'text-green-400' : 'text-purple-400'}`}>
+        <span className={`font-bold tabular-nums transition-colors duration-500 ${leading === 'opponent' ? 'text-green-400' : 'text-purple-400'}`}>
           {oPts.toFixed(2)} pts · {challengedName.split(' ')[0]}
         </span>
       </div>
       <div className="h-2.5 rounded-full bg-muted flex overflow-hidden relative">
-        <div className={`h-full transition-all duration-1000 ${leading === 'challenger' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(cPct, cPts > 0 ? 3 : 0)}%` }} />
-        <div className={`h-full transition-all duration-1000 ${leading === 'opponent' ? 'bg-green-500' : 'bg-purple-500'}`} style={{ width: `${Math.max(oPct, oPts > 0 ? 3 : 0)}%` }} />
+        <div className={`h-full transition-all duration-700 ${leading === 'challenger' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(cPct, cPts > 0 ? 3 : 0)}%` }} />
+        <div className={`h-full transition-all duration-700 ${leading === 'opponent' ? 'bg-green-500' : 'bg-purple-500'}`} style={{ width: `${Math.max(oPct, oPts > 0 ? 3 : 0)}%` }} />
       </div>
       {!finished && (
         <p className="text-xs text-muted-foreground mt-1 text-center">
@@ -812,9 +853,11 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
                 : <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-500/15 text-green-500 border border-green-500/30">✅ Settled</span>
             ) : active && live
               ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">🔴 LIVE</span>
-              : active
-                ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-primary/15 text-primary border border-primary/30">⚔️ Active</span>
-                : <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/15 text-yellow-500 border border-yellow-500/30">🔓 Open</span>
+              : active && finished
+                ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-muted text-muted-foreground border border-border">⏱ FT</span>
+                : active
+                  ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-primary/15 text-primary border border-primary/30">⚔️ Active</span>
+                  : <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/15 text-yellow-500 border border-yellow-500/30">🔓 Open</span>
             }
           </div>
         </div>
@@ -1115,12 +1158,12 @@ export default function ChallengesPage() {
 
   const all = data?.challenges || [];
 
-  // Live data for active challenges
-  const liveIds = all.filter(c => c.status === 'active').map(c => c.matchId).filter(Boolean);
-  const { data: liveResp } = useSWR<{ data: Record<string, LiveMatchData> }>(
-    liveIds.length ? `/api/challenges/live-data?matchIds=${liveIds.join(',')}` : null,
-    fetcher, { refreshInterval: 30000 });
-  const liveMap: Record<string, LiveMatchData> = liveResp?.data || {};
+  // Live data for active challenges via SSE (real-time, no polling)
+  const liveIds = useMemo(
+    () => all.filter(c => c.status === 'active').map(c => c.matchId).filter(Boolean),
+    [all]
+  );
+  const liveMap = useLiveStream(liveIds);
 
   const counts = {
     active: all.filter(c => c.status === 'active').length,

@@ -478,10 +478,10 @@ export async function generateMetadata(): Promise<Metadata> {
   // Per-path title/description improvements for pages without admin SEO overrides
   const isHomePage = pathname === '/';
   const fallbackTitle = isHomePage
-    ? `${settings.site_name} — Best Betting Tips in Kenya | Free AI Football Predictions`
+    ? `${settings.site_name} | Best Betting Tips Kenya & Free AI Predictions`
     : `${settings.site_name} - Best Betting Tips & Predictions Kenya`;
   const fallbackDescription = isHomePage
-    ? `${settings.site_name} is Kenya's most trusted betting tips site. Get the best free AI-powered football predictions, SportPesa jackpot tips, Betika grand jackpot picks, and daily sure odds. Join 50,000+ bettors who trust Betcheza for the most accurate tips in Kenya.`
+    ? `Kenya's top betting tips site. Free AI football predictions, SportPesa & Betika jackpot tips. Join 50,000+ bettors who trust ${settings.site_name} for accurate tips.`
     : settings.site_description;
 
   const title = seoEntry?.title || fallbackTitle;
@@ -519,8 +519,6 @@ export async function generateMetadata(): Promise<Metadata> {
       canonical: `${siteUrl}${canonicalPath}`,
       languages: {
         'en-KE': `${siteUrl}${canonicalPath}`,
-        'en': `${siteUrl}${canonicalPath}`,
-        'sw-KE': `${siteUrl}${canonicalPath}`,
         'x-default': `${siteUrl}${canonicalPath}`,
       },
     },
