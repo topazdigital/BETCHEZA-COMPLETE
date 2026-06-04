@@ -5,10 +5,11 @@
 import { query, getPool } from './db';
 import { getFakeTipsters, isFakeUserId } from './fake-tipsters';
 import { getBalance, debit, credit } from './wallet-store';
-import { pickOptionsForSport, evaluatePick } from './challenge-picks';
+import { pickOptionsForSport, evaluatePick, parsePicks, calcPoints, maxPoints } from './challenge-picks';
+export type { PickSelection } from './challenge-picks';
 
 export { isFakeUserId };
-export { pickOptionsForSport, evaluatePick };
+export { pickOptionsForSport, evaluatePick, parsePicks, calcPoints, maxPoints };
 
 export const PLATFORM_WALLET_ID = 0;
 
@@ -57,8 +58,10 @@ export interface Challenge {
   matchStatus: string;
   challengerId: number;
   challengedId: number | null;
-  challengerPick: string;
-  challengedPick: string | null;
+  challengerPick: string;          // raw JSON string in DB (parse with parsePicks)
+  challengedPick: string | null;   // raw JSON string in DB
+  challengerPicks: import('./challenge-picks').PickSelection[];
+  challengedPicks: import('./challenge-picks').PickSelection[];
   stakeKes: number;
   platformFeePct: number;
   status: ChallengeStatus;
@@ -80,7 +83,8 @@ export interface CreateChallengeInput {
   matchId: string;
   matchSnapshot: MatchSnapshot;
   challengerId: number;
-  challengerPick: string;
+  challengerPick?: string;        // legacy single-pick string
+  challengerPicks?: import('./challenge-picks').PickSelection[];  // preferred multi-pick array
   challengedId?: number | null;
   stakeKes?: number;
   isPublic?: boolean;
@@ -237,6 +241,8 @@ function rowToChallenge(
   challengerVotes = 0,
   opponentVotes = 0,
 ): Challenge {
+  const challengerPickRaw = String(row.challenger_pick || '');
+  const challengedPickRaw = row.challenged_pick ? String(row.challenged_pick) : null;
   return {
     id: Number(row.id),
     matchId: String(row.match_id || ''),
@@ -250,8 +256,10 @@ function rowToChallenge(
     matchStatus: String(row.match_status || 'scheduled'),
     challengerId: Number(row.challenger_id),
     challengedId: row.challenged_id ? Number(row.challenged_id) : null,
-    challengerPick: String(row.challenger_pick || ''),
-    challengedPick: row.challenged_pick ? String(row.challenged_pick) : null,
+    challengerPick: challengerPickRaw,
+    challengedPick: challengedPickRaw,
+    challengerPicks: parsePicks(challengerPickRaw),
+    challengedPicks: parsePicks(challengedPickRaw),
     stakeKes: Number(row.stake_kes || row.stake || 0),
     platformFeePct: Number(row.platform_fee_pct || 10),
     status: (row.status as ChallengeStatus) || 'pending',
@@ -356,7 +364,14 @@ export async function getChallengeById(id: number): Promise<Challenge | null> {
 
 export async function createChallenge(input: CreateChallengeInput): Promise<Challenge> {
   await ensureMigrated();
-  const { matchId, matchSnapshot: ms, challengerId, challengerPick, challengedId = null, stakeKes = 0, isPublic = true, isFake = false } = input;
+  const { matchId, matchSnapshot: ms, challengerId, challengedId = null, stakeKes = 0, isPublic = true, isFake = false } = input;
+  // Normalise picks — accept array or legacy single string
+  const picks = input.challengerPicks?.length
+    ? input.challengerPicks
+    : input.challengerPick
+      ? [{ pick: input.challengerPick, odds: 2.00, group: 'Match Result' }]
+      : [];
+  const challengerPickJson = JSON.stringify(picks);
   const escrow: EscrowStatus = stakeKes > 0 ? 'challenger_locked' : 'none';
   const kickoffVal = ms.kickoff ? new Date(ms.kickoff).toISOString().slice(0, 19).replace('T', ' ') : null;
 
@@ -372,7 +387,7 @@ export async function createChallenge(input: CreateChallengeInput): Promise<Chal
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,10,'pending',?,?,?,0)`,
         [matchId, ms.homeTeam, ms.awayTeam, ms.homeLogo || null, ms.awayLogo || null,
           ms.league, ms.sport, kickoffVal, ms.status || 'scheduled',
-          challengerId, challengedId, challengerPick, stakeKes, escrow, isFake ? 1 : 0, isPublic ? 1 : 0]
+          challengerId, challengedId, challengerPickJson, stakeKes, escrow, isFake ? 1 : 0, isPublic ? 1 : 0]
       );
       const insertId = (res as unknown as { insertId?: number }).insertId || (res.rows as unknown as { insertId?: number }[])?.[0]?.insertId;
       if (insertId) {
@@ -392,9 +407,11 @@ export async function createChallenge(input: CreateChallengeInput): Promise<Chal
     matchHomeLogo: ms.homeLogo || null, matchAwayLogo: ms.awayLogo || null,
     matchLeague: ms.league, matchSport: ms.sport,
     matchKickoff: ms.kickoff || null, matchStatus: ms.status || 'scheduled',
-    challengerId, challengedId, challengerPick, challengedPick: null,
+    challengerId, challengedId, challengerPick: challengerPickJson, challengedPick: null,
+    challengerPicks: picks, challengedPicks: [],
     stakeKes, platformFeePct: 10, status: 'pending', escrowStatus: escrow,
     isFake, winnerId: null, drawRefunded: false, isPublic, watchers: 0,
+    challengerVotes: 0, opponentVotes: 0,
     challenger: null, challenged: null, createdAt: now, updatedAt: now,
   };
   fs.challenges.unshift(c);
@@ -403,8 +420,18 @@ export async function createChallenge(input: CreateChallengeInput): Promise<Chal
   return { ...c, challenger: ch, challenged: op };
 }
 
-export async function acceptChallenge(id: number, userId: number, pick: string): Promise<{ ok: boolean; error?: string }> {
+export async function acceptChallenge(
+  id: number,
+  userId: number,
+  picks: import('./challenge-picks').PickSelection[] | string,
+): Promise<{ ok: boolean; error?: string }> {
   await ensureMigrated();
+  // Normalise picks input — can be array or legacy string
+  const picksArr: import('./challenge-picks').PickSelection[] = Array.isArray(picks)
+    ? picks
+    : [{ pick: String(picks), odds: 2.00, group: 'Match Result' }];
+  const picksJson = JSON.stringify(picksArr);
+
   const ch = await getChallengeById(id);
   if (!ch) return { ok: false, error: 'Challenge not found' };
   if (ch.status !== 'pending') return { ok: false, error: 'Challenge is no longer open' };
@@ -430,7 +457,7 @@ export async function acceptChallenge(id: number, userId: number, pick: string):
     try {
       await query(
         `UPDATE challenges SET challenged_id=?, challenged_pick=?, status='active', escrow_status=?, updated_at=NOW() WHERE id=?`,
-        [userId, pick, newEscrow, id]
+        [userId, picksJson, newEscrow, id]
       );
       return { ok: true };
     } catch (e) { console.error('[acceptChallenge DB]', e); }
@@ -438,7 +465,7 @@ export async function acceptChallenge(id: number, userId: number, pick: string):
   const fs = loadFile();
   const idx = fs.challenges.findIndex(x => x.id === id);
   if (idx >= 0) {
-    fs.challenges[idx] = { ...fs.challenges[idx], challengedId: userId, challengedPick: pick, status: 'active', escrowStatus: newEscrow, updatedAt: new Date().toISOString() };
+    fs.challenges[idx] = { ...fs.challenges[idx], challengedId: userId, challengedPick: picksJson, challengedPicks: picksArr, status: 'active', escrowStatus: newEscrow, updatedAt: new Date().toISOString() };
     persistFile();
   }
   return { ok: true };
@@ -479,15 +506,18 @@ export async function settleChallenge(id: number, homeScore: number, awayScore: 
   if (ch.status === 'settled') return { ok: false, error: 'Already settled' };
   if (!ch.challengedId || !ch.challengedPick) return { ok: false, error: 'Challenge not yet accepted by opponent' };
 
-  const challengerWon = evaluatePick(ch.challengerPick, homeScore, awayScore);
-  const challengedWon = evaluatePick(ch.challengedPick, homeScore, awayScore);
+  // ─── Points-based winner determination ─────────────────────────────────────
+  // Each correct pick earns its odds as points. Highest total points wins.
+  // Equal points → draw → full refund to both sides.
+  const challengerPoints = calcPoints(ch.challengerPicks.length ? ch.challengerPicks : parsePicks(ch.challengerPick), homeScore, awayScore);
+  const challengedPoints = calcPoints(ch.challengedPicks.length ? ch.challengedPicks : parsePicks(ch.challengedPick), homeScore, awayScore);
 
   let winnerId: number | null = null;
   let drawRefunded = false;
 
-  if (challengerWon && !challengedWon) winnerId = ch.challengerId;
-  else if (challengedWon && !challengerWon) winnerId = ch.challengedId;
-  else drawRefunded = true; // both right, both wrong → draw → full refund
+  if (challengerPoints > challengedPoints) winnerId = ch.challengerId;
+  else if (challengedPoints > challengerPoints) winnerId = ch.challengedId;
+  else drawRefunded = true; // equal points → draw → full refund
 
   const pot = ch.stakeKes * 2;
   const fee = Math.round(pot * (ch.platformFeePct / 100));
@@ -523,9 +553,11 @@ export async function settleChallenge(id: number, homeScore: number, awayScore: 
   try {
     const { sendPushToTopic } = await import('./push-sender');
     const matchLabel = `${ch.matchHomeTeam} vs ${ch.matchAwayTeam}`;
-    const resultLabel = drawRefunded ? 'Draw — stakes refunded' : winnerId === ch.challengerId
-      ? `${ch.challenger?.displayName || 'Challenger'} wins!`
-      : `${ch.challenged?.displayName || 'Opponent'} wins!`;
+    const resultLabel = drawRefunded
+      ? `Draw — equal points (${challengerPoints.toFixed(2)} pts each) · stakes refunded`
+      : winnerId === ch.challengerId
+        ? `${ch.challenger?.displayName || 'Challenger'} wins! (${challengerPoints.toFixed(2)} vs ${challengedPoints.toFixed(2)} pts)`
+        : `${ch.challenged?.displayName || 'Opponent'} wins! (${challengedPoints.toFixed(2)} vs ${challengerPoints.toFixed(2)} pts)`;
     await sendPushToTopic(`challenge_${id}`, {
       title: `⚔️ Challenge Settled: ${matchLabel}`,
       body: resultLabel,
@@ -678,13 +710,24 @@ export async function seedFakeChallengesFromMatches(matches: MatchSnapshot[]): P
   const stakes = [500, 1000, 1500, 2000];
   let seeded = 0;
 
+  // Multi-pick combos for fake challenges — each side picks 2-3 markets
+  const PICK_COMBOS: Array<Array<{ value: string; defaultOdds: number; group: string }>> = [
+    [{ value: 'Home Win', defaultOdds: 2.20, group: 'Match Result' }, { value: 'Over 2.5', defaultOdds: 1.85, group: 'Goals' }],
+    [{ value: 'Away Win', defaultOdds: 2.80, group: 'Match Result' }, { value: 'BTTS Yes', defaultOdds: 1.75, group: 'Both Teams Score' }],
+    [{ value: 'Draw', defaultOdds: 3.20, group: 'Match Result' }, { value: 'Under 2.5', defaultOdds: 1.95, group: 'Goals' }],
+    [{ value: 'Home Win', defaultOdds: 2.20, group: 'Match Result' }, { value: 'BTTS Yes', defaultOdds: 1.75, group: 'Both Teams Score' }],
+    [{ value: 'Away Win', defaultOdds: 2.80, group: 'Match Result' }, { value: 'Over 1.5', defaultOdds: 1.35, group: 'Goals' }],
+    [{ value: '1X', defaultOdds: 1.40, group: 'Double Chance' }, { value: 'Over 2.5', defaultOdds: 1.85, group: 'Goals' }],
+    [{ value: 'Home Win', defaultOdds: 2.20, group: 'Match Result' }, { value: 'Over 1.5', defaultOdds: 1.35, group: 'Goals' }, { value: 'BTTS Yes', defaultOdds: 1.75, group: 'Both Teams Score' }],
+    [{ value: 'Away Win', defaultOdds: 2.80, group: 'Match Result' }, { value: 'BTTS No', defaultOdds: 2.05, group: 'Both Teams Score' }],
+  ];
+
   for (let i = 0; i < Math.min(4, upcoming.length); i++) {
     const m = upcoming[i];
     const ft1 = fakes[(i * 2) % fakes.length];
     const ft2 = fakes[(i * 2 + 1) % fakes.length];
-    const opts = pickOptionsForSport(m.sport);
-    const p1 = opts[i % opts.length]?.value || 'Home Win';
-    const p2 = opts.find(o => o.value !== p1)?.value || 'Away Win';
+    const combo1 = PICK_COMBOS[i % PICK_COMBOS.length].map(p => ({ pick: p.value, odds: p.defaultOdds, group: p.group }));
+    const combo2 = PICK_COMBOS[(i + 3) % PICK_COMBOS.length].map(p => ({ pick: p.value, odds: p.defaultOdds, group: p.group }));
     const stakeKes = stakes[i % stakes.length];
 
     try {
@@ -692,25 +735,26 @@ export async function seedFakeChallengesFromMatches(matches: MatchSnapshot[]): P
         matchId: m.id,
         matchSnapshot: m,
         challengerId: ft1.id,
-        challengerPick: p1,
+        challengerPicks: combo1,
         challengedId: ft2.id,
         stakeKes,
         isFake: true,
         isPublic: true,
       });
 
-      // Immediately accept (both sides locked, both picks set for fake challenges)
+      // Immediately accept with opponent's multi-picks
+      const combo2Json = JSON.stringify(combo2);
       if (hasDb()) {
         try {
           await query(
             `UPDATE challenges SET challenged_pick=?, status='active', escrow_status='both_locked', updated_at=NOW() WHERE id=?`,
-            [p2, challenge.id]
+            [combo2Json, challenge.id]
           );
         } catch { /* ignore */ }
       } else {
         const fs = loadFile();
         const idx = fs.challenges.findIndex(x => x.id === challenge.id);
-        if (idx >= 0) { fs.challenges[idx] = { ...fs.challenges[idx], challengedPick: p2, status: 'active', escrowStatus: 'both_locked' }; persistFile(); }
+        if (idx >= 0) { fs.challenges[idx] = { ...fs.challenges[idx], challengedPick: combo2Json, challengedPicks: combo2, status: 'active', escrowStatus: 'both_locked' }; persistFile(); }
       }
       seeded++;
     } catch (e) { console.error('[seedFake]', e); }

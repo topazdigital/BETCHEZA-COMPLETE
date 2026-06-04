@@ -566,6 +566,16 @@ export default function TipsterProfilePage({ params }: PageProps) {
                     className="h-7 text-xs"
                   />
 
+                  {/* Challenge button — only for logged-in users viewing someone else's profile */}
+                  {isAuthenticated && !isOwnProfile && (
+                    <a href={`/challenges?opponent=${tipster.id}`}>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
+                        <ArrowRightLeft className="h-3 w-3" />
+                        Challenge
+                      </Button>
+                    </a>
+                  )}
+
                   {tipster.isPro && tipster.subscriptionPrice && (
                     <SubscribeButton
                       tipsterId={tipster.id}

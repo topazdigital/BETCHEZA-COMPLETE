@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
-import { pickOptionsForSport } from '@/lib/challenge-picks';
+import { pickOptionsForSport, resolvePickOdds, maxPoints, parsePicks, pickOutcome } from '@/lib/challenge-picks';
+import type { PickSelection, PickOption } from '@/lib/challenge-picks';
 import { isPushSupported, ensurePushSubscribed } from '@/lib/push-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -12,8 +14,7 @@ import { isPushSupported, ensurePushSubscribed } from '@/lib/push-client';
 interface MatchOdds { home: number; draw: number; away: number }
 
 interface MatchOption {
-  id: string;
-  homeTeam: string; awayTeam: string;
+  id: string; homeTeam: string; awayTeam: string;
   homeLogo: string | null; awayLogo: string | null;
   league: string; sport: string; sportName: string;
   kickoff: string | null; status: string;
@@ -35,6 +36,7 @@ interface Challenge {
   matchKickoff: string | null; matchStatus: string;
   challengerId: number; challengedId: number | null;
   challengerPick: string; challengedPick: string | null;
+  challengerPicks: PickSelection[]; challengedPicks: PickSelection[];
   stakeKes: number; platformFeePct: number;
   status: string; escrowStatus: string;
   isFake: boolean; winnerId: number | null;
@@ -45,16 +47,13 @@ interface Challenge {
 }
 
 interface LiveMatchData {
-  homeScore: number | null;
-  awayScore: number | null;
-  status: string;
-  minute: number | null;
-  odds: MatchOdds | null;
+  homeScore: number | null; awayScore: number | null;
+  status: string; minute: number | null; odds: MatchOdds | null;
 }
 
-interface PickOption { label: string; value: string; group: string }
-
 const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatKickoff(iso: string | null): string {
   if (!iso) return 'TBD';
@@ -69,34 +68,26 @@ function formatKickoff(iso: string | null): string {
 function countdown(iso: string | null): string {
   if (!iso) return '';
   const diff = new Date(iso).getTime() - Date.now();
-  if (diff <= 0) return 'Started';
+  if (diff <= 0) return 'Kick-off!';
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-  if (h > 48) return `${Math.floor(h / 24)}d`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  if (h > 48) return `in ${Math.floor(h / 24)}d`;
+  if (h > 0) return `in ${h}h ${m}m`;
+  return `in ${m}m`;
 }
 
-function getPickOdds(pickValue: string, odds?: MatchOdds | null): number | null {
-  if (!odds) return null;
-  const p = pickValue.toLowerCase();
-  if (p === 'home win') return odds.home > 1 ? odds.home : null;
-  if (p === 'draw') return odds.draw > 1 ? odds.draw : null;
-  if (p === 'away win') return odds.away > 1 ? odds.away : null;
-  return null;
+function isMatchFinished(status: string): boolean {
+  return ['finished', 'final', 'ft', 'full-time', 'complete', 'completed', 'ended'].includes((status || '').toLowerCase());
 }
 
-// Determine which pick is currently "winning" based on live score
-function getPickOutcome(pick: string, homeScore: number | null, awayScore: number | null): 'winning' | 'losing' | 'draw' | null {
-  if (homeScore === null || awayScore === null) return null;
-  const p = pick.toLowerCase();
-  if (p === 'home win') return homeScore > awayScore ? 'winning' : homeScore === awayScore ? 'draw' : 'losing';
-  if (p === 'away win') return awayScore > homeScore ? 'winning' : homeScore === awayScore ? 'draw' : 'losing';
-  if (p === 'draw') return homeScore === awayScore ? 'winning' : 'losing';
-  if (p === 'over 2.5') return (homeScore + awayScore) > 2 ? 'winning' : 'losing';
-  if (p === 'under 2.5') return (homeScore + awayScore) < 2 ? 'winning' : 'losing';
-  if (p === 'both teams score') return (homeScore > 0 && awayScore > 0) ? 'winning' : 'losing';
-  return null;
+function isMatchLive(status: string): boolean {
+  return ['live', 'halftime', 'extra_time', 'inprogress', '1h', '2h', 'ht'].some(s =>
+    (status || '').toLowerCase().includes(s));
+}
+
+function calcLivePoints(picks: PickSelection[], homeScore: number | null, awayScore: number | null): number {
+  if (homeScore === null || awayScore === null) return 0;
+  return picks.reduce((sum, p) => sum + (pickOutcome(p.pick, homeScore, awayScore) === 'winning' ? p.odds : 0), 0);
 }
 
 // ─── Team Logo ────────────────────────────────────────────────────────────────
@@ -116,11 +107,9 @@ function TeamLogo({ src, name, size = 28 }: { src: string | null; name: string; 
     style={{ width: size, height: size }} onError={() => setErr(true)} unoptimized />;
 }
 
-// ─── Participant Avatar ───────────────────────────────────────────────────────
-
-function ParticipantAvatar({ avatar, name, size = 28 }: { avatar: string | null; name: string; size?: number }) {
+function Avatar({ src, name, size = 28 }: { src: string | null; name: string; size?: number }) {
   const [err, setErr] = useState(false);
-  if (!avatar || err) {
+  if (!src || err) {
     return (
       <div className="rounded-full bg-primary/20 flex items-center justify-center font-bold text-primary shrink-0"
         style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}>
@@ -128,138 +117,215 @@ function ParticipantAvatar({ avatar, name, size = 28 }: { avatar: string | null;
       </div>
     );
   }
-  return <Image src={avatar} alt={name} width={size} height={size}
+  return <Image src={src} alt={name} width={size} height={size}
     className="rounded-full object-cover shrink-0"
     style={{ width: size, height: size }} onError={() => setErr(true)} unoptimized />;
 }
 
-// ─── Pick Badge ───────────────────────────────────────────────────────────────
+// ─── Multi-Pick Selector ──────────────────────────────────────────────────────
 
-function PickBadge({ pick, outcome }: { pick: string; outcome?: 'winning' | 'losing' | 'draw' | null }) {
-  const cls = outcome === 'winning'
-    ? 'bg-green-500/20 text-green-400 border border-green-500/40'
-    : outcome === 'draw'
-    ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40'
-    : outcome === 'losing'
-    ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-    : 'bg-muted text-muted-foreground border border-border';
-  return <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${cls}`}>{pick}</span>;
-}
+function PickSelector({
+  sport, matchOdds, selectedPicks, onChange, maxPicks = 5,
+}: {
+  sport: string;
+  matchOdds: MatchOdds | null;
+  selectedPicks: PickSelection[];
+  onChange: (picks: PickSelection[]) => void;
+  maxPicks?: number;
+}) {
+  const options: PickOption[] = useMemo(() => pickOptionsForSport(sport), [sport]);
+  const grouped = useMemo(() => options.reduce<Record<string, PickOption[]>>((acc, o) => {
+    (acc[o.group] = acc[o.group] || []).push(o); return acc;
+  }, {}), [options]);
 
-// ─── Live Momentum Panel ──────────────────────────────────────────────────────
+  const togglePick = (option: PickOption) => {
+    const odds = resolvePickOdds(option.value, matchOdds, option.defaultOdds);
+    const already = selectedPicks.findIndex(p => p.pick === option.value);
+    if (already >= 0) {
+      onChange(selectedPicks.filter((_, i) => i !== already));
+    } else if (selectedPicks.length < maxPicks) {
+      onChange([...selectedPicks, { pick: option.value, odds, group: option.group }]);
+    }
+  };
 
-function LivePanel({ challenge, liveData }: { challenge: Challenge; liveData: LiveMatchData }) {
-  const { homeScore, awayScore, minute, odds } = liveData;
-  const isLive = ['live', 'halftime', 'extra_time', 'inprogress', '1h', '2h', 'ht'].some(s =>
-    liveData.status.toLowerCase().includes(s)
-  );
-
-  const challengerOutcome = getPickOutcome(challenge.challengerPick, homeScore, awayScore);
-  const opponentOutcome = getPickOutcome(challenge.challengedPick || '', homeScore, awayScore);
-
-  // Momentum: which side's pick is currently winning?
-  const challengerMomentum = challengerOutcome === 'winning' ? 1 : challengerOutcome === 'draw' ? 0.5 : 0;
-  const opponentMomentum = opponentOutcome === 'winning' ? 1 : opponentOutcome === 'draw' ? 0.5 : 0;
-
-  if (!isLive && homeScore === null) return null;
+  const totalOdds = maxPoints(selectedPicks);
 
   return (
-    <div className="mt-2 rounded-xl bg-muted/30 border border-border/60 overflow-hidden">
-      {/* Score bar */}
-      <div className="flex items-center justify-between px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          {isLive && (
-            <span className="flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-            </span>
-          )}
-          <span className="text-xs font-bold text-red-400 uppercase tracking-wide">
-            {isLive ? (minute ? `${minute}'` : 'LIVE') : 'FT'}
-          </span>
-        </div>
-        <div className="flex items-center gap-3 text-lg font-extrabold tabular-nums">
-          <span className="text-foreground">{homeScore ?? '-'}</span>
-          <span className="text-muted-foreground text-sm">:</span>
-          <span className="text-foreground">{awayScore ?? '-'}</span>
-        </div>
-        <div className="text-xs text-muted-foreground">{challenge.matchHomeTeam.split(' ')[0]} – {challenge.matchAwayTeam.split(' ')[0]}</div>
-      </div>
-
-      {/* Which pick is currently winning */}
-      {(challengerOutcome || opponentOutcome) && challenge.challengedPick && (
-        <div className="px-4 pb-2.5 grid grid-cols-2 gap-2">
-          <div className={`rounded-lg p-2 text-center ${challengerOutcome === 'winning' ? 'bg-green-500/10 border border-green-500/30' : challengerOutcome === 'losing' ? 'bg-red-500/10 border border-red-500/20' : 'bg-muted/50 border border-border/40'}`}>
-            <div className="text-xs font-semibold text-foreground truncate">{challenge.challenger?.displayName?.split(' ')[0] || 'C1'}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{challenge.challengerPick}</div>
-            <div className={`text-xs font-bold mt-0.5 ${challengerOutcome === 'winning' ? 'text-green-400' : challengerOutcome === 'losing' ? 'text-red-400' : 'text-yellow-400'}`}>
-              {challengerOutcome === 'winning' ? '✓ Winning' : challengerOutcome === 'draw' ? '≈ Draw' : '✗ Losing'}
-            </div>
+    <div>
+      {selectedPicks.length > 0 && (
+        <div className="mb-3 p-3 rounded-xl bg-primary/5 border border-primary/20">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-primary">Your picks ({selectedPicks.length}/{maxPicks})</span>
+            <span className="text-sm font-bold text-yellow-500">{totalOdds.toFixed(2)} pts max</span>
           </div>
-          <div className={`rounded-lg p-2 text-center ${opponentOutcome === 'winning' ? 'bg-green-500/10 border border-green-500/30' : opponentOutcome === 'losing' ? 'bg-red-500/10 border border-red-500/20' : 'bg-muted/50 border border-border/40'}`}>
-            <div className="text-xs font-semibold text-foreground truncate">{challenge.challenged?.displayName?.split(' ')[0] || 'C2'}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{challenge.challengedPick}</div>
-            <div className={`text-xs font-bold mt-0.5 ${opponentOutcome === 'winning' ? 'text-green-400' : opponentOutcome === 'losing' ? 'text-red-400' : 'text-yellow-400'}`}>
-              {opponentOutcome === 'winning' ? '✓ Winning' : opponentOutcome === 'draw' ? '≈ Draw' : '✗ Losing'}
-            </div>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedPicks.map(p => (
+              <button key={p.pick} onClick={() => onChange(selectedPicks.filter(x => x.pick !== p.pick))}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/30 text-xs font-medium text-primary hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 transition-colors">
+                <span>{p.pick}</span>
+                <span className="text-yellow-500 font-bold">@{p.odds.toFixed(2)}</span>
+                <span className="ml-0.5 opacity-60">×</span>
+              </button>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Live odds momentum */}
-      {odds && isLive && (
-        <div className="px-4 pb-2.5">
-          <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-            Live odds
+      {Object.entries(grouped).map(([group, opts]) => (
+        <div key={group} className="mb-3">
+          <div className="text-xs text-muted-foreground mb-1.5 font-semibold uppercase tracking-wide">{group}</div>
+          <div className="flex flex-wrap gap-2">
+            {opts.map(opt => {
+              const odds = resolvePickOdds(opt.value, matchOdds, opt.defaultOdds);
+              const isSelected = selectedPicks.some(p => p.pick === opt.value);
+              const canAdd = selectedPicks.length < maxPicks || isSelected;
+              return (
+                <button key={opt.value} onClick={() => canAdd && togglePick(opt)}
+                  disabled={!canAdd && !isSelected}
+                  className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all flex flex-col items-center leading-tight min-w-[76px] ${
+                    isSelected
+                      ? 'bg-primary border-primary text-primary-foreground shadow-lg shadow-primary/25'
+                      : canAdd
+                        ? 'bg-muted border-border text-foreground hover:border-primary/50 hover:bg-muted/80'
+                        : 'opacity-30 cursor-not-allowed bg-muted border-border text-muted-foreground'
+                  }`}>
+                  <span>{opt.label}</span>
+                  <span className={`text-xs font-bold mt-0.5 ${isSelected ? 'text-primary-foreground/80' : 'text-yellow-500'}`}>
+                    @{odds.toFixed(2)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          <div className="flex gap-1.5">
-            {odds.home > 1 && (
-              <div className="flex-1 bg-muted/50 rounded-lg px-2 py-1 text-center">
-                <div className="text-xs text-muted-foreground">Home</div>
-                <div className="text-sm font-bold text-foreground tabular-nums">{odds.home.toFixed(2)}</div>
-              </div>
-            )}
-            {odds.draw > 1 && (
-              <div className="flex-1 bg-muted/50 rounded-lg px-2 py-1 text-center">
-                <div className="text-xs text-muted-foreground">Draw</div>
-                <div className="text-sm font-bold text-foreground tabular-nums">{odds.draw.toFixed(2)}</div>
-              </div>
-            )}
-            {odds.away > 1 && (
-              <div className="flex-1 bg-muted/50 rounded-lg px-2 py-1 text-center">
-                <div className="text-xs text-muted-foreground">Away</div>
-                <div className="text-sm font-bold text-foreground tabular-nums">{odds.away.toFixed(2)}</div>
-              </div>
-            )}
-          </div>
-          {/* Momentum bar */}
-          {challengerMomentum !== opponentMomentum && (
-            <div className="mt-2">
-              <div className="text-xs text-muted-foreground mb-1">Momentum</div>
-              <div className="h-1.5 rounded-full bg-muted flex overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 transition-all duration-1000"
-                  style={{ width: `${(challengerMomentum / (challengerMomentum + opponentMomentum + 0.001)) * 100}%` }}
-                />
-                <div
-                  className="h-full bg-purple-500 transition-all duration-1000"
-                  style={{ width: `${(opponentMomentum / (challengerMomentum + opponentMomentum + 0.001)) * 100}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
-                <span className="text-blue-400">{challenge.challenger?.displayName?.split(' ')[0]}</span>
-                <span className="text-purple-400">{challenge.challenged?.displayName?.split(' ')[0]}</span>
-              </div>
-            </div>
-          )}
         </div>
+      ))}
+      {selectedPicks.length === 0 && (
+        <p className="text-xs text-muted-foreground mt-1">Select up to {maxPicks} predictions — each correct pick scores its odds as points.</p>
       )}
     </div>
   );
 }
 
-// ─── Vote Bar ─────────────────────────────────────────────────────────────────
+// ─── Points Bar (SVG visualization) ──────────────────────────────────────────
+
+function PointsBar({
+  challengerPicks, challengedPicks,
+  homeScore, awayScore,
+  challengerName, challengedName,
+  finished,
+}: {
+  challengerPicks: PickSelection[]; challengedPicks: PickSelection[];
+  homeScore: number | null; awayScore: number | null;
+  challengerName: string; challengedName: string;
+  finished: boolean;
+}) {
+  const cPts = calcLivePoints(challengerPicks, homeScore, awayScore);
+  const oPts = calcLivePoints(challengedPicks, homeScore, awayScore);
+  const cMax = maxPoints(challengerPicks);
+  const oMax = maxPoints(challengedPicks);
+  const totalMax = Math.max(cMax + oMax, 0.01);
+  const cPct = (cPts / totalMax) * 100;
+  const oPct = (oPts / totalMax) * 100;
+  const leading = cPts > oPts ? 'challenger' : oPts > cPts ? 'opponent' : 'tie';
+
+  if (homeScore === null) {
+    // Pre-match: show max potential comparison
+    const cMaxPct = (cMax / totalMax) * 100;
+    const oMaxPct = (oMax / totalMax) * 100;
+    return (
+      <div>
+        <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
+          <span className="font-medium text-blue-400">{challengerName.split(' ')[0]} · {cMax.toFixed(2)} pts max</span>
+          <span className="text-muted-foreground">Potential</span>
+          <span className="font-medium text-purple-400">{oMax.toFixed(2)} pts max · {challengedName.split(' ')[0]}</span>
+        </div>
+        <div className="h-2 rounded-full bg-muted flex overflow-hidden">
+          <div className="h-full bg-blue-500/40 transition-all duration-700" style={{ width: `${cMaxPct}%` }} />
+          <div className="h-full bg-purple-500/40 transition-all duration-700" style={{ width: `${oMaxPct}%` }} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex justify-between items-center text-xs mb-1.5">
+        <span className={`font-bold tabular-nums ${leading === 'challenger' ? 'text-green-400' : 'text-blue-400'}`}>
+          {challengerName.split(' ')[0]}: {cPts.toFixed(2)} pts
+        </span>
+        {leading !== 'tie' ? (
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${finished ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
+            {finished ? (leading === 'challenger' ? '🏆 Won' : '🏆 Won') : '⚡ Leading'}
+          </span>
+        ) : (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">
+            {finished ? '🤝 Draw' : '⚖️ Tied'}
+          </span>
+        )}
+        <span className={`font-bold tabular-nums ${leading === 'opponent' ? 'text-green-400' : 'text-purple-400'}`}>
+          {oPts.toFixed(2)} pts · {challengedName.split(' ')[0]}
+        </span>
+      </div>
+      <div className="h-2.5 rounded-full bg-muted flex overflow-hidden relative">
+        <div className={`h-full transition-all duration-1000 ${leading === 'challenger' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(cPct, cPts > 0 ? 3 : 0)}%` }} />
+        <div className={`h-full transition-all duration-1000 ${leading === 'opponent' ? 'bg-green-500' : 'bg-purple-500'}`} style={{ width: `${Math.max(oPct, oPts > 0 ? 3 : 0)}%` }} />
+      </div>
+      {!finished && (
+        <p className="text-xs text-muted-foreground mt-1 text-center">
+          {leading === 'tie' ? 'Equal points — match in progress' :
+            leading === 'challenger' ? `${challengerName.split(' ')[0]} leads by ${(cPts - oPts).toFixed(2)} pts` :
+            `${challengedName.split(' ')[0]} leads by ${(oPts - cPts).toFixed(2)} pts`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Picks List (for inside card) ────────────────────────────────────────────
+
+function PicksList({
+  picks, homeScore, awayScore, finished, live,
+}: {
+  picks: PickSelection[];
+  homeScore: number | null;
+  awayScore: number | null;
+  finished: boolean;
+  live: boolean;
+}) {
+  if (!picks.length) return <span className="text-xs text-muted-foreground italic">No picks yet</span>;
+  return (
+    <div className="space-y-1">
+      {picks.map((p, i) => {
+        const outcome = (live || finished) ? pickOutcome(p.pick, homeScore, awayScore) : 'pending';
+        return (
+          <div key={i} className={`flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 ${
+            outcome === 'winning' ? 'bg-green-500/10 border border-green-500/20' :
+            outcome === 'losing' ? 'bg-red-500/10 border border-red-500/20' :
+            'bg-muted/50 border border-border/40'
+          }`}>
+            <span className={`shrink-0 text-sm leading-none ${
+              outcome === 'winning' ? 'text-green-400' :
+              outcome === 'losing' ? 'text-red-400' :
+              'text-muted-foreground'
+            }`}>
+              {outcome === 'winning' ? (finished ? '✓' : '↑') :
+               outcome === 'losing' ? (finished ? '✗' : '↓') : '○'}
+            </span>
+            <span className="flex-1 font-medium text-foreground">{p.pick}</span>
+            <span className="font-bold text-yellow-500 tabular-nums">@{p.odds.toFixed(2)}</span>
+            {outcome === 'winning' && (
+              <span className={`font-bold tabular-nums ${finished ? 'text-green-400' : 'text-green-400/70'}`}>
+                +{p.odds.toFixed(2)}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Community Vote Bar ───────────────────────────────────────────────────────
 
 function VoteBar({ challengerVotes, opponentVotes, challengerName, opponentName }: {
   challengerVotes: number; opponentVotes: number;
@@ -268,27 +334,53 @@ function VoteBar({ challengerVotes, opponentVotes, challengerName, opponentName 
   const total = challengerVotes + opponentVotes;
   if (total === 0) return null;
   const cPct = Math.round((challengerVotes / total) * 100);
-  const oPct = 100 - cPct;
   return (
-    <div className="mt-2 px-0.5">
+    <div className="mt-3 pt-3 border-t border-border/40">
       <div className="flex justify-between text-xs text-muted-foreground mb-1">
         <span className="font-medium text-blue-400">{cPct}% {challengerName.split(' ')[0]}</span>
-        <span className="text-muted-foreground">{total} community votes</span>
-        <span className="font-medium text-purple-400">{opponentName.split(' ')[0]} {oPct}%</span>
+        <span>{total} community votes</span>
+        <span className="font-medium text-purple-400">{challengerName.split(' ')[0] !== opponentName.split(' ')[0] ? opponentName.split(' ')[0] : 'Opponent'} {100 - cPct}%</span>
       </div>
       <div className="h-1.5 rounded-full overflow-hidden flex bg-muted">
         <div className="h-full bg-blue-500 transition-all duration-700" style={{ width: `${cPct}%` }} />
-        <div className="h-full bg-purple-500 transition-all duration-700" style={{ width: `${oPct}%` }} />
+        <div className="h-full bg-purple-500 transition-all duration-700" style={{ width: `${100 - cPct}%` }} />
       </div>
     </div>
   );
 }
 
-// ─── Match Search ─────────────────────────────────────────────────────────────
+// ─── Watch Button ─────────────────────────────────────────────────────────────
+
+function WatchButton({ challengeId, initialWatchers }: { challengeId: number; initialWatchers: number }) {
+  const [watching, setWatching] = useState(false);
+  const [count, setCount] = useState(initialWatchers);
+  const [busy, setBusy] = useState(false);
+  const key = `watched_${challengeId}`;
+  useEffect(() => { setWatching(!!localStorage.getItem(key)); }, [key]);
+
+  async function toggle() {
+    if (watching || busy) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/challenges/${challengeId}/watch`, { method: 'POST' });
+      setCount(c => c + 1); setWatching(true); localStorage.setItem(key, '1');
+      if (isPushSupported()) await ensurePushSubscribed({ topics: [`challenge_${challengeId}`, 'challenge_results'] });
+    } catch { /* ignore */ } finally { setBusy(false); }
+  }
+
+  return (
+    <button onClick={toggle} disabled={watching || busy}
+      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium transition-colors border ${watching ? 'border-purple-500/40 bg-purple-500/10 text-purple-400 cursor-default' : 'border-border bg-muted/60 text-muted-foreground hover:border-primary/50 hover:text-foreground'}`}>
+      <span>👁</span><span>{watching ? 'Watching' : 'Watch'}{count > 0 ? ` · ${count}` : ''}</span>
+    </button>
+  );
+}
+
+// ─── Match Search (used inside Create modal) ──────────────────────────────────
 
 function MatchSearch({ onSelect }: { onSelect: (m: MatchOption) => void }) {
   const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [results, setResults] = useState<MatchOption[]>([]);
   const [loading, setLoading] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -303,32 +395,32 @@ function MatchSearch({ onSelect }: { onSelect: (m: MatchOption) => void }) {
     } catch { setResults([]); } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { clearTimeout(timer.current); timer.current = setTimeout(() => search(q), q ? 300 : 0); }, [q, search]);
   useEffect(() => { search(''); }, [search]);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => search(q), q ? 300 : 0);
+  }, [q, search]);
 
   return (
-    <div ref={wrap} className="relative">
+    <div ref={wrap}>
       <input type="text" placeholder="Search team or league…" value={q}
-        onChange={e => setQ(e.target.value)} onFocus={() => setOpen(true)}
+        onChange={e => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
         className="w-full px-3 py-2.5 rounded-lg bg-muted border border-border text-foreground placeholder-muted-foreground text-sm focus:outline-none focus:border-primary transition-colors" />
       {open && (
-        <div className="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-border bg-card shadow-2xl">
+        <div className="mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-border bg-card shadow-xl">
           {loading && <div className="p-3 text-center text-muted-foreground text-sm">Searching…</div>}
-          {!loading && results.length === 0 && <div className="p-3 text-center text-muted-foreground text-sm">No upcoming matches found</div>}
+          {!loading && results.length === 0 && <div className="p-3 text-center text-muted-foreground text-sm">No matches with odds found</div>}
           {results.map(m => (
             <button key={m.id} onClick={() => { onSelect(m); setQ(`${m.homeTeam} vs ${m.awayTeam}`); setOpen(false); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted transition-colors text-left border-b border-border/50 last:border-0">
+              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted transition-colors text-left border-b border-border/40 last:border-0">
               <TeamLogo src={m.homeLogo} name={m.homeTeam} size={22} />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground truncate">{m.homeTeam} <span className="text-muted-foreground">vs</span> {m.awayTeam}</div>
                 <div className="text-xs text-muted-foreground truncate">{m.league} · {formatKickoff(m.kickoff)}</div>
               </div>
               <TeamLogo src={m.awayLogo} name={m.awayTeam} size={22} />
+              {m.odds && <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">{m.odds.home.toFixed(2)}/{m.odds.draw > 1 ? m.odds.draw.toFixed(2) + '/' : ''}{m.odds.away.toFixed(2)}</span>}
               {m.status === 'live' && <span className="text-xs font-bold text-red-400 animate-pulse shrink-0">LIVE</span>}
             </button>
           ))}
@@ -340,174 +432,220 @@ function MatchSearch({ onSelect }: { onSelect: (m: MatchOption) => void }) {
 
 // ─── Create Modal ─────────────────────────────────────────────────────────────
 
-function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [selectedMatch, setSelectedMatch] = useState<MatchOption | null>(null);
-  const [pick, setPick] = useState('');
+const STAKES = [0, 200, 500, 1000, 2000, 5000];
+
+function CreateModal({ onClose, onCreated, prefillOpponentId }: {
+  onClose: () => void; onCreated: () => void; prefillOpponentId?: number;
+}) {
+  const [step, setStep] = useState<'match' | 'picks' | 'stake'>(prefillOpponentId ? 'match' : 'match');
+  const [match, setMatch] = useState<MatchOption | null>(null);
+  const [picks, setPicks] = useState<PickSelection[]>([]);
   const [stakeKes, setStakeKes] = useState(500);
   const [isPublic, setIsPublic] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [insufficientBalance, setInsufficientBalance] = useState(false);
 
-  const pickOptions: PickOption[] = selectedMatch ? pickOptionsForSport(selectedMatch.sport) : [];
-  const grouped = pickOptions.reduce<Record<string, PickOption[]>>((acc, o) => {
-    (acc[o.group] = acc[o.group] || []).push(o); return acc;
-  }, {});
+  const totalOdds = maxPoints(picks);
+  const payout = Math.round(stakeKes * 2 * 0.9);
 
-  const handleSubmit = async () => {
-    if (!selectedMatch) { setError('Please select a match'); return; }
-    if (!pick) { setError('Please choose your prediction'); return; }
-    setSubmitting(true); setError(''); setInsufficientBalance(false);
+  async function handleSubmit() {
+    if (!match || !picks.length) return;
+    setSubmitting(true); setError('');
     try {
       const res = await fetch('/api/challenges', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          matchId: selectedMatch.id,
+          matchId: match.id,
           matchSnapshot: {
-            id: selectedMatch.id, homeTeam: selectedMatch.homeTeam, awayTeam: selectedMatch.awayTeam,
-            homeLogo: selectedMatch.homeLogo, awayLogo: selectedMatch.awayLogo,
-            league: selectedMatch.league, sport: selectedMatch.sport,
-            kickoff: selectedMatch.kickoff, status: selectedMatch.status,
+            id: match.id, homeTeam: match.homeTeam, awayTeam: match.awayTeam,
+            homeLogo: match.homeLogo, awayLogo: match.awayLogo,
+            league: match.league, sport: match.sport,
+            kickoff: match.kickoff, status: match.status,
           },
-          challengerPick: pick, stakeKes, isPublic,
+          picks,
+          stakeKes,
+          isPublic,
+          ...(prefillOpponentId ? { opponentId: prefillOpponentId } : {}),
         }),
       });
       const data = await res.json() as { error?: string; insufficientBalance?: boolean };
-      if (!res.ok) { if (data.insufficientBalance) setInsufficientBalance(true); setError(data.error || 'Failed to create challenge'); }
-      else { onCreated(); onClose(); }
-    } catch { setError('Network error. Please try again.'); } finally { setSubmitting(false); }
-  };
+      if (!res.ok) {
+        setError(data.error || 'Failed to create');
+        if (data.insufficientBalance) setStep('stake');
+      } else { onCreated(); onClose(); }
+    } catch { setError('Network error. Please try again.'); }
+    finally { setSubmitting(false); }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-0 sm:p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg shadow-2xl flex flex-col max-h-[92vh]">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <div>
-            <h2 className="text-lg font-bold text-foreground">⚔️ Create a Challenge</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Pick a match · Choose your prediction · Set your stake</p>
+          <div className="flex items-center gap-3">
+            {step !== 'match' && (
+              <button onClick={() => setStep(step === 'stake' ? 'picks' : 'match')}
+                className="text-muted-foreground hover:text-foreground text-lg">←</button>
+            )}
+            <div>
+              <h2 className="text-lg font-bold text-foreground">
+                {step === 'match' ? '⚔️ Select a Match' : step === 'picks' ? '🎯 Your Predictions' : '💰 Set Stake'}
+              </h2>
+              <div className="flex gap-1.5 mt-1">
+                {(['match', 'picks', 'stake'] as const).map((s, i) => (
+                  <div key={s} className={`h-1 rounded-full transition-all ${step === s ? 'w-8 bg-primary' : i < ['match', 'picks', 'stake'].indexOf(step) ? 'w-4 bg-primary/50' : 'w-4 bg-muted'}`} />
+                ))}
+              </div>
+            </div>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-2xl leading-none">×</button>
         </div>
 
-        <div className="p-5 space-y-5 overflow-y-auto flex-1">
-          <div>
-            <label className="block text-sm font-semibold text-foreground mb-2">1. Select Match</label>
-            <MatchSearch onSelect={m => { setSelectedMatch(m); setPick(''); }} />
-            {selectedMatch && (
-              <div className="mt-2 p-3 rounded-xl bg-muted border border-border">
-                <div className="flex items-center gap-3 justify-center">
-                  <div className="flex flex-col items-center gap-1">
-                    <TeamLogo src={selectedMatch.homeLogo} name={selectedMatch.homeTeam} size={36} />
-                    <span className="text-xs font-medium text-foreground text-center leading-tight max-w-[72px]">{selectedMatch.homeTeam}</span>
-                  </div>
-                  <div className="text-center flex-1">
-                    {selectedMatch.status === 'live' ? (
-                      <>
-                        <div className="text-xl font-extrabold text-foreground tabular-nums">{selectedMatch.homeScore ?? 0} – {selectedMatch.awayScore ?? 0}</div>
-                        <div className="text-xs font-bold text-red-400 animate-pulse">🔴 LIVE</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{selectedMatch.league}</div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-muted-foreground text-xs font-medium">VS</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{selectedMatch.league}</div>
-                        <div className="text-xs text-primary mt-0.5">{formatKickoff(selectedMatch.kickoff)}</div>
-                      </>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-center gap-1">
-                    <TeamLogo src={selectedMatch.awayLogo} name={selectedMatch.awayTeam} size={36} />
-                    <span className="text-xs font-medium text-foreground text-center leading-tight max-w-[72px]">{selectedMatch.awayTeam}</span>
-                  </div>
-                </div>
-                {selectedMatch.odds && (selectedMatch.odds.home > 0 || selectedMatch.odds.away > 0) && (
-                  <div className="mt-3 pt-2.5 border-t border-border flex justify-center gap-5">
-                    {selectedMatch.odds.home > 0 && (
-                      <div className="text-center"><div className="text-xs text-muted-foreground">1 Home</div><div className="text-sm font-bold text-foreground">{selectedMatch.odds.home.toFixed(2)}</div></div>
-                    )}
-                    {selectedMatch.odds.draw > 0 && (
-                      <div className="text-center"><div className="text-xs text-muted-foreground">X Draw</div><div className="text-sm font-bold text-foreground">{selectedMatch.odds.draw.toFixed(2)}</div></div>
-                    )}
-                    {selectedMatch.odds.away > 0 && (
-                      <div className="text-center"><div className="text-xs text-muted-foreground">2 Away</div><div className="text-sm font-bold text-foreground">{selectedMatch.odds.away.toFixed(2)}</div></div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        <div className="p-5 overflow-y-auto flex-1">
 
-          {selectedMatch && (
+          {/* Step 1: Select Match */}
+          {step === 'match' && (
             <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">2. Your Prediction</label>
-              {Object.entries(grouped).map(([group, opts]) => (
-                <div key={group} className="mb-3">
-                  <div className="text-xs text-muted-foreground mb-1.5 uppercase tracking-wide">{group}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {opts.map(o => {
-                      const odd = getPickOdds(o.value, selectedMatch.odds);
-                      return (
-                        <button key={o.value} onClick={() => setPick(o.value)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all flex flex-col items-center leading-tight ${pick === o.value ? 'bg-primary border-primary text-primary-foreground' : 'bg-muted border-border text-foreground hover:border-primary/50'}`}>
-                          <span>{o.label}</span>
-                          {odd !== null && <span className={`text-xs font-bold mt-0.5 ${pick === o.value ? 'text-primary-foreground/80' : 'text-yellow-500'}`}>{odd.toFixed(2)}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+              <p className="text-sm text-muted-foreground mb-3">Only matches with real odds are eligible. Start typing to search.</p>
+              <MatchSearch onSelect={m => { setMatch(m); setPicks([]); setStep('picks'); }} />
             </div>
           )}
 
-          {selectedMatch && pick && (
-            <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">3. Stake Amount</label>
-              <div className="flex gap-2 flex-wrap mb-2">
-                {[0, 200, 500, 1000, 2000, 5000].map(v => (
-                  <button key={v} onClick={() => setStakeKes(v)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${stakeKes === v ? 'bg-green-600 border-green-500 text-white' : 'bg-muted border-border text-foreground hover:border-primary/50'}`}>
-                    {v === 0 ? 'Free' : `KES ${v.toLocaleString()}`}
-                  </button>
-                ))}
+          {/* Step 2: Select Picks */}
+          {step === 'picks' && match && (
+            <div className="space-y-4">
+              {/* Match mini-card */}
+              <div className="p-3 rounded-xl bg-muted border border-border">
+                <div className="flex items-center gap-3 justify-between">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <TeamLogo src={match.homeLogo} name={match.homeTeam} size={28} />
+                    <span className="text-sm font-semibold text-foreground truncate">{match.homeTeam}</span>
+                  </div>
+                  <div className="text-center shrink-0 px-2">
+                    {match.status === 'live' ? (
+                      <div className="text-sm font-bold text-red-400 animate-pulse">🔴 LIVE</div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">vs</div>
+                    )}
+                    {match.odds && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {match.odds.home.toFixed(2)} / {match.odds.draw > 1 ? match.odds.draw.toFixed(2) + ' / ' : ''}{match.odds.away.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                    <span className="text-sm font-semibold text-foreground truncate text-right">{match.awayTeam}</span>
+                    <TeamLogo src={match.awayLogo} name={match.awayTeam} size={28} />
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground text-center mt-1.5">{match.league} · {formatKickoff(match.kickoff)}</div>
               </div>
-              <input type="number" min={0} step={50} value={stakeKes}
-                onChange={e => setStakeKes(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:border-primary" />
-              {stakeKes > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Winner takes <span className="text-green-500 font-semibold">KES {Math.round(stakeKes * 2 * 0.9).toLocaleString()}</span>
-                  <span className="text-muted-foreground"> · 10% platform fee · Draw = full refund</span>
-                </p>
+
+              <PickSelector
+                sport={match.sport}
+                matchOdds={match.odds || null}
+                selectedPicks={picks}
+                onChange={setPicks}
+                maxPicks={5}
+              />
+
+              {picks.length > 0 && (
+                <div className="p-3 rounded-xl bg-muted/50 border border-border/50 text-xs text-muted-foreground">
+                  <div className="font-semibold text-foreground mb-1">How points work:</div>
+                  Each correct pick scores its odds as points. {picks.length} pick{picks.length !== 1 ? 's' : ''} selected = up to <strong className="text-yellow-500">{totalOdds.toFixed(2)} pts</strong> max. Highest total points wins.
+                </div>
               )}
-              <div className="flex items-center gap-3 mt-3 p-3 rounded-lg bg-muted/50 border border-border/50">
+            </div>
+          )}
+
+          {/* Step 3: Set Stake */}
+          {step === 'stake' && match && (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="p-3 rounded-xl bg-muted border border-border space-y-2">
+                <div className="flex items-center gap-2">
+                  <TeamLogo src={match.homeLogo} name={match.homeTeam} size={22} />
+                  <span className="text-sm font-medium text-foreground">{match.homeTeam} vs {match.awayTeam}</span>
+                  <TeamLogo src={match.awayLogo} name={match.awayTeam} size={22} />
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {picks.map(p => (
+                    <span key={p.pick} className="px-2 py-0.5 rounded-lg bg-primary/15 text-primary text-xs font-medium">
+                      {p.pick} @{p.odds.toFixed(2)}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-xs text-yellow-500 font-semibold">Max score: {totalOdds.toFixed(2)} pts</div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground mb-2">Stake Amount</label>
+                <div className="flex gap-2 flex-wrap mb-2">
+                  {STAKES.map(v => (
+                    <button key={v} onClick={() => setStakeKes(v)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${stakeKes === v ? 'bg-green-600 border-green-500 text-white' : 'bg-muted border-border text-foreground hover:border-primary/50'}`}>
+                      {v === 0 ? 'Free' : `KES ${v.toLocaleString()}`}
+                    </button>
+                  ))}
+                </div>
+                <input type="number" min={0} step={50} value={stakeKes}
+                  onChange={e => setStakeKes(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:border-primary" />
+                {stakeKes > 0 && (
+                  <div className="mt-2 p-3 rounded-lg bg-green-500/5 border border-green-500/20 text-xs">
+                    <div className="flex justify-between text-foreground">
+                      <span>Pot (2× stake)</span><span className="font-bold">KES {(stakeKes * 2).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground mt-0.5">
+                      <span>Platform fee (10%)</span><span>−KES {Math.round(stakeKes * 2 * 0.1).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-green-500 font-bold mt-1 border-t border-green-500/20 pt-1">
+                      <span>Winner receives</span><span>KES {payout.toLocaleString()}</span>
+                    </div>
+                    <div className="text-muted-foreground mt-0.5">Draw = full refund, no fee charged.</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border/50">
                 <button onClick={() => setIsPublic(!isPublic)}
                   className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${isPublic ? 'bg-primary' : 'bg-muted'}`}>
                   <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
                 </button>
                 <div>
                   <div className="text-sm font-medium text-foreground">{isPublic ? 'Open — any tipster can accept' : 'Private — invite only'}</div>
-                  <div className="text-xs text-muted-foreground">{isPublic ? 'Appears in the Open tab for everyone' : 'Only your opponent can join'}</div>
+                  <div className="text-xs text-muted-foreground">{isPublic ? 'Visible to all tipsters in the Open tab' : 'Only your specified opponent can join'}</div>
                 </div>
               </div>
-            </div>
-          )}
 
-          {error && (
-            <div className="rounded-lg p-3 bg-destructive/10 border border-destructive/30 text-destructive text-sm">
-              {error}
-              {insufficientBalance && <a href="/dashboard/wallet" className="block mt-1.5 text-primary text-xs underline">Top up wallet →</a>}
+              {error && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+                  {error}
+                </div>
+              )}
             </div>
           )}
         </div>
 
+        {/* Footer actions */}
         <div className="px-5 py-4 border-t border-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-muted text-foreground font-medium hover:bg-muted/80 transition-colors">Cancel</button>
-          <button onClick={handleSubmit} disabled={!selectedMatch || !pick || submitting}
-            className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground font-bold transition-colors">
-            {submitting ? 'Creating…' : `Post Challenge${stakeKes > 0 ? ` · KES ${stakeKes.toLocaleString()}` : ''}`}
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-muted text-foreground font-medium hover:bg-muted/80 transition-colors">
+            Cancel
           </button>
+          {step === 'picks' && (
+            <button onClick={() => setStep('stake')} disabled={picks.length === 0}
+              className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground font-bold transition-colors">
+              Next → Set Stake
+            </button>
+          )}
+          {step === 'stake' && (
+            <button onClick={handleSubmit} disabled={submitting}
+              className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold transition-colors">
+              {submitting ? 'Posting…' : `⚔️ Post Challenge${stakeKes > 0 ? ` · KES ${stakeKes.toLocaleString()}` : ''}`}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -516,135 +654,110 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 
 // ─── Accept Modal ─────────────────────────────────────────────────────────────
 
-function AcceptModal({ challenge, onClose, onAccepted }: { challenge: Challenge; onClose: () => void; onAccepted: () => void }) {
-  const pickOptions = pickOptionsForSport(challenge.matchSport);
-  const [pick, setPick] = useState('');
+function AcceptModal({ challenge, onClose, onAccepted }: {
+  challenge: Challenge; onClose: () => void; onAccepted: () => void;
+}) {
+  const [picks, setPicks] = useState<PickSelection[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const payout = Math.round(challenge.stakeKes * 2 * 0.9);
+  const totalOdds = maxPoints(picks);
 
-  const grouped = pickOptions.reduce<Record<string, PickOption[]>>((acc, o) => {
-    (acc[o.group] = acc[o.group] || []).push(o); return acc;
-  }, {});
-
-  const handleAccept = async () => {
-    if (!pick) { setError('Please select your prediction'); return; }
+  async function handleAccept() {
+    if (!picks.length) { setError('Please select at least one prediction'); return; }
     setSubmitting(true); setError('');
     try {
       const res = await fetch(`/api/challenges/${challenge.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'accept', pick }),
+        body: JSON.stringify({ action: 'accept', picks }),
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) setError(data.error || 'Failed to accept');
       else { onAccepted(); onClose(); }
     } catch { setError('Network error'); } finally { setSubmitting(false); }
-  };
+  }
 
-  const payout = Math.round(challenge.stakeKes * 2 * 0.9);
+  const challPicks = challenge.challengerPicks.length ? challenge.challengerPicks : parsePicks(challenge.challengerPick);
+  const takenPicks = new Set(challPicks.map(p => p.pick));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-0 sm:p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg shadow-2xl flex flex-col max-h-[92vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <div>
             <h2 className="text-lg font-bold text-foreground">⚔️ Accept Challenge</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Counter-pick · May the best tipster win</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Choose your predictions · May the best tipster win</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-2xl">×</button>
         </div>
-        <div className="p-5 space-y-4">
+
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          {/* Match + opponent's picks */}
           <div className="p-3 rounded-xl bg-muted border border-border">
-            <div className="flex items-center justify-center gap-4">
-              <div className="flex flex-col items-center gap-1">
-                <TeamLogo src={challenge.matchHomeLogo} name={challenge.matchHomeTeam} size={32} />
-                <span className="text-xs text-foreground font-medium">{challenge.matchHomeTeam}</span>
-              </div>
-              <div className="text-center">
-                <div className="text-xs text-muted-foreground font-bold">VS</div>
-                <div className="text-xs text-muted-foreground">{challenge.matchLeague}</div>
-                <div className="text-xs text-primary">{formatKickoff(challenge.matchKickoff)}</div>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <TeamLogo src={challenge.matchAwayLogo} name={challenge.matchAwayTeam} size={32} />
-                <span className="text-xs text-foreground font-medium">{challenge.matchAwayTeam}</span>
-              </div>
+            <div className="flex items-center gap-2 mb-2">
+              <TeamLogo src={challenge.matchHomeLogo} name={challenge.matchHomeTeam} size={24} />
+              <span className="text-sm font-semibold text-foreground flex-1 truncate">{challenge.matchHomeTeam} vs {challenge.matchAwayTeam}</span>
+              <TeamLogo src={challenge.matchAwayLogo} name={challenge.matchAwayTeam} size={24} />
             </div>
+            <div className="text-xs text-muted-foreground">{challenge.matchLeague} · {formatKickoff(challenge.matchKickoff)}</div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-xl bg-muted/50 border border-border">
-            <ParticipantAvatar avatar={challenge.challenger?.avatar ?? null} name={challenge.challenger?.displayName || '?'} size={32} />
-            <div className="flex-1 text-sm">
-              <div className="font-semibold text-foreground">{challenge.challenger?.displayName || `User #${challenge.challengerId}`}</div>
-              <div className="text-muted-foreground text-xs mt-0.5">picked <PickBadge pick={challenge.challengerPick} /></div>
+          <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Avatar src={challenge.challenger?.avatar ?? null} name={challenge.challenger?.displayName || '?'} size={24} />
+              <span className="text-sm font-semibold text-foreground">{challenge.challenger?.displayName || `User #${challenge.challengerId}`}</span>
+              <span className="text-xs text-muted-foreground ml-auto">picked:</span>
             </div>
+            <div className="flex flex-wrap gap-1">
+              {challPicks.map(p => (
+                <span key={p.pick} className="px-2 py-0.5 rounded-lg bg-blue-500/15 text-blue-400 text-xs font-medium">
+                  {p.pick} @{p.odds.toFixed(2)}
+                </span>
+              ))}
+            </div>
+            <div className="text-xs text-yellow-500 font-semibold mt-1.5">Max: {maxPoints(challPicks).toFixed(2)} pts</div>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-foreground mb-2">Your Counter-Pick</label>
-            {Object.entries(grouped).map(([group, opts]) => (
-              <div key={group} className="mb-3">
-                <div className="text-xs text-muted-foreground mb-1.5 uppercase tracking-wide">{group}</div>
-                <div className="flex flex-wrap gap-2">
-                  {opts.map(o => {
-                    const taken = o.value === challenge.challengerPick;
-                    return (
-                      <button key={o.value} onClick={() => !taken && setPick(o.value)} disabled={taken}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${taken ? 'opacity-25 cursor-not-allowed bg-muted border-border text-muted-foreground' : pick === o.value ? 'bg-primary border-primary text-primary-foreground' : 'bg-muted border-border text-foreground hover:border-primary/50'}`}>
-                        {o.label}{taken ? ' (taken)' : ''}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+            <div className="text-sm font-semibold text-foreground mb-2">Your Counter-Picks</div>
+            <PickSelector
+              sport={challenge.matchSport}
+              matchOdds={null}
+              selectedPicks={picks}
+              onChange={p => setPicks(p.filter(x => !takenPicks.has(x.pick)))}
+              maxPicks={5}
+            />
+            {picks.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Your max score: <strong className="text-yellow-500">{totalOdds.toFixed(2)} pts</strong>
+              </p>
+            )}
           </div>
 
           {challenge.stakeKes > 0 && (
-            <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-600 dark:text-yellow-400">
-              ⚠️ Accepting locks <strong>KES {challenge.stakeKes.toLocaleString()}</strong> · Winner takes <strong>KES {payout.toLocaleString()}</strong> · Draw = full refund
+            <div className="p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/20 text-xs">
+              <div className="flex justify-between text-foreground font-medium">
+                <span>⚠️ Locks your stake</span><span>KES {challenge.stakeKes.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-green-500 font-bold mt-1">
+                <span>Winner receives</span><span>KES {payout.toLocaleString()}</span>
+              </div>
+              <div className="text-muted-foreground mt-0.5">Equal points = draw = full refund.</div>
             </div>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
-        <div className="px-5 py-4 border-t border-border flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-muted text-foreground font-medium hover:bg-muted/80 transition-colors">Cancel</button>
-          <button onClick={handleAccept} disabled={!pick || submitting}
+
+        <div className="px-5 py-4 border-t border-border flex gap-3 shrink-0">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-muted text-foreground font-medium">Cancel</button>
+          <button onClick={handleAccept} disabled={!picks.length || submitting}
             className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold transition-colors">
             {submitting ? 'Accepting…' : `Accept${challenge.stakeKes > 0 ? ` · KES ${challenge.stakeKes.toLocaleString()}` : ' Challenge'}`}
           </button>
         </div>
       </div>
     </div>
-  );
-}
-
-// ─── Watch Button ─────────────────────────────────────────────────────────────
-
-function WatchButton({ challengeId, initialWatchers }: { challengeId: number; initialWatchers: number }) {
-  const [watching, setWatching] = useState(false);
-  const [count, setCount] = useState(initialWatchers);
-  const [busy, setBusy] = useState(false);
-  const storageKey = `watched_challenge_${challengeId}`;
-  useEffect(() => { setWatching(!!localStorage.getItem(storageKey)); }, [storageKey]);
-
-  async function handleWatch() {
-    if (watching || busy) return;
-    setBusy(true);
-    try {
-      await fetch(`/api/challenges/${challengeId}/watch`, { method: 'POST' });
-      setCount(c => c + 1); setWatching(true); localStorage.setItem(storageKey, '1');
-      if (isPushSupported()) await ensurePushSubscribed({ topics: [`challenge_${challengeId}`, 'challenge_results'] });
-    } catch { /* ignore */ } finally { setBusy(false); }
-  }
-
-  return (
-    <button onClick={handleWatch} disabled={watching || busy}
-      title={watching ? 'Watching — notified when this settles' : 'Watch for result notification'}
-      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium transition-colors border ${watching ? 'border-purple-500/40 bg-purple-500/10 text-purple-400 cursor-default' : 'border-border bg-muted/60 text-muted-foreground hover:border-primary/50 hover:text-foreground'}`}>
-      <span>👁</span>
-      <span>{count > 0 ? count : ''}{watching ? ' Watching' : ' Watch'}</span>
-    </button>
   );
 }
 
@@ -655,141 +768,199 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
   onAccept: (c: Challenge) => void; onCancel: (id: number) => void;
   liveData?: LiveMatchData;
 }) {
-  const { challengerId, challengedId, winnerId, drawRefunded, status } = challenge;
+  const { status, challengerId, challengedId, winnerId, drawRefunded } = challenge;
   const settled = status === 'settled';
   const active = status === 'active';
   const pending = status === 'pending';
+  const canAccept = pending && !!currentUserId && currentUserId !== challengerId && (!challengedId || challengedId === currentUserId);
+  const canCancel = (pending || active) && currentUserId === challengerId;
+
+  const live = liveData ? isMatchLive(liveData.status) : false;
+  const finished = liveData ? isMatchFinished(liveData.status) : settled;
+  const homeScore = liveData?.homeScore ?? null;
+  const awayScore = liveData?.awayScore ?? null;
+
+  const challPicks = challenge.challengerPicks.length ? challenge.challengerPicks : parsePicks(challenge.challengerPick);
+  const opPicks = challenge.challengedPicks.length ? challenge.challengedPicks : parsePicks(challenge.challengedPick);
+
+  const cPts = (live || finished) ? calcLivePoints(challPicks, homeScore, awayScore) : 0;
+  const oPts = (live || finished) ? calcLivePoints(opPicks, homeScore, awayScore) : 0;
+
   const challengerWon = settled && winnerId === challengerId && !drawRefunded;
   const challengedWon = settled && winnerId === challengedId && !drawRefunded;
   const isDraw = settled && drawRefunded;
-  const canAccept = pending && !!currentUserId && currentUserId !== challengerId && (!challengedId || challengedId === currentUserId);
-  const canCancel = (pending || active) && currentUserId === challengerId;
+
   const payout = Math.round(challenge.stakeKes * 2 * 0.9);
 
-  const isMatchLive = liveData && ['live', 'halftime', 'extra_time', 'inprogress', '1h', '2h', 'ht'].some(s =>
-    liveData.status.toLowerCase().includes(s));
-
-  const challengerOutcome = active && liveData
-    ? getPickOutcome(challenge.challengerPick, liveData.homeScore, liveData.awayScore)
-    : null;
-  const challengedOutcome = active && liveData && challenge.challengedPick
-    ? getPickOutcome(challenge.challengedPick, liveData.homeScore, liveData.awayScore)
-    : null;
-
   return (
-    <div className={`rounded-xl border overflow-hidden transition-all ${settled ? 'border-border/50 bg-card/60' : active ? 'border-border bg-card shadow-md' : 'border-border bg-card hover:border-primary/30'}`}>
+    <div className={`rounded-xl border overflow-hidden transition-all ${
+      settled ? 'border-border/50 bg-card/80' :
+      active && live ? 'border-red-500/30 bg-card shadow-lg shadow-red-500/5' :
+      active ? 'border-primary/20 bg-card shadow-md' :
+      'border-border bg-card hover:border-primary/30 hover:shadow-md'
+    }`}>
+
       {/* Match header */}
-      <div className="px-4 pt-3 pb-2 border-b border-border/50">
-        <div className="flex items-center justify-between mb-1.5">
+      <div className="px-4 pt-3 pb-2.5 border-b border-border/50">
+        <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground truncate flex-1 mr-2">{challenge.matchLeague}</span>
           <div className="flex items-center gap-1.5 shrink-0">
             {!settled && <WatchButton challengeId={challenge.id} initialWatchers={challenge.watchers} />}
             {settled ? (
-              isDraw ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/15 text-yellow-500 border border-yellow-500/30">🤝 Draw</span>
+              isDraw
+                ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/15 text-yellow-500 border border-yellow-500/30">🤝 Draw</span>
                 : <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-500/15 text-green-500 border border-green-500/30">✅ Settled</span>
-            ) : active ? (
-              isMatchLive
-                ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">🔴 LIVE</span>
-                : <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-500/15 text-green-500 border border-green-500/30">⚔️ Active</span>
-            ) : (
-              <span className="px-2 py-0.5 rounded text-xs font-bold bg-primary/15 text-primary border border-primary/30">🔓 Open</span>
-            )}
+            ) : active && live
+              ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">🔴 LIVE</span>
+              : active
+                ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-primary/15 text-primary border border-primary/30">⚔️ Active</span>
+                : <span className="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/15 text-yellow-500 border border-yellow-500/30">🔓 Open</span>
+            }
           </div>
         </div>
-        {/* Teams row */}
+        {/* Score row */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <TeamLogo src={challenge.matchHomeLogo} name={challenge.matchHomeTeam} size={26} />
+            <TeamLogo src={challenge.matchHomeLogo} name={challenge.matchHomeTeam} size={24} />
             <span className="text-sm font-semibold text-foreground truncate">{challenge.matchHomeTeam}</span>
           </div>
-          <div className="text-center shrink-0 px-1">
-            {isMatchLive && liveData ? (
+          <div className="text-center shrink-0 px-2">
+            {live && liveData ? (
               <>
-                <div className="text-lg font-extrabold tabular-nums text-foreground leading-none">{liveData.homeScore ?? 0} – {liveData.awayScore ?? 0}</div>
+                <div className="text-xl font-extrabold tabular-nums text-foreground leading-none">
+                  {liveData.homeScore ?? 0} – {liveData.awayScore ?? 0}
+                </div>
                 <div className="text-xs text-red-400 font-bold">{liveData.minute ? `${liveData.minute}'` : 'LIVE'}</div>
               </>
-            ) : challenge.matchKickoff && !settled ? (
+            ) : (finished || settled) && homeScore !== null ? (
+              <>
+                <div className="text-lg font-extrabold tabular-nums text-foreground leading-none">
+                  {homeScore} – {awayScore}
+                </div>
+                <div className="text-xs text-muted-foreground font-medium">FT</div>
+              </>
+            ) : challenge.matchKickoff ? (
               <>
                 <div className="text-xs text-muted-foreground">{formatKickoff(challenge.matchKickoff)}</div>
                 <div className="text-xs font-bold text-primary">{countdown(challenge.matchKickoff)}</div>
               </>
             ) : (
-              <div className="text-xs text-muted-foreground">{settled ? 'FT' : 'TBD'}</div>
+              <div className="text-xs text-muted-foreground">TBD</div>
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
             <span className="text-sm font-semibold text-foreground truncate text-right">{challenge.matchAwayTeam}</span>
-            <TeamLogo src={challenge.matchAwayLogo} name={challenge.matchAwayTeam} size={26} />
+            <TeamLogo src={challenge.matchAwayLogo} name={challenge.matchAwayTeam} size={24} />
           </div>
         </div>
       </div>
 
-      {/* Battle */}
-      <div className="px-4 py-3">
-        <div className="flex items-stretch gap-2">
+      {/* Battle section */}
+      <div className="px-4 py-3 space-y-3">
+        {/* Two-column picks battle */}
+        <div className="grid grid-cols-2 gap-3">
           {/* Challenger */}
-          <div className={`flex-1 rounded-xl p-3 border ${challengerWon ? 'bg-green-500/10 border-green-500/40' : isDraw ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-muted/50 border-border/50'}`}>
+          <div className={`rounded-xl p-3 border ${challengerWon ? 'bg-green-500/10 border-green-500/40' : isDraw ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-muted/40 border-border/60'}`}>
             <div className="flex items-center gap-2 mb-2">
-              <ParticipantAvatar avatar={challenge.challenger?.avatar ?? null} name={challenge.challenger?.displayName || `U${challengerId}`} size={26} />
+              <Avatar src={challenge.challenger?.avatar ?? null} name={challenge.challenger?.displayName || '?'} size={24} />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-foreground truncate">{challenge.challenger?.displayName || `User #${challengerId}`}</div>
-                <div className="text-xs text-muted-foreground">{challenge.challenger?.won ?? 0}W / {challenge.challenger?.lost ?? 0}L</div>
+                <div className="text-xs font-bold text-foreground truncate">{challenge.challenger?.displayName || `User #${challengerId}`}</div>
+                <div className="text-xs text-muted-foreground">{challenge.challenger?.won ?? 0}W · {challenge.challenger?.lost ?? 0}L</div>
               </div>
-              {challengerWon && <span className="text-sm shrink-0">🏆</span>}
+              {challengerWon && <span className="text-base shrink-0">🏆</span>}
             </div>
-            <PickBadge pick={challenge.challengerPick} outcome={challengerOutcome} />
-          </div>
-
-          {/* Centre VS */}
-          <div className="flex flex-col items-center justify-center gap-0.5 shrink-0 px-1">
-            <span className="text-muted-foreground text-xs font-bold">VS</span>
-            {challenge.stakeKes > 0 && (
-              <div className="text-center">
-                <div className="text-xs font-bold text-yellow-500">KES {(challenge.stakeKes * 2).toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">pot</div>
+            <PicksList picks={challPicks} homeScore={homeScore} awayScore={awayScore} finished={finished || settled} live={live} />
+            {(live || finished || settled) && cPts > 0 && (
+              <div className={`mt-2 text-center font-bold tabular-nums text-lg ${challengerWon ? 'text-green-400' : cPts > oPts ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                {cPts.toFixed(2)} <span className="text-xs font-normal">pts</span>
               </div>
             )}
           </div>
 
           {/* Challenged / Open slot */}
-          <div className={`flex-1 rounded-xl p-3 border ${challengedWon ? 'bg-green-500/10 border-green-500/40' : isDraw ? 'bg-yellow-500/10 border-yellow-500/30' : challenge.challenged ? 'bg-muted/50 border-border/50' : 'bg-muted/20 border-dashed border-border'}`}>
-            {challenge.challenged ? (
-              <>
-                <div className="flex items-center gap-2 mb-2">
-                  {challengedWon && <span className="text-sm shrink-0">🏆</span>}
-                  <ParticipantAvatar avatar={challenge.challenged.avatar ?? null} name={challenge.challenged.displayName || `U${challengedId}`} size={26} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold text-foreground truncate">{challenge.challenged.displayName}</div>
-                    <div className="text-xs text-muted-foreground">{challenge.challenged.won ?? 0}W / {challenge.challenged.lost ?? 0}L</div>
-                  </div>
+          {challenge.challenged && opPicks.length > 0 ? (
+            <div className={`rounded-xl p-3 border ${challengedWon ? 'bg-green-500/10 border-green-500/40' : isDraw ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-muted/40 border-border/60'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Avatar src={challenge.challenged.avatar ?? null} name={challenge.challenged.displayName || '?'} size={24} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-foreground truncate">{challenge.challenged.displayName}</div>
+                  <div className="text-xs text-muted-foreground">{challenge.challenged.won ?? 0}W · {challenge.challenged.lost ?? 0}L</div>
                 </div>
-                {challenge.challengedPick
-                  ? <PickBadge pick={challenge.challengedPick} outcome={challengedOutcome} />
-                  : <span className="text-xs text-muted-foreground italic">Awaiting pick…</span>}
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-1 text-center py-0.5">
-                <div className="text-lg">🎯</div>
-                <div className="text-xs font-semibold text-foreground">Open slot</div>
-                <div className="text-xs text-muted-foreground">Any tipster</div>
-                {canAccept && (
-                  <button onClick={() => onAccept(challenge)}
-                    className="mt-1 px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded-lg transition-colors">
-                    ⚔️ Join
-                  </button>
-                )}
+                {challengedWon && <span className="text-base shrink-0">🏆</span>}
               </div>
-            )}
-          </div>
+              <PicksList picks={opPicks} homeScore={homeScore} awayScore={awayScore} finished={finished || settled} live={live} />
+              {(live || finished || settled) && oPts > 0 && (
+                <div className={`mt-2 text-center font-bold tabular-nums text-lg ${challengedWon ? 'text-green-400' : oPts > cPts ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                  {oPts.toFixed(2)} <span className="text-xs font-normal">pts</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl p-3 border border-dashed border-border bg-muted/20 flex flex-col items-center justify-center gap-2 min-h-[100px]">
+              {challenge.challenged && !opPicks.length ? (
+                <>
+                  <Avatar src={challenge.challenged.avatar ?? null} name={challenge.challenged.displayName || '?'} size={28} />
+                  <div className="text-xs font-semibold text-foreground text-center">{challenge.challenged.displayName}</div>
+                  <span className="text-xs text-muted-foreground italic">Awaiting picks…</span>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl">🎯</div>
+                  <div className="text-xs font-semibold text-foreground">Open slot</div>
+                  <div className="text-xs text-muted-foreground">Any tipster can join</div>
+                  {canAccept && (
+                    <button onClick={() => onAccept(challenge)}
+                      className="mt-1 px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded-lg transition-colors">
+                      ⚔️ Accept
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Live panel — score + odds + momentum */}
-        {active && liveData && (
-          <LivePanel challenge={challenge} liveData={liveData} />
+        {/* VS + stake in centre (shown above on mobile by floating element) */}
+        {challenge.stakeKes > 0 && (
+          <div className="flex items-center justify-center gap-2 -mt-1">
+            <div className="h-px flex-1 bg-border/50" />
+            <div className="text-center px-3">
+              <div className="text-sm font-bold text-yellow-500">KES {(challenge.stakeKes * 2).toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">prize pot</div>
+            </div>
+            <div className="h-px flex-1 bg-border/50" />
+          </div>
+        )}
+
+        {/* Points comparison bar (when both have picks) */}
+        {(challPicks.length > 0 && opPicks.length > 0) && (
+          <PointsBar
+            challengerPicks={challPicks}
+            challengedPicks={opPicks}
+            homeScore={homeScore}
+            awayScore={awayScore}
+            challengerName={challenge.challenger?.displayName || 'Challenger'}
+            challengedName={challenge.challenged?.displayName || 'Opponent'}
+            finished={finished || settled}
+          />
+        )}
+
+        {/* Result line for settled */}
+        {settled && (
+          <div className={`text-center text-sm font-semibold py-1 rounded-lg ${isDraw ? 'text-yellow-500 bg-yellow-500/5' : 'text-green-500 bg-green-500/5'}`}>
+            {isDraw ? (
+              `🤝 Equal points — draw${challenge.stakeKes > 0 ? ` · KES ${challenge.stakeKes.toLocaleString()} refunded` : ''}`
+            ) : (
+              <>
+                🏆 {winnerId === challengerId ? challenge.challenger?.displayName : challenge.challenged?.displayName} wins
+                {challenge.stakeKes > 0 && ` · KES ${payout.toLocaleString()}`}
+              </>
+            )}
+          </div>
         )}
 
         {/* Community vote bar */}
-        {(challenge.challengerVotes + challenge.opponentVotes) > 0 && (
+        {(challenge.challengerVotes + challenge.opponentVotes) > 0 && challenge.challenged && (
           <VoteBar
             challengerVotes={challenge.challengerVotes}
             opponentVotes={challenge.opponentVotes}
@@ -798,22 +969,9 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
           />
         )}
 
-        {/* Result line */}
-        {settled && challenge.stakeKes > 0 && (
-          <div className="mt-2 text-center text-xs">
-            {isDraw ? (
-              <span className="text-yellow-500">Stakes refunded · Draw on this market</span>
-            ) : winnerId ? (
-              <span className="text-green-500 font-medium">
-                {winnerId === challengerId ? challenge.challenger?.displayName : challenge.challenged?.displayName} won KES {payout.toLocaleString()} 🏆
-              </span>
-            ) : null}
-          </div>
-        )}
-
         {/* Action buttons */}
         {((canAccept && !challenge.challenged) || canCancel) && (
-          <div className="mt-3 flex gap-2">
+          <div className="flex gap-2 pt-1">
             {canAccept && !challenge.challenged && (
               <button onClick={() => onAccept(challenge)}
                 className="flex-1 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors">
@@ -836,48 +994,52 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
 // ─── Leaderboard ──────────────────────────────────────────────────────────────
 
 function ChallengeLeaderboard({ challenges }: { challenges: Challenge[] }) {
-  type Stats = { name: string; avatar: string | null; won: number; total: number };
+  type Stats = { name: string; avatar: string | null; won: number; total: number; ptsFor: number; ptsAgainst: number };
   const stats: Record<number, Stats> = {};
 
   for (const c of challenges) {
     if (c.status !== 'settled') continue;
-    const upsert = (id: number, p: typeof c.challenger) => {
+    const challPicks = c.challengerPicks.length ? c.challengerPicks : parsePicks(c.challengerPick);
+    const opPicks = c.challengedPicks.length ? c.challengedPicks : parsePicks(c.challengedPick);
+    const upsert = (id: number, p: typeof c.challenger, picks: PickSelection[], opponentPicks: PickSelection[]) => {
       if (!p) return;
-      if (!stats[id]) stats[id] = { name: p.displayName, avatar: p.avatar, won: 0, total: 0 };
+      if (!stats[id]) stats[id] = { name: p.displayName, avatar: p.avatar, won: 0, total: 0, ptsFor: 0, ptsAgainst: 0 };
       stats[id].total++;
       if (c.winnerId === id && !c.drawRefunded) stats[id].won++;
     };
-    upsert(c.challengerId, c.challenger);
-    if (c.challengedId && c.challenged) upsert(c.challengedId, c.challenged);
+    upsert(c.challengerId, c.challenger, challPicks, opPicks);
+    if (c.challengedId && c.challenged) upsert(c.challengedId, c.challenged, opPicks, challPicks);
   }
 
   const leaders = Object.entries(stats)
     .filter(([, s]) => s.total >= 1)
-    .sort(([, a], [, b]) => (b.won / b.total) - (a.won / a.total) || b.won - a.won)
+    .sort(([, a], [, b]) => {
+      const aPct = a.won / a.total;
+      const bPct = b.won / b.total;
+      return bPct - aPct || b.won - a.won;
+    })
     .slice(0, 8);
 
   const MEDALS = ['🥇', '🥈', '🥉'];
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-        🏆 Top Challengers
-      </div>
+      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">🏆 Top Challengers</div>
       {leaders.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-3">No settled challenges yet — first battle wins the top spot!</p>
+        <p className="text-xs text-muted-foreground text-center py-3">No settled challenges yet</p>
       ) : (
         <div className="space-y-2.5">
           {leaders.map(([id, s], i) => {
             const winPct = Math.round((s.won / s.total) * 100);
             return (
               <div key={id} className="flex items-center gap-2">
-                <span className="w-5 text-center text-sm shrink-0">{MEDALS[i] ?? <span className="text-xs text-muted-foreground font-bold">{i + 1}</span>}</span>
-                <ParticipantAvatar avatar={s.avatar} name={s.name} size={26} />
+                <span className="w-5 text-center text-sm shrink-0">{MEDALS[i] || <span className="text-xs font-bold text-muted-foreground">{i + 1}</span>}</span>
+                <Avatar src={s.avatar} name={s.name} size={26} />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold text-foreground truncate">{s.name}</div>
                   <div className="text-xs text-muted-foreground">{s.won}W / {s.total - s.won}L</div>
                 </div>
-                <div className={`text-xs font-bold shrink-0 ${winPct >= 70 ? 'text-green-500' : winPct >= 50 ? 'text-yellow-500' : 'text-muted-foreground'}`}>
+                <div className={`text-xs font-bold shrink-0 ${winPct >= 70 ? 'text-green-500' : winPct >= 50 ? 'text-yellow-500' : 'text-red-400'}`}>
                   {winPct}%
                 </div>
               </div>
@@ -891,12 +1053,12 @@ function ChallengeLeaderboard({ challenges }: { challenges: Challenge[] }) {
 
 // ─── Recent Wins ──────────────────────────────────────────────────────────────
 
-function RecentActivity({ challenges }: { challenges: Challenge[] }) {
+function RecentWins({ challenges }: { challenges: Challenge[] }) {
   const recent = challenges
     .filter(c => c.status === 'settled' && c.winnerId && !c.drawRefunded)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, 5);
-  if (recent.length === 0) return null;
+  if (!recent.length) return null;
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">Recent Wins</div>
@@ -922,7 +1084,7 @@ function RecentActivity({ challenges }: { challenges: Challenge[] }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-const STATUS_TABS = [
+const TABS = [
   { label: '⚔️ Live', value: 'active' },
   { label: '🔓 Open', value: 'pending' },
   { label: '✅ Settled', value: 'settled' },
@@ -930,42 +1092,52 @@ const STATUS_TABS = [
 
 export default function ChallengesPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const opponentParam = searchParams.get('opponent');
+  const prefillOpponent = opponentParam ? parseInt(opponentParam, 10) : undefined;
+
   const [showCreate, setShowCreate] = useState(false);
+  const [prefillOpponentId, setPrefillOpponentId] = useState<number | undefined>(undefined);
   const [acceptTarget, setAcceptTarget] = useState<Challenge | null>(null);
-  const [statusTab, setStatusTab] = useState('active');
+  const [tab, setTab] = useState('active');
   const [sportFilter, setSportFilter] = useState('');
+
+  // Auto-open create modal when ?opponent= is in the URL
+  useEffect(() => {
+    if (prefillOpponent && user) {
+      setPrefillOpponentId(prefillOpponent);
+      setShowCreate(true);
+    }
+  }, [prefillOpponent, user]);
 
   const { data, mutate, isLoading } = useSWR<{ challenges: Challenge[] }>(
     '/api/challenges?status=all', fetcher, { refreshInterval: 30000 });
 
   const all = data?.challenges || [];
-  const liveMatchIds = all.filter(c => c.status === 'active').map(c => c.matchId).filter(Boolean);
 
-  // Fetch live data for all active challenge matches (updates every 45s)
-  const liveKey = liveMatchIds.length > 0
-    ? `/api/challenges/live-data?matchIds=${liveMatchIds.join(',')}`
-    : null;
-  const { data: liveDataResp } = useSWR<{ data: Record<string, LiveMatchData> }>(
-    liveKey, fetcher, { refreshInterval: 45000 });
-  const liveDataMap: Record<string, LiveMatchData> = liveDataResp?.data || {};
+  // Live data for active challenges
+  const liveIds = all.filter(c => c.status === 'active').map(c => c.matchId).filter(Boolean);
+  const { data: liveResp } = useSWR<{ data: Record<string, LiveMatchData> }>(
+    liveIds.length ? `/api/challenges/live-data?matchIds=${liveIds.join(',')}` : null,
+    fetcher, { refreshInterval: 30000 });
+  const liveMap: Record<string, LiveMatchData> = liveResp?.data || {};
 
-  const filtered = all.filter(c => {
-    if (c.status !== statusTab) return false;
-    if (sportFilter && !c.matchSport.toLowerCase().includes(sportFilter)) return false;
-    return true;
-  });
-
-  const stats = {
-    live: all.filter(c => c.status === 'active').length,
-    open: all.filter(c => c.status === 'pending').length,
+  const counts = {
+    active: all.filter(c => c.status === 'active').length,
+    pending: all.filter(c => c.status === 'pending').length,
     settled: all.filter(c => c.status === 'settled').length,
   };
 
+  // Auto-switch to pending tab if no live challenges
   useEffect(() => {
-    if (!isLoading && stats.live === 0 && stats.open > 0 && statusTab === 'active') {
-      setStatusTab('pending');
-    }
-  }, [isLoading, stats.live, stats.open, statusTab]);
+    if (!isLoading && counts.active === 0 && counts.pending > 0 && tab === 'active') setTab('pending');
+  }, [isLoading, counts.active, counts.pending, tab]);
+
+  const filtered = all.filter(c => {
+    if (c.status !== tab) return false;
+    if (sportFilter && !c.matchSport.toLowerCase().includes(sportFilter)) return false;
+    return true;
+  });
 
   const handleCancel = async (id: number) => {
     if (!confirm('Cancel this challenge? Your stake will be refunded.')) return;
@@ -985,7 +1157,7 @@ export default function ChallengesPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">⚔️ Tipster Challenges</h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Pick a real match, call the result, stake KES. Correct prediction wins 90% of the pot. Draw = full refund.
+              Pick a real match · Select your predictions · Points = odds of correct picks · Highest score wins
             </p>
           </div>
           {user && (
@@ -996,23 +1168,29 @@ export default function ChallengesPage() {
           )}
         </div>
 
-        {/* 3-column layout: left sidebar | cards | right sidebar */}
+        {/* 3-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-          {/* ── Left sidebar ── */}
+          {/* ── Left Sidebar ── */}
           <div className="lg:col-span-3 space-y-4">
             {/* Arena stats */}
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">Arena</div>
-              <div className="space-y-2.5 text-sm">
+              <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />Live Battles
+                  <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" />Live Battles
                   </span>
-                  <span className="font-bold text-foreground">{stats.live}</span>
+                  <span className="font-bold text-foreground">{counts.active}</span>
                 </div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Open</span><span className="font-bold text-foreground">{stats.open}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Settled</span><span className="font-bold text-foreground">{stats.settled}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Open</span>
+                  <span className="font-bold text-foreground">{counts.pending}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Settled</span>
+                  <span className="font-bold text-foreground">{counts.settled}</span>
+                </div>
               </div>
             </div>
 
@@ -1021,7 +1199,7 @@ export default function ChallengesPage() {
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">Sport</div>
               <div className="flex flex-col gap-1">
                 {[
-                  { label: 'All', value: '' },
+                  { label: 'All Sports', value: '' },
                   { label: '⚽ Football', value: 'football' },
                   { label: '🏀 Basketball', value: 'basketball' },
                   { label: '🎾 Tennis', value: 'tennis' },
@@ -1035,34 +1213,38 @@ export default function ChallengesPage() {
               </div>
             </div>
 
-            {/* How it works */}
+            {/* How scoring works */}
             <div className="rounded-xl border border-border bg-card p-4">
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">How It Works</div>
-              <ol className="space-y-2 text-xs text-muted-foreground list-decimal list-inside">
-                <li>Choose a real upcoming match</li>
-                <li>Pick your prediction — 1X2, Over/Under, BTTS…</li>
-                <li>Set your KES stake · Opponent matches it</li>
-                <li>Match ends → correct pick wins 90% of pot</li>
-                <li>Draw = both stakes refunded, no fee</li>
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">How Points Work</div>
+              <ol className="space-y-1.5 text-xs text-muted-foreground">
+                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">1.</span>Select 1–5 predictions per match (1X2, Goals, BTTS…)</li>
+                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">2.</span>Each correct pick scores its odds as points (e.g. Home Win @2.20 wins = 2.20 pts)</li>
+                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">3.</span>Highest total points wins the stake pot (90%)</li>
+                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">4.</span>Equal points = draw = full refund</li>
               </ol>
             </div>
           </div>
 
-          {/* ── Centre: tabs + cards ── */}
+          {/* ── Centre: Tabs + Cards ── */}
           <div className="lg:col-span-6">
+            {/* Tab bar */}
             <div className="flex gap-1 p-1 bg-muted rounded-xl border border-border mb-4">
-              {STATUS_TABS.map(t => (
-                <button key={t.value} onClick={() => setStatusTab(t.value)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${statusTab === t.value ? 'bg-card text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
+              {TABS.map(t => (
+                <button key={t.value} onClick={() => setTab(t.value)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors relative ${tab === t.value ? 'bg-card text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
                   {t.label}
-                  {t.value === 'active' && stats.live > 0 && <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">{stats.live}</span>}
-                  {t.value === 'pending' && stats.open > 0 && <span className="ml-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-xs rounded-full">{stats.open}</span>}
+                  {t.value === 'active' && counts.active > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">{counts.active}</span>
+                  )}
+                  {t.value === 'pending' && counts.pending > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-yellow-500 text-black text-xs rounded-full">{counts.pending}</span>
+                  )}
                 </button>
               ))}
             </div>
 
             {isLoading && (
-              <div className="flex justify-center items-center py-20">
+              <div className="flex justify-center py-20">
                 <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             )}
@@ -1071,12 +1253,12 @@ export default function ChallengesPage() {
               <div className="text-center py-16">
                 <div className="text-5xl mb-4">⚔️</div>
                 <div className="text-lg font-semibold text-foreground mb-1">
-                  {statusTab === 'active' ? 'No live battles right now' : statusTab === 'pending' ? 'No open challenges' : 'No settled challenges yet'}
+                  {tab === 'active' ? 'No live battles right now' : tab === 'pending' ? 'No open challenges' : 'No settled challenges yet'}
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  {statusTab === 'settled' ? 'Challenges settle automatically when the match finishes.' : 'Be the first — pick a match and post a challenge.'}
+                  {tab === 'settled' ? 'Challenges settle when the match finishes.' : 'Be the first — pick a match and post a challenge.'}
                 </p>
-                {user && statusTab !== 'settled' && (
+                {user && tab !== 'settled' && (
                   <button onClick={() => setShowCreate(true)}
                     className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold transition-colors">
                     + Create a Challenge
@@ -1089,16 +1271,15 @@ export default function ChallengesPage() {
               {filtered.map(c => (
                 <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
                   onAccept={setAcceptTarget} onCancel={handleCancel}
-                  liveData={liveDataMap[c.matchId]} />
+                  liveData={liveMap[c.matchId]} />
               ))}
             </div>
           </div>
 
-          {/* ── Right sidebar: leaderboard + recent wins ── */}
+          {/* ── Right Sidebar ── */}
           <div className="lg:col-span-3 space-y-4">
             <ChallengeLeaderboard challenges={all} />
-            <RecentActivity challenges={all} />
-
+            <RecentWins challenges={all} />
             {!user && (
               <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-center">
                 <div className="text-2xl mb-2">⚔️</div>
@@ -1110,12 +1291,20 @@ export default function ChallengesPage() {
               </div>
             )}
           </div>
-
         </div>
       </div>
 
-      {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={() => mutate()} />}
-      {acceptTarget && <AcceptModal challenge={acceptTarget} onClose={() => setAcceptTarget(null)} onAccepted={() => { mutate(); setAcceptTarget(null); }} />}
+      {showCreate && (
+        <CreateModal
+          onClose={() => { setShowCreate(false); setPrefillOpponentId(undefined); }}
+          onCreated={() => mutate()}
+          prefillOpponentId={prefillOpponentId}
+        />
+      )}
+      {acceptTarget && (
+        <AcceptModal challenge={acceptTarget} onClose={() => setAcceptTarget(null)}
+          onAccepted={() => { mutate(); setAcceptTarget(null); }} />
+      )}
     </div>
   );
 }

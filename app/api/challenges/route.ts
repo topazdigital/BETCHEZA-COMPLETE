@@ -4,6 +4,7 @@ import {
   getChallenges, createChallenge, seedFakeChallengesFromMatches,
   isFakeUserId, type MatchSnapshot,
 } from '@/lib/challenges-store';
+import type { PickSelection } from '@/lib/challenge-picks';
 import { getBalance, debit } from '@/lib/wallet-store';
 import { dispatchNotification } from '@/lib/notification-dispatcher';
 import { query } from '@/lib/db';
@@ -11,7 +12,6 @@ import { getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 
-// Seed fake challenges in the background (non-blocking) — only once per server lifetime
 let _seedDone = false;
 function seedInBackground() {
   if (_seedDone) return;
@@ -50,7 +50,6 @@ function seedInBackground() {
 
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get('status') || 'all';
-  // Kick off background seeding without awaiting
   seedInBackground();
   try {
     const challenges = await getChallenges(status as 'all' | 'pending' | 'active' | 'settled' | 'cancelled');
@@ -69,7 +68,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as {
       matchId?: string;
       matchSnapshot?: MatchSnapshot;
-      challengerPick?: string;
+      picks?: PickSelection[];
+      challengerPick?: string;  // legacy single-pick fallback
       opponentId?: number | null;
       stakeKes?: number;
       isPublic?: boolean;
@@ -81,21 +81,27 @@ export async function POST(req: NextRequest) {
     if (!body.matchSnapshot?.homeTeam) {
       return NextResponse.json({ error: 'Match details are required' }, { status: 400 });
     }
-    if (!body.challengerPick?.trim()) {
-      return NextResponse.json({ error: 'Please select your prediction' }, { status: 400 });
+
+    // Accept multi-picks array or fall back to legacy single pick
+    const picks: PickSelection[] = body.picks?.length
+      ? body.picks
+      : body.challengerPick
+        ? [{ pick: body.challengerPick, odds: 2.00, group: 'Match Result' }]
+        : [];
+
+    if (!picks.length) {
+      return NextResponse.json({ error: 'Please select at least one prediction' }, { status: 400 });
     }
 
     const stakeKes = Math.max(0, Math.round(body.stakeKes ?? 0));
     const opponentId = body.opponentId || null;
 
-    // Block fake vs real mixing
     if (opponentId !== null) {
       if (!isFakeUserId(opponentId) && isFakeUserId(user.id)) {
         return NextResponse.json({ error: 'Fake tipsters cannot challenge real users.' }, { status: 400 });
       }
     }
 
-    // Wallet check and debit for real users with stake
     if (stakeKes > 0 && !isFakeUserId(user.id)) {
       const balance = getBalance(user.id);
       if (balance < stakeKes) {
@@ -110,7 +116,7 @@ export async function POST(req: NextRequest) {
       const debitResult = debit(user.id, stakeKes, {
         type: 'competition_entry',
         description: `Challenge stake: ${body.matchSnapshot.homeTeam} vs ${body.matchSnapshot.awayTeam}`,
-        meta: { matchId: body.matchId, pick: body.challengerPick },
+        meta: { matchId: body.matchId, picks: picks.map(p => p.pick).join(', ') },
       });
       if (!debitResult.ok) {
         return NextResponse.json({ error: debitResult.error, insufficientBalance: true, walletBalance: debitResult.balance, stakeKes }, { status: 402 });
@@ -121,22 +127,21 @@ export async function POST(req: NextRequest) {
       matchId: body.matchId.trim(),
       matchSnapshot: body.matchSnapshot,
       challengerId: user.id,
-      challengerPick: body.challengerPick.trim(),
+      challengerPicks: picks,
       challengedId: opponentId,
       stakeKes,
       isPublic: body.isPublic !== false,
       isFake: false,
     });
 
-    // Notify named opponent
     if (opponentId && !isFakeUserId(opponentId)) {
       try {
         const { rows } = await query<{ email: string }>(`SELECT email FROM users WHERE id = ? LIMIT 1`, [opponentId]);
-        const email = rows[0]?.email || null;
+        const pickDesc = picks.map(p => p.pick).join(' + ');
         await dispatchNotification({
-          userId: opponentId, email, type: 'system',
+          userId: opponentId, email: rows[0]?.email || null, type: 'system',
           title: '⚔️ You\'ve been challenged!',
-          content: `${user.displayName || user.username} challenged you to predict ${body.matchSnapshot.homeTeam} vs ${body.matchSnapshot.awayTeam}${stakeKes > 0 ? ` — KES ${stakeKes.toLocaleString()} stake` : ''}.`,
+          content: `${user.displayName || user.username} challenged you on ${body.matchSnapshot.homeTeam} vs ${body.matchSnapshot.awayTeam} — picking "${pickDesc}"${stakeKes > 0 ? ` · KES ${stakeKes.toLocaleString()} stake` : ''}.`,
           link: '/challenges',
         });
       } catch { /* non-fatal */ }
