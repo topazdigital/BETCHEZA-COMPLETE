@@ -253,7 +253,11 @@ function rowToChallenge(
     matchAwayLogo: row.match_away_logo ? String(row.match_away_logo) : null,
     matchLeague: String(row.match_league || ''),
     matchSport: String(row.match_sport || 'football'),
-    matchKickoff: row.match_kickoff ? String(row.match_kickoff) : null,
+    matchKickoff: row.match_kickoff
+      ? (row.match_kickoff instanceof Date
+          ? row.match_kickoff.toISOString()
+          : String(row.match_kickoff))
+      : null,
     matchStatus: String(row.match_status || 'scheduled'),
     challengerId: Number(row.challenger_id),
     challengedId: row.challenged_id ? Number(row.challenged_id) : null,

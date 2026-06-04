@@ -264,12 +264,12 @@ function PointsBar({
   challengerPicks, challengedPicks,
   homeScore, awayScore,
   challengerName, challengedName,
-  finished, winnerId, challengerId,
+  live, finished, winnerId, challengerId,
 }: {
   challengerPicks: PickSelection[]; challengedPicks: PickSelection[];
   homeScore: number | null; awayScore: number | null;
   challengerName: string; challengedName: string;
-  finished: boolean; winnerId?: number | null; challengerId?: number;
+  live: boolean; finished: boolean; winnerId?: number | null; challengerId?: number;
 }) {
   const [flash, setFlash] = useState(false);
   const prevScoreRef = useRef<string | null>(null);
@@ -285,11 +285,11 @@ function PointsBar({
     }
     prevScoreRef.current = key;
   }, [homeScore, awayScore]);
-  // Don't show bar before match starts
-  if (homeScore === null) return null;
 
-  // Don't show bar while match is in progress but no picks have hit yet
-  if (!finished && cPts === 0 && oPts === 0) return null;
+  // Never show points before the match has actually started
+  if (!live && !finished) return null;
+  // No score data available
+  if (homeScore === null) return null;
 
   const total = Math.max(cPts + oPts, 0.01);
   const cPct = (cPts / total) * 100;
@@ -1004,7 +1004,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
           </div>
         )}
 
-        {/* Points comparison bar (when both have picks) */}
+        {/* Points comparison bar (only when match is live or finished) */}
         {(challPicks.length > 0 && opPicks.length > 0) && (
           <PointsBar
             challengerPicks={challPicks}
@@ -1013,6 +1013,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
             awayScore={awayScore}
             challengerName={challenge.challenger?.displayName || 'Challenger'}
             challengedName={challenge.challenged?.displayName || 'Opponent'}
+            live={live}
             finished={finished || settled}
             winnerId={settled ? winnerId : undefined}
             challengerId={challengerId}
