@@ -9,6 +9,18 @@ function isFinished(status: string): boolean {
   );
 }
 
+function isLiveStatus(status: string): boolean {
+  const s = (status || '').toLowerCase();
+  return (
+    s === 'in-progress' ||
+    s === 'in_progress' ||
+    s === 'live' ||
+    s === '1h' || s === '2h' || s === 'ht' ||
+    s === 'halftime' || s === 'half-time' ||
+    s.includes('progress') || s.includes('live')
+  );
+}
+
 async function fetchScores(matchIds: string[]): Promise<Record<string, {
   homeScore: number | null;
   awayScore: number | null;
@@ -34,7 +46,6 @@ async function fetchScores(matchIds: string[]): Promise<Record<string, {
 }
 
 // Trigger settlement for challenges whose matches have finished.
-// Runs in the background — does not block the SSE response.
 function triggerSettlement() {
   (async () => {
     try {
@@ -46,6 +57,94 @@ function triggerSettlement() {
     } catch { /* non-fatal */ }
   })();
 }
+
+// ─── Lead-change push notifications ──────────────────────────────────────────
+
+type LeaderState = 'challenger' | 'challenged' | 'tied';
+
+interface ChallengeSnapshot {
+  id: number;
+  matchId: string;
+  challengerId: number;
+  challengedId: number | null;
+  challengerName: string;
+  challengedName: string;
+  challengerPick: import('@/lib/challenge-picks').PickSelection[];
+  challengedPick: import('@/lib/challenge-picks').PickSelection[];
+  homeTeam: string;
+  awayTeam: string;
+}
+
+async function loadChallengesForMatches(matchIds: string[]): Promise<ChallengeSnapshot[]> {
+  try {
+    const { getChallenges, isFakeUserId } = await import('@/lib/challenges-store');
+    const all = await getChallenges('active');
+    return all
+      .filter(c => matchIds.includes(c.matchId) && c.challengedPick && c.challengedPick.length > 0)
+      .filter(c => !isFakeUserId(c.challengerId))
+      .map(c => ({
+        id: c.id,
+        matchId: c.matchId,
+        challengerId: c.challengerId,
+        challengedId: c.challengedId,
+        challengerName: c.challenger?.displayName || c.challenger?.username || 'Challenger',
+        challengedName: c.challenged?.displayName || c.challenged?.username || 'Opponent',
+        challengerPick: c.challengerPick,
+        challengedPick: c.challengedPick ?? [],
+        homeTeam: c.matchHomeTeam,
+        awayTeam: c.matchAwayTeam,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function sendLeadChangePush(
+  ch: ChallengeSnapshot,
+  newLeader: LeaderState,
+  cPts: number,
+  oPts: number,
+) {
+  (async () => {
+    try {
+      const { sendPushToTopic } = await import('@/lib/push-sender');
+      const { sendPushToUser } = await import('@/lib/notification-dispatcher');
+      const { isFakeUserId } = await import('@/lib/challenges-store');
+
+      const matchLabel = `${ch.homeTeam} vs ${ch.awayTeam}`;
+      const tag = `challenge-lead-${ch.id}`;
+
+      let title: string;
+      let body: string;
+
+      if (newLeader === 'tied') {
+        title = `⚔️ It's level! ${matchLabel}`;
+        body = `${ch.challengerName} and ${ch.challengedName} are tied on points!`;
+      } else {
+        const leaderName = newLeader === 'challenger' ? ch.challengerName : ch.challengedName;
+        const leaderPts  = newLeader === 'challenger' ? cPts : oPts;
+        const trailerPts = newLeader === 'challenger' ? oPts : cPts;
+        title = `⚔️ Lead change! ${matchLabel}`;
+        body  = `${leaderName} takes the lead! ${leaderPts.toFixed(2)} vs ${trailerPts.toFixed(2)} pts`;
+      }
+
+      const payload = { title, body, url: '/challenges', tag };
+
+      // Notify all watchers subscribed to this challenge topic
+      await sendPushToTopic(`challenge_${ch.id}`, payload);
+
+      // Notify the two players directly (they care most even if not watching)
+      if (!isFakeUserId(ch.challengerId)) {
+        await sendPushToUser(ch.challengerId, title, body, '/challenges');
+      }
+      if (ch.challengedId && !isFakeUserId(ch.challengedId)) {
+        await sendPushToUser(ch.challengedId, title, body, '/challenges');
+      }
+    } catch { /* non-fatal */ }
+  })();
+}
+
+// ─── SSE handler ──────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   const matchIds = (req.nextUrl.searchParams.get('matchIds') || '')
@@ -68,6 +167,11 @@ export async function GET(req: NextRequest) {
       let intervalId: ReturnType<typeof setInterval> | null = null;
       let settlementTriggered = false;
 
+      // Lead-change tracking
+      const prevLeader: Record<number, LeaderState> = {};
+      let challenges: ChallengeSnapshot[] = [];
+      let challengesLoaded = false;
+
       const send = (payload: unknown) => {
         if (closed) return;
         try {
@@ -81,21 +185,53 @@ export async function GET(req: NextRequest) {
           const data = await fetchScores(matchIds);
           send({ data });
 
+          // Lazy-load challenge data on first real score update
+          if (!challengesLoaded) {
+            challengesLoaded = true;
+            challenges = await loadChallengesForMatches(matchIds);
+          }
+
+          // ── Lead-change detection (background, non-blocking) ──
+          if (challenges.length > 0) {
+            (async () => {
+              try {
+                const { calcPoints } = await import('@/lib/challenge-picks');
+                for (const ch of challenges) {
+                  const score = data[ch.matchId];
+                  if (!score) continue;
+                  if (!isLiveStatus(score.status)) continue;
+                  if (score.homeScore === null || score.awayScore === null) continue;
+                  if (!ch.challengerPick.length || !ch.challengedPick.length) continue;
+
+                  const cPts = calcPoints(ch.challengerPick, score.homeScore, score.awayScore);
+                  const oPts = calcPoints(ch.challengedPick, score.homeScore, score.awayScore);
+                  const newLeader: LeaderState =
+                    cPts > oPts ? 'challenger' : oPts > cPts ? 'challenged' : 'tied';
+
+                  const oldLeader = prevLeader[ch.id];
+                  prevLeader[ch.id] = newLeader;
+
+                  // Only fire when leader actually CHANGES (skip the first poll to avoid spam on connect)
+                  if (oldLeader !== undefined && oldLeader !== newLeader) {
+                    sendLeadChangePush(ch, newLeader, cPts, oPts);
+                  }
+                }
+              } catch { /* non-fatal */ }
+            })();
+          }
+
           const allFinished = Object.values(data).length > 0 &&
             Object.values(data).every(d => isFinished(d.status));
 
           if (allFinished) {
-            // Trigger real backend settlement the moment we detect all matches finished
             if (!settlementTriggered) {
               settlementTriggered = true;
               triggerSettlement();
             }
-
             if (intervalId) {
               clearInterval(intervalId);
               intervalId = null;
             }
-            // Tell the client: matches finished + challenges need a refresh
             send({ finished: true, needsRefresh: true });
             try { controller.close(); } catch { /* already closed */ }
           }
