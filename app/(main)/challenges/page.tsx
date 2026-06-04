@@ -6,7 +6,7 @@ import useSWR from 'swr';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
 import { useUserSettings } from '@/contexts/user-settings-context';
-import { formatTime, formatDate, isToday, isTomorrow } from '@/lib/utils/timezone';
+import { formatTime, formatDate, isToday, isTomorrow, getBrowserTimezone } from '@/lib/utils/timezone';
 import { pickOptionsForSport, resolvePickOdds, maxPoints, parsePicks, pickOutcome } from '@/lib/challenge-picks';
 import type { PickSelection, PickOption } from '@/lib/challenge-picks';
 import { isPushSupported, ensurePushSubscribed } from '@/lib/push-client';
@@ -273,40 +273,26 @@ function PointsBar({
     }
     prevScoreRef.current = key;
   }, [homeScore, awayScore]);
-  const cMax = maxPoints(challengerPicks);
-  const oMax = maxPoints(challengedPicks);
-  const totalMax = Math.max(cMax + oMax, 0.01);
-  const cPct = (cPts / totalMax) * 100;
-  const oPct = (oPts / totalMax) * 100;
+  // Don't show bar before match starts
+  if (homeScore === null) return null;
+
+  // Don't show bar while match is in progress but no picks have hit yet
+  if (!finished && cPts === 0 && oPts === 0) return null;
+
+  const total = Math.max(cPts + oPts, 0.01);
+  const cPct = (cPts / total) * 100;
+  const oPct = (oPts / total) * 100;
+
   // When settled with a tiebreaker winner, respect the decided winner even when pts are equal
   const settledWinner = finished && winnerId != null
     ? (winnerId === challengerId ? 'challenger' : 'opponent')
     : null;
   const leading = settledWinner ?? (cPts > oPts ? 'challenger' : oPts > cPts ? 'opponent' : 'tie');
 
-  if (homeScore === null) {
-    // Pre-match: show max potential comparison
-    const cMaxPct = (cMax / totalMax) * 100;
-    const oMaxPct = (oMax / totalMax) * 100;
-    return (
-      <div>
-        <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-          <span className="font-medium text-blue-400">{challengerName.split(' ')[0]} · {cMax.toFixed(2)} pts max</span>
-          <span className="text-muted-foreground">Potential</span>
-          <span className="font-medium text-purple-400">{oMax.toFixed(2)} pts max · {challengedName.split(' ')[0]}</span>
-        </div>
-        <div className="h-2 rounded-full bg-muted flex overflow-hidden">
-          <div className="h-full bg-blue-500/40 transition-all duration-700" style={{ width: `${cMaxPct}%` }} />
-          <div className="h-full bg-purple-500/40 transition-all duration-700" style={{ width: `${oMaxPct}%` }} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={flash ? 'animate-pulse' : ''}>
       <div className="flex justify-between items-center text-xs mb-1.5">
-        <span className={`font-bold tabular-nums transition-colors duration-500 ${leading === 'challenger' ? 'text-green-400' : 'text-blue-400'}`}>
+        <span className="font-bold tabular-nums text-green-400">
           {challengerName.split(' ')[0]}: {cPts.toFixed(2)} pts
         </span>
         {leading !== 'tie' ? (
@@ -318,13 +304,13 @@ function PointsBar({
             {finished ? '🤝 Draw' : '⚖️ Tied'}
           </span>
         )}
-        <span className={`font-bold tabular-nums transition-colors duration-500 ${leading === 'opponent' ? 'text-green-400' : 'text-purple-400'}`}>
+        <span className="font-bold tabular-nums text-orange-400">
           {oPts.toFixed(2)} pts · {challengedName.split(' ')[0]}
         </span>
       </div>
       <div className="h-2.5 rounded-full bg-muted flex overflow-hidden relative">
-        <div className={`h-full transition-all duration-700 ${leading === 'challenger' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(cPct, cPts > 0 ? 3 : 0)}%` }} />
-        <div className={`h-full transition-all duration-700 ${leading === 'opponent' ? 'bg-green-500' : 'bg-purple-500'}`} style={{ width: `${Math.max(oPct, oPts > 0 ? 3 : 0)}%` }} />
+        <div className="h-full bg-green-500 transition-all duration-700" style={{ width: `${Math.max(cPct, cPts > 0 ? 3 : 0)}%` }} />
+        <div className="h-full bg-orange-500 transition-all duration-700" style={{ width: `${Math.max(oPct, oPts > 0 ? 3 : 0)}%` }} />
       </div>
       {!finished && (
         <p className="text-xs text-muted-foreground mt-1 text-center">
@@ -838,8 +824,8 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
   onAccept: (c: Challenge) => void; onCancel: (id: number) => void;
   liveData?: LiveMatchData;
 }) {
-  const { settings: tzSettings } = useUserSettings();
-  const tz = tzSettings.timezone || 'Africa/Nairobi';
+  const { settings: tzSettings, isLoaded } = useUserSettings();
+  const tz = (isLoaded && tzSettings.timezone) ? tzSettings.timezone : getBrowserTimezone();
   const { status, challengerId, challengedId, winnerId, drawRefunded } = challenge;
   const settled = status === 'settled';
   const active = status === 'active';
