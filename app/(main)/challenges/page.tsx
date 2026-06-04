@@ -96,10 +96,20 @@ function useLiveStream(matchIds: string[], onAllFinished?: () => void): Record<s
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// MySQL DATETIME columns come back as "YYYY-MM-DD HH:mm:ss" (no TZ).
+// We store them as UTC, so append 'Z' to force UTC interpretation in all browsers.
+function parseKickoff(iso: string | null): Date | null {
+  if (!iso) return null;
+  const s = iso.trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + 'Z');
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s + 'Z');
+  return new Date(s);
+}
+
 function formatKickoff(iso: string | null, timezone = 'Africa/Nairobi'): string {
   if (!iso) return 'TBD';
   try {
-    const d = new Date(iso);
+    const d = parseKickoff(iso)!;
     const dayLabel = isToday(d, timezone) ? 'Today' : isTomorrow(d, timezone) ? 'Tomorrow' : formatDate(d, timezone);
     return `${dayLabel}, ${formatTime(d, timezone)}`;
   } catch { return iso; }
@@ -107,7 +117,9 @@ function formatKickoff(iso: string | null, timezone = 'Africa/Nairobi'): string 
 
 function countdown(iso: string | null): string {
   if (!iso) return '';
-  const diff = new Date(iso).getTime() - Date.now();
+  const d = parseKickoff(iso);
+  if (!d) return '';
+  const diff = d.getTime() - Date.now();
   if (diff <= 0) return 'Kick-off!';
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
@@ -859,7 +871,7 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
     }`}>
 
       {/* Match header */}
-      <div className="px-4 pt-3 pb-2.5 border-b border-border/50">
+      <div className="px-3 pt-2.5 pb-2 border-b border-border/50">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground truncate flex-1 mr-2">{challenge.matchLeague}</span>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -916,11 +928,11 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
       </div>
 
       {/* Battle section */}
-      <div className="px-4 py-3 space-y-3">
+      <div className="px-3 py-2.5 space-y-2.5">
         {/* Two-column picks battle */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           {/* Challenger */}
-          <div className={`rounded-xl p-3 border ${challengerWon ? 'bg-green-500/10 border-green-500/40' : isDraw ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-muted/40 border-border/60'}`}>
+          <div className={`rounded-lg p-2.5 border ${challengerWon ? 'bg-green-500/10 border-green-500/40' : isDraw ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-muted/40 border-border/60'}`}>
             <div className="flex items-center gap-2 mb-2">
               <Avatar src={challenge.challenger?.avatar ?? null} name={challenge.challenger?.displayName || '?'} size={24} />
               <div className="flex-1 min-w-0">
@@ -1096,21 +1108,21 @@ function ChallengeLeaderboard({ challenges }: { challenges: Challenge[] }) {
   const MEDALS = ['🥇', '🥈', '🥉'];
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">🏆 Top Challengers</div>
+    <div className="rounded-lg border border-border bg-card p-3">
+      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">🏆 Top Challengers</div>
       {leaders.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-3">No settled challenges yet</p>
+        <p className="text-xs text-muted-foreground text-center py-2">No settled challenges yet</p>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {leaders.map(([id, s], i) => {
             const winPct = Math.round((s.won / s.total) * 100);
             return (
               <div key={id} className="flex items-center gap-2">
-                <span className="w-5 text-center text-sm shrink-0">{MEDALS[i] || <span className="text-xs font-bold text-muted-foreground">{i + 1}</span>}</span>
-                <Avatar src={s.avatar} name={s.name} size={26} />
+                <span className="w-4 text-center text-xs shrink-0">{MEDALS[i] || <span className="text-xs font-bold text-muted-foreground">{i + 1}</span>}</span>
+                <Avatar src={s.avatar} name={s.name} size={22} />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold text-foreground truncate">{s.name}</div>
-                  <div className="text-xs text-muted-foreground">{s.won}W / {s.total - s.won}L</div>
+                  <div className="text-[10px] text-muted-foreground">{s.won}W / {s.total - s.won}L</div>
                 </div>
                 <div className={`text-xs font-bold shrink-0 ${winPct >= 70 ? 'text-green-500' : winPct >= 50 ? 'text-yellow-500' : 'text-red-400'}`}>
                   {winPct}%
@@ -1133,18 +1145,18 @@ function RecentWins({ challenges }: { challenges: Challenge[] }) {
     .slice(0, 5);
   if (!recent.length) return null;
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">Recent Wins</div>
-      <div className="space-y-2.5">
+    <div className="rounded-lg border border-border bg-card p-3">
+      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Recent Wins</div>
+      <div className="space-y-2">
         {recent.map(c => {
           const winner = c.winnerId === c.challengerId ? c.challenger : c.challenged;
           const payout = Math.round(c.stakeKes * 2 * 0.9);
           return (
             <div key={c.id} className="flex items-center gap-2">
-              <span className="text-base shrink-0">🏆</span>
+              <span className="text-sm shrink-0">🏆</span>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-foreground truncate">{winner?.displayName || 'Tipster'}</div>
-                <div className="text-xs text-muted-foreground truncate">{c.matchHomeTeam} vs {c.matchAwayTeam}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{c.matchHomeTeam} vs {c.matchAwayTeam}</div>
               </div>
               {payout > 0 && <div className="text-xs font-bold text-green-500 shrink-0">+{payout.toLocaleString()}</div>}
             </div>
@@ -1211,7 +1223,7 @@ export default function ChallengesPage() {
     if (ld) return isMatchLive(ld.status); // trust live data status
     // No live data — check kickoff time: only count as live if kickoff ≤ now and within 3h
     if (!c.matchKickoff) return false;
-    const kickoff = new Date(c.matchKickoff).getTime();
+    const kickoff = parseKickoff(c.matchKickoff)?.getTime() ?? 0;
     const now = Date.now();
     return now >= kickoff && now - kickoff < 3 * 60 * 60 * 1000;
   });
@@ -1221,7 +1233,7 @@ export default function ChallengesPage() {
     if (ld) return !isMatchLive(ld.status) && !isMatchFinished(ld.status);
     // No live data — treat as upcoming if kickoff is still in the future
     if (!c.matchKickoff) return true; // no kickoff info → show as upcoming
-    const kickoff = new Date(c.matchKickoff).getTime();
+    const kickoff = parseKickoff(c.matchKickoff)?.getTime() ?? 0;
     return Date.now() < kickoff;
   });
 
@@ -1280,7 +1292,7 @@ export default function ChallengesPage() {
         const aLive = trulyLive.some(x => x.id === a.id) ? 0 : 1;
         const bLive = trulyLive.some(x => x.id === b.id) ? 0 : 1;
         if (aLive !== bLive) return aLive - bLive;
-        return new Date(a.matchKickoff || 0).getTime() - new Date(b.matchKickoff || 0).getTime();
+        return (parseKickoff(a.matchKickoff)?.getTime() ?? 0) - (parseKickoff(b.matchKickoff)?.getTime() ?? 0);
       })
     : filtered;
 
@@ -1295,64 +1307,64 @@ export default function ChallengesPage() {
 
   return (
     <div className="w-full">
-      <div className="px-4 py-6">
+      <div className="px-3 sm:px-4 py-3 sm:py-4">
 
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex items-center justify-between gap-3 mb-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">⚔️ Tipster Challenges</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Pick a real match · Select your predictions · Points = odds of correct picks · Highest score wins
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">⚔️ Tipster Challenges</h1>
+            <p className="text-muted-foreground text-xs mt-0.5 hidden sm:block">
+              Pick a match · Select predictions · Points = odds of correct picks · Highest score wins
             </p>
           </div>
           {user && (
             <button onClick={() => setShowCreate(true)}
-              className="shrink-0 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg transition-colors flex items-center gap-2">
+              className="shrink-0 px-3 sm:px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold shadow transition-colors flex items-center gap-1.5">
               + Challenge
             </button>
           )}
         </div>
 
         {/* 3-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
 
           {/* ── Left Sidebar ── */}
-          <div className="lg:col-span-3 space-y-4">
-            {/* Arena stats */}
-            <div className="rounded-xl border border-border bg-card p-4">
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">Arena</div>
-              <div className="space-y-2">
+          <div className="lg:col-span-3 space-y-3">
+            {/* Arena stats + Sport filter combined on mobile as a horizontal strip */}
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Arena</div>
+              <div className="grid grid-cols-2 sm:grid-cols-1 gap-x-4 gap-y-1">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full inline-block ${counts.live > 0 ? 'bg-red-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full inline-block ${counts.live > 0 ? 'bg-red-500 animate-pulse' : 'bg-muted-foreground'}`} />
                     Live Now
                   </span>
-                  <span className="font-bold text-foreground">{counts.live}</span>
+                  <span className="font-bold text-sm text-foreground">{counts.live}</span>
                 </div>
                 {counts.upcoming > 0 && (
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-primary/60 inline-block" />
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary/60 inline-block" />
                       Upcoming
                     </span>
-                    <span className="font-bold text-foreground">{counts.upcoming}</span>
+                    <span className="font-bold text-sm text-foreground">{counts.upcoming}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Open</span>
-                  <span className="font-bold text-foreground">{counts.pending}</span>
+                  <span className="text-xs text-muted-foreground">Open</span>
+                  <span className="font-bold text-sm text-foreground">{counts.pending}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Settled</span>
-                  <span className="font-bold text-foreground">{counts.settled}</span>
+                  <span className="text-xs text-muted-foreground">Settled</span>
+                  <span className="font-bold text-sm text-foreground">{counts.settled}</span>
                 </div>
               </div>
             </div>
 
             {/* Sport filter */}
-            <div className="rounded-xl border border-border bg-card p-4">
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">Sport</div>
-              <div className="flex flex-col gap-1">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Sport</div>
+              <div className="flex flex-wrap sm:flex-col gap-1">
                 {[
                   { label: 'All Sports', value: '' },
                   { label: '⚽ Football', value: 'football' },
@@ -1361,7 +1373,7 @@ export default function ChallengesPage() {
                   { label: '🏏 Cricket', value: 'cricket' },
                 ].map(t => (
                   <button key={t.value} onClick={() => setSportFilter(t.value)}
-                    className={`text-left px-3 py-1.5 rounded-lg text-sm transition-colors ${sportFilter === t.value ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>
+                    className={`text-left px-2.5 py-1 rounded-md text-xs transition-colors ${sportFilter === t.value ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>
                     {t.label}
                   </button>
                 ))}
@@ -1369,13 +1381,13 @@ export default function ChallengesPage() {
             </div>
 
             {/* How scoring works */}
-            <div className="rounded-xl border border-border bg-card p-4">
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">How Points Work</div>
-              <ol className="space-y-1.5 text-xs text-muted-foreground">
-                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">1.</span>Select 1–5 predictions per match (1X2, Goals, BTTS…)</li>
-                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">2.</span>Each correct pick scores its real odds as points (e.g. Home Win @2.20 wins = 2.20 pts)</li>
-                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">3.</span>Highest total points wins the stake pot (90%)</li>
-                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">4.</span>Tied score? Fewer lost points decides the winner. Only a perfect tie = full refund</li>
+            <div className="rounded-lg border border-border bg-card p-3 hidden lg:block">
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">How Points Work</div>
+              <ol className="space-y-1 text-xs text-muted-foreground">
+                <li className="flex gap-1.5"><span className="text-primary font-bold shrink-0">1.</span>Select 1–5 predictions per match (1X2, Goals, BTTS…)</li>
+                <li className="flex gap-1.5"><span className="text-primary font-bold shrink-0">2.</span>Each correct pick scores its real odds as points</li>
+                <li className="flex gap-1.5"><span className="text-primary font-bold shrink-0">3.</span>Highest total points wins the stake pot (90%)</li>
+                <li className="flex gap-1.5"><span className="text-primary font-bold shrink-0">4.</span>Perfect tie = full refund</li>
               </ol>
             </div>
           </div>
@@ -1383,16 +1395,16 @@ export default function ChallengesPage() {
           {/* ── Centre: Tabs + Cards ── */}
           <div className="lg:col-span-6">
             {/* Tab bar */}
-            <div className="flex gap-1 p-1 bg-muted rounded-xl border border-border mb-4">
+            <div className="flex gap-0.5 p-0.5 bg-muted rounded-lg border border-border mb-3">
               {TABS.map(t => (
                 <button key={t.value} onClick={() => setTab(t.value)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors relative ${tab === t.value ? 'bg-card text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors relative ${tab === t.value ? 'bg-card text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
                   {t.label}
                   {t.value === 'active' && counts.active > 0 && (
-                    <span className={`ml-1 px-1.5 py-0.5 text-white text-xs rounded-full ${counts.live > 0 ? 'bg-red-500' : 'bg-primary'}`}>{counts.active}</span>
+                    <span className={`ml-0.5 px-1 py-0.5 text-white text-[10px] rounded-full ${counts.live > 0 ? 'bg-red-500' : 'bg-primary'}`}>{counts.active}</span>
                   )}
                   {t.value === 'pending' && counts.pending > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-yellow-500 text-black text-xs rounded-full">{counts.pending}</span>
+                    <span className="ml-0.5 px-1 py-0.5 bg-yellow-500 text-black text-[10px] rounded-full">{counts.pending}</span>
                   )}
                 </button>
               ))}
@@ -1518,7 +1530,7 @@ export default function ChallengesPage() {
                         <span className="text-xs font-bold text-red-400 uppercase tracking-wide">Live Now</span>
                         <div className="h-px flex-1 bg-red-500/20" />
                       </div>
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         {liveCards.map(c => (
                           <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
                             onAccept={setAcceptTarget} onCancel={handleCancel}
@@ -1529,11 +1541,11 @@ export default function ChallengesPage() {
                   )}
                   {upcomingCards.length > 0 && (
                     <div>
-                      <div className="flex items-center gap-2 mb-3">
+                      <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-bold text-primary uppercase tracking-wide">⏰ Upcoming</span>
                         <div className="h-px flex-1 bg-primary/20" />
                       </div>
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         {upcomingCards.map(c => (
                           <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
                             onAccept={setAcceptTarget} onCancel={handleCancel}
@@ -1545,7 +1557,7 @@ export default function ChallengesPage() {
                 </div>
               );
             })() : tab !== 'history' && (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {sortedFiltered.map(c => (
                   <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
                     onAccept={setAcceptTarget} onCancel={handleCancel}
@@ -1556,15 +1568,15 @@ export default function ChallengesPage() {
           </div>
 
           {/* ── Right Sidebar ── */}
-          <div className="lg:col-span-3 space-y-4">
+          <div className="lg:col-span-3 space-y-3">
             <ChallengeLeaderboard challenges={all} />
             <RecentWins challenges={all} />
             {!user && (
-              <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-center">
-                <div className="text-2xl mb-2">⚔️</div>
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-center">
+                <div className="text-xl mb-1.5">⚔️</div>
                 <div className="text-sm font-semibold text-foreground mb-1">Join the Arena</div>
-                <p className="text-xs text-muted-foreground mb-3">Sign up to post challenges and compete against other tipsters.</p>
-                <a href="/register" className="block py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors">
+                <p className="text-xs text-muted-foreground mb-2">Sign up to post challenges and compete against other tipsters.</p>
+                <a href="/register" className="block py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors">
                   Sign Up Free
                 </a>
               </div>

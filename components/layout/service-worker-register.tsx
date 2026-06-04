@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect } from 'react'
-import { toast } from 'sonner'
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
@@ -11,27 +10,19 @@ export function ServiceWorkerRegister() {
     navigator.serviceWorker
       .register('/sw.js', { scope: '/', updateViaCache: 'none' })
       .then((registration) => {
-        /* When a new SW version is waiting, offer a refresh */
-        const handleUpdate = (worker: ServiceWorker) => {
+        /* Silently activate new SW versions — no toast prompt */
+        const activateSilently = (worker: ServiceWorker) => {
           worker.addEventListener('statechange', () => {
-            if (worker.state === 'activated') {
-              toast('New version available', {
-                description: 'Reload to get the latest Betcheza update.',
-                action: {
-                  label: 'Reload',
-                  onClick: () => window.location.reload(),
-                },
-                duration: 10000,
-              })
+            if (worker.state === 'activated' && navigator.serviceWorker.controller) {
+              // Silent update — no user prompt
             }
           })
         }
 
-        if (registration.waiting) handleUpdate(registration.waiting)
-
+        if (registration.waiting) activateSilently(registration.waiting)
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing
-          if (newWorker) handleUpdate(newWorker)
+          if (newWorker) activateSilently(newWorker)
         })
 
         /* Periodically check for SW updates (every 60 min) */
@@ -40,17 +31,6 @@ export function ServiceWorkerRegister() {
       .catch(() => {
         /* SW registration failed — not critical, app still works online */
       })
-
-    /* When we come back online after being offline, reload stale pages */
-    const handleOnline = () => {
-      toast.success('Back online!', {
-        description: 'Refreshing to get the latest data…',
-        duration: 3000,
-      })
-      setTimeout(() => window.location.reload(), 1500)
-    }
-    window.addEventListener('online', handleOnline)
-    return () => window.removeEventListener('online', handleOnline)
   }, [])
 
   return null
