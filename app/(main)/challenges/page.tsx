@@ -251,12 +251,12 @@ function PointsBar({
   challengerPicks, challengedPicks,
   homeScore, awayScore,
   challengerName, challengedName,
-  finished,
+  finished, winnerId, challengerId,
 }: {
   challengerPicks: PickSelection[]; challengedPicks: PickSelection[];
   homeScore: number | null; awayScore: number | null;
   challengerName: string; challengedName: string;
-  finished: boolean;
+  finished: boolean; winnerId?: number | null; challengerId?: number;
 }) {
   const [flash, setFlash] = useState(false);
   const prevScoreRef = useRef<string | null>(null);
@@ -277,7 +277,11 @@ function PointsBar({
   const totalMax = Math.max(cMax + oMax, 0.01);
   const cPct = (cPts / totalMax) * 100;
   const oPct = (oPts / totalMax) * 100;
-  const leading = cPts > oPts ? 'challenger' : oPts > cPts ? 'opponent' : 'tie';
+  // When settled with a tiebreaker winner, respect the decided winner even when pts are equal
+  const settledWinner = finished && winnerId != null
+    ? (winnerId === challengerId ? 'challenger' : 'opponent')
+    : null;
+  const leading = settledWinner ?? (cPts > oPts ? 'challenger' : oPts > cPts ? 'opponent' : 'tie');
 
   if (homeScore === null) {
     // Pre-match: show max potential comparison
@@ -995,22 +999,35 @@ function ChallengeCard({ challenge, currentUserId, onAccept, onCancel, liveData 
             challengerName={challenge.challenger?.displayName || 'Challenger'}
             challengedName={challenge.challenged?.displayName || 'Opponent'}
             finished={finished || settled}
+            winnerId={settled ? winnerId : undefined}
+            challengerId={challengerId}
           />
         )}
 
         {/* Result line for settled */}
-        {settled && (
-          <div className={`text-center text-sm font-semibold py-1 rounded-lg ${isDraw ? 'text-yellow-500 bg-yellow-500/5' : 'text-green-500 bg-green-500/5'}`}>
-            {isDraw ? (
-              `🤝 Equal points — draw${challenge.stakeKes > 0 ? ` · KES ${challenge.stakeKes.toLocaleString()} refunded` : ''}`
-            ) : (
-              <>
-                🏆 {winnerId === challengerId ? challenge.challenger?.displayName : challenge.challenged?.displayName} wins
-                {challenge.stakeKes > 0 && ` · KES ${payout.toLocaleString()}`}
-              </>
-            )}
-          </div>
-        )}
+        {settled && (() => {
+          const cPtsSettled = calcLivePoints(challPicks, homeScore, awayScore);
+          const oPtsSettled = calcLivePoints(opPicks, homeScore, awayScore);
+          const tiedOnPts = !isDraw && winnerId !== null && cPtsSettled === oPtsSettled;
+          return (
+            <div className={`text-center text-sm font-semibold py-1 rounded-lg ${isDraw ? 'text-yellow-500 bg-yellow-500/5' : 'text-green-500 bg-green-500/5'}`}>
+              {isDraw ? (
+                `🤝 Perfectly tied — draw${challenge.stakeKes > 0 ? ` · KES ${challenge.stakeKes.toLocaleString()} refunded` : ''}`
+              ) : tiedOnPts ? (
+                <>
+                  🏆 {winnerId === challengerId ? challenge.challenger?.displayName : challenge.challenged?.displayName} wins by tiebreaker
+                  <span className="text-xs font-normal text-muted-foreground ml-1">(lost fewer pts)</span>
+                  {challenge.stakeKes > 0 && ` · KES ${payout.toLocaleString()}`}
+                </>
+              ) : (
+                <>
+                  🏆 {winnerId === challengerId ? challenge.challenger?.displayName : challenge.challenged?.displayName} wins
+                  {challenge.stakeKes > 0 && ` · KES ${payout.toLocaleString()}`}
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Community vote bar */}
         {(challenge.challengerVotes + challenge.opponentVotes) > 0 && challenge.challenged && (
@@ -1181,8 +1198,17 @@ export default function ChallengesPage() {
 
   const liveMap = useLiveStream(liveIds, handleAllFinished);
 
+  // For the Live tab, exclude challenges whose match is already finished per live data
+  // (they're awaiting background settlement — don't show them as "live")
+  const activeChallenges = all.filter(c => c.status === 'active');
+  const trulyLive = activeChallenges.filter(c => {
+    const ld = liveMap[c.matchId];
+    if (!ld) return true; // no live data yet — keep visible
+    return !isMatchFinished(ld.status);
+  });
+
   const counts = {
-    active: all.filter(c => c.status === 'active').length,
+    active: trulyLive.length,
     pending: all.filter(c => c.status === 'pending').length,
     settled: all.filter(c => c.status === 'settled').length,
   };
@@ -1194,6 +1220,11 @@ export default function ChallengesPage() {
 
   const filtered = all.filter(c => {
     if (c.status !== tab) return false;
+    // In the Live tab, hide challenges where the match is already finished per live data
+    if (tab === 'active') {
+      const ld = liveMap[c.matchId];
+      if (ld && isMatchFinished(ld.status)) return false;
+    }
     if (sportFilter && !c.matchSport.toLowerCase().includes(sportFilter)) return false;
     return true;
   });

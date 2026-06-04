@@ -508,16 +508,34 @@ export async function settleChallenge(id: number, homeScore: number, awayScore: 
 
   // ─── Points-based winner determination ─────────────────────────────────────
   // Each correct pick earns its odds as points. Highest total points wins.
-  // Equal points → draw → full refund to both sides.
-  const challengerPoints = calcPoints(ch.challengerPicks.length ? ch.challengerPicks : parsePicks(ch.challengerPick), homeScore, awayScore);
-  const challengedPoints = calcPoints(ch.challengedPicks.length ? ch.challengedPicks : parsePicks(ch.challengedPick), homeScore, awayScore);
+  // Tiebreaker: points deficit (maxPossible - earned). Lower deficit wins.
+  // Only a true draw (both had equal max and equal earned) triggers a refund.
+  const chPicks = ch.challengerPicks.length ? ch.challengerPicks : parsePicks(ch.challengerPick);
+  const opPicks = ch.challengedPicks.length ? ch.challengedPicks : parsePicks(ch.challengedPick);
+  const challengerPoints = calcPoints(chPicks, homeScore, awayScore);
+  const challengedPoints = calcPoints(opPicks, homeScore, awayScore);
 
   let winnerId: number | null = null;
   let drawRefunded = false;
 
-  if (challengerPoints > challengedPoints) winnerId = ch.challengerId;
-  else if (challengedPoints > challengerPoints) winnerId = ch.challengedId;
-  else drawRefunded = true; // equal points → draw → full refund
+  if (challengerPoints > challengedPoints) {
+    winnerId = ch.challengerId;
+  } else if (challengedPoints > challengerPoints) {
+    winnerId = ch.challengedId;
+  } else {
+    // Equal earned points — tiebreak by who lost the least potential points
+    const cMax = maxPoints(chPicks);
+    const oMax = maxPoints(opPicks);
+    const cDeficit = cMax - challengerPoints; // how much challenger "left on the table"
+    const oDeficit = oMax - challengedPoints;
+    if (cDeficit < oDeficit) {
+      winnerId = ch.challengerId; // challenger lost fewer points
+    } else if (oDeficit < cDeficit) {
+      winnerId = ch.challengedId; // challenged lost fewer points
+    } else {
+      drawRefunded = true; // genuinely tied in both earned and max — true draw
+    }
+  }
 
   const pot = ch.stakeKes * 2;
   const fee = Math.round(pot * (ch.platformFeePct / 100));
@@ -553,11 +571,20 @@ export async function settleChallenge(id: number, homeScore: number, awayScore: 
   try {
     const { sendPushToTopic } = await import('./push-sender');
     const matchLabel = `${ch.matchHomeTeam} vs ${ch.matchAwayTeam}`;
+    const cMax = maxPoints(chPicks);
+    const oMax = maxPoints(opPicks);
+    const cDeficit = cMax - challengerPoints;
+    const oDeficit = oMax - challengedPoints;
+    const tiedByDeficit = !drawRefunded && winnerId !== null && challengerPoints === challengedPoints;
     const resultLabel = drawRefunded
-      ? `Draw — equal points (${challengerPoints.toFixed(2)} pts each) · stakes refunded`
+      ? `Draw — both tied on points and max potential · stakes refunded`
       : winnerId === ch.challengerId
-        ? `${ch.challenger?.displayName || 'Challenger'} wins! (${challengerPoints.toFixed(2)} vs ${challengedPoints.toFixed(2)} pts)`
-        : `${ch.challenged?.displayName || 'Opponent'} wins! (${challengedPoints.toFixed(2)} vs ${challengerPoints.toFixed(2)} pts)`;
+        ? tiedByDeficit
+          ? `${ch.challenger?.displayName || 'Challenger'} wins by tiebreaker! (both ${challengerPoints.toFixed(2)} pts · ${cDeficit.toFixed(2)} vs ${oDeficit.toFixed(2)} pts lost)`
+          : `${ch.challenger?.displayName || 'Challenger'} wins! (${challengerPoints.toFixed(2)} vs ${challengedPoints.toFixed(2)} pts)`
+        : tiedByDeficit
+          ? `${ch.challenged?.displayName || 'Opponent'} wins by tiebreaker! (both ${challengedPoints.toFixed(2)} pts · ${oDeficit.toFixed(2)} vs ${cDeficit.toFixed(2)} pts lost)`
+          : `${ch.challenged?.displayName || 'Opponent'} wins! (${challengedPoints.toFixed(2)} vs ${challengerPoints.toFixed(2)} pts)`;
     await sendPushToTopic(`challenge_${id}`, {
       title: `⚔️ Challenge Settled: ${matchLabel}`,
       body: resultLabel,

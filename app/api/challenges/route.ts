@@ -1,16 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import {
-  getChallenges, createChallenge, seedFakeChallengesFromMatches,
+  getChallenges, createChallenge, acceptChallenge, seedFakeChallengesFromMatches,
   settlePendingChallenges, isFakeUserId, type MatchSnapshot,
 } from '@/lib/challenges-store';
 import type { PickSelection } from '@/lib/challenge-picks';
+import { pickOptionsForSport } from '@/lib/challenge-picks';
+import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getBalance, debit } from '@/lib/wallet-store';
 import { dispatchNotification } from '@/lib/notification-dispatcher';
 import { query } from '@/lib/db';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
 
+// ─── Fake tipster pick generation ─────────────────────────────────────────────
+// Deterministic RNG seeded from opponent ID + match ID so same pair always
+// gets the same picks (stable across page reloads).
+function rng(seed: number) {
+  let s = seed >>> 0;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0xffffffff; };
+}
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h) || 1;
+}
+
+function generateFakePicks(opponentId: number, matchId: string, sport: string): PickSelection[] {
+  const seed = (opponentId * 31337) ^ hashStr(matchId);
+  const rand = rng(seed);
+  const options = pickOptionsForSport(sport);
+  // Shuffle options and take 1-3 picks (weighted: 50% chance 2 picks, 30% 1 pick, 20% 3 picks)
+  const shuffled = [...options].sort(() => rand() - 0.5);
+  const r = rand();
+  const count = r < 0.30 ? 1 : r < 0.80 ? 2 : 3;
+  // Avoid picking from the same group twice
+  const picked: PickSelection[] = [];
+  const usedGroups = new Set<string>();
+  for (const opt of shuffled) {
+    if (picked.length >= count) break;
+    if (usedGroups.has(opt.group)) continue;
+    picked.push({ pick: opt.value, odds: opt.defaultOdds, group: opt.group });
+    usedGroups.add(opt.group);
+  }
+  return picked.length ? picked : [{ pick: shuffled[0].value, odds: shuffled[0].defaultOdds, group: shuffled[0].group }];
+}
+
 export const dynamic = 'force-dynamic';
+
+// ─── Background: auto-accept any pending challenges where challengedId is a fake tipster ──
+// Handles challenges that were created before the auto-accept logic was added.
+let _lastAutoAcceptAt = 0;
+function autoAcceptFakePendingInBackground() {
+  const now = Date.now();
+  if (now - _lastAutoAcceptAt < 5 * 60 * 1000) return;
+  _lastAutoAcceptAt = now;
+  (async () => {
+    try {
+      const pending = await getChallenges('pending');
+      for (const c of pending) {
+        if (!c.challengedId || !isFakeUserId(c.challengedId)) continue;
+        if (c.challengedPick) continue; // already has picks
+        const sport = c.matchSport || 'football';
+        const fakePicks = generateFakePicks(c.challengedId, c.matchId, sport);
+        await acceptChallenge(c.id, c.challengedId, fakePicks);
+      }
+    } catch { /* non-fatal */ }
+  })();
+}
 
 // ─── Background seed throttle (re-seed every 10 min so fresh matches always appear) ──
 let _lastSeedAt = 0;
@@ -82,6 +138,7 @@ export async function GET(req: NextRequest) {
   // Auto-settle finished challenges before returning, then seed fresh ones
   settleInBackground();
   seedInBackground();
+  autoAcceptFakePendingInBackground();
   try {
     const challenges = await getChallenges(status as 'all' | 'pending' | 'active' | 'settled' | 'cancelled');
     return NextResponse.json({ challenges });
@@ -163,6 +220,16 @@ export async function POST(req: NextRequest) {
       isPublic: body.isPublic !== false,
       isFake: false,
     });
+
+    // Auto-accept immediately if opponent is a fake tipster — they never manually accept
+    // so we generate deterministic picks for them right away so the Open slot fills in.
+    if (opponentId && isFakeUserId(opponentId)) {
+      try {
+        const sport = body.matchSnapshot.sport || 'football';
+        const fakePicks = generateFakePicks(opponentId, body.matchId.trim(), sport);
+        await acceptChallenge(challenge.id, opponentId, fakePicks);
+      } catch { /* non-fatal */ }
+    }
 
     if (opponentId && !isFakeUserId(opponentId)) {
       try {
