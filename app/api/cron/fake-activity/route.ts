@@ -699,6 +699,46 @@ export async function GET(req: NextRequest) {
       results.errors.push(`fake-challenges: ${e}`);
     }
 
+    // ── Fake community voting on match-based challenges ───────────────────────
+    // Makes fake tipsters vote "challenger" or "opponent" on live/pending
+    // challenges so the vote bars look active and realistic.
+    try {
+      const { getChallenges, voteCommunity } = await import('@/lib/challenges-store');
+      const { getFakeTipsters } = await import('@/lib/fake-tipsters');
+      const allChallenges = await getChallenges('all');
+      const voteable = allChallenges.filter(c => c.status === 'active' || c.status === 'pending');
+      const fakeVoters = getFakeTipsters();
+
+      for (const challenge of voteable) {
+        const totalVotes = challenge.challengerVotes + challenge.opponentVotes;
+        // Keep each challenge at 8–30 votes — add a few per cron run
+        const target = 8 + Math.floor(Math.abs(challenge.id * 7919) % 22); // deterministic per challenge
+        if (totalVotes >= target) continue;
+
+        const toAdd = Math.min(3, target - totalVotes);
+        // Bias: challenger favoured if their W/L > opponent, otherwise split evenly
+        const challengerWR = challenge.challenger
+          ? (challenge.challenger.won || 0) / Math.max(1, (challenge.challenger.won || 0) + (challenge.challenger.lost || 0))
+          : 0.5;
+        const opponentWR = challenge.challenged
+          ? (challenge.challenged.won || 0) / Math.max(1, (challenge.challenged.won || 0) + (challenge.challenged.lost || 0))
+          : 0.5;
+        const challengerBias = 0.35 + (challengerWR / Math.max(challengerWR + opponentWR, 0.01)) * 0.5;
+
+        // Pick random fake voters not already voting on this challenge
+        const shuffledVoters = [...fakeVoters].sort(() => Math.random() - 0.5);
+        let added = 0;
+        for (const voter of shuffledVoters) {
+          if (added >= toAdd) break;
+          const side: 'challenger' | 'opponent' = Math.random() < challengerBias ? 'challenger' : 'opponent';
+          try {
+            await voteCommunity(challenge.id, voter.id, side);
+            added++;
+          } catch { /* duplicate — already voted */ }
+        }
+      }
+    } catch { /* non-fatal */ }
+
     g.__fakeActivityLastRun = now;
     return NextResponse.json({ ok: true, ...results, settled });
   } catch (error) {

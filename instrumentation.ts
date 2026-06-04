@@ -228,7 +228,7 @@ export async function register() {
           id INT AUTO_INCREMENT PRIMARY KEY,
           challenge_id INT NOT NULL,
           user_id INT NOT NULL,
-          vote VARCHAR(30) NOT NULL DEFAULT 'challenger',
+          side VARCHAR(20) NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE KEY uq_vote (challenge_id, user_id),
           INDEX idx_cv_challenge (challenge_id)

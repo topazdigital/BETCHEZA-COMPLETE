@@ -68,6 +68,8 @@ export interface Challenge {
   drawRefunded: boolean;
   isPublic: boolean;
   watchers: number;
+  challengerVotes: number;
+  opponentVotes: number;
   challenger: ChallengeParticipant | null;
   challenged: ChallengeParticipant | null;
   createdAt: string;
@@ -228,7 +230,13 @@ async function buildParticipant(userId: number | null): Promise<ChallengePartici
   return { userId, username: `user${userId}`, displayName: `User #${userId}`, avatar: null, tips: 0, won: 0, lost: 0, streak: 0, roi: 0, isFake: false };
 }
 
-function rowToChallenge(row: Record<string, unknown>, challenger: ChallengeParticipant | null, challenged: ChallengeParticipant | null): Challenge {
+function rowToChallenge(
+  row: Record<string, unknown>,
+  challenger: ChallengeParticipant | null,
+  challenged: ChallengeParticipant | null,
+  challengerVotes = 0,
+  opponentVotes = 0,
+): Challenge {
   return {
     id: Number(row.id),
     matchId: String(row.match_id || ''),
@@ -253,6 +261,8 @@ function rowToChallenge(row: Record<string, unknown>, challenger: ChallengeParti
     drawRefunded: Boolean(Number(row.draw_refunded)),
     isPublic: row.is_public !== undefined ? Boolean(Number(row.is_public)) : true,
     watchers: Number(row.watchers || 0),
+    challengerVotes,
+    opponentVotes,
     challenger,
     challenged,
     createdAt: String(row.created_at || ''),
@@ -276,12 +286,33 @@ export async function getChallenges(status?: 'all' | ChallengeStatus): Promise<C
       }
       sql += ` ORDER BY created_at DESC LIMIT 100`;
       const { rows } = await query<Record<string, unknown>>(sql, params);
+
+      // Batch-fetch vote counts for all returned challenges
+      const ids = rows.map(r => Number(r.id));
+      const voteMap = new Map<number, { challenger: number; opponent: number }>();
+      if (ids.length > 0) {
+        try {
+          const { rows: vrows } = await query<{ challenge_id: number; side: string; cnt: number }>(
+            `SELECT challenge_id, side, COUNT(*) as cnt FROM community_votes WHERE challenge_id IN (${ids.map(() => '?').join(',')}) GROUP BY challenge_id, side`,
+            ids,
+          );
+          for (const vr of vrows) {
+            if (!voteMap.has(vr.challenge_id)) voteMap.set(vr.challenge_id, { challenger: 0, opponent: 0 });
+            const entry = voteMap.get(vr.challenge_id)!;
+            if (vr.side === 'challenger') entry.challenger = Number(vr.cnt);
+            else if (vr.side === 'opponent') entry.opponent = Number(vr.cnt);
+          }
+        } catch { /* votes not critical */ }
+      }
+
       return Promise.all(rows.map(async r => {
+        const id = Number(r.id);
+        const votes = voteMap.get(id) || { challenger: 0, opponent: 0 };
         const [ch, op] = await Promise.all([
           buildParticipant(Number(r.challenger_id)),
           r.challenged_id ? buildParticipant(Number(r.challenged_id)) : Promise.resolve(null),
         ]);
-        return rowToChallenge(r, ch, op);
+        return rowToChallenge(r, ch, op, votes.challenger, votes.opponent);
       }));
     } catch (e) { console.error('[getChallenges]', e); }
   }
@@ -289,7 +320,7 @@ export async function getChallenges(status?: 'all' | ChallengeStatus): Promise<C
   const list = status && status !== 'all' ? fs.challenges.filter(c => c.status === status) : fs.challenges.filter(c => c.status !== 'cancelled');
   return Promise.all(list.map(async c => {
     const [ch, op] = await Promise.all([buildParticipant(c.challengerId), buildParticipant(c.challengedId)]);
-    return { ...c, challenger: ch, challenged: op };
+    return { ...c, challengerVotes: c.challengerVotes || 0, opponentVotes: c.opponentVotes || 0, challenger: ch, challenged: op };
   }));
 }
 
@@ -304,14 +335,23 @@ export async function getChallengeById(id: number): Promise<Challenge | null> {
         buildParticipant(Number(r.challenger_id)),
         r.challenged_id ? buildParticipant(Number(r.challenged_id)) : Promise.resolve(null),
       ]);
-      return rowToChallenge(r, ch, op);
+      let challengerVotes = 0, opponentVotes = 0;
+      try {
+        const { rows: vrows } = await query<{ side: string; cnt: number }>(
+          `SELECT side, COUNT(*) as cnt FROM community_votes WHERE challenge_id = ? GROUP BY side`, [id]);
+        for (const vr of vrows) {
+          if (vr.side === 'challenger') challengerVotes = Number(vr.cnt);
+          else if (vr.side === 'opponent') opponentVotes = Number(vr.cnt);
+        }
+      } catch { /* votes not critical */ }
+      return rowToChallenge(r, ch, op, challengerVotes, opponentVotes);
     } catch { /* fallback */ }
   }
   const fs = loadFile();
   const c = fs.challenges.find(x => x.id === id);
   if (!c) return null;
   const [ch, op] = await Promise.all([buildParticipant(c.challengerId), buildParticipant(c.challengedId)]);
-  return { ...c, challenger: ch, challenged: op };
+  return { ...c, challengerVotes: c.challengerVotes || 0, opponentVotes: c.opponentVotes || 0, challenger: ch, challenged: op };
 }
 
 export async function createChallenge(input: CreateChallengeInput): Promise<Challenge> {
