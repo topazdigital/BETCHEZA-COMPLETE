@@ -30,6 +30,7 @@ export interface MatchSnapshot {
   homeScore?: number | null;
   awayScore?: number | null;
   status?: string;
+  odds?: { home: number; draw: number; away: number } | null;
 }
 
 export interface ChallengeParticipant {
@@ -803,23 +804,48 @@ export async function seedFakeChallengesFromMatches(matches: MatchSnapshot[]): P
   let seeded = 0;
 
   // Multi-pick combos for fake challenges — each side picks 2-3 markets
-  const PICK_COMBOS: Array<Array<{ value: string; defaultOdds: number; group: string }>> = [
-    [{ value: 'Home Win', defaultOdds: 2.20, group: 'Match Result' }, { value: 'Over 2.5', defaultOdds: 1.85, group: 'Goals' }],
-    [{ value: 'Away Win', defaultOdds: 2.80, group: 'Match Result' }, { value: 'BTTS Yes', defaultOdds: 1.75, group: 'Both Teams Score' }],
-    [{ value: 'Draw', defaultOdds: 3.20, group: 'Match Result' }, { value: 'Under 2.5', defaultOdds: 1.95, group: 'Goals' }],
-    [{ value: 'Home Win', defaultOdds: 2.20, group: 'Match Result' }, { value: 'BTTS Yes', defaultOdds: 1.75, group: 'Both Teams Score' }],
-    [{ value: 'Away Win', defaultOdds: 2.80, group: 'Match Result' }, { value: 'Over 1.5', defaultOdds: 1.35, group: 'Goals' }],
-    [{ value: '1X', defaultOdds: 1.40, group: 'Double Chance' }, { value: 'Over 2.5', defaultOdds: 1.85, group: 'Goals' }],
-    [{ value: 'Home Win', defaultOdds: 2.20, group: 'Match Result' }, { value: 'Over 1.5', defaultOdds: 1.35, group: 'Goals' }, { value: 'BTTS Yes', defaultOdds: 1.75, group: 'Both Teams Score' }],
-    [{ value: 'Away Win', defaultOdds: 2.80, group: 'Match Result' }, { value: 'BTTS No', defaultOdds: 2.05, group: 'Both Teams Score' }],
+  // Resolve real odds from match snapshot — use actual bookmaker odds when available
+  function realOdds(pick: string, mOdds: { home: number; draw: number; away: number } | null | undefined): number {
+    if (mOdds) {
+      const p = pick.toLowerCase();
+      if (p === 'home win' && mOdds.home > 1) return Math.round(mOdds.home * 100) / 100;
+      if (p === 'draw' && mOdds.draw > 1) return Math.round(mOdds.draw * 100) / 100;
+      if (p === 'away win' && mOdds.away > 1) return Math.round(mOdds.away * 100) / 100;
+      // Derived: double chance uses implied probability
+      if ((p === '1x' || p === 'x2') && mOdds.home > 1 && mOdds.draw > 1 && mOdds.away > 1) {
+        const pH = 1 / mOdds.home, pD = 1 / mOdds.draw, pA = 1 / mOdds.away;
+        const margin = pH + pD + pA;
+        const dc = p === '1x' ? (pH + pD) / margin : (pD + pA) / margin;
+        return Math.max(1.01, Math.round((1 / dc) * 100) / 100);
+      }
+    }
+    // Default fallback odds per market
+    const FALLBACK: Record<string, number> = {
+      'home win': 2.20, 'draw': 3.20, 'away win': 2.80,
+      'over 2.5': 1.85, 'under 2.5': 1.95, 'over 1.5': 1.35, 'under 1.5': 2.75,
+      'btts yes': 1.75, 'btts no': 2.05, '1x': 1.40, 'x2': 1.45, '12': 1.40,
+    };
+    return FALLBACK[pick.toLowerCase()] || 2.00;
+  }
+
+  const PICK_TEMPLATES: Array<Array<{ value: string; group: string }>> = [
+    [{ value: 'Home Win', group: 'Match Result' }, { value: 'Over 2.5', group: 'Goals' }],
+    [{ value: 'Away Win', group: 'Match Result' }, { value: 'BTTS Yes', group: 'Both Teams Score' }],
+    [{ value: 'Draw', group: 'Match Result' }, { value: 'Under 2.5', group: 'Goals' }],
+    [{ value: 'Home Win', group: 'Match Result' }, { value: 'BTTS Yes', group: 'Both Teams Score' }],
+    [{ value: 'Away Win', group: 'Match Result' }, { value: 'Over 1.5', group: 'Goals' }],
+    [{ value: '1X', group: 'Double Chance' }, { value: 'Over 2.5', group: 'Goals' }],
+    [{ value: 'Home Win', group: 'Match Result' }, { value: 'Over 1.5', group: 'Goals' }, { value: 'BTTS Yes', group: 'Both Teams Score' }],
+    [{ value: 'Away Win', group: 'Match Result' }, { value: 'BTTS No', group: 'Both Teams Score' }],
   ];
 
   for (let i = 0; i < Math.min(4, upcoming.length); i++) {
     const m = upcoming[i];
     const ft1 = fakes[(i * 2) % fakes.length];
     const ft2 = fakes[(i * 2 + 1) % fakes.length];
-    const combo1 = PICK_COMBOS[i % PICK_COMBOS.length].map(p => ({ pick: p.value, odds: p.defaultOdds, group: p.group }));
-    const combo2 = PICK_COMBOS[(i + 3) % PICK_COMBOS.length].map(p => ({ pick: p.value, odds: p.defaultOdds, group: p.group }));
+    const mOdds = m.odds || null;
+    const combo1 = PICK_TEMPLATES[i % PICK_TEMPLATES.length].map(p => ({ pick: p.value, odds: realOdds(p.value, mOdds), group: p.group }));
+    const combo2 = PICK_TEMPLATES[(i + 3) % PICK_TEMPLATES.length].map(p => ({ pick: p.value, odds: realOdds(p.value, mOdds), group: p.group }));
     const stakeKes = stakes[i % stakes.length];
 
     try {

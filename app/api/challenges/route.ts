@@ -104,6 +104,16 @@ function seedInBackground() {
             status: m.status || 'scheduled',
             homeScore: m.homeScore ?? null,
             awayScore: m.awayScore ?? null,
+            odds: (() => {
+              const rawOdds = (m as Record<string, unknown>).odds as Record<string, unknown> | undefined;
+              const h = rawOdds?.home ?? rawOdds?.['1'] ?? rawOdds?.homeWin;
+              const d = rawOdds?.draw ?? rawOdds?.['X'] ?? rawOdds?.drawOdds;
+              const a = rawOdds?.away ?? rawOdds?.['2'] ?? rawOdds?.awayWin;
+              if (h && a && Number(h) > 1 && Number(a) > 1) {
+                return { home: parseFloat(String(h)), draw: d ? parseFloat(String(d)) : 0, away: parseFloat(String(a)) };
+              }
+              return null;
+            })(),
           } as MatchSnapshot;
         });
       await seedFakeChallengesFromMatches(seedable);

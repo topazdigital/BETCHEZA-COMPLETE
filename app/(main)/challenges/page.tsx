@@ -715,8 +715,21 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
   const [picks, setPicks] = useState<PickSelection[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [matchOdds, setMatchOdds] = useState<MatchOdds | null>(null);
   const payout = Math.round(challenge.stakeKes * 2 * 0.9);
   const totalOdds = maxPoints(picks);
+
+  // Fetch real match odds when the modal opens
+  useEffect(() => {
+    if (!challenge.matchId) return;
+    fetch(`/api/challenges/match-search?q=${encodeURIComponent(challenge.matchHomeTeam)}&limit=20`)
+      .then(r => r.json() as Promise<{ matches: Array<{ id: string; odds?: MatchOdds }> }>)
+      .then(data => {
+        const m = data.matches?.find(x => x.id === challenge.matchId);
+        if (m?.odds) setMatchOdds(m.odds);
+      })
+      .catch(() => {});
+  }, [challenge.matchId, challenge.matchHomeTeam]);
 
   async function handleAccept() {
     if (!picks.length) { setError('Please select at least one prediction'); return; }
@@ -778,7 +791,7 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
             <div className="text-sm font-semibold text-foreground mb-2">Your Counter-Picks</div>
             <PickSelector
               sport={challenge.matchSport}
-              matchOdds={null}
+              matchOdds={matchOdds}
               selectedPicks={picks}
               onChange={p => setPicks(p.filter(x => !takenPicks.has(x.pick)))}
               maxPicks={5}
@@ -1155,7 +1168,7 @@ function RecentWins({ challenges }: { challenges: Challenge[] }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { label: '⚔️ Live', value: 'active' },
+  { label: '⚔️ Active', value: 'active' },
   { label: '🔓 Open', value: 'pending' },
   { label: '✅ Settled', value: 'settled' },
 ];
@@ -1198,29 +1211,49 @@ export default function ChallengesPage() {
 
   const liveMap = useLiveStream(liveIds, handleAllFinished);
 
-  // For the Live tab, exclude challenges whose match is already finished per live data
-  // (they're awaiting background settlement — don't show them as "live")
   const activeChallenges = all.filter(c => c.status === 'active');
+
+  // Split active challenges into truly live (match in progress) vs upcoming (match not started yet)
   const trulyLive = activeChallenges.filter(c => {
     const ld = liveMap[c.matchId];
-    if (!ld) return true; // no live data yet — keep visible
-    return !isMatchFinished(ld.status);
+    if (ld) return isMatchLive(ld.status); // trust live data status
+    // No live data — check kickoff time: only count as live if kickoff ≤ now and within 3h
+    if (!c.matchKickoff) return false;
+    const kickoff = new Date(c.matchKickoff).getTime();
+    const now = Date.now();
+    return now >= kickoff && now - kickoff < 3 * 60 * 60 * 1000;
+  });
+
+  const upcomingActive = activeChallenges.filter(c => {
+    const ld = liveMap[c.matchId];
+    if (ld) return !isMatchLive(ld.status) && !isMatchFinished(ld.status);
+    // No live data — treat as upcoming if kickoff is still in the future
+    if (!c.matchKickoff) return true; // no kickoff info → show as upcoming
+    const kickoff = new Date(c.matchKickoff).getTime();
+    return Date.now() < kickoff;
+  });
+
+  const awaitingSettlement = activeChallenges.filter(c => {
+    const ld = liveMap[c.matchId];
+    return ld ? isMatchFinished(ld.status) : false;
   });
 
   const counts = {
-    active: trulyLive.length,
+    live: trulyLive.length,
+    upcoming: upcomingActive.length,
+    active: activeChallenges.length - awaitingSettlement.length, // visible active (live + upcoming)
     pending: all.filter(c => c.status === 'pending').length,
     settled: all.filter(c => c.status === 'settled').length,
   };
 
-  // Auto-switch to pending tab if no live challenges
+  // Auto-switch to pending tab if no active challenges
   useEffect(() => {
     if (!isLoading && counts.active === 0 && counts.pending > 0 && tab === 'active') setTab('pending');
   }, [isLoading, counts.active, counts.pending, tab]);
 
   const filtered = all.filter(c => {
     if (c.status !== tab) return false;
-    // In the Live tab, hide challenges where the match is already finished per live data
+    // In the Active tab, hide challenges whose match has already finished (awaiting settlement)
     if (tab === 'active') {
       const ld = liveMap[c.matchId];
       if (ld && isMatchFinished(ld.status)) return false;
@@ -1228,6 +1261,16 @@ export default function ChallengesPage() {
     if (sportFilter && !c.matchSport.toLowerCase().includes(sportFilter)) return false;
     return true;
   });
+
+  // Sort active: truly live first, then upcoming by kickoff
+  const sortedFiltered = tab === 'active'
+    ? [...filtered].sort((a, b) => {
+        const aLive = trulyLive.some(x => x.id === a.id) ? 0 : 1;
+        const bLive = trulyLive.some(x => x.id === b.id) ? 0 : 1;
+        if (aLive !== bLive) return aLive - bLive;
+        return new Date(a.matchKickoff || 0).getTime() - new Date(b.matchKickoff || 0).getTime();
+      })
+    : filtered;
 
   const handleCancel = async (id: number) => {
     if (!confirm('Cancel this challenge? Your stake will be refunded.')) return;
@@ -1269,10 +1312,20 @@ export default function ChallengesPage() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" />Live Battles
+                    <span className={`w-2 h-2 rounded-full inline-block ${counts.live > 0 ? 'bg-red-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                    Live Now
                   </span>
-                  <span className="font-bold text-foreground">{counts.active}</span>
+                  <span className="font-bold text-foreground">{counts.live}</span>
                 </div>
+                {counts.upcoming > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-primary/60 inline-block" />
+                      Upcoming
+                    </span>
+                    <span className="font-bold text-foreground">{counts.upcoming}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Open</span>
                   <span className="font-bold text-foreground">{counts.pending}</span>
@@ -1308,9 +1361,9 @@ export default function ChallengesPage() {
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">How Points Work</div>
               <ol className="space-y-1.5 text-xs text-muted-foreground">
                 <li className="flex gap-2"><span className="text-primary font-bold shrink-0">1.</span>Select 1–5 predictions per match (1X2, Goals, BTTS…)</li>
-                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">2.</span>Each correct pick scores its odds as points (e.g. Home Win @2.20 wins = 2.20 pts)</li>
+                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">2.</span>Each correct pick scores its real odds as points (e.g. Home Win @2.20 wins = 2.20 pts)</li>
                 <li className="flex gap-2"><span className="text-primary font-bold shrink-0">3.</span>Highest total points wins the stake pot (90%)</li>
-                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">4.</span>Equal points = draw = full refund</li>
+                <li className="flex gap-2"><span className="text-primary font-bold shrink-0">4.</span>Tied score? Fewer lost points decides the winner. Only a perfect tie = full refund</li>
               </ol>
             </div>
           </div>
@@ -1324,7 +1377,7 @@ export default function ChallengesPage() {
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors relative ${tab === t.value ? 'bg-card text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}>
                   {t.label}
                   {t.value === 'active' && counts.active > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">{counts.active}</span>
+                    <span className={`ml-1 px-1.5 py-0.5 text-white text-xs rounded-full ${counts.live > 0 ? 'bg-red-500' : 'bg-primary'}`}>{counts.active}</span>
                   )}
                   {t.value === 'pending' && counts.pending > 0 && (
                     <span className="ml-1 px-1.5 py-0.5 bg-yellow-500 text-black text-xs rounded-full">{counts.pending}</span>
@@ -1339,11 +1392,11 @@ export default function ChallengesPage() {
               </div>
             )}
 
-            {!isLoading && filtered.length === 0 && (
+            {!isLoading && sortedFiltered.length === 0 && (
               <div className="text-center py-16">
                 <div className="text-5xl mb-4">⚔️</div>
                 <div className="text-lg font-semibold text-foreground mb-1">
-                  {tab === 'active' ? 'No live battles right now' : tab === 'pending' ? 'No open challenges' : 'No settled challenges yet'}
+                  {tab === 'active' ? 'No active battles right now' : tab === 'pending' ? 'No open challenges' : 'No settled challenges yet'}
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
                   {tab === 'settled' ? 'Challenges settle when the match finishes.' : 'Be the first — pick a match and post a challenge.'}
@@ -1357,13 +1410,54 @@ export default function ChallengesPage() {
               </div>
             )}
 
-            <div className="space-y-4">
-              {filtered.map(c => (
-                <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
-                  onAccept={setAcceptTarget} onCancel={handleCancel}
-                  liveData={liveMap[c.matchId]} />
-              ))}
-            </div>
+            {/* Active tab: group into Live Now and Upcoming sub-sections */}
+            {tab === 'active' && sortedFiltered.length > 0 ? (() => {
+              const liveCards = sortedFiltered.filter(c => trulyLive.some(x => x.id === c.id));
+              const upcomingCards = sortedFiltered.filter(c => upcomingActive.some(x => x.id === c.id));
+              return (
+                <div className="space-y-6">
+                  {liveCards.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                        <span className="text-xs font-bold text-red-400 uppercase tracking-wide">Live Now</span>
+                        <div className="h-px flex-1 bg-red-500/20" />
+                      </div>
+                      <div className="space-y-4">
+                        {liveCards.map(c => (
+                          <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
+                            onAccept={setAcceptTarget} onCancel={handleCancel}
+                            liveData={liveMap[c.matchId]} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {upcomingCards.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs font-bold text-primary uppercase tracking-wide">⏰ Upcoming</span>
+                        <div className="h-px flex-1 bg-primary/20" />
+                      </div>
+                      <div className="space-y-4">
+                        {upcomingCards.map(c => (
+                          <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
+                            onAccept={setAcceptTarget} onCancel={handleCancel}
+                            liveData={liveMap[c.matchId]} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
+              <div className="space-y-4">
+                {sortedFiltered.map(c => (
+                  <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
+                    onAccept={setAcceptTarget} onCancel={handleCancel}
+                    liveData={liveMap[c.matchId]} />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── Right Sidebar ── */}

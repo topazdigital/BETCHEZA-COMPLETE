@@ -475,13 +475,18 @@ export async function generateMetadata(): Promise<Metadata> {
   const pathname = hdrs.get('x-pathname') || '/';
   const seoEntry = findSeoForPath(parseSeoPages(settings.seo_pages), pathname);
 
+  // Normalise site_name: strip domain-style values (e.g. "betcheza.co.ke" → "Betcheza")
+  const displayName = /\.\w{2,}/.test(settings.site_name)
+    ? settings.site_name.replace(/\.\w+(\.\w+)*$/, '').replace(/^www\./i, '').replace(/^./, (c: string) => c.toUpperCase())
+    : settings.site_name;
+
   // Per-path title/description improvements for pages without admin SEO overrides
   const isHomePage = pathname === '/';
   const fallbackTitle = isHomePage
-    ? `${settings.site_name} | Best Betting Tips Kenya & Free AI Predictions`
-    : `${settings.site_name} - Best Betting Tips & Predictions Kenya`;
+    ? `${displayName} | Best Betting Tips Kenya & Free AI Predictions`
+    : `${displayName} - Best Betting Tips & Predictions Kenya`;
   const fallbackDescription = isHomePage
-    ? `Kenya's top betting tips site. Free AI football predictions, SportPesa & Betika jackpot tips. Join 50,000+ bettors who trust ${settings.site_name} for accurate tips.`
+    ? `Kenya's top betting tips site. Free AI football predictions, SportPesa & Betika jackpot tips. Join 50,000+ bettors who trust ${displayName} for accurate tips.`
     : settings.site_description;
 
   const title = seoEntry?.title || fallbackTitle;
@@ -511,12 +516,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: {
       default: title,
-      template: `%s | ${settings.site_name}`,
+      template: `%s | ${displayName}`,
     },
     description,
     keywords,
-    authors: [{ name: settings.site_name }],
-    creator: settings.site_name,
+    authors: [{ name: displayName }],
+    creator: displayName,
     metadataBase: new URL(siteUrl),
     alternates: {
       canonical: `${siteUrl}${pathSuffix}`,
@@ -537,7 +542,7 @@ export async function generateMetadata(): Promise<Metadata> {
       type: 'website',
       locale: 'en_KE',
       url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'}${pathname === '/' ? '' : pathname}`,
-      siteName: settings.site_name,
+      siteName: displayName,
       title,
       description,
       images: seoEntry?.ogImage
