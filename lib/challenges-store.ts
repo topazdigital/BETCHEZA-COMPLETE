@@ -572,7 +572,7 @@ export async function settleChallenge(id: number, homeScore: number, awayScore: 
     persistFile();
   }
 
-  // Push notification to challenge watchers
+  // Push notification to challenge watchers (topic broadcast)
   try {
     const { sendPushToTopic } = await import('./push-sender');
     const matchLabel = `${ch.matchHomeTeam} vs ${ch.matchAwayTeam}`;
@@ -594,6 +594,23 @@ export async function settleChallenge(id: number, homeScore: number, awayScore: 
       title: `⚔️ Challenge Settled: ${matchLabel}`,
       body: resultLabel,
       url: '/challenges',
+    });
+  } catch { /* non-critical */ }
+
+  // Direct push + in-app notification to each participant (personalised win/loss/draw)
+  try {
+    const { notifyParticipantsSettled } = await import('./challenge-notify');
+    await notifyParticipantsSettled({
+      challengeId: id,
+      challengerId: ch.challengerId,
+      challengedId: ch.challengedId,
+      winnerId,
+      draw: drawRefunded,
+      homeTeam: ch.matchHomeTeam,
+      awayTeam: ch.matchAwayTeam,
+      score: `${homeScore}-${awayScore}`,
+      challengerName: ch.challenger?.displayName || 'Challenger',
+      challengedName: ch.challenged?.displayName || 'Opponent',
     });
   } catch { /* non-critical */ }
 

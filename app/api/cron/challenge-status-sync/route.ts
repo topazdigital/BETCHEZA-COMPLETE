@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getMatchById } from '@/lib/api/unified-sports-api';
 import { settlePendingChallenges } from '@/lib/challenges-store';
+import { notifyParticipantsMatchLive } from '@/lib/challenge-notify';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,6 +51,11 @@ interface ChallengeRow {
   match_id: string;
   match_status: string;
   match_kickoff: string | null;
+  challenger_id: number;
+  challenged_id: number | null;
+  match_home_team: string;
+  match_away_team: string;
+  is_fake: number;
 }
 
 export async function GET(req: NextRequest) {
@@ -65,10 +71,10 @@ export async function GET(req: NextRequest) {
 
   try {
     // Fetch all non-settled, non-cancelled challenges that have a match ID.
-    // Include challenges still marked 'scheduled' whose kickoff is up to 4 hours
-    // in the past so we catch matches the API reported late as live/finished.
+    // Include participant columns so we can send per-user push notifications.
     const result = await query<ChallengeRow>(
-      `SELECT id, match_id, match_status, match_kickoff
+      `SELECT id, match_id, match_status, match_kickoff,
+              challenger_id, challenged_id, match_home_team, match_away_team, is_fake
        FROM challenges
        WHERE status IN ('active', 'pending')
          AND match_id != ''
@@ -114,9 +120,11 @@ export async function GET(req: NextRequest) {
       }
     }));
 
-    // Update the DB for any challenge whose match_status has changed
+    // Update the DB for any challenge whose match_status has changed.
+    // Track transitions for push notifications.
     let updated = 0;
     const finishedMatchIds = new Set<string>();
+    const wentLiveRows: ChallengeRow[] = [];
 
     for (const row of rows) {
       const newStatus = statusMap.get(row.match_id);
@@ -124,8 +132,9 @@ export async function GET(req: NextRequest) {
 
       if (newStatus === 'finished') finishedMatchIds.add(row.match_id);
 
+      const oldStatus = row.match_status || 'scheduled';
       // Only write if the value actually changed
-      if (newStatus === (row.match_status || 'scheduled')) continue;
+      if (newStatus === oldStatus) continue;
 
       try {
         await execute(
@@ -133,10 +142,29 @@ export async function GET(req: NextRequest) {
           [newStatus, row.id]
         );
         updated++;
-        console.log(`[challenge-status-sync] id=${row.id} match=${row.match_id}: ${row.match_status} → ${newStatus}`);
+        console.log(`[challenge-status-sync] id=${row.id} match=${row.match_id}: ${oldStatus} → ${newStatus}`);
+
+        // Collect challenges that just went live for participant notifications
+        if (newStatus === 'live' && oldStatus === 'scheduled') {
+          wentLiveRows.push(row);
+        }
       } catch (e) {
         console.warn(`[challenge-status-sync] DB update failed for id=${row.id}:`, e instanceof Error ? e.message : e);
       }
+    }
+
+    // Fire "match is live" push + in-app notifications to participants
+    if (wentLiveRows.length > 0) {
+      await Promise.allSettled(wentLiveRows.map(row =>
+        notifyParticipantsMatchLive({
+          challengeId: row.id,
+          challengerId: row.challenger_id,
+          challengedId: row.challenged_id,
+          homeTeam: row.match_home_team,
+          awayTeam: row.match_away_team,
+          isFake: Boolean(row.is_fake),
+        }).catch(() => {})
+      ));
     }
 
     // Trigger settlement for any challenges whose matches just finished
