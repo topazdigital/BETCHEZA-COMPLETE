@@ -18,8 +18,9 @@ export const revalidate = 30;
 
 // ─── In-process response cache ────────────────────────────────────────────────
 // Avoids redundant ESPN + SGO fan-out on every poll cycle.
-// Live matches: 30s TTL.  Pre-match / finished: 90s TTL.
+// Live matches: 30s TTL.  Near-kickoff window (±3h): 30s TTL.  All others: 90s TTL.
 const DETAILS_CACHE_TTL_LIVE = 30_000;
+const DETAILS_CACHE_TTL_NEAR_KICKOFF = 30_000; // within ±3h of kickoff
 const DETAILS_CACHE_TTL_STATIC = 90_000;
 const H2H_CACHE_TTL = 30 * 60_000; // 30 min — historical fixtures never change
 
@@ -917,9 +918,22 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const eventId = getEspnEventIdFromMatchId(resolvedId);
 
     const isLive = match.status === 'live' || match.status === 'in_progress';
-    const cacheTTL = isLive ? DETAILS_CACHE_TTL_LIVE : DETAILS_CACHE_TTL_STATIC;
     const cacheKey = resolvedId;
     const now = Date.now();
+
+    // Near-kickoff window: 1 hour before to 4 hours after kickoff.
+    // Use a short 30s TTL so the page picks up live → finished transitions quickly.
+    const kickoffMsForTTL = new Date(
+      match.kickoffTime instanceof Date
+        ? match.kickoffTime
+        : match.kickoffTime as unknown as string
+    ).getTime();
+    const isNearKickoff = !isNaN(kickoffMsForTTL)
+      && now > kickoffMsForTTL - 3_600_000
+      && now < kickoffMsForTTL + 4 * 3_600_000;
+    const cacheTTL = isLive ? DETAILS_CACHE_TTL_LIVE
+      : isNearKickoff ? DETAILS_CACHE_TTL_NEAR_KICKOFF
+      : DETAILS_CACHE_TTL_STATIC;
 
     // ── Detect stale-scheduled: past-kickoff matches cached as "scheduled" ───
     // If the match kickoff was >2 hours ago but status is still "scheduled",

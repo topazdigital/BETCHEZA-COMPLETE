@@ -1,7 +1,7 @@
 "use client"
 
-import { Brain, TrendingUp, AlertCircle, Sparkles } from "lucide-react"
-import { useMemo } from "react"
+import { Brain, TrendingUp, AlertCircle, Sparkles, Lock } from "lucide-react"
+import { useMemo, useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 
 interface AIMatchPredictionProps {
@@ -15,12 +15,22 @@ interface AIMatchPredictionProps {
     home: { name: string; score?: number }
     away: { name: string; score?: number }
   }> | null
+  /** Stable match ID used as the localStorage cache key. */
+  matchId?: string
+  /** True once the match has finished — locks to the pre-match prediction. */
+  isFinished?: boolean
 }
+
+const LS_PREFIX = 'betcheza:ai-pred:'
 
 /**
  * Rule-based AI prediction. Generates a deterministic-feeling prediction
  * from real signals (odds + form + h2h). Labelled "AI" — no external API
  * required, but ready to be swapped for a Groq/OpenAI call.
+ *
+ * The prediction is locked into localStorage the first time meaningful data
+ * is available (pre-match) so it never flips after the match ends, even
+ * though post-match ESPN odds change to reflect the actual result.
  */
 export function AIMatchPrediction({
   homeTeam,
@@ -30,10 +40,46 @@ export function AIMatchPrediction({
   homeForm,
   awayForm,
   h2h,
+  matchId,
+  isFinished = false,
 }: AIMatchPredictionProps) {
-  const analysis = useMemo(() => {
+  // Compute from whatever data is currently available (may use post-match odds)
+  const liveAnalysis = useMemo(() => {
     return analyseMatch({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h })
   }, [homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h])
+
+  // Locked pre-match prediction, loaded from / saved to localStorage
+  const [lockedAnalysis, setLockedAnalysis] = useState<AnalysisResult | null>(null)
+
+  useEffect(() => {
+    if (!matchId) return
+    const key = `${LS_PREFIX}${matchId}`
+    try {
+      const stored = localStorage.getItem(key)
+      if (stored) {
+        // Always prefer the stored pre-match prediction
+        setLockedAnalysis(JSON.parse(stored) as AnalysisResult)
+        return
+      }
+      // Only persist once we have at least one meaningful signal
+      const hasMeaningfulData = odds !== null && odds !== undefined
+        || !!(homeForm) || !!(awayForm)
+        || (Array.isArray(h2h) && h2h.length > 0)
+      if (hasMeaningfulData) {
+        localStorage.setItem(key, JSON.stringify(liveAnalysis))
+        setLockedAnalysis(liveAnalysis)
+      }
+    } catch { /* ignore localStorage errors in SSR/private browsing */ }
+  // Re-run when data loads so we capture odds once they arrive — but once
+  // stored, the localStorage branch returns early and never overwrites.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId, odds, homeForm, awayForm, h2h])
+
+  // Finished matches MUST use the locked pre-match prediction so the displayed
+  // winner never flips after the game ends (post-match odds change to reflect
+  // the actual result, which would otherwise corrupt the pre-match analysis).
+  const analysis = (isFinished && lockedAnalysis) ? lockedAnalysis
+    : (lockedAnalysis ?? liveAnalysis)
 
   const conf = analysis.confidence
   const confColor =
@@ -54,9 +100,15 @@ export function AIMatchPrediction({
           </span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <h3 className="text-sm font-bold text-foreground">Betcheza AI Prediction</h3>
             <span className="text-[9px] font-bold uppercase tracking-wide bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-1.5 py-0.5 rounded">AI</span>
+            {isFinished && lockedAnalysis && (
+              <span className="flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-400 border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 rounded">
+                <Lock className="h-2.5 w-2.5" />
+                Pre-match
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground">Betcheza AI · trained on odds, form &amp; head-to-head</p>
         </div>

@@ -1060,9 +1060,20 @@ export default function MatchDetailPage({ params }: PageProps) {
     {
       refreshInterval: (latestData: MatchDetails | undefined) => {
         const s = latestData?.match?.status
-        return (s === 'live' || s === 'in_progress') ? 30_000 : 60_000
+        if (s === 'live' || s === 'in_progress') return 30_000
+        // Poll every 30s for matches within ±4h of kickoff so we pick up
+        // the scheduled → live → finished transition promptly.
+        const ko = latestData?.match?.kickoffTime
+        if (ko) {
+          const koMs = new Date(ko as unknown as string).getTime()
+          const now = Date.now()
+          if (now > koMs - 3_600_000 && now < koMs + 4 * 3_600_000) return 30_000
+        }
+        return 60_000
       },
-      revalidateOnFocus: false,
+      // Revalidate on focus so returning to a finished-match tab immediately
+      // shows the result instead of stuck pre-match data.
+      revalidateOnFocus: true,
       dedupingInterval: 15_000,
       // Auto-retry on error for up to 5 attempts (≈15 s window).
       // This covers the cold-cache race where the server's match cache hasn't
@@ -1755,6 +1766,8 @@ export default function MatchDetailPage({ params }: PageProps) {
               homeForm={match.homeTeam.form}
               awayForm={match.awayTeam.form}
               h2h={data.h2h}
+              matchId={match.id}
+              isFinished={isFinished}
             />
 
             {/* Match Facts — trends from form + H2H (like OddsPortal Match Facts) */}
