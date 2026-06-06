@@ -89,7 +89,29 @@ export async function GET() {
     return NextResponse.json({ hasAccess: true, reason: 'admin', startDayOffset: 0, daysRemaining: 7, walletBalance: 0 });
   }
 
+  // Check if access is already granted
   const result = checkStrategyAccess(user.userId);
+  if (result.hasAccess) {
+    const walletBalance = getBalance(user.userId, 'KES');
+    return NextResponse.json({ ...result, walletBalance });
+  }
+
+  // Check if there's a pending payment for this user — auto-resolve it
+  const pending = fileStoreGet<PendingPayment[]>('strategy-pending', []);
+  const userPending = pending.find(p => p.userId === user.userId);
+  if (userPending) {
+    const status = await checkTransactionStatus(userPending.reference);
+    if (status === 'completed') {
+      grantStrategyAccess(userPending.userId, userPending.phone, userPending.reference);
+      const freshResult = checkStrategyAccess(user.userId);
+      const walletBalance = getBalance(user.userId, 'KES');
+      return NextResponse.json({ ...freshResult, walletBalance, autoResolved: true });
+    }
+    // Return pending info so the UI can show the right state
+    const walletBalance = getBalance(user.userId, 'KES');
+    return NextResponse.json({ hasAccess: false, walletBalance, pendingReference: userPending.reference, pendingAt: userPending.initiatedAt });
+  }
+
   const walletBalance = getBalance(user.userId, 'KES');
   return NextResponse.json({ ...result, walletBalance });
 }

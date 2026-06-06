@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPending, updatePendingStatus, deletePending } from '@/lib/payhero';
 import { credit, debit } from '@/lib/wallet-store';
 import { onReferralDeposit } from '@/lib/referral-store';
+import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
+import { grantStrategyAccess, type PendingPayment as StrategyPendingPayment } from '@/app/api/strategy/access/route';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,6 +36,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Missing reference' }, { status: 400 });
   }
 
+  // ── Strategy access payments (references starting with STRAT-) ──────────
+  if (reference.startsWith('STRAT-')) {
+    const strategyPending = fileStoreGet<StrategyPendingPayment[]>('strategy-pending', []);
+    const stratPending = strategyPending.find(p => p.reference === reference);
+
+    if (stratPending) {
+      if (status === 'SUCCESS') {
+        console.log(`[payhero/callback] granting strategy access for user ${stratPending.userId} ref=${reference}`);
+        grantStrategyAccess(stratPending.userId, stratPending.phone, reference);
+      } else {
+        // Failed/cancelled — refund any wallet contribution
+        console.log(`[payhero/callback] strategy payment failed for user ${stratPending.userId} ref=${reference}`);
+        if (stratPending.walletContribution && stratPending.walletContribution > 0) {
+          credit(stratPending.userId, stratPending.walletContribution, {
+            type: 'refund',
+            currency: 'KES',
+            description: 'Refund — M-Pesa payment failed for 3 Daily Odds Strategy',
+          });
+        }
+        fileStoreSet('strategy-pending', strategyPending.filter(p => p.reference !== reference));
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Strategy reference not in pending list (may have already been granted)
+    console.log(`[payhero/callback] strategy ref ${reference} not in pending list — may already be granted`);
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Wallet deposit / withdrawal payments ─────────────────────────────────
   const pending = getPending(reference);
   if (!pending) {
     // Already handled or unknown reference — respond 200 so PayHero doesn't retry

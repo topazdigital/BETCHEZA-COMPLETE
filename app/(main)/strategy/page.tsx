@@ -1311,6 +1311,9 @@ interface AccessInfo {
   startDayOffset?: number;
   daysRemaining?: number;
   walletBalance?: number;
+  pendingReference?: string;
+  pendingAt?: string;
+  autoResolved?: boolean;
 }
 
 export default function StrategyPage() {
@@ -1344,13 +1347,64 @@ export default function StrategyPage() {
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [resettling, setResettling] = useState(false);
   const [resettleResult, setResettleResult] = useState<{ totalFixed: number; daysUpdated: number } | null>(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const pendingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const fetchAccess = () =>
     fetch('/api/strategy/access')
       .then(r => r.json())
-      .then((d: AccessInfo) => setAccess(d))
-      .catch(() => setAccess({ hasAccess: false }));
+      .then((d: AccessInfo) => {
+        setAccess(d);
+        return d;
+      })
+      .catch(() => { setAccess({ hasAccess: false }); return { hasAccess: false } as AccessInfo; });
+
+  useEffect(() => {
+    fetchAccess().then((d) => {
+      // If user has a pending payment on page load, auto-start polling to detect it
+      if (!d.hasAccess && d.pendingReference) {
+        startPendingPoll(d.pendingReference);
+      }
+    });
+    return () => { if (pendingPollRef.current) clearInterval(pendingPollRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const startPendingPoll = (ref: string) => {
+    if (pendingPollRef.current) clearInterval(pendingPollRef.current);
+    let attempts = 0;
+    pendingPollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch('/api/strategy/access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'check', reference: ref }),
+        });
+        const d = await res.json() as AccessInfo & { status?: string };
+        if (d.hasAccess) {
+          clearInterval(pendingPollRef.current!);
+          setAccess(d);
+          return;
+        }
+        if (d.status === 'failed' || attempts >= 36) {
+          clearInterval(pendingPollRef.current!);
+        }
+      } catch { /* silent */ }
+    }, 5000);
+  };
+
+  const handleCheckPayment = async () => {
+    setCheckingPayment(true);
+    try {
+      const d = await fetchAccess();
+      if (!d.hasAccess && d.pendingReference) {
+        startPendingPoll(d.pendingReference);
+      }
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
 
   async function handleResettle() {
     setResettling(true);
@@ -1392,6 +1446,26 @@ export default function StrategyPage() {
         walletBalance={access?.walletBalance ?? 0}
         balanceLoading={access === null}
       />
+
+      {/* ── Pending payment banner ── */}
+      {!hasAccess && access?.pendingReference && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/8 px-4 py-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Payment in progress</p>
+              <p className="text-xs text-muted-foreground">Checking for your M-Pesa payment automatically…</p>
+            </div>
+          </div>
+          <button
+            onClick={handleCheckPayment}
+            disabled={checkingPayment}
+            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center gap-1.5"
+          >
+            {checkingPayment ? <><Loader2 className="h-3 w-3 animate-spin" /> Checking…</> : <><RefreshCw className="h-3 w-3" /> Check now</>}
+          </button>
+        </div>
+      )}
 
       {/* ── Page Header ── */}
       <div className="mb-5">
