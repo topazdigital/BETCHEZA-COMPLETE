@@ -41,19 +41,19 @@ export async function GET(req: NextRequest) {
   }
 
   // Default: list all challenges with stats
-  const [all, active, pending, finished] = await Promise.all([
+  const [all, active, pending, settled] = await Promise.all([
     getChallenges('all'),
     getChallenges('active'),
     getChallenges('pending'),
-    getChallenges('finished'),
+    getChallenges('settled'),
   ]);
 
   const totalStaked = all
-    .filter(c => !c.isFakeChallenge && c.stakeKes > 0 && c.escrowStatus !== 'refunded')
+    .filter(c => !c.isFake && c.stakeKes > 0 && c.escrowStatus !== 'refunded')
     .reduce((sum, c) => sum + c.stakeKes * 2, 0);
 
-  const totalFeesCollected = finished
-    .filter(c => !c.isFakeChallenge && c.stakeKes > 0 && !c.drawRefunded)
+  const totalFeesCollected = settled
+    .filter(c => !c.isFake && c.stakeKes > 0 && !c.drawRefunded)
     .reduce((sum, c) => sum + Math.round(c.stakeKes * 2 * (c.platformFeePct / 100)), 0);
 
   return NextResponse.json({
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
       total: all.length,
       active: active.length,
       pending: pending.length,
-      finished: finished.length,
+      settled: settled.length,
       totalStakedKes: totalStaked,
       totalFeesCollectedKes: totalFeesCollected,
     },

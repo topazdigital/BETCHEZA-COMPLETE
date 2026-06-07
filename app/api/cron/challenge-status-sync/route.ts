@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
   try {
     // Fetch all non-settled, non-cancelled challenges that have a match ID.
     // Include participant columns so we can send per-user push notifications.
+    // .catch() ensures DB errors (access denied, no pool) degrade gracefully.
     const result = await query<ChallengeRow>(
       `SELECT id, match_id, match_status, match_kickoff,
               challenger_id, challenged_id, match_home_team, match_away_team, is_fake
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
          AND match_id != ''
        LIMIT 100`,
       []
-    );
+    ).catch(() => ({ rows: [] as ChallengeRow[] }));
     const rows = result.rows;
 
     if (!rows.length) {

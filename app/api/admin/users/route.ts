@@ -29,10 +29,10 @@ async function buildAllUsers(): Promise<AdminUserRow[]> {
   try {
     const r = await query<{
       id: number; username: string; display_name: string; email: string;
-      avatar_url: string | null; role: string; is_verified: number;
+      avatar_url: string | null; role: string; is_verified: number; is_banned: number;
       created_at: string; total_tips: number | null; win_rate: number | null; followers_count: number | null;
     }>(`SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role,
-              u.is_verified, u.created_at,
+              u.is_verified, COALESCE(u.is_banned, 0) AS is_banned, u.created_at,
               tp.total_tips, tp.win_rate, tp.followers_count
        FROM users u
        LEFT JOIN tipster_profiles tp ON tp.user_id = u.id
@@ -44,7 +44,7 @@ async function buildAllUsers(): Promise<AdminUserRow[]> {
       email: u.email || '',
       avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
       role: (getUserRoleOverride(u.id) || u.role || 'user') as Role,
-      status: u.is_verified ? 'active' : 'pending',
+      status: (u.is_banned ? 'banned' : u.is_verified ? 'active' : 'pending') as 'active' | 'banned' | 'pending',
       isFake: false,
       joined: new Date(u.created_at).toLocaleDateString(),
       predictions: u.total_tips ?? 0,

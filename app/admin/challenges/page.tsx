@@ -16,7 +16,8 @@ const fetcher = (url: string) => fetch(url).then(r => r.json());
 function StatusBadge({ status }: { status: string }) {
   const color = status === 'active' ? 'bg-red-500/20 text-red-600 border-red-500/30'
     : status === 'pending' ? 'bg-amber-500/20 text-amber-600 border-amber-500/30'
-    : status === 'finished' ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/30'
+    : status === 'settled' ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/30'
+    : status === 'cancelled' ? 'bg-zinc-500/20 text-zinc-500 border-zinc-500/30'
     : 'bg-muted text-muted-foreground border-border';
   return <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase', color)}>{status}</span>;
 }
@@ -29,6 +30,9 @@ function ChallengeRow({ c, onSettle, onCancel }: {
   const [settling, setSettling] = useState(false);
   const pot = c.stakeKes * 2;
   const fee = c.drawRefunded ? 0 : Math.round(pot * (c.platformFeePct / 100));
+  const title = `${c.matchHomeTeam} vs ${c.matchAwayTeam}`;
+  const opponentId = c.challengedId;
+  const opponent = c.challenged;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -36,23 +40,23 @@ function ChallengeRow({ c, onSettle, onCancel }: {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={c.status} />
-            {c.isFakeChallenge && <span className="rounded-full bg-purple-500/20 text-purple-600 border border-purple-500/30 px-2 py-0.5 text-[10px] font-bold">FAKE</span>}
+            {c.isFake && <span className="rounded-full bg-purple-500/20 text-purple-600 border border-purple-500/30 px-2 py-0.5 text-[10px] font-bold">FAKE</span>}
             {c.stakeKes > 0 && <span className="rounded-full bg-amber-500/20 text-amber-600 px-2 py-0.5 text-[10px] font-bold">KES {c.stakeKes.toLocaleString()} stake</span>}
           </div>
-          <h3 className="mt-1 font-semibold text-sm">{c.title}</h3>
+          <h3 className="mt-1 font-semibold text-sm">{title}</h3>
           <div className="mt-1 text-xs text-muted-foreground">
             {c.challenger?.displayName || `#${c.challengerId}`}
             {' vs '}
-            {c.opponent?.displayName || (c.opponentId ? `#${c.opponentId}` : 'Open')}
+            {opponent?.displayName || (opponentId ? `#${opponentId}` : 'Open')}
             {' · '}
-            {c.startDate} → {c.endDate}
+            {c.matchLeague}
             {' · '}
-            {c.scoringMethod.replace('_', ' ')}
+            {new Date(c.createdAt).toLocaleDateString()}
           </div>
           {c.stakeKes > 0 && (
             <div className="mt-1 text-xs">
               <span className="text-muted-foreground">Pot: </span><span className="font-bold text-amber-600">KES {pot.toLocaleString()}</span>
-              <span className="text-muted-foreground ml-2">Fee (10%): </span><span className="font-bold">KES {fee.toLocaleString()}</span>
+              <span className="text-muted-foreground ml-2">Fee ({c.platformFeePct}%): </span><span className="font-bold">KES {fee.toLocaleString()}</span>
               <span className="text-muted-foreground ml-2">Winner gets: </span><span className="font-bold text-emerald-600">KES {(pot - fee).toLocaleString()}</span>
               {c.drawRefunded && <span className="ml-2 text-blue-500 font-bold">· Draw — Refunded</span>}
             </div>
@@ -62,7 +66,7 @@ function ChallengeRow({ c, onSettle, onCancel }: {
 
         {(c.status === 'active' || c.status === 'pending') && (
           <div className="flex gap-2 flex-wrap shrink-0">
-            {c.status === 'active' && !c.isFakeChallenge && (
+            {c.status === 'active' && !c.isFake && (
               <>
                 <Button
                   size="sm"
@@ -73,15 +77,15 @@ function ChallengeRow({ c, onSettle, onCancel }: {
                 >
                   <Trophy className="h-3 w-3" /> {c.challenger?.displayName || 'Challenger'} wins
                 </Button>
-                {c.opponentId && (
+                {opponentId && (
                   <Button
                     size="sm"
                     variant="outline"
                     className="text-xs h-7 gap-1"
                     disabled={settling}
-                    onClick={() => { setSettling(true); onSettle(c.id, c.opponentId!); }}
+                    onClick={() => { setSettling(true); onSettle(c.id, opponentId); }}
                   >
-                    <Trophy className="h-3 w-3" /> {c.opponent?.displayName || 'Opponent'} wins
+                    <Trophy className="h-3 w-3" /> {opponent?.displayName || 'Opponent'} wins
                   </Button>
                 )}
                 <Button

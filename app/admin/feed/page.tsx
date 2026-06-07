@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import useSWR from "swr"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Heart, Trash2, RefreshCw, FileText, Loader2 } from "lucide-react"
+import { useState } from "react"
 
 interface FeedPost {
   id: string
@@ -19,21 +20,20 @@ interface FeedPost {
   createdAt: string
 }
 
+const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then(r => r.json())
+
 export default function AdminFeedPage() {
-  const [posts, setPosts] = useState<FeedPost[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, isLoading, mutate } = useSWR<{ posts: FeedPost[] }>(
+    '/api/feed/posts?limit=100',
+    fetcher,
+    { refreshInterval: 30000 }
+  )
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  async function load() {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/feed/posts?limit=100', { cache: 'no-store' })
-      const data = await res.json()
-      setPosts(data.posts || [])
-    } finally { setLoading(false) }
-  }
-
-  useEffect(() => { void load() }, [])
+  const posts = data?.posts || []
+  const totalLikes = posts.reduce((s, p) => s + p.likes, 0)
+  const totalComments = posts.reduce((s, p) => s + p.commentCount, 0)
+  const today = posts.filter(p => Date.now() - new Date(p.createdAt).getTime() < 86_400_000).length
 
   async function remove(id: string) {
     if (!confirm('Delete this post permanently?')) return
@@ -41,7 +41,7 @@ export default function AdminFeedPage() {
     try {
       const res = await fetch(`/api/admin/feed/${id}`, { method: 'DELETE' })
       if (res.ok) {
-        setPosts(prev => prev.filter(p => p.id !== id))
+        await mutate(prev => prev ? { ...prev, posts: prev.posts.filter(p => p.id !== id) } : prev, false)
       } else {
         console.error('[admin/feed] delete failed:', await res.text())
         alert('Failed to delete post. Please try again.')
@@ -54,10 +54,6 @@ export default function AdminFeedPage() {
     }
   }
 
-  const totalLikes = posts.reduce((s, p) => s + p.likes, 0)
-  const totalComments = posts.reduce((s, p) => s + p.commentCount, 0)
-  const today = posts.filter(p => Date.now() - new Date(p.createdAt).getTime() < 86_400_000).length
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -65,7 +61,7 @@ export default function AdminFeedPage() {
           <h1 className="text-lg font-bold">Community Feed</h1>
           <p className="text-xs text-muted-foreground">Moderate posts shared by users</p>
         </div>
-        <Button onClick={load} variant="outline" size="sm" className="h-7 text-xs px-2.5">
+        <Button onClick={() => mutate()} variant="outline" size="sm" className="h-7 text-xs px-2.5">
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Refresh
         </Button>
       </div>
@@ -82,7 +78,7 @@ export default function AdminFeedPage() {
           <CardTitle className="text-sm font-semibold">Recent posts</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {loading ? (
+          {isLoading ? (
             <div className="flex items-center justify-center p-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>

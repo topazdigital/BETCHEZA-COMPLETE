@@ -143,10 +143,13 @@ export interface QueryResult<T> {
 function isRecoverableDbError(err: unknown): boolean {
   const e = err as { code?: string; errno?: string; message?: string };
   if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND' || e?.errno === 'ETIMEDOUT') return true;
+  // Auth / credential errors — trip the circuit so we stop hammering the DB until credentials change
+  if (e?.code === 'ER_ACCESS_DENIED_ERROR' || e?.code === 'ER_NOT_ALLOWED_COMMAND' || e?.code === 'ER_HOST_NOT_PRIVILEGED') return true;
   if (typeof e?.message === 'string' && (
     e.message.toLowerCase().includes('pool is closed') ||
     e.message.toLowerCase().includes('connection lost') ||
-    e.message.toLowerCase().includes('closed state')
+    e.message.toLowerCase().includes('closed state') ||
+    e.message.toLowerCase().includes('access denied')
   )) return true;
   return false;
 }
