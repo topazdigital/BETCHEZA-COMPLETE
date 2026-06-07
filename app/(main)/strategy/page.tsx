@@ -1307,6 +1307,8 @@ function CumulativePnLChart() {
 
 interface AccessInfo {
   hasAccess: boolean;
+  isExpired?: boolean;
+  expiredAt?: string;
   expiresAt?: string;
   startDayOffset?: number;
   daysRemaining?: number;
@@ -1446,6 +1448,62 @@ export default function StrategyPage() {
         walletBalance={access?.walletBalance ?? 0}
         balanceLoading={access === null}
       />
+
+      {/* ── Expired subscription banner ── */}
+      {!hasAccess && access?.isExpired && !access?.pendingReference && (
+        <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/8 overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/30">
+                <Clock className="h-4 w-4 text-amber-500" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-foreground">Your subscription has expired</p>
+                <p className="text-xs text-muted-foreground">
+                  {access.expiredAt
+                    ? `Expired ${new Date(access.expiredAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.`
+                    : 'Your 7-day access period ended.'}{' '}
+                  Re-subscribe to unlock today's picks instantly.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowSubscribeModal(true)}
+              className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-sm"
+            >
+              <TrendingUp className="h-3.5 w-3.5" />
+              Re-subscribe — KES 5,000
+            </button>
+          </div>
+          {/* Compact wallet hint if they have balance */}
+          {(access?.walletBalance ?? 0) >= 5000 && (
+            <div className="border-t border-amber-500/20 bg-amber-500/5 px-4 py-2 flex items-center justify-between gap-2">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                <Coins className="inline h-3 w-3 mr-1" />
+                You have KES {(access?.walletBalance ?? 0).toLocaleString()} in your wallet — enough to pay instantly.
+              </p>
+              <button
+                onClick={async () => {
+                  const res = await fetch('/api/strategy/access', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'wallet' }),
+                  });
+                  const d = await res.json() as AccessInfo;
+                  if (d.hasAccess) {
+                    setAccess(d);
+                  } else {
+                    setShowSubscribeModal(true);
+                  }
+                }}
+                className="shrink-0 rounded-lg bg-amber-500/20 border border-amber-500/40 px-3 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-500/30 transition-colors flex items-center gap-1.5"
+              >
+                <Coins className="h-3 w-3" /> Pay from wallet
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Pending payment banner ── */}
       {!hasAccess && access?.pendingReference && (

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   BadgeCheck, CheckCircle2, Clock, Loader2, XCircle,
-  Mail, RefreshCw, User, Sparkles,
+  Mail, RefreshCw, Sparkles, Search, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -40,6 +40,7 @@ export default function AdminTipsterApplicationsPage() {
   const [data, setData] = useState<ApiResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
+  const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [grantVerified, setGrantVerified] = useState<Record<string, boolean>>({});
@@ -96,7 +97,19 @@ export default function AdminTipsterApplicationsPage() {
     }
   }
 
-  const filtered = data?.applications.filter(a => filter === 'all' || a.status === filter) || [];
+  const filtered = (data?.applications || []).filter(a => {
+    if (filter !== 'all' && a.status !== filter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return (
+        a.displayName.toLowerCase().includes(q) ||
+        a.username.toLowerCase().includes(q) ||
+        (a.email || '').toLowerCase().includes(q) ||
+        a.pitch.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-3">
@@ -122,15 +135,35 @@ export default function AdminTipsterApplicationsPage() {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-bold">Tipster Applications</h1>
           <p className="text-xs text-muted-foreground">Review and promote users to the tipster role.</p>
         </div>
-        <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 self-start sm:self-auto" onClick={load} disabled={loading}>
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
           Refresh
         </Button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, username, or email…"
+          className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Stats */}

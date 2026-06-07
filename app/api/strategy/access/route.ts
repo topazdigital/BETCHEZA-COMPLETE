@@ -60,6 +60,8 @@ export function grantStrategyAccess(userId: number, phone: string, reference: st
 
 export function checkStrategyAccess(userId: number): {
   hasAccess: boolean;
+  isExpired?: boolean;
+  expiredAt?: string;
   expiresAt?: string;
   startDayOffset?: number;
   daysRemaining?: number;
@@ -70,7 +72,9 @@ export function checkStrategyAccess(userId: number): {
 
   const now = Date.now();
   const expiry = new Date(record.expiresAt).getTime();
-  if (now > expiry) return { hasAccess: false };
+  if (now > expiry) {
+    return { hasAccess: false, isExpired: true, expiredAt: record.expiresAt };
+  }
 
   const daysRemaining = Math.ceil((expiry - now) / (24 * 60 * 60 * 1000));
   return {
