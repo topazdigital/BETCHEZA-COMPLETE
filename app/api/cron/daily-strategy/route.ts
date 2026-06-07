@@ -4,6 +4,9 @@ import { getUpcomingMatches } from '@/lib/api/unified-sports-api';
 import { query, execute } from '@/lib/db';
 import OpenAI from 'openai';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '@/app/api/strategy/predictions/route';
+import type { AccessRecord } from '@/app/api/strategy/access/route';
+import { sendMail } from '@/lib/mailer';
+import { strategyPicksEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -593,6 +596,41 @@ export async function GET(req: NextRequest) {
         fileStoreSet(`strategy-week-${weekId}`, stored);
       }
     }
+
+    // Email all active strategy subscribers (non-blocking)
+    setImmediate(async () => {
+      try {
+        const accessRecords = fileStoreGet<AccessRecord[]>('strategy-access', []);
+        const now = Date.now();
+        const activeUserIds = accessRecords
+          .filter(r => new Date(r.expiresAt).getTime() > now)
+          .map(r => r.userId);
+        if (activeUserIds.length === 0) return;
+        const placeholders = activeUserIds.map(() => '?').join(',');
+        const usersRes = await query<{ id: number; email: string; username: string; display_name: string | null }>(
+          `SELECT u.id, u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
+           FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
+           WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
+          activeUserIds
+        );
+        for (const u of usersRes.rows) {
+          try {
+            const tpl = strategyPicksEmail({
+              subscriberName: u.display_name || u.username,
+              day: dayNumber,
+              date: todayStr,
+              stake: plan.stake,
+              targetWin: plan.targetWin,
+              picks,
+              combinedOdds: parseFloat(combinedOdds.toFixed(2)),
+            });
+            await sendMail({ to: u.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+          } catch { /* skip one failed recipient */ }
+        }
+      } catch (e) {
+        console.error('[daily-strategy] picks email blast failed:', e);
+      }
+    });
 
     return NextResponse.json({ success: true, date: todayStr, picks, combinedOdds: parseFloat(combinedOdds.toFixed(2)) });
   } catch (e: unknown) {

@@ -48,6 +48,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/predictions", label: "AI Predictions", icon: BarChart3 },
       { href: "/admin/auto-tips", label: "Auto-Tips", icon: Wand2 },
       { href: "/admin/strategy", label: "Daily Strategy", icon: TrendingUp },
+      { href: "/admin/strategy-subscribers", label: "Strategy Subscribers", icon: Users },
       { href: "/admin/featured", label: "Featured Tips", icon: Star },
     ],
   },
