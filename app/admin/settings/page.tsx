@@ -407,49 +407,53 @@ export default function AdminSettingsPage() {
         {/* Security Settings */}
         <TabsContent value="security">
           <Card>
-            <CardHeader>
-              <CardTitle>Security Settings</CardTitle>
-              <CardDescription>Configure security and authentication options</CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Security Settings</CardTitle>
+              <CardDescription className="text-xs">Configure security and authentication options</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+            <CardContent className="space-y-1.5 p-3 pt-0">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">User Registration</p>
-                  <p className="text-sm text-muted-foreground">Allow new users to register</p>
+                  <p className="text-xs font-medium">User Registration</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Allow new users to register</p>
                 </div>
                 <Switch 
                   checked={settings.registration_enabled === 'true'}
                   onCheckedChange={() => toggleSetting('registration_enabled')}
+                  className="scale-75"
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">Email Verification</p>
-                  <p className="text-sm text-muted-foreground">Require email verification for new accounts</p>
+                  <p className="text-xs font-medium">Email Verification</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Require email verification for new accounts</p>
                 </div>
                 <Switch 
                   checked={settings.email_verification === 'true'}
                   onCheckedChange={() => toggleSetting('email_verification')}
+                  className="scale-75"
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">Tipsters Auto-Approval</p>
-                  <p className="text-sm text-muted-foreground">Automatically approve new tipster applications</p>
+                  <p className="text-xs font-medium">Tipsters Auto-Approval</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Automatically approve new tipster applications</p>
                 </div>
                 <Switch 
                   checked={settings.tipsters_auto_approval === 'true'}
                   onCheckedChange={() => toggleSetting('tipsters_auto_approval')}
+                  className="scale-75"
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">Comments Moderation</p>
-                  <p className="text-sm text-muted-foreground">Moderate comments before publishing</p>
+                  <p className="text-xs font-medium">Comments Moderation</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Moderate comments before publishing</p>
                 </div>
                 <Switch 
                   checked={settings.comments_moderation === 'true'}
                   onCheckedChange={() => toggleSetting('comments_moderation')}
+                  className="scale-75"
                 />
               </div>
             </CardContent>
@@ -457,20 +461,20 @@ export default function AdminSettingsPage() {
 
           {/* Captcha — protects login & signup from bots. */}
           <Card className="mt-3">
-            <CardHeader>
-              <CardTitle>Login Captcha</CardTitle>
-              <CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Login Captcha</CardTitle>
+              <CardDescription className="text-xs">
                 Choose how Betcheza challenges suspicious sign-ins. Math is built-in
                 and works out of the box. Turnstile (Cloudflare) and reCAPTCHA (Google)
                 are stronger but need keys you create in their dashboards.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="captchaProvider">Provider</Label>
+            <CardContent className="space-y-3 p-3 pt-0">
+              <div className="space-y-1">
+                <Label htmlFor="captchaProvider" className="text-xs">Provider</Label>
                 <select
                   id="captchaProvider"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
                   value={settings.captcha_provider || ''}
                   onChange={(e) => updateSetting('captcha_provider', e.target.value)}
                 >
@@ -485,12 +489,12 @@ export default function AdminSettingsPage() {
                 </p>
               </div>
 
-              <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Shield className="h-4 w-4 text-primary" />
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  <Shield className="h-3.5 w-3.5 text-primary" />
                   Cloudflare Turnstile
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground">
                   Get free keys at{' '}
                   <a
                     href="https://dash.cloudflare.com/?to=/:account/turnstile"
@@ -501,11 +505,12 @@ export default function AdminSettingsPage() {
                     dash.cloudflare.com → Turnstile
                   </a>.
                 </p>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-2 md:grid-cols-2">
                   <div className="space-y-1">
                     <Label htmlFor="turnstileSiteKey" className="text-xs">Site Key (public)</Label>
                     <Input
                       id="turnstileSiteKey"
+                      className="h-8 text-xs"
                       placeholder="0x4AAA…"
                       value={settings.turnstile_site_key}
                       onChange={(e) => updateSetting('turnstile_site_key', e.target.value)}
@@ -515,6 +520,7 @@ export default function AdminSettingsPage() {
                     <Label htmlFor="turnstileSecretKey" className="text-xs">Secret Key</Label>
                     <Input
                       id="turnstileSecretKey"
+                      className="h-8 text-xs"
                       type="password"
                       placeholder="0x4AAA…"
                       value={settings.turnstile_secret_key}
@@ -524,12 +530,12 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Shield className="h-4 w-4 text-primary" />
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  <Shield className="h-3.5 w-3.5 text-primary" />
                   Google reCAPTCHA
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground">
                   Get keys at{' '}
                   <a
                     href="https://www.google.com/recaptcha/admin"
@@ -540,11 +546,12 @@ export default function AdminSettingsPage() {
                     google.com/recaptcha/admin
                   </a>.
                 </p>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-2 md:grid-cols-2">
                   <div className="space-y-1">
                     <Label htmlFor="recaptchaSiteKey" className="text-xs">Site Key (public)</Label>
                     <Input
                       id="recaptchaSiteKey"
+                      className="h-8 text-xs"
                       placeholder="6Lc…"
                       value={settings.recaptcha_site_key}
                       onChange={(e) => updateSetting('recaptcha_site_key', e.target.value)}
@@ -554,6 +561,7 @@ export default function AdminSettingsPage() {
                     <Label htmlFor="recaptchaSecretKey" className="text-xs">Secret Key</Label>
                     <Input
                       id="recaptchaSecretKey"
+                      className="h-8 text-xs"
                       type="password"
                       placeholder="6Lc…"
                       value={settings.recaptcha_secret_key}
@@ -569,39 +577,42 @@ export default function AdminSettingsPage() {
         {/* Notification Settings */}
         <TabsContent value="notifications">
           <Card>
-            <CardHeader>
-              <CardTitle>Notification Settings</CardTitle>
-              <CardDescription>Configure admin notifications</CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Notification Settings</CardTitle>
+              <CardDescription className="text-xs">Configure admin notifications</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+            <CardContent className="space-y-1.5 p-3 pt-0">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">New User Notifications</p>
-                  <p className="text-sm text-muted-foreground">Get notified when a new user registers</p>
+                  <p className="text-xs font-medium">New User Notifications</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Get notified when a new user registers</p>
                 </div>
                 <Switch 
                   checked={settings.notify_new_user === 'true'}
                   onCheckedChange={() => toggleSetting('notify_new_user')}
+                  className="scale-75"
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">New Prediction Notifications</p>
-                  <p className="text-sm text-muted-foreground">Get notified when a prediction is posted</p>
+                  <p className="text-xs font-medium">New Prediction Notifications</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Get notified when a prediction is posted</p>
                 </div>
                 <Switch 
                   checked={settings.notify_new_prediction === 'true'}
                   onCheckedChange={() => toggleSetting('notify_new_prediction')}
+                  className="scale-75"
                 />
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">New Comment Notifications</p>
-                  <p className="text-sm text-muted-foreground">Get notified when a comment is posted</p>
+                  <p className="text-xs font-medium">New Comment Notifications</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Get notified when a comment is posted</p>
                 </div>
                 <Switch 
                   checked={settings.notify_new_comment === 'true'}
                   onCheckedChange={() => toggleSetting('notify_new_comment')}
+                  className="scale-75"
                 />
               </div>
             </CardContent>
@@ -611,35 +622,38 @@ export default function AdminSettingsPage() {
         {/* Predictions Settings */}
         <TabsContent value="predictions">
           <Card>
-            <CardHeader>
-              <CardTitle>Predictions Settings</CardTitle>
-              <CardDescription>Configure prediction rules and limits</CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Predictions Settings</CardTitle>
+              <CardDescription className="text-xs">Configure prediction rules and limits</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="maxPredictions">Max Predictions Per Day</Label>
+            <CardContent className="space-y-3 p-3 pt-0">
+              <div className="grid gap-2 md:grid-cols-3">
+                <div className="space-y-1">
+                  <Label htmlFor="maxPredictions" className="text-xs">Max Predictions Per Day</Label>
                   <Input 
                     id="maxPredictions" 
+                    className="h-8 text-xs"
                     type="number"
                     value={settings.max_predictions_per_day}
                     onChange={(e) => updateSetting('max_predictions_per_day', e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="minOdds">Minimum Odds Allowed</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="minOdds" className="text-xs">Minimum Odds Allowed</Label>
                   <Input 
                     id="minOdds" 
+                    className="h-8 text-xs"
                     type="number"
                     step="0.1"
                     value={settings.min_odds_allowed}
                     onChange={(e) => updateSetting('min_odds_allowed', e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="maxOdds">Maximum Odds Allowed</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="maxOdds" className="text-xs">Maximum Odds Allowed</Label>
                   <Input 
                     id="maxOdds" 
+                    className="h-8 text-xs"
                     type="number"
                     step="0.1"
                     value={settings.max_odds_allowed}
@@ -654,36 +668,37 @@ export default function AdminSettingsPage() {
         {/* Appearance Settings */}
         <TabsContent value="appearance">
           <Card>
-            <CardHeader>
-              <CardTitle>Appearance Settings</CardTitle>
-              <CardDescription>Customize the look and feel</CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Appearance Settings</CardTitle>
+              <CardDescription className="text-xs">Customize the look and feel</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="primaryColor">Primary Color</Label>
+            <CardContent className="space-y-2 p-3 pt-0">
+              <div className="space-y-1">
+                <Label htmlFor="primaryColor" className="text-xs">Primary Color</Label>
                 <div className="flex gap-2">
                   <Input 
                     id="primaryColor" 
                     type="color"
                     value={settings.primary_color}
                     onChange={(e) => updateSetting('primary_color', e.target.value)}
-                    className="h-10 w-20 cursor-pointer p-1"
+                    className="h-8 w-16 cursor-pointer p-1"
                   />
                   <Input 
                     value={settings.primary_color}
                     onChange={(e) => updateSetting('primary_color', e.target.value)}
-                    className="flex-1"
+                    className="flex-1 h-8 text-xs"
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between rounded-lg border border-border p-2.5">
                 <div>
-                  <p className="font-medium">Dark Mode Default</p>
-                  <p className="text-sm text-muted-foreground">Use dark mode as the default theme</p>
+                  <p className="text-xs font-medium">Dark Mode Default</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Use dark mode as the default theme</p>
                 </div>
                 <Switch 
                   checked={settings.default_theme === 'dark'}
                   onCheckedChange={(checked) => updateSetting('default_theme', checked ? 'dark' : 'light')}
+                  className="scale-75"
                 />
               </div>
             </CardContent>
@@ -693,15 +708,15 @@ export default function AdminSettingsPage() {
         {/* Branding */}
         <TabsContent value="branding">
           <Card>
-            <CardHeader>
-              <CardTitle>Branding</CardTitle>
-              <CardDescription>Logo and favicon shown across the site and in browser tabs.</CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Branding</CardTitle>
+              <CardDescription className="text-xs">Logo and favicon shown across the site and in browser tabs.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="logoUrl">Logo (light theme)</Label>
-                  <Input id="logoUrl" placeholder="https://… or /uploads/logo.png" value={settings.logo_url} onChange={(e) => updateSetting('logo_url', e.target.value)} />
+            <CardContent className="space-y-3 p-3 pt-0">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="logoUrl" className="text-xs">Logo (light theme)</Label>
+                  <Input id="logoUrl" className="h-8 text-xs" placeholder="https://… or /uploads/logo.png" value={settings.logo_url} onChange={(e) => updateSetting('logo_url', e.target.value)} />
                   <BrandingFileUpload
                     label="Upload light logo"
                     accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
@@ -711,9 +726,9 @@ export default function AdminSettingsPage() {
                     <div className="rounded-md border border-border bg-muted/40 p-3"><img src={settings.logo_url} alt="logo preview" className="h-10 object-contain" /></div>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="logoDarkUrl">Logo (dark theme — optional)</Label>
-                  <Input id="logoDarkUrl" placeholder="https://… or /uploads/logo-dark.png" value={settings.logo_dark_url} onChange={(e) => updateSetting('logo_dark_url', e.target.value)} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="logoDarkUrl" className="text-xs">Logo (dark theme — optional)</Label>
+                  <Input id="logoDarkUrl" className="h-8 text-xs" placeholder="https://… or /uploads/logo-dark.png" value={settings.logo_dark_url} onChange={(e) => updateSetting('logo_dark_url', e.target.value)} />
                   <BrandingFileUpload
                     label="Upload dark logo"
                     accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
@@ -724,9 +739,9 @@ export default function AdminSettingsPage() {
                   )}
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="footerLogoUrl">Footer Logo (optional — uses main logo if blank)</Label>
-                <Input id="footerLogoUrl" placeholder="https://… or /uploads/footer-logo.png" value={settings.footer_logo_url || ''} onChange={(e) => updateSetting('footer_logo_url', e.target.value)} />
+              <div className="space-y-1.5">
+                <Label htmlFor="footerLogoUrl" className="text-xs">Footer Logo (optional — uses main logo if blank)</Label>
+                <Input id="footerLogoUrl" className="h-8 text-xs" placeholder="https://… or /uploads/footer-logo.png" value={settings.footer_logo_url || ''} onChange={(e) => updateSetting('footer_logo_url', e.target.value)} />
                 <BrandingFileUpload
                   label="Upload footer logo"
                   accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
@@ -736,9 +751,9 @@ export default function AdminSettingsPage() {
                   <div className="rounded-md border border-border bg-muted/40 p-3"><img src={settings.footer_logo_url} alt="footer logo preview" className="h-10 object-contain" /></div>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="faviconUrl">Favicon (PNG, ICO or SVG)</Label>
-                <Input id="faviconUrl" placeholder="https://… or /uploads/favicon.png" value={settings.favicon_url} onChange={(e) => updateSetting('favicon_url', e.target.value)} />
+              <div className="space-y-1.5">
+                <Label htmlFor="faviconUrl" className="text-xs">Favicon (PNG, ICO or SVG)</Label>
+                <Input id="faviconUrl" className="h-8 text-xs" placeholder="https://… or /uploads/favicon.png" value={settings.favicon_url} onChange={(e) => updateSetting('favicon_url', e.target.value)} />
                 <BrandingFileUpload
                   label="Upload favicon"
                   accept="image/png,image/x-icon,image/svg+xml,image/vnd.microsoft.icon,.png,.ico,.svg"
@@ -769,25 +784,25 @@ export default function AdminSettingsPage() {
         {/* 2FA */}
         <TabsContent value="twofa">
           <Card>
-            <CardHeader>
-              <CardTitle>Two-Factor Authentication</CardTitle>
-              <CardDescription>Require a one-time code at every sign-in. Codes are sent over the free email-to-SMS gateway or by email.</CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">Two-Factor Authentication</CardTitle>
+              <CardDescription className="text-xs">Require a one-time code at every sign-in. Codes are sent over the free email-to-SMS gateway or by email.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
+            <CardContent className="space-y-3 p-3 pt-0">
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-2.5">
                 <div>
-                  <Label htmlFor="twofaForceAll" className="text-sm font-medium">Enforce 2FA for everyone</Label>
-                  <p className="text-xs text-muted-foreground mt-1">When on, every user must enter a verification code after their password.</p>
+                  <Label htmlFor="twofaForceAll" className="text-xs font-medium">Enforce 2FA for everyone</Label>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">When on, every user must enter a verification code after their password.</p>
                 </div>
-                <Switch id="twofaForceAll" checked={settings.twofa_enabled === 'true'} onCheckedChange={(c) => updateSetting('twofa_enabled', c ? 'true' : 'false')} />
+                <Switch id="twofaForceAll" checked={settings.twofa_enabled === 'true'} onCheckedChange={(c) => updateSetting('twofa_enabled', c ? 'true' : 'false')} className="scale-75 shrink-0" />
               </div>
-              <div className="space-y-2">
-                <Label>Default delivery method</Label>
-                <div className="flex gap-2">
-                  <Button type="button" variant={settings.twofa_method === 'email' ? 'default' : 'outline'} onClick={() => updateSetting('twofa_method', 'email')}>Email</Button>
-                  <Button type="button" variant={settings.twofa_method === 'sms' ? 'default' : 'outline'} onClick={() => updateSetting('twofa_method', 'sms')}>Email-to-SMS gateway</Button>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Default delivery method</Label>
+                <div className="flex gap-1.5">
+                  <Button type="button" size="sm" className="h-8 text-xs" variant={settings.twofa_method === 'email' ? 'default' : 'outline'} onClick={() => updateSetting('twofa_method', 'email')}>Email</Button>
+                  <Button type="button" size="sm" className="h-8 text-xs" variant={settings.twofa_method === 'sms' ? 'default' : 'outline'} onClick={() => updateSetting('twofa_method', 'sms')}>Email-to-SMS gateway</Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground">
                   Email-to-SMS uses your existing SMTP credentials and free carrier gateways (no Twilio account needed). Each user picks their carrier from their account page.
                 </p>
               </div>
@@ -799,18 +814,18 @@ export default function AdminSettingsPage() {
         <TabsContent value="seo">
           <div className="space-y-3">
             <Card>
-              <CardHeader>
-                <CardTitle>Tracking</CardTitle>
-                <CardDescription>Site-wide analytics IDs.</CardDescription>
+              <CardHeader className="py-2 pb-1.5 px-3">
+                <CardTitle className="text-sm font-semibold">Tracking</CardTitle>
+                <CardDescription className="text-xs">Site-wide analytics IDs.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="googleAnalytics">Google Analytics ID</Label>
-                  <Input id="googleAnalytics" placeholder="G-XXXXXXXXXX" value={settings.google_analytics_id} onChange={(e) => updateSetting('google_analytics_id', e.target.value)} />
+              <CardContent className="space-y-2 p-3 pt-0">
+                <div className="space-y-1">
+                  <Label htmlFor="googleAnalytics" className="text-xs">Google Analytics ID</Label>
+                  <Input id="googleAnalytics" className="h-8 text-xs" placeholder="G-XXXXXXXXXX" value={settings.google_analytics_id} onChange={(e) => updateSetting('google_analytics_id', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="facebookPixel">Facebook Pixel ID</Label>
-                  <Input id="facebookPixel" placeholder="XXXXXXXXXXXXXXXX" value={settings.facebook_pixel_id} onChange={(e) => updateSetting('facebook_pixel_id', e.target.value)} />
+                <div className="space-y-1">
+                  <Label htmlFor="facebookPixel" className="text-xs">Facebook Pixel ID</Label>
+                  <Input id="facebookPixel" className="h-8 text-xs" placeholder="XXXXXXXXXXXXXXXX" value={settings.facebook_pixel_id} onChange={(e) => updateSetting('facebook_pixel_id', e.target.value)} />
                 </div>
               </CardContent>
             </Card>
@@ -832,13 +847,13 @@ export default function AdminSettingsPage() {
         {/* API Keys */}
         <TabsContent value="apikeys">
           <Card>
-            <CardHeader>
-              <CardTitle>External API keys</CardTitle>
-              <CardDescription>
+            <CardHeader className="py-2 pb-1.5 px-3">
+              <CardTitle className="text-sm font-semibold">External API keys</CardTitle>
+              <CardDescription className="text-xs">
                 Stored securely in the site settings table. When set here, these keys override the matching environment variables — leave blank to use the env var instead. Click Save at the top of the page to apply.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
+            <CardContent className="space-y-3 p-3 pt-0">
               <ApiKeyField
                 label="The Odds API key"
                 hint="Powers outright winners and US/EU bookmaker odds. Get one at the-odds-api.com."
@@ -863,10 +878,10 @@ export default function AdminSettingsPage() {
                 value={settings.football_data_api_key || ''}
                 onChange={(v) => updateSetting('football_data_api_key', v)}
               />
-              <div className="border-t pt-4 space-y-4">
+              <div className="border-t pt-3 space-y-2.5">
                 <div>
-                  <h4 className="text-sm font-semibold">Web push (VAPID)</h4>
-                  <p className="text-xs text-muted-foreground">
+                  <h4 className="text-xs font-semibold">Web push (VAPID)</h4>
+                  <p className="text-[10px] text-muted-foreground">
                     Required to send browser push notifications. Generate a VAPID key pair with <code className="rounded bg-muted px-1">npx web-push generate-vapid-keys</code>.
                   </p>
                 </div>
@@ -883,9 +898,10 @@ export default function AdminSettingsPage() {
                   value={settings.vapid_private_key}
                   onChange={(v) => updateSetting('vapid_private_key', v)}
                 />
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <Label className="text-xs">VAPID subject (email or URL)</Label>
                   <Input
+                    className="h-8 text-xs"
                     placeholder="mailto:admin@betcheza.com"
                     value={settings.vapid_subject}
                     onChange={(e) => updateSetting('vapid_subject', e.target.value)}
@@ -1068,38 +1084,41 @@ function SocialLinksEditor({ value, onChange }: { value: string; onChange: (next
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Social Links</CardTitle>
-        <CardDescription>
+      <CardHeader className="py-2 pb-1.5 px-3">
+        <CardTitle className="text-sm font-semibold">Social Links</CardTitle>
+        <CardDescription className="text-xs">
           Toggle each platform on or off and paste the public URL. Enabled icons appear in the site footer.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2 p-3 pt-0">
         {SOCIAL_PLATFORMS.map((p) => {
           const entry = current[p.key] || { platform: p.key, url: '', handle: '', enabled: false };
           return (
             <div
               key={p.key}
-              className="grid items-end gap-2 rounded-lg border border-border p-3 md:grid-cols-[auto_1fr_220px]"
+              className="grid items-end gap-2 rounded-lg border border-border p-2.5 md:grid-cols-[auto_1fr_180px]"
             >
-              <div className="flex items-center gap-3 md:flex-col md:items-start">
+              <div className="flex items-center gap-2 md:flex-col md:items-start">
                 <Switch
                   checked={entry.enabled}
                   onCheckedChange={(c) => update(p.key, { enabled: c })}
+                  className="scale-75"
                 />
-                <Label className="text-sm font-medium">{p.label}</Label>
+                <Label className="text-xs font-medium">{p.label}</Label>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">URL</Label>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">URL</Label>
                 <Input
+                  className="h-8 text-xs"
                   value={entry.url}
                   placeholder={p.placeholder}
                   onChange={(e) => update(p.key, { url: e.target.value })}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Handle (optional)</Label>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Handle (optional)</Label>
                 <Input
+                  className="h-8 text-xs"
                   value={entry.handle || ''}
                   placeholder="@betcheza"
                   onChange={(e) => update(p.key, { handle: e.target.value })}
@@ -1123,50 +1142,50 @@ function SeoPagesEditor({ value, onChange }: { value: SeoPageEntry[]; onChange: 
   const add = () => onChange([...value, { path: '/', title: '', description: '' }]);
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="py-2 pb-1.5 px-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Per-page SEO</CardTitle>
-            <CardDescription>Override the title and description for any path. Use <code className="rounded bg-muted px-1">/leagues/*</code> to match a section.</CardDescription>
+            <CardTitle className="text-sm font-semibold">Per-page SEO</CardTitle>
+            <CardDescription className="text-xs">Override the title and description for any path. Use <code className="rounded bg-muted px-1">/leagues/*</code> to match a section.</CardDescription>
           </div>
-          <Button size="sm" onClick={add}><Plus className="h-4 w-4 mr-1" />Add page</Button>
+          <Button size="sm" className="h-7 text-xs" onClick={add}><Plus className="h-3 w-3 mr-1" />Add page</Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2 p-3 pt-0">
         {value.length === 0 && (
-          <p className="text-sm text-muted-foreground">No custom SEO yet — defaults are applied. Click "Add page" to start.</p>
+          <p className="text-xs text-muted-foreground">No custom SEO yet — defaults are applied. Click "Add page" to start.</p>
         )}
         {value.map((entry, i) => (
-          <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+          <div key={i} className="rounded-lg border border-border p-2.5 space-y-1.5">
             <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label className="text-xs">Path</Label>
-                <Input value={entry.path} onChange={(e) => update(i, { path: e.target.value })} placeholder="/, /matches, /leagues/*" />
+                <Input className="h-8 text-xs" value={entry.path} onChange={(e) => update(i, { path: e.target.value })} placeholder="/, /matches, /leagues/*" />
               </div>
               <div className="flex items-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => remove(i)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="sm" onClick={() => remove(i)} className="text-destructive h-8 w-8 p-0"><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label className="text-xs">Title (≤ 60 chars recommended)</Label>
-              <Input value={entry.title || ''} onChange={(e) => update(i, { title: e.target.value })} placeholder="Today's free betting tips — Betcheza" />
+              <Input className="h-8 text-xs" value={entry.title || ''} onChange={(e) => update(i, { title: e.target.value })} placeholder="Today's free betting tips — Betcheza" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label className="text-xs">Meta description (≤ 160 chars recommended)</Label>
-              <Textarea rows={2} value={entry.description || ''} onChange={(e) => update(i, { description: e.target.value })} placeholder="Browse expert betting tips and predictions for today's matches." />
+              <Textarea className="text-xs" rows={2} value={entry.description || ''} onChange={(e) => update(i, { description: e.target.value })} placeholder="Browse expert betting tips and predictions for today's matches." />
             </div>
             <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label className="text-xs">Keywords (comma separated)</Label>
-                <Input value={entry.keywords || ''} onChange={(e) => update(i, { keywords: e.target.value })} placeholder="betting tips, predictions, EPL" />
+                <Input className="h-8 text-xs" value={entry.keywords || ''} onChange={(e) => update(i, { keywords: e.target.value })} placeholder="betting tips, predictions, EPL" />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label className="text-xs">Open Graph image URL</Label>
-                <Input value={entry.ogImage || ''} onChange={(e) => update(i, { ogImage: e.target.value })} placeholder="https://…/og.png" />
+                <Input className="h-8 text-xs" value={entry.ogImage || ''} onChange={(e) => update(i, { ogImage: e.target.value })} placeholder="https://…/og.png" />
               </div>
             </div>
-            <div className="flex items-center gap-2 pt-1">
-              <Switch checked={!!entry.noIndex} onCheckedChange={(c) => update(i, { noIndex: c })} />
+            <div className="flex items-center gap-2">
+              <Switch checked={!!entry.noIndex} onCheckedChange={(c) => update(i, { noIndex: c })} className="scale-75" />
               <span className="text-xs text-muted-foreground">Hide from search engines (noindex)</span>
             </div>
           </div>
@@ -1186,34 +1205,34 @@ function RewritesEditor({ value, onChange }: { value: RewriteEntry[]; onChange: 
   const add = () => onChange([...value, { source: '/old-path', destination: '/new-path', permanent: false }]);
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="py-2 pb-1.5 px-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>URL Rewrites</CardTitle>
-            <CardDescription>Send visitors from an old URL to a new one. Append <code className="rounded bg-muted px-1">*</code> to the source for prefix matching, e.g. <code className="rounded bg-muted px-1">/blog/*</code> → <code className="rounded bg-muted px-1">/news/*</code>.</CardDescription>
+            <CardTitle className="text-sm font-semibold">URL Rewrites</CardTitle>
+            <CardDescription className="text-xs">Send visitors from an old URL to a new one. Append <code className="rounded bg-muted px-1">*</code> to the source for prefix matching, e.g. <code className="rounded bg-muted px-1">/blog/*</code> → <code className="rounded bg-muted px-1">/news/*</code>.</CardDescription>
           </div>
-          <Button size="sm" onClick={add}><Plus className="h-4 w-4 mr-1" />Add rule</Button>
+          <Button size="sm" className="h-7 text-xs" onClick={add}><Plus className="h-3 w-3 mr-1" />Add rule</Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2 p-3 pt-0">
         {value.length === 0 && (
-          <p className="text-sm text-muted-foreground">No rewrite rules yet.</p>
+          <p className="text-xs text-muted-foreground">No rewrite rules yet.</p>
         )}
         {value.map((entry, i) => (
-          <div key={i} className="rounded-lg border border-border p-3 grid gap-2 md:grid-cols-[1fr_1fr_auto_auto] items-end">
-            <div className="space-y-1.5">
+          <div key={i} className="rounded-lg border border-border p-2.5 grid gap-2 md:grid-cols-[1fr_1fr_auto_auto] items-end">
+            <div className="space-y-1">
               <Label className="text-xs">From (source)</Label>
-              <Input value={entry.source} onChange={(e) => update(i, { source: e.target.value })} placeholder="/old-path" />
+              <Input className="h-8 text-xs" value={entry.source} onChange={(e) => update(i, { source: e.target.value })} placeholder="/old-path" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label className="text-xs">To (destination)</Label>
-              <Input value={entry.destination} onChange={(e) => update(i, { destination: e.target.value })} placeholder="/new-path" />
+              <Input className="h-8 text-xs" value={entry.destination} onChange={(e) => update(i, { destination: e.target.value })} placeholder="/new-path" />
             </div>
-            <div className="flex items-center gap-2 pb-2">
-              <Switch checked={!!entry.permanent} onCheckedChange={(c) => update(i, { permanent: c })} />
+            <div className="flex items-center gap-1.5 pb-1">
+              <Switch checked={!!entry.permanent} onCheckedChange={(c) => update(i, { permanent: c })} className="scale-75" />
               <span className="text-xs text-muted-foreground whitespace-nowrap">Permanent (308)</span>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => remove(i)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="sm" onClick={() => remove(i)} className="text-destructive h-8 w-8 p-0"><Trash2 className="h-3.5 w-3.5" /></Button>
           </div>
         ))}
       </CardContent>
@@ -1248,6 +1267,7 @@ function ApiKeyField({
         </button>
       </div>
       <Input
+        className="h-8 text-xs"
         type={reveal ? 'text' : 'password'}
         autoComplete="off"
         spellCheck={false}
