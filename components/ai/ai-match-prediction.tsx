@@ -43,10 +43,17 @@ export function AIMatchPrediction({
   matchId,
   isFinished = false,
 }: AIMatchPredictionProps) {
-  // Compute from whatever data is currently available (may use post-match odds)
+  // Compute prediction from current data.
+  // IMPORTANT: when the match is finished, we deliberately strip bookmaker odds
+  // before running the engine. Post-match odds collapse to reflect the actual
+  // result (e.g. draw odds drop to 1.01 after a 0-0) — feeding them into the
+  // algorithm would flip the predicted winner to match the real outcome,
+  // destroying user trust. Without odds we fall back to form + H2H, which
+  // never changes pre- vs post-match and keeps the prediction stable.
   const liveAnalysis = useMemo(() => {
-    return analyseMatch({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h })
-  }, [homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h])
+    const safeOdds = isFinished ? null : odds
+    return analyseMatch({ homeTeam, awayTeam, sportSlug, odds: safeOdds, homeForm, awayForm, h2h })
+  }, [homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, isFinished])
 
   // Locked pre-match prediction, loaded from / saved to localStorage
   const [lockedAnalysis, setLockedAnalysis] = useState<AnalysisResult | null>(null)
@@ -61,7 +68,17 @@ export function AIMatchPrediction({
         setLockedAnalysis(JSON.parse(stored) as AnalysisResult)
         return
       }
-      // Only persist once we have at least one meaningful signal
+      // For finished matches: always snapshot so all subsequent visits (this
+      // browser) see the same stable prediction. liveAnalysis has odds stripped.
+      if (isFinished) {
+        const hasAnySignal = !!(homeForm) || !!(awayForm) || (Array.isArray(h2h) && h2h.length > 0)
+        if (hasAnySignal) {
+          localStorage.setItem(key, JSON.stringify(liveAnalysis))
+          setLockedAnalysis(liveAnalysis)
+        }
+        return
+      }
+      // Pre-match: only persist once we have at least one meaningful signal
       const hasMeaningfulData = odds !== null && odds !== undefined
         || !!(homeForm) || !!(awayForm)
         || (Array.isArray(h2h) && h2h.length > 0)
@@ -73,13 +90,11 @@ export function AIMatchPrediction({
   // Re-run when data loads so we capture odds once they arrive — but once
   // stored, the localStorage branch returns early and never overwrites.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, odds, homeForm, awayForm, h2h])
+  }, [matchId, odds, homeForm, awayForm, h2h, isFinished, liveAnalysis])
 
-  // Finished matches MUST use the locked pre-match prediction so the displayed
-  // winner never flips after the game ends (post-match odds change to reflect
-  // the actual result, which would otherwise corrupt the pre-match analysis).
-  const analysis = (isFinished && lockedAnalysis) ? lockedAnalysis
-    : (lockedAnalysis ?? liveAnalysis)
+  // Always prefer locked prediction; for finished matches liveAnalysis is
+  // already odds-stripped so it's also safe to fall back to.
+  const analysis = lockedAnalysis ?? liveAnalysis
 
   const conf = analysis.confidence
   const confColor =

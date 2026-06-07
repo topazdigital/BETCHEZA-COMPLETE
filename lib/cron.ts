@@ -43,6 +43,25 @@ async function runMatchReminders(): Promise<void> {
   }
 }
 
+async function runStrategyReminders(): Promise<void> {
+  try {
+    const r = await fetch(`${getBaseUrl()}/api/cron/strategy-reminders`, {
+      cache: 'no-store',
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
+    });
+    if (!r.ok) {
+      console.warn('[cron] strategy-reminders failed:', r.status);
+    } else {
+      const data = await r.json() as { sent?: number; skipped?: boolean; total?: number };
+      if (!data.skipped && (data.sent ?? 0) > 0) {
+        console.log(`[cron] strategy-reminders: sent ${data.sent} of ${data.total} expiry reminders`);
+      }
+    }
+  } catch (e) {
+    console.warn('[cron] strategy-reminders error', e instanceof Error ? e.message : e);
+  }
+}
+
 async function runJackpotSync(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/jackpot-sync`, {
@@ -284,6 +303,7 @@ async function tick(): Promise<void> {
 
   if (isStrategyTime()) {
     void runDailyStrategy();
+    void runStrategyReminders(); // send expiry reminder emails alongside daily picks
   }
 
   // Weekly tipster report — Sunday morning EAT (06:00 UTC = 9am EAT)

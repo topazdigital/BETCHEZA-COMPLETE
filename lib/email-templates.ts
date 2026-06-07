@@ -234,6 +234,56 @@ export function strategyAccessEmail(opts: {
   };
 }
 
+/** Sent to a strategy subscriber 1 day before their access expires */
+export function strategyExpiryReminderEmail(opts: {
+  subscriberName: string;
+  expiresAt: string;
+  daysRemaining: number;
+}): { subject: string; html: string; text: string } {
+  const expiry = new Date(opts.expiresAt).toLocaleDateString('en-KE', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+
+  const html = baseLayout(`
+    <h2 style="margin:0 0 4px;color:#f1f5f9;font-size:20px;">Your Strategy Access Expires Tomorrow ⏰</h2>
+    <p style="margin:0 0 20px;color:#94a3b8;font-size:13px;">Don't lose your winning streak</p>
+
+    <p style="margin:0 0 20px;color:#94a3b8;font-size:14px;line-height:1.6;">
+      Hi <strong style="color:#f1f5f9;">${opts.subscriberName}</strong>, just a heads-up —
+      your <strong style="color:#f59e0b;">3 Daily Odds Strategy</strong> access expires
+      <strong style="color:#f1f5f9;">${expiry}</strong>.
+    </p>
+
+    <div style="background:#0f172a;border-radius:8px;padding:16px;margin-bottom:20px;">
+      <p style="margin:0 0 4px;color:#94a3b8;font-size:12px;">Access expires</p>
+      <p style="margin:0;color:#ef4444;font-size:16px;font-weight:700;">${expiry}</p>
+      <p style="margin:6px 0 0;color:#475569;font-size:12px;">Renew now to keep receiving daily picks without interruption</p>
+    </div>
+
+    <div style="background:#1a1a2e;border:1px solid #f59e0b33;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0 0 8px;color:#f59e0b;font-size:13px;font-weight:600;">What you'll keep getting:</p>
+      <p style="margin:0;color:#94a3b8;font-size:13px;line-height:1.7;">
+        📅 3 AI-selected picks posted every day<br/>
+        💰 Compounding stake plan (KES 1,000 → KES 60,000+ target)<br/>
+        📧 Email alerts the moment picks are posted each morning
+      </p>
+    </div>
+
+    <a href="${BASE_URL}/3-daily-odds-strategy"
+       style="display:inline-block;background:#f59e0b;color:#000;font-weight:700;font-size:14px;padding:12px 28px;border-radius:8px;text-decoration:none;">
+      Renew Access — KES 5,000 →
+    </a>
+  `, 'Your 3 Daily Odds Strategy access expires tomorrow — renew to keep your picks coming');
+
+  const text = `Hi ${opts.subscriberName},\n\nYour 3 Daily Odds Strategy access expires on ${expiry}.\n\nRenew now to keep receiving daily picks: ${BASE_URL}/3-daily-odds-strategy\n\nBet responsibly. 18+ only.`;
+
+  return {
+    subject: `⏰ Strategy Access Expires Tomorrow — Renew Now — Betcheza`,
+    html,
+    text,
+  };
+}
+
 /** Sent to all strategy subscribers when today's picks are posted */
 export function strategyPicksEmail(opts: {
   subscriberName: string;
