@@ -698,9 +698,9 @@ async function ensureTableExists(): Promise<void> {
         KEY idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    // Add columns if they don't exist (for existing tables)
-    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS is_manual tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
-    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS scheduled_for date DEFAULT NULL`).catch(() => {});
+    // Add columns if they don't exist (MySQL 5.7-compatible via ER_DUP_FIELDNAME catch)
+    await query(`ALTER TABLE daily_strategy ADD COLUMN is_manual tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
+    await query(`ALTER TABLE daily_strategy ADD COLUMN scheduled_for date DEFAULT NULL`).catch(() => {});
   } catch { }
 }
 

@@ -6,7 +6,7 @@
  * tip-based scores from the auto_tips table.
  */
 
-import { query } from '@/lib/db';
+import { query, addColumnIfMissing } from '@/lib/db';
 import { getFakeTipsterById } from '@/lib/fake-tipsters';
 
 // ── Canonical league list ─────────────────────────────────────────────────────
@@ -442,29 +442,29 @@ export async function findLeagueRoundEndDate(leagueName: string, afterDate: stri
 }
 
 export async function migrateCompetitionsTable(): Promise<void> {
-  const migrations = [
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS type ENUM('daily','weekly','monthly','special') DEFAULT 'weekly'`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS sport_focus VARCHAR(100) DEFAULT 'multi-sport'`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS league_id INT DEFAULT NULL`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS league_name VARCHAR(200) DEFAULT NULL`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'KES'`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS prize_breakdown JSON DEFAULT NULL`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS slug VARCHAR(200) DEFAULT NULL`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS sport_type VARCHAR(100) DEFAULT NULL`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS match_kickoff_from DATETIME DEFAULT NULL`,
-    `ALTER TABLE competitions ADD COLUMN IF NOT EXISTS match_kickoff_to DATETIME DEFAULT NULL`,
+  const competitionsCols: Array<[string, string]> = [
+    ['type', `ENUM('daily','weekly','monthly','special') DEFAULT 'weekly'`],
+    ['sport_focus', `VARCHAR(100) DEFAULT 'multi-sport'`],
+    ['league_id', 'INT DEFAULT NULL'],
+    ['league_name', 'VARCHAR(200) DEFAULT NULL'],
+    ['currency', `VARCHAR(10) DEFAULT 'KES'`],
+    ['prize_breakdown', 'JSON DEFAULT NULL'],
+    ['slug', 'VARCHAR(200) DEFAULT NULL'],
+    ['sport_type', 'VARCHAR(100) DEFAULT NULL'],
+    ['match_kickoff_from', 'DATETIME DEFAULT NULL'],
+    ['match_kickoff_to', 'DATETIME DEFAULT NULL'],
   ];
-
-  for (const sql of migrations) {
-    await query(sql, []).catch(e => {
-      if (!String(e).includes('Duplicate column')) {
-        console.warn('[migrateCompetitionsTable]', sql.slice(0, 60), '→', e);
-      }
-    });
+  for (const [col, def] of competitionsCols) {
+    await addColumnIfMissing('competitions', col, def);
   }
 
-  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS points INT DEFAULT 0`, []).catch(() => {});
-  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS won INT DEFAULT 0`, []).catch(() => {});
-  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS lost INT DEFAULT 0`, []).catch(() => {});
-  await query(`ALTER TABLE competition_entries ADD COLUMN IF NOT EXISTS avg_odds DECIMAL(8,2) DEFAULT 0`, []).catch(() => {});
+  const entriesCols: Array<[string, string]> = [
+    ['points', 'INT DEFAULT 0'],
+    ['won', 'INT DEFAULT 0'],
+    ['lost', 'INT DEFAULT 0'],
+    ['avg_odds', 'DECIMAL(8,2) DEFAULT 0'],
+  ];
+  for (const [col, def] of entriesCols) {
+    await addColumnIfMissing('competition_entries', col, def);
+  }
 }

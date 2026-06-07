@@ -702,11 +702,13 @@ export default function AdminUsersPage() {
   const url = `/api/admin/users?${params.toString()}`;
   const { data, isLoading } = useSWR<{
     users: AdminUser[];
-    counts: { total: number; byRole: Record<Role, number> };
+    counts: { total: number; real: number; fake: number; byRole: Record<Role, number>; realByRole: Record<Role, number> };
+    dbError: string | null;
   }>(url, fetcher);
 
   const users = data?.users ?? [];
-  const counts = data?.counts ?? { total: 0, byRole: { admin: 0, moderator: 0, editor: 0, tipster: 0, user: 0 } };
+  const counts = data?.counts ?? { total: 0, real: 0, fake: 0, byRole: { admin: 0, moderator: 0, editor: 0, tipster: 0, user: 0 }, realByRole: { admin: 0, moderator: 0, editor: 0, tipster: 0, user: 0 } };
+  const dbError = data?.dbError ?? null;
 
   const selectableIds = users.filter(u => !u.isFake).map(u => u.id);
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
@@ -834,12 +836,27 @@ export default function AdminUsersPage() {
         />
       )}
 
+      {/* DB error banner */}
+      {dbError && dbError !== 'no_db_config' && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span><strong>DB query error</strong> — showing partial data. Error: {dbError}</span>
+        </div>
+      )}
+      {dbError === 'no_db_config' && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span><strong>No database connection</strong> — set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME env vars. Showing seeded tipsters only.</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-lg font-bold">Users Management</h1>
           <p className="text-xs text-muted-foreground">
             Manage users, roles, balances and bulk actions.
+            {counts.real > 0 && <span className="ml-1 text-green-600 dark:text-green-400">· {counts.real} real users loaded</span>}
           </p>
         </div>
         <div className="flex gap-1.5">

@@ -38,13 +38,33 @@ async function enrichWithUsers<T extends { userId: number }>(
   if (records.length === 0) return [];
   const ids = records.map(r => r.userId);
   const placeholders = ids.map(() => '?').join(',');
-  const res = await query<{ id: number; email: string; username: string; display_name: string | null }>(
-    `SELECT u.id, u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
-     FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
-     WHERE u.id IN (${placeholders})`,
-    ids
-  );
-  const userMap = new Map(res.rows.map(u => [u.id, u]));
+
+  let rows: Array<{ id: number; email: string; username: string; display_name: string | null }> = [];
+
+  // Try with user_profiles join first, fall back to users-only if table missing
+  try {
+    const res = await query<{ id: number; email: string; username: string; display_name: string | null }>(
+      `SELECT u.id, u.email, u.username, COALESCE(up.display_name, u.display_name, u.username) AS display_name
+       FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE u.id IN (${placeholders})`,
+      ids
+    );
+    rows = res.rows;
+  } catch {
+    // user_profiles might not exist — try without join
+    try {
+      const res = await query<{ id: number; email: string; username: string; display_name: string | null }>(
+        `SELECT id, email, username, display_name FROM users WHERE id IN (${placeholders})`,
+        ids
+      );
+      rows = res.rows;
+    } catch {
+      // DB unavailable — return empty, caller will use fallback
+      throw new Error('db_unavailable');
+    }
+  }
+
+  const userMap = new Map(rows.map(u => [u.id, u]));
   return records.map(r => {
     const u = userMap.get(r.userId);
     return {

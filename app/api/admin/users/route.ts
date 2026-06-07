@@ -3,7 +3,7 @@ import { getCurrentUser, hashPassword } from '@/lib/auth';
 import { hasPermission, type Role, ROLE_LABELS } from '@/lib/permissions';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getUserRoleOverride, setUserRoleOverride } from '@/lib/user-role-overrides';
-import { query, execute } from '@/lib/db';
+import { query, execute, getPool } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,39 +22,100 @@ interface AdminUserRow {
   winRate: number;
   followers: number;
   lastActive: string;
+  dbError?: string;
 }
 
-async function buildAllUsers(): Promise<AdminUserRow[]> {
-  let realRows: AdminUserRow[] = [];
+type RawUserFull = {
+  id: number; username: string; display_name: string; email: string;
+  avatar_url: string | null; role: string; is_verified: number; is_banned: number;
+  created_at: string; total_tips: number | null; win_rate: number | null; followers_count: number | null;
+};
+type RawUserBasic = {
+  id: number; username: string; display_name: string; email: string;
+  avatar_url: string | null; role: string; is_verified: number; is_banned: number; created_at: string;
+};
+type RawUserMinimal = {
+  id: number; username: string; display_name: string | null; email: string;
+  avatar_url: string | null; role: string | null; is_verified: number | null; created_at: string;
+};
+
+function mapRow(u: RawUserFull | RawUserBasic | RawUserMinimal, extra?: { total_tips?: number | null; win_rate?: number | null; followers_count?: number | null }): AdminUserRow {
+  return {
+    id: u.id,
+    username: u.username,
+    displayName: (u as RawUserFull).display_name || u.username,
+    email: u.email || '',
+    avatar: (u as RawUserFull).avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
+    role: (getUserRoleOverride(u.id) || (u as RawUserFull).role || 'user') as Role,
+    status: ((u as RawUserBasic).is_banned ? 'banned' : (u as RawUserMinimal).is_verified ? 'active' : 'pending') as 'active' | 'banned' | 'pending',
+    isFake: false,
+    joined: new Date((u as RawUserFull).created_at).toLocaleDateString(),
+    predictions: (u as RawUserFull).total_tips ?? extra?.total_tips ?? 0,
+    winRate: (u as RawUserFull).win_rate ?? extra?.win_rate ?? 0,
+    followers: (u as RawUserFull).followers_count ?? extra?.followers_count ?? 0,
+    lastActive: 'Online',
+  };
+}
+
+async function buildRealUsers(): Promise<{ rows: AdminUserRow[]; error?: string }> {
+  // No pool → skip silently
+  if (!getPool()) return { rows: [], error: 'no_db_config' };
+
+  // ── Attempt 1: Full query with tipster_profiles join + is_banned ──────────
   try {
-    const r = await query<{
-      id: number; username: string; display_name: string; email: string;
-      avatar_url: string | null; role: string; is_verified: number; is_banned: number;
-      created_at: string; total_tips: number | null; win_rate: number | null; followers_count: number | null;
-    }>(`SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role,
+    const r = await query<RawUserFull>(
+      `SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role,
               u.is_verified, COALESCE(u.is_banned, 0) AS is_banned, u.created_at,
               tp.total_tips, tp.win_rate, tp.followers_count
        FROM users u
        LEFT JOIN tipster_profiles tp ON tp.user_id = u.id
-       ORDER BY u.created_at DESC LIMIT 500`);
-    realRows = r.rows.map(u => ({
-      id: u.id,
-      username: u.username,
-      displayName: u.display_name || u.username,
-      email: u.email || '',
-      avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
-      role: (getUserRoleOverride(u.id) || u.role || 'user') as Role,
-      status: (u.is_banned ? 'banned' : u.is_verified ? 'active' : 'pending') as 'active' | 'banned' | 'pending',
-      isFake: false,
-      joined: new Date(u.created_at).toLocaleDateString(),
-      predictions: u.total_tips ?? 0,
-      winRate: u.win_rate ?? 0,
-      followers: u.followers_count ?? 0,
-      lastActive: 'Online',
-    }));
-  } catch (e) {
-    console.error('[admin/users] DB query failed:', e);
+       ORDER BY u.created_at DESC LIMIT 500`
+    );
+    return { rows: r.rows.map(u => mapRow(u)) };
+  } catch (e1) {
+    console.warn('[admin/users] Full query failed, trying without tipster_profiles:', (e1 as Error).message);
   }
+
+  // ── Attempt 2: Without tipster_profiles (table might not exist) ───────────
+  try {
+    const r = await query<RawUserBasic>(
+      `SELECT id, username, display_name, email, avatar_url, role,
+              is_verified, COALESCE(is_banned, 0) AS is_banned, created_at
+       FROM users
+       ORDER BY created_at DESC LIMIT 500`
+    );
+    return { rows: r.rows.map(u => mapRow(u)) };
+  } catch (e2) {
+    console.warn('[admin/users] Basic query failed, trying minimal:', (e2 as Error).message);
+  }
+
+  // ── Attempt 3: Minimal — no is_banned (column might not exist) ────────────
+  try {
+    const r = await query<RawUserMinimal>(
+      `SELECT id, username, display_name, email, avatar_url, role, is_verified, created_at
+       FROM users
+       ORDER BY created_at DESC LIMIT 500`
+    );
+    return { rows: r.rows.map(u => mapRow(u)) };
+  } catch (e3) {
+    const msg = (e3 as Error).message;
+    console.error('[admin/users] All DB queries failed:', msg);
+    return { rows: [], error: msg };
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user || !hasPermission(user.role, 'admin.users.read')) {
+    return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const search = (searchParams.get('search') || '').toLowerCase();
+  const roleFilter = searchParams.get('role');
+  const sourceFilter = searchParams.get('source');
+
+  const { rows: realRows, error: dbError } = await buildRealUsers();
 
   const fakes: AdminUserRow[] = getFakeTipsters().map(t => ({
     id: t.id,
@@ -72,21 +133,31 @@ async function buildAllUsers(): Promise<AdminUserRow[]> {
     lastActive: 'Auto',
   }));
 
-  return [...realRows, ...fakes];
-}
+  const allUsers = [...realRows, ...fakes];
 
-export async function GET(request: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user || !hasPermission(user.role, 'admin.users.read')) {
-    return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
-  }
+  // Counts always from ALL users regardless of source/role filter
+  const allCounts = {
+    total: allUsers.length,
+    real: realRows.length,
+    fake: fakes.length,
+    byRole: {
+      admin: allUsers.filter(u => u.role === 'admin').length,
+      moderator: allUsers.filter(u => u.role === 'moderator').length,
+      editor: allUsers.filter(u => u.role === 'editor').length,
+      tipster: allUsers.filter(u => u.role === 'tipster').length,
+      user: allUsers.filter(u => u.role === 'user').length,
+    },
+    realByRole: {
+      admin: realRows.filter(u => u.role === 'admin').length,
+      moderator: realRows.filter(u => u.role === 'moderator').length,
+      editor: realRows.filter(u => u.role === 'editor').length,
+      tipster: realRows.filter(u => u.role === 'tipster').length,
+      user: realRows.filter(u => u.role === 'user').length,
+    },
+  };
 
-  const { searchParams } = new URL(request.url);
-  const search = (searchParams.get('search') || '').toLowerCase();
-  const roleFilter = searchParams.get('role');
-  const sourceFilter = searchParams.get('source');
-
-  let users = await buildAllUsers();
+  // Apply filters to displayed users
+  let users = allUsers;
   if (search) {
     users = users.filter(u =>
       u.username.toLowerCase().includes(search) ||
@@ -101,17 +172,9 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     users,
-    counts: {
-      total: users.length,
-      byRole: {
-        admin: users.filter(u => u.role === 'admin').length,
-        moderator: users.filter(u => u.role === 'moderator').length,
-        editor: users.filter(u => u.role === 'editor').length,
-        tipster: users.filter(u => u.role === 'tipster').length,
-        user: users.filter(u => u.role === 'user').length,
-      },
-    },
+    counts: allCounts,
     roleLabels: ROLE_LABELS,
+    dbError: dbError || null,
   });
 }
 
@@ -120,7 +183,7 @@ const g2 = globalThis as { __bannedUsers?: Set<number> };
 if (!g2.__bannedUsers) g2.__bannedUsers = new Set<number>();
 const bannedUsers = g2.__bannedUsers;
 
-// Ensure is_banned column exists (idempotent — catches duplicate column error)
+// Ensure is_banned column exists (idempotent)
 async function ensureBannedColumn() {
   try {
     await query(`ALTER TABLE users ADD COLUMN is_banned TINYINT(1) NOT NULL DEFAULT 0`);
@@ -138,7 +201,6 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
   const action = body.action as string | undefined;
 
-  // ── Bulk actions ────────────────────────────────────────────────────────────
   if (action === 'bulk_ban' || action === 'bulk_unban' || action === 'bulk_verify') {
     const ids = (body.ids as number[] | undefined) ?? [];
     if (!Array.isArray(ids) || ids.length === 0)
@@ -162,7 +224,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: true, action, count: ids.length });
   }
 
-  // ── Single-user actions ─────────────────────────────────────────────────────
   const id = Number(body.id);
   if (!id) return NextResponse.json({ success: false, error: 'invalid payload' }, { status: 400 });
 
@@ -172,20 +233,17 @@ export async function PATCH(request: NextRequest) {
     try { await query(`UPDATE users SET is_banned = 1, is_verified = 0 WHERE id = ?`, [id]); } catch {}
     return NextResponse.json({ success: true, id, action: 'ban' });
   }
-
   if (action === 'unban') {
     await ensureBannedColumn();
     bannedUsers.delete(id);
     try { await query(`UPDATE users SET is_banned = 0, is_verified = 1 WHERE id = ?`, [id]); } catch {}
     return NextResponse.json({ success: true, id, action: 'unban' });
   }
-
   if (action === 'verify') {
     try { await query(`UPDATE users SET is_verified = 1 WHERE id = ?`, [id]); } catch {}
     return NextResponse.json({ success: true, id, action: 'verify' });
   }
 
-  // ── Role change (existing behaviour) ───────────────────────────────────────
   const role = body.role as Role;
   const validRoles: Role[] = ['admin', 'moderator', 'editor', 'tipster', 'user'];
   if (!validRoles.includes(role)) {
@@ -208,7 +266,6 @@ export async function DELETE(request: NextRequest) {
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
   const ids: number[] = Array.isArray(body.ids) ? body.ids.map(Number).filter(Boolean) : [];
   if (ids.length === 0) return NextResponse.json({ success: false, error: 'No IDs provided' }, { status: 400 });
-  // Prevent self-deletion
   if (ids.includes(me.id)) return NextResponse.json({ success: false, error: 'Cannot delete your own account' }, { status: 400 });
   try {
     const placeholders = ids.map(() => '?').join(',');

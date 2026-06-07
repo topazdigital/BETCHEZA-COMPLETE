@@ -208,6 +208,21 @@ export async function withTransaction<T>(
   }
 }
 
+/**
+ * MySQL 5.7-compatible alternative to `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+ * Adds `col` to `table` only when absent; silently ignores ER_DUP_FIELDNAME.
+ */
+export async function addColumnIfMissing(table: string, col: string, def: string): Promise<void> {
+  try {
+    await query(`ALTER TABLE \`${table}\` ADD COLUMN \`${col}\` ${def}`);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code !== 'ER_DUP_FIELDNAME') {
+      // ignore quietly — table might not exist, or no ALTER privilege
+    }
+  }
+}
+
 export async function closePool(): Promise<void> {
   if (g.__dbPool) {
     await g.__dbPool.end();

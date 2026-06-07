@@ -228,9 +228,9 @@ async function ensureCommunityRoomsTable(): Promise<void> {
       ('Premium Picks', 'premium',    'Top tipster premium predictions',     '👑', 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',  7)`,
     [],
   ).catch(() => {});
-  // Add room_id column to feed_posts if not present
-  await query(`ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS room_id INT DEFAULT NULL`, []).catch(() => {});
-  await query(`ALTER TABLE feed_posts ADD INDEX IF NOT EXISTS idx_fp_room_id (room_id)`, []).catch(() => {});
+  // Add room_id column to feed_posts if not present (MySQL 5.7-compatible)
+  await query(`ALTER TABLE feed_posts ADD COLUMN room_id INT DEFAULT NULL`, []).catch(() => {});
+  await query(`ALTER TABLE feed_posts ADD INDEX idx_fp_room_id (room_id)`, []).catch(() => {});
 }
 
 export interface CommunityRoom {

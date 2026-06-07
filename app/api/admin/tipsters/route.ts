@@ -1,17 +1,114 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { requireAdmin } from '@/lib/admin-auth';
 import { hasPermission } from '@/lib/permissions';
 import { getFakeTipsters, regenerateFakeTipsters } from '@/lib/fake-tipsters';
+import { query, getPool } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-/**
- * Admin-only tipsters listing. Returns BOTH real tipsters (from the DB, when
- * available) and the seeded fake ones — each row includes `isFake` so the
- * admin UI can show a clear badge. Public consumers never see this flag.
- */
+interface TipsterRow {
+  id: number;
+  username: string;
+  displayName: string;
+  avatar: string;
+  bio: string;
+  countryCode: string;
+  winRate: number;
+  roi: number;
+  totalTips: number;
+  wonTips: number;
+  lostTips: number;
+  pendingTips: number;
+  avgOdds: number;
+  streak: number;
+  followers: number;
+  isPro: boolean;
+  subscriptionPrice: number;
+  isVerified: boolean;
+  joinedAt: string;
+  isFake: boolean;
+  status: string;
+}
+
+async function getRealTipsters(): Promise<TipsterRow[]> {
+  if (!getPool()) return [];
+  try {
+    const r = await query<{
+      id: number; username: string; display_name: string | null; avatar_url: string | null;
+      role: string; is_verified: number | null; created_at: string;
+      total_tips: number | null; win_rate: number | null; followers_count: number | null;
+      bio: string | null; subscription_price: number | null;
+    }>(
+      `SELECT u.id, u.username, u.display_name, u.avatar_url, u.role, u.is_verified, u.created_at,
+              tp.total_tips, tp.win_rate, tp.followers_count, tp.bio, tp.subscription_price
+       FROM users u
+       INNER JOIN tipster_profiles tp ON tp.user_id = u.id
+       ORDER BY tp.followers_count DESC LIMIT 500`
+    );
+    return r.rows.map(u => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.display_name || u.username,
+      avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
+      bio: u.bio || '',
+      countryCode: 'KE',
+      winRate: Number(u.win_rate ?? 0),
+      roi: 0,
+      totalTips: Number(u.total_tips ?? 0),
+      wonTips: 0,
+      lostTips: 0,
+      pendingTips: 0,
+      avgOdds: 0,
+      streak: 0,
+      followers: Number(u.followers_count ?? 0),
+      isPro: false,
+      subscriptionPrice: Number(u.subscription_price ?? 0),
+      isVerified: !!u.is_verified,
+      joinedAt: new Date(u.created_at).toISOString(),
+      isFake: false,
+      status: 'active',
+    }));
+  } catch (e) {
+    // tipster_profiles might not exist yet — fall back to users with role=tipster
+    try {
+      const r2 = await query<{
+        id: number; username: string; display_name: string | null; avatar_url: string | null;
+        is_verified: number | null; created_at: string;
+      }>(
+        `SELECT id, username, display_name, avatar_url, is_verified, created_at
+         FROM users WHERE role = 'tipster' ORDER BY created_at DESC LIMIT 500`
+      );
+      return r2.rows.map(u => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.display_name || u.username,
+        avatar: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`,
+        bio: '',
+        countryCode: 'KE',
+        winRate: 0,
+        roi: 0,
+        totalTips: 0,
+        wonTips: 0,
+        lostTips: 0,
+        pendingTips: 0,
+        avgOdds: 0,
+        streak: 0,
+        followers: 0,
+        isPro: false,
+        subscriptionPrice: 0,
+        isVerified: !!u.is_verified,
+        joinedAt: new Date(u.created_at).toISOString(),
+        isFake: false,
+        status: 'active',
+      }));
+    } catch {
+      console.warn('[admin/tipsters] DB query failed:', (e as Error).message);
+      return [];
+    }
+  }
+}
+
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user || !hasPermission(user.role, 'admin.tipsters.read')) {
@@ -19,7 +116,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const filter = searchParams.get('filter'); // 'real' | 'fake' | null
+  const filter = searchParams.get('filter');
   const search = (searchParams.get('search') || '').toLowerCase();
 
   const fake = getFakeTipsters().map(t => ({
@@ -46,12 +143,9 @@ export async function GET(request: NextRequest) {
     status: 'active',
   }));
 
-  // Real tipsters would come from DB here. We keep the array empty when no
-  // DB connection is available so the admin can clearly see what's seed-data
-  // vs real signups.
-  const real: typeof fake = [];
+  const real = await getRealTipsters();
 
-  let combined = [...real, ...fake];
+  let combined: typeof fake = [...real, ...fake];
   if (filter === 'fake') combined = combined.filter(t => t.isFake);
   if (filter === 'real') combined = combined.filter(t => !t.isFake);
   if (search) {
@@ -72,10 +166,6 @@ export async function GET(request: NextRequest) {
   });
 }
 
-/**
- * POST { action: 'regenerate', count?, seed? }
- * Wipes the in-memory fake-tipster catalogue and rebuilds it.
- */
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user || !hasPermission(user.role, 'admin.tipsters.fake')) {
