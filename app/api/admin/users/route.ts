@@ -115,6 +115,20 @@ export async function GET(request: NextRequest) {
   });
 }
 
+// In-memory banned-user set (survives hot-reloads via globalThis)
+const g2 = globalThis as { __bannedUsers?: Set<number> };
+if (!g2.__bannedUsers) g2.__bannedUsers = new Set<number>();
+const bannedUsers = g2.__bannedUsers;
+
+// Ensure is_banned column exists (idempotent — catches duplicate column error)
+async function ensureBannedColumn() {
+  try {
+    await query(`ALTER TABLE users ADD COLUMN is_banned TINYINT(1) NOT NULL DEFAULT 0`);
+  } catch {
+    // column already exists — ignore
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   const me = await getCurrentUser();
   if (!me || !hasPermission(me.role, 'admin.users.role')) {
@@ -122,23 +136,88 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
+  const action = body.action as string | undefined;
+
+  // ── Bulk actions ────────────────────────────────────────────────────────────
+  if (action === 'bulk_ban' || action === 'bulk_unban' || action === 'bulk_verify') {
+    const ids = (body.ids as number[] | undefined) ?? [];
+    if (!Array.isArray(ids) || ids.length === 0)
+      return NextResponse.json({ success: false, error: 'No user IDs provided' }, { status: 400 });
+    await ensureBannedColumn();
+    const placeholders = ids.map(() => '?').join(',');
+    try {
+      if (action === 'bulk_ban') {
+        await query(`UPDATE users SET is_banned = 1, is_verified = 0 WHERE id IN (${placeholders})`, ids);
+        ids.forEach(id => bannedUsers.add(id));
+      } else if (action === 'bulk_unban') {
+        await query(`UPDATE users SET is_banned = 0, is_verified = 1 WHERE id IN (${placeholders})`, ids);
+        ids.forEach(id => bannedUsers.delete(id));
+      } else if (action === 'bulk_verify') {
+        await query(`UPDATE users SET is_verified = 1, is_banned = 0 WHERE id IN (${placeholders})`, ids);
+        ids.forEach(id => bannedUsers.delete(id));
+      }
+    } catch (e) {
+      console.warn('[admin/users] bulk action DB failed:', e instanceof Error ? e.message : e);
+    }
+    return NextResponse.json({ success: true, action, count: ids.length });
+  }
+
+  // ── Single-user actions ─────────────────────────────────────────────────────
   const id = Number(body.id);
+  if (!id) return NextResponse.json({ success: false, error: 'invalid payload' }, { status: 400 });
+
+  if (action === 'ban') {
+    await ensureBannedColumn();
+    bannedUsers.add(id);
+    try { await query(`UPDATE users SET is_banned = 1, is_verified = 0 WHERE id = ?`, [id]); } catch {}
+    return NextResponse.json({ success: true, id, action: 'ban' });
+  }
+
+  if (action === 'unban') {
+    await ensureBannedColumn();
+    bannedUsers.delete(id);
+    try { await query(`UPDATE users SET is_banned = 0, is_verified = 1 WHERE id = ?`, [id]); } catch {}
+    return NextResponse.json({ success: true, id, action: 'unban' });
+  }
+
+  if (action === 'verify') {
+    try { await query(`UPDATE users SET is_verified = 1 WHERE id = ?`, [id]); } catch {}
+    return NextResponse.json({ success: true, id, action: 'verify' });
+  }
+
+  // ── Role change (existing behaviour) ───────────────────────────────────────
   const role = body.role as Role;
   const validRoles: Role[] = ['admin', 'moderator', 'editor', 'tipster', 'user'];
-  if (!id || !validRoles.includes(role)) {
+  if (!validRoles.includes(role)) {
     return NextResponse.json({ success: false, error: 'invalid payload' }, { status: 400 });
   }
   setUserRoleOverride(id, role);
-  // Persist to DB so the change survives restarts
   try {
-    await query(
-      `UPDATE users SET role = ? WHERE id = ?`,
-      [role, id]
-    );
+    await query(`UPDATE users SET role = ? WHERE id = ?`, [role, id]);
   } catch (e) {
     console.warn('[admin/users] DB role update failed (in-memory override still applied):', e instanceof Error ? e.message : e);
   }
   return NextResponse.json({ success: true, id, role });
+}
+
+export async function DELETE(request: NextRequest) {
+  const me = await getCurrentUser();
+  if (!me || !hasPermission(me.role, 'admin.users.role')) {
+    return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });
+  }
+  const body = await request.json().catch(() => ({} as Record<string, unknown>));
+  const ids: number[] = Array.isArray(body.ids) ? body.ids.map(Number).filter(Boolean) : [];
+  if (ids.length === 0) return NextResponse.json({ success: false, error: 'No IDs provided' }, { status: 400 });
+  // Prevent self-deletion
+  if (ids.includes(me.id)) return NextResponse.json({ success: false, error: 'Cannot delete your own account' }, { status: 400 });
+  try {
+    const placeholders = ids.map(() => '?').join(',');
+    await query(`DELETE FROM users WHERE id IN (${placeholders})`, ids);
+  } catch (e) {
+    console.warn('[admin/users] delete failed:', e instanceof Error ? e.message : e);
+    return NextResponse.json({ success: false, error: 'Delete failed — check DB connection' }, { status: 500 });
+  }
+  return NextResponse.json({ success: true, deleted: ids.length });
 }
 
 export async function POST(request: NextRequest) {

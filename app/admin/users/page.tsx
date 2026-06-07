@@ -5,6 +5,7 @@ import useSWR, { mutate } from 'swr';
 import {
   Search, MoreHorizontal, UserPlus, Download, Mail, Ban,
   CheckCircle2, Shield, Bot, X, Send, Users, Clock, ChevronRight,
+  Trash2, DollarSign, UnlockIcon, AlertTriangle, Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -115,6 +116,219 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
             </Button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Adjust Balance Modal ─────────────────────────────────────────────────────
+function AdjustBalanceModal({
+  user,
+  onClose,
+  onDone,
+}: {
+  user: AdminUser;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [direction, setDirection] = useState<'credit' | 'debit'>('credit');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [currentBalance, setCurrentBalance] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    fetch(`/api/admin/users/balance?userId=${user.id}`)
+      .then(r => r.json())
+      .then(d => { if (d.success) setCurrentBalance(d.balance); })
+      .finally(() => setLoading(false));
+  }, [user.id]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setError('Enter a positive amount'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/users/balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, amount: amt, direction, note }),
+      });
+      const data = await res.json();
+      if (!data.success) { setError(data.error || 'Failed'); setSaving(false); return; }
+      setCurrentBalance(data.newBalance);
+      setSuccess(`${direction === 'credit' ? 'Credited' : 'Debited'} KES ${amt.toLocaleString()} — new balance: KES ${data.newBalance.toLocaleString()}`);
+      setAmount('');
+      setNote('');
+      onDone();
+    } catch {
+      setError('Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-xl border bg-background shadow-xl">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="text-sm font-bold flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-primary" />
+              Adjust Balance
+            </h2>
+            <p className="text-[11px] text-muted-foreground">{user.displayName} · @{user.username}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          {/* Current balance */}
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Current balance</span>
+            {loading ? (
+              <Spinner className="h-3.5 w-3.5" />
+            ) : (
+              <span className="text-sm font-bold tabular-nums">
+                KES {(currentBalance ?? 0).toLocaleString()}
+              </span>
+            )}
+          </div>
+
+          {success && (
+            <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">{success}</p>
+            </div>
+          )}
+          {error && (
+            <p className="rounded bg-red-500/10 px-3 py-2 text-xs text-red-500">{error}</p>
+          )}
+
+          <form onSubmit={submit} className="space-y-3">
+            {/* Direction toggle */}
+            <div>
+              <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">Action</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDirection('credit')}
+                  className={cn(
+                    'rounded-lg border py-2 text-xs font-medium transition-colors',
+                    direction === 'credit'
+                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : 'border-border text-muted-foreground hover:border-border/80',
+                  )}
+                >
+                  + Add funds
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDirection('debit')}
+                  className={cn(
+                    'rounded-lg border py-2 text-xs font-medium transition-colors',
+                    direction === 'debit'
+                      ? 'border-red-500 bg-red-500/10 text-red-600 dark:text-red-400'
+                      : 'border-border text-muted-foreground hover:border-border/80',
+                  )}
+                >
+                  − Deduct funds
+                </button>
+              </div>
+            </div>
+
+            {/* Amount */}
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Amount (KES) *</label>
+              <Input
+                className="h-8 text-xs"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="e.g. 500"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                required
+              />
+            </div>
+
+            {/* Note */}
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Note (optional)</label>
+              <Input
+                className="h-8 text-xs"
+                placeholder="Reason for adjustment…"
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                maxLength={200}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" className="flex-1 h-8 text-xs" onClick={onClose}>
+                Done
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className={cn(
+                  'flex-1 h-8 text-xs',
+                  direction === 'debit' && 'bg-red-500 hover:bg-red-600 text-white',
+                )}
+                disabled={saving || !amount}
+              >
+                {saving ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <DollarSign className="mr-1.5 h-3.5 w-3.5" />}
+                {direction === 'credit' ? 'Add funds' : 'Deduct funds'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+function ConfirmDialog({
+  title,
+  description,
+  confirmLabel,
+  destructive,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-xl border bg-background shadow-xl p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className={cn('h-5 w-5 mt-0.5 shrink-0', destructive ? 'text-red-500' : 'text-amber-500')} />
+          <div>
+            <h3 className="text-sm font-bold">{title}</h3>
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1 h-8 text-xs" onClick={onCancel}>Cancel</Button>
+          <Button
+            size="sm"
+            className={cn('flex-1 h-8 text-xs', destructive && 'bg-red-500 hover:bg-red-600 text-white')}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -267,7 +481,6 @@ function EmailModal({
     const tpl = EMAIL_TEMPLATES.find(t => t.id === templateId);
     if (!tpl) return;
     setSelectedTemplate(templateId);
-    // For single-user emails, use their real name; for bulk use a placeholder
     const name = targetUser?.displayName || '{{name}}';
     setSubject(tpl.subject);
     setBody(tpl.body(name));
@@ -355,7 +568,6 @@ function EmailModal({
         <div className="space-y-3 p-4">
           {status === 'idle' && (
             <>
-              {/* Template selector */}
               <div>
                 <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Template (optional)</label>
                 <div className="flex flex-wrap gap-1.5">
@@ -477,6 +689,10 @@ export default function AdminUsersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [emailTarget, setEmailTarget] = useState<AdminUser | null>(null);
   const [showBulkEmail, setShowBulkEmail] = useState(false);
+  const [balanceTarget, setBalanceTarget] = useState<AdminUser | null>(null);
+  const [confirm, setConfirm] = useState<{
+    title: string; description: string; confirmLabel: string; destructive?: boolean; action: () => Promise<void>;
+  } | null>(null);
 
   const params = new URLSearchParams();
   if (searchQuery) params.set('search', searchQuery);
@@ -492,7 +708,6 @@ export default function AdminUsersPage() {
   const users = data?.users ?? [];
   const counts = data?.counts ?? { total: 0, byRole: { admin: 0, moderator: 0, editor: 0, tipster: 0, user: 0 } };
 
-  // Compute selectable IDs from the currently filtered view (real users only for email)
   const selectableIds = users.filter(u => !u.isFake).map(u => u.id);
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
   const someSelected = selectableIds.some(id => selected.has(id));
@@ -527,10 +742,48 @@ export default function AdminUsersPage() {
     mutate(url);
   }
 
+  async function singleAction(id: number, action: string) {
+    await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, action }),
+    });
+    mutate(url);
+  }
+
+  async function bulkAction(action: string) {
+    const ids = Array.from(selected);
+    await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ids }),
+    });
+    setSelected(new Set());
+    mutate(url);
+  }
+
+  async function deleteUsers(ids: number[]) {
+    await fetch('/api/admin/users', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    setSelected(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.delete(id));
+      return next;
+    });
+    mutate(url);
+  }
+
+  function confirmAction(opts: typeof confirm) {
+    setConfirm(opts);
+  }
+
   function exportCsv() {
-    const rows = [['ID', 'Username', 'Display Name', 'Email', 'Role', 'Source', 'Joined', 'Tips', 'Win %']];
+    const rows = [['ID', 'Username', 'Display Name', 'Email', 'Role', 'Status', 'Source', 'Joined', 'Tips', 'Win %']];
     for (const u of users) {
-      rows.push([String(u.id), u.username, u.displayName, u.email, u.role, u.isFake ? 'Seeded' : 'Real', u.joined, String(u.predictions), `${u.winRate}%`]);
+      rows.push([String(u.id), u.username, u.displayName, u.email, u.role, u.status, u.isFake ? 'Seeded' : 'Real', u.joined, String(u.predictions), `${u.winRate}%`]);
     }
     const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -539,7 +792,6 @@ export default function AdminUsersPage() {
     a.click();
   }
 
-  // Selected user IDs for bulk email
   const selectedIds = Array.from(selected);
 
   return (
@@ -561,13 +813,33 @@ export default function AdminUsersPage() {
           onClose={() => setShowBulkEmail(false)}
         />
       )}
+      {balanceTarget && (
+        <AdjustBalanceModal
+          user={balanceTarget}
+          onClose={() => setBalanceTarget(null)}
+          onDone={() => mutate(url)}
+        />
+      )}
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.title}
+          description={confirm.description}
+          confirmLabel={confirm.confirmLabel}
+          destructive={confirm.destructive}
+          onCancel={() => setConfirm(null)}
+          onConfirm={async () => {
+            await confirm.action();
+            setConfirm(null);
+          }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-lg font-bold">Users Management</h1>
           <p className="text-xs text-muted-foreground">
-            Manage users and roles. Moderators &amp; Editors get scoped access.
+            Manage users, roles, balances and bulk actions.
           </p>
         </div>
         <div className="flex gap-1.5">
@@ -629,19 +901,52 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      {/* Selection banner */}
+      {/* Selection / Bulk-action banner */}
       {someSelected && (
-        <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
           <Users className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span className="flex-1 text-xs font-medium">{selectedIds.length} user{selectedIds.length !== 1 ? 's' : ''} selected</span>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
-            onClick={() => setShowBulkEmail(true)}>
-            <Mail className="h-3 w-3" />Email selected
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground"
-            onClick={() => setSelected(new Set())}>
-            <X className="h-3 w-3" />Clear
-          </Button>
+          <span className="flex-1 text-xs font-medium min-w-[80px]">
+            {selectedIds.length} user{selectedIds.length !== 1 ? 's' : ''} selected
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+              onClick={() => setShowBulkEmail(true)}>
+              <Mail className="h-3 w-3" />Email
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
+              onClick={() => confirmAction({
+                title: `Verify ${selectedIds.length} user${selectedIds.length !== 1 ? 's' : ''}?`,
+                description: 'Their accounts will be marked as verified and active.',
+                confirmLabel: 'Verify all',
+                action: () => bulkAction('bulk_verify'),
+              })}>
+              <CheckCircle2 className="h-3 w-3" />Verify
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
+              onClick={() => confirmAction({
+                title: `Ban ${selectedIds.length} user${selectedIds.length !== 1 ? 's' : ''}?`,
+                description: 'They will be blocked from logging in. You can unban them individually.',
+                confirmLabel: 'Ban all',
+                destructive: true,
+                action: () => bulkAction('bulk_ban'),
+              })}>
+              <Ban className="h-3 w-3" />Ban
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-red-500/40 text-red-600 hover:bg-red-500/10"
+              onClick={() => confirmAction({
+                title: `Delete ${selectedIds.length} user${selectedIds.length !== 1 ? 's' : ''}?`,
+                description: 'This is permanent. All their data, tips, and history will be removed.',
+                confirmLabel: 'Delete permanently',
+                destructive: true,
+                action: () => deleteUsers(selectedIds),
+              })}>
+              <Trash2 className="h-3 w-3" />Delete
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground"
+              onClick={() => setSelected(new Set())}>
+              <X className="h-3 w-3" />Clear
+            </Button>
+          </div>
         </div>
       )}
 
@@ -669,11 +974,10 @@ export default function AdminUsersPage() {
                     </th>
                     <th className="p-2 px-3 font-medium">User</th>
                     <th className="p-2 px-3 font-medium">Role</th>
-                    <th className="p-2 px-3 font-medium">Source</th>
+                    <th className="p-2 px-3 font-medium">Status</th>
                     <th className="p-2 px-3 font-medium text-right">Tips</th>
                     <th className="p-2 px-3 font-medium text-right">Win&nbsp;%</th>
                     <th className="p-2 px-3 font-medium">Joined</th>
-                    <th className="p-2 px-3 font-medium">Last seen</th>
                     <th className="p-2 px-3 font-medium"></th>
                   </tr>
                 </thead>
@@ -682,6 +986,7 @@ export default function AdminUsersPage() {
                     <tr key={user.id} className={cn(
                       "border-b last:border-0 hover:bg-muted/30 transition-colors",
                       selected.has(user.id) && "bg-primary/5",
+                      user.status === 'banned' && "opacity-60",
                     )}>
                       <td className="p-1.5 px-3">
                         {!user.isFake ? (
@@ -701,7 +1006,10 @@ export default function AdminUsersPage() {
                           <img src={user.avatar} alt="" className="h-8 w-8 rounded-full bg-muted shrink-0" />
                           <div className="min-w-0">
                             <p className="truncate font-medium">{user.displayName}</p>
-                            <p className="truncate text-[10px] text-muted-foreground">@{user.username} · {user.email}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              @{user.username}
+                              {!user.isFake && ` · ${user.email}`}
+                            </p>
                           </div>
                         </div>
                       </td>
@@ -716,12 +1024,23 @@ export default function AdminUsersPage() {
                         </Select>
                       </td>
                       <td className="p-1.5 px-3">
-                        <Badge variant="outline" className={cn(
-                          'text-[9px] h-4 px-1',
-                          user.isFake ? 'border-purple-500/30 text-purple-500' : 'border-emerald-500/30 text-emerald-500',
-                        )}>
-                          {user.isFake ? <><Bot className="mr-0.5 h-2.5 w-2.5" />Seeded</> : 'Real'}
-                        </Badge>
+                        {user.isFake ? (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 border-purple-500/30 text-purple-500">
+                            <Bot className="mr-0.5 h-2.5 w-2.5" />Seeded
+                          </Badge>
+                        ) : user.status === 'banned' ? (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 border-red-500/40 text-red-500">
+                            <Ban className="mr-0.5 h-2 w-2" />Banned
+                          </Badge>
+                        ) : user.status === 'active' ? (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 border-emerald-500/30 text-emerald-500">
+                            <CheckCircle2 className="mr-0.5 h-2 w-2" />Active
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-500/30 text-amber-500">
+                            Pending
+                          </Badge>
+                        )}
                       </td>
                       <td className="p-1.5 px-3 text-right tabular-nums">{user.predictions}</td>
                       <td className="p-1.5 px-3 text-right">
@@ -730,28 +1049,57 @@ export default function AdminUsersPage() {
                         </span>
                       </td>
                       <td className="p-1.5 px-3 text-[10px] text-muted-foreground">{user.joined}</td>
-                      <td className="p-1.5 px-3 text-[10px]">
-                        <span className={user.lastActive === 'Online' ? 'text-emerald-500 font-medium' : 'text-muted-foreground'}>
-                          {user.lastActive}
-                        </span>
-                      </td>
                       <td className="p-1.5 px-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-3.5 w-3.5" /></Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {!user.isFake && (
-                              <DropdownMenuItem className="text-xs" onClick={() => setEmailTarget(user)}>
-                                <Mail className="mr-2 h-3.5 w-3.5" />Email user
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem className="text-xs"><CheckCircle2 className="mr-2 h-3.5 w-3.5" />Verify</DropdownMenuItem>
+                          <DropdownMenuContent align="end" className="w-44">
                             {!user.isFake && (
                               <>
+                                <DropdownMenuItem className="text-xs" onClick={() => setEmailTarget(user)}>
+                                  <Mail className="mr-2 h-3.5 w-3.5" />Email user
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-xs" onClick={() => setBalanceTarget(user)}>
+                                  <Wallet className="mr-2 h-3.5 w-3.5" />Adjust balance
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-red-500 text-xs"><Ban className="mr-2 h-3.5 w-3.5" />Ban user</DropdownMenuItem>
+                                {user.status !== 'active' && (
+                                  <DropdownMenuItem className="text-xs text-emerald-600" onClick={() => singleAction(user.id, 'verify')}>
+                                    <CheckCircle2 className="mr-2 h-3.5 w-3.5" />Verify / activate
+                                  </DropdownMenuItem>
+                                )}
+                                {user.status !== 'banned' ? (
+                                  <DropdownMenuItem className="text-xs text-amber-600" onClick={() => confirmAction({
+                                    title: `Ban ${user.displayName}?`,
+                                    description: 'They will be blocked from logging in.',
+                                    confirmLabel: 'Ban user',
+                                    destructive: true,
+                                    action: () => singleAction(user.id, 'ban'),
+                                  })}>
+                                    <Ban className="mr-2 h-3.5 w-3.5" />Ban user
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem className="text-xs text-emerald-600" onClick={() => singleAction(user.id, 'unban')}>
+                                    <UnlockIcon className="mr-2 h-3.5 w-3.5" />Unban user
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-red-500 text-xs" onClick={() => confirmAction({
+                                  title: `Delete ${user.displayName}?`,
+                                  description: 'Permanently deletes this account and all their data. Cannot be undone.',
+                                  confirmLabel: 'Delete permanently',
+                                  destructive: true,
+                                  action: () => deleteUsers([user.id]),
+                                })}>
+                                  <Trash2 className="mr-2 h-3.5 w-3.5" />Delete user
+                                </DropdownMenuItem>
                               </>
+                            )}
+                            {user.isFake && (
+                              <DropdownMenuItem className="text-xs text-muted-foreground" disabled>
+                                <Bot className="mr-2 h-3.5 w-3.5" />Seeded — read only
+                              </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
