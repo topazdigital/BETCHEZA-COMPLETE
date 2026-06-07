@@ -231,10 +231,10 @@ export function AdminShell({ children, user }: AdminShellProps) {
       )}
 
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 flex w-56 transform flex-col border-r border-border bg-card transition-transform lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 flex w-52 transform flex-col border-r border-border bg-card transition-transform duration-200 lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="flex h-12 items-center justify-between border-b border-border px-3">
+        <div className="flex h-10 items-center justify-between border-b border-border px-3">
           <Link href="/admin" className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Shield className="h-4 w-4" />
@@ -264,8 +264,8 @@ export function AdminShell({ children, user }: AdminShellProps) {
         </div>
       </aside>
 
-      <div className="lg:pl-56">
-        <header className="sticky top-0 z-30 flex h-11 items-center gap-2 border-b border-border bg-card px-2 md:px-3">
+      <div className="lg:pl-52">
+        <header className="sticky top-0 z-30 flex h-10 items-center gap-2 border-b border-border bg-card px-2 md:px-3">
           <Button
             variant="ghost"
             size="icon"
@@ -275,19 +275,16 @@ export function AdminShell({ children, user }: AdminShellProps) {
             <Menu className="h-4 w-4" />
           </Button>
 
-          <div className="hidden md:flex flex-1 max-w-md">
+          <div className="hidden md:flex flex-1 max-w-sm">
             <HeaderSearch inline placeholder="Search the site…" />
           </div>
 
           <div className="flex flex-1 md:flex-none items-center justify-end gap-1">
-            <Button variant="ghost" size="icon" className="relative h-7 w-7">
-              <Bell className="h-3.5 w-3.5" />
-            </Button>
             <div className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5">
               <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
                 {user.displayName.charAt(0).toUpperCase()}
               </div>
-              <div className="hidden sm:block leading-tight max-w-[100px] truncate">
+              <div className="hidden sm:block leading-tight max-w-[80px] truncate">
                 <p className="text-[10px] font-semibold truncate">{user.displayName}</p>
               </div>
               <form action="/api/auth/logout" method="POST">
@@ -299,7 +296,7 @@ export function AdminShell({ children, user }: AdminShellProps) {
           </div>
         </header>
 
-        <main className="p-2 md:p-3">
+        <main className="p-2 md:p-3 min-w-0">
           {children}
         </main>
       </div>

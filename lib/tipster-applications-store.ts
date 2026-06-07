@@ -14,6 +14,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { query } from './db';
 
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -154,6 +155,34 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
   row.reviewerNote = input.note?.trim() || undefined;
   row.verifiedGranted = input.decision === 'approve' && !!input.grantVerified;
   await persist();
+
+  if (input.decision === 'approve') {
+    try {
+      await query(
+        `UPDATE users SET role = 'tipster'${input.grantVerified ? ', is_verified = 1' : ''} WHERE id = ?`,
+        [row.userId]
+      );
+
+      if (input.grantVerified) {
+        await query(
+          `INSERT INTO tipster_profiles (user_id, is_verified, created_at, updated_at)
+           VALUES (?, 1, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE is_verified = 1, updated_at = NOW()`,
+          [row.userId]
+        );
+      } else {
+        await query(
+          `INSERT INTO tipster_profiles (user_id, created_at, updated_at)
+           VALUES (?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+          [row.userId]
+        );
+      }
+    } catch (e) {
+      console.warn('[tipster-applications] DB role update failed (in-memory/file state still applied):', e instanceof Error ? e.message : e);
+    }
+  }
+
   return row;
 }
 

@@ -684,7 +684,7 @@ function EmailModal({
 export default function AdminUsersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | Role>('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'real' | 'fake'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'real' | 'fake'>('real');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [emailTarget, setEmailTarget] = useState<AdminUser | null>(null);
