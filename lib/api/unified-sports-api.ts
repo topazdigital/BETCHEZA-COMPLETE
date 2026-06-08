@@ -527,7 +527,6 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'per.1', sportId: 1, leagueId: 352, leagueName: 'Liga 1 Peru', country: 'Peru', countryCode: 'PE', sportType: 'soccer' },
   { sport: 'soccer', league: 'ecu.1', sportId: 1, leagueId: 353, leagueName: 'Liga Pro Ecuador', country: 'Ecuador', countryCode: 'EC', sportType: 'soccer' },
   { sport: 'soccer', league: 'bol.1', sportId: 1, leagueId: 354, leagueName: 'Bolivian División de Fútbol Profesional', country: 'Bolivia', countryCode: 'BO', sportType: 'soccer' },
-  { sport: 'soccer', league: 'ury.1', sportId: 1, leagueId: 355, leagueName: 'Uruguayan Primera División', country: 'Uruguay', countryCode: 'UY', sportType: 'soccer' },
   { sport: 'soccer', league: 'par.1', sportId: 1, leagueId: 356, leagueName: 'División de Honor Paraguay', country: 'Paraguay', countryCode: 'PY', sportType: 'soccer' },
   { sport: 'soccer', league: 'chl.1', sportId: 1, leagueId: 357, leagueName: 'Chilean Primera División', country: 'Chile', countryCode: 'CL', sportType: 'soccer' },
 
@@ -912,18 +911,31 @@ interface ESPNScoreboardResponse {
   }>;
 }
 
-// Build reverse lookup: slugified league key (e.g. "eng1") -> ESPNLeagueConfig
+// Build reverse lookups: slugified league key (e.g. "eng1") -> ESPNLeagueConfig
+// and numeric leagueId -> ESPNLeagueConfig (needed for global-sport match IDs
+// which use the format espn_global<leagueId>_<eventId> rather than espn_atp_<eventId>).
 const ESPN_LEAGUE_BY_SLUG = new Map<string, ESPNLeagueConfig>();
+const ESPN_LEAGUE_BY_ID = new Map<number, ESPNLeagueConfig>();
 for (const cfg of ESPN_LEAGUES) {
   ESPN_LEAGUE_BY_SLUG.set(cfg.league.replace(/[^a-z0-9]/gi, ''), cfg);
+  if (!ESPN_LEAGUE_BY_ID.has(cfg.leagueId)) {
+    ESPN_LEAGUE_BY_ID.set(cfg.leagueId, cfg);
+  }
 }
 export function getEspnLeagueConfigForId(matchId: string): ESPNLeagueConfig | null {
   // Match `espn_<league>_<eventId>` where <league> may contain dots
-  // (e.g. "ita.1", "uefa.champions", "conmebol.libertadores").
+  // (e.g. "ita.1", "uefa.champions", "conmebol.libertadores") or the
+  // global-sport format "global<leagueId>" (e.g. "global140" for ATP tennis).
   const m = matchId.match(/^espn_([a-z0-9.]+)_(\d+)$/i);
   if (!m) return null;
-  // Try the slugified key first (no dots), then the raw key.
   const slug = m[1].replace(/[^a-z0-9]/gi, '');
+  // Global-sport matches use espn_global<leagueId>_<eventId> — look up by numeric ID.
+  const globalMatch = slug.match(/^global(\d+)$/i);
+  if (globalMatch) {
+    const leagueId = parseInt(globalMatch[1], 10);
+    return ESPN_LEAGUE_BY_ID.get(leagueId) || null;
+  }
+  // Try the slugified key first (no dots), then the raw key.
   return ESPN_LEAGUE_BY_SLUG.get(slug) || ESPN_LEAGUE_BY_SLUG.get(m[1]) || null;
 }
 export function getEspnEventIdFromMatchId(matchId: string): string | null {
@@ -5635,8 +5647,19 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
       // 2+ hits → cross-sport collision, fall through to staged lookup for disambiguation.
       const numericId = matchId.slice('espn_eventid_'.length);
       const hits = allMatches.filter(m => m.id.endsWith(`_${numericId}`));
-      if (hits.length === 1) return hits[0];
-      // Zero or 2+ hits → fall through to staged ESPN API lookup below
+      if (hits.length === 1) {
+        const hit = hits[0];
+        // Trust a recent or non-finished cache hit immediately.
+        // If the match is finished AND older than 7 days, fall through to the
+        // staged lookup: ESPN sometimes reuses event IDs across seasons/phases
+        // (seen with Uruguayan Primera), so a stale finished entry for event
+        // ID X might shadow a newer match that also carries event ID X.
+        const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+        const kickoffAge = Date.now() - new Date(hit.kickoffTime).getTime();
+        if (hit.status !== 'finished' || kickoffAge < sevenDaysMs) return hit;
+        // Older finished match — fall through to check for a fresher version
+      }
+      // Zero, 2+ hits, or stale single hit → fall through to staged ESPN API lookup below
     }
   } catch (error) {
     console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);

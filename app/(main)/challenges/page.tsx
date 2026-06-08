@@ -1592,10 +1592,15 @@ export default function ChallengesPage() {
               </div>
             )}
 
-            {/* Active tab: group into Live Now and Upcoming sub-sections */}
+            {/* Active tab: group into Live Now, Upcoming, and In Progress sub-sections */}
             {tab === 'active' && sortedFiltered.length > 0 ? (() => {
               const liveCards = sortedFiltered.filter(c => trulyLive.some(x => x.id === c.id));
               const upcomingCards = sortedFiltered.filter(c => upcomingActive.some(x => x.id === c.id));
+              // Challenges whose match kicked off >3h ago with no live feed data yet
+              // (common for newly finished matches not yet reflected in SSE stream)
+              const inProgressCards = sortedFiltered.filter(c =>
+                !trulyLive.some(x => x.id === c.id) && !upcomingActive.some(x => x.id === c.id)
+              );
               return (
                 <div className="space-y-6">
                   {liveCards.length > 0 && (
@@ -1622,6 +1627,21 @@ export default function ChallengesPage() {
                       </div>
                       <div className="space-y-3">
                         {upcomingCards.map(c => (
+                          <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
+                            onAccept={setAcceptTarget} onCancel={handleCancel}
+                            liveData={liveMap[c.matchId]} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {inProgressCards.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">⚔️ In Progress</span>
+                        <div className="h-px flex-1 bg-border" />
+                      </div>
+                      <div className="space-y-3">
+                        {inProgressCards.map(c => (
                           <ChallengeCard key={c.id} challenge={c} currentUserId={user?.id}
                             onAccept={setAcceptTarget} onCancel={handleCancel}
                             liveData={liveMap[c.matchId]} />

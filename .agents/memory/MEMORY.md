@@ -14,3 +14,5 @@
 - [teams.short_name column width](db-short-name.md) — short_name was VARCHAR(50); ESPN abbreviations can exceed that; widened to VARCHAR(100) via instrumentation.ts ALTER TABLE migration
 - [Challenges system architecture](challenges-system.md) — real-match pick battles; client-safe picks in lib/challenge-picks.ts; API seeds fake challenges async/non-blocking; isFakeUserId lives in fake-tipsters.ts
 - [Challenges UI rules](challenges-ui-rules.md) — fake tipsters must NEVER show "Demo" labels; always render isFake tipsters identically to real users; match-search returns deterministic fallback odds for football; pick buttons show odds inline
+- [ESPN global-sport match ID & sportTag](espn-global-sport-tag.md) — global sport matches use espn_global<leagueId>_<eventId> IDs; getEspnLeagueConfigForId returned null for these causing teamSportTag=null and wrong cross-sport team URLs
+- [Uruguayan Primera duplicate & stale match cache](uru-match-collision.md) — ury.1 was duplicate of uru.1 causing 2+ cache hits for same event ID; stale finished matches >7 days old now fall through to staged lookup to catch ESPN event ID reuse
