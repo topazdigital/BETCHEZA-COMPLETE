@@ -5613,12 +5613,15 @@ export function sortMatchesWithPriority(matches: UnifiedMatch[]): UnifiedMatch[]
 
 export async function getMatchById(matchId: string): Promise<UnifiedMatch | null> {
   // 1) Fast path — match is in the current rolling window (today/upcoming/recent).
-  //    For espn_eventid_ format we now DO scan the cache (cross-sport numeric
-  //    collisions are handled below: if exactly 1 hit → unambiguous return;
-  //    2+ hits → fall through to staged ESPN API for disambiguation).
+  //    For espn_eventid_ format we scan the cache and prefer the most recent match
+  //    when multiple hits share the same numeric ID (ESPN reuses IDs across seasons).
   //    This is critical for non-soccer sports (tennis, basketball, cricket, etc.)
   //    whose matches ARE in the cache under espn_atp_, espn_wta_, espn_nba_, etc.
   const isEventIdFormat = matchId.startsWith('espn_eventid_');
+
+  // Stale fallback: if all cache hits are old finished matches (>7 days), we still
+  // save the most recent one here so we can return it if the staged lookup also fails.
+  let staleHitFallback: UnifiedMatch | null = null;
 
   try {
     const allMatches = await getAllMatches();
@@ -5642,24 +5645,27 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
       }
     } else {
       // espn_eventid_ format: scan ALL sports by numeric suffix.
-      // Exactly 1 hit → unambiguous match (covers live/recent tennis, basketball, etc.).
-      // 0 hits → not in cache, fall through to staged ESPN API lookup.
-      // 2+ hits → cross-sport collision, fall through to staged lookup for disambiguation.
+      // Sort by kickoff (most recent first) so today's match wins over an old
+      // one from a previous season — ESPN sometimes reuses event IDs.
       const numericId = matchId.slice('espn_eventid_'.length);
       const hits = allMatches.filter(m => m.id.endsWith(`_${numericId}`));
-      if (hits.length === 1) {
-        const hit = hits[0];
-        // Trust a recent or non-finished cache hit immediately.
-        // If the match is finished AND older than 7 days, fall through to the
-        // staged lookup: ESPN sometimes reuses event IDs across seasons/phases
-        // (seen with Uruguayan Primera), so a stale finished entry for event
-        // ID X might shadow a newer match that also carries event ID X.
+      if (hits.length > 0) {
         const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-        const kickoffAge = Date.now() - new Date(hit.kickoffTime).getTime();
-        if (hit.status !== 'finished' || kickoffAge < sevenDaysMs) return hit;
-        // Older finished match — fall through to check for a fresher version
+        // Sort most-recent kickoff first so the freshest match is preferred
+        const sorted = [...hits].sort(
+          (a, b) => new Date(b.kickoffTime).getTime() - new Date(a.kickoffTime).getTime()
+        );
+        // Return the freshest non-stale hit (live, upcoming, or finished <7 days)
+        const freshHit = sorted.find(h =>
+          h.status !== 'finished' ||
+          (Date.now() - new Date(h.kickoffTime).getTime()) < sevenDaysMs
+        );
+        if (freshHit) return freshHit;
+        // All hits are stale (finished >7 days). Save most recent as a last-resort
+        // fallback in case the staged ESPN lookup also finds nothing.
+        staleHitFallback = sorted[0];
       }
-      // Zero, 2+ hits, or stale single hit → fall through to staged ESPN API lookup below
+      // Zero hits, or all stale → fall through to staged ESPN API lookup below
     }
   } catch (error) {
     console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
@@ -5744,7 +5750,7 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
     } catch {
       resolvedId = null;
     }
-    if (!resolvedId) return null;
+    if (!resolvedId) return staleHitFallback;
 
     return getMatchById(resolvedId);
   }

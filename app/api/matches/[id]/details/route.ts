@@ -989,14 +989,25 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     };
     // For any non-soccer sport not in the map above, fall back to
     // `sport-league` compound so it's always unique across sports/leagues.
+    // If cfg is null (league not recognised, e.g. WTA tournament sub-key),
+    // derive the tag from match.sport.slug so tennis/basketball/etc. players
+    // still get collision-proof URLs even when the league config is missing.
+    const SPORT_SLUG_TO_TAG: Record<string, string> = {
+      tennis: 'tennis', basketball: 'basketball', baseball: 'baseball',
+      'american-football': 'nfl', 'ice-hockey': 'nhl',
+      rugby: 'rugby', cricket: 'cricket', golf: 'golf',
+      mma: 'mma', boxing: 'boxing', volleyball: 'volleyball',
+    };
     const teamSportTag: string | null = (() => {
-      if (!cfg?.sportType || cfg.sportType === 'soccer') return null;
-      if (cfg.league && LEAGUE_TO_SPORT_TAG[cfg.league]) return LEAGUE_TO_SPORT_TAG[cfg.league];
-      // Generic compound key — safe but not in SPORT_TAG_MAP so team page
-      // falls back to bare ID; still prevents wrong sport hits as long as
-      // the resolver includes the sport in its cache key.
-      if (cfg.league) return `${cfg.sportType}-${cfg.league.replace(/[^a-z0-9]/gi, '')}`;
-      return cfg.sportType;
+      if (cfg?.sportType && cfg.sportType !== 'soccer') {
+        if (cfg.league && LEAGUE_TO_SPORT_TAG[cfg.league]) return LEAGUE_TO_SPORT_TAG[cfg.league];
+        if (cfg.league) return `${cfg.sportType}-${cfg.league.replace(/[^a-z0-9]/gi, '')}`;
+        return cfg.sportType;
+      }
+      // cfg is null or soccer — fall back to the match's sport slug
+      const sportSlug = match.sport?.slug;
+      if (!sportSlug || sportSlug === 'soccer' || sportSlug === 'football') return null;
+      return SPORT_SLUG_TO_TAG[sportSlug] ?? sportSlug;
     })();
 
     const sgoPromise: Promise<Array<{

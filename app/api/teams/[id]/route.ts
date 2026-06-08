@@ -63,6 +63,7 @@ const TEAM_RESOLVER_CANDIDATES: Array<[string, string]> = [
   ['football', 'nfl'], ['football', 'college-football'],
   ['baseball', 'mlb'], ['baseball', 'college-baseball'],
   ['hockey', 'nhl'], ['hockey', 'college-hockey'],
+  ['tennis', 'atp'], ['tennis', 'wta'],
 ];
 
 // In-memory cache: <espnTeamId> → resolved {sport, league}. ESPN team ids are
@@ -212,6 +213,19 @@ async function resolveTeamSportLeague(
   if (probed && hint) {
     teamLeagueCache.set(cacheKey, hint);
     return hint;
+  }
+
+  // For tennis, the 'tennis' sport tag can be either ATP or WTA — we don't know
+  // from the URL alone. If the initial probe (defaulting to ATP) fails, try the
+  // other circuit before falling through to the full candidate scan.
+  if (!probed && hint?.sport === 'tennis') {
+    const altLeague = hint.league === 'atp' ? 'wta' : 'atp';
+    const altProbed = await probeTeam('tennis', altLeague, espnTeamId);
+    if (altProbed) {
+      const choice = { sport: 'tennis', league: altLeague };
+      teamLeagueCache.set(cacheKey, choice);
+      return choice;
+    }
   }
 
   // Strategy 2 (fallback): probe candidates in priority order. Used when
