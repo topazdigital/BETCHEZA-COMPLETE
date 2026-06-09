@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMatchById } from '@/lib/api/unified-sports-api';
 import { getSgoBookmakerLines } from '@/lib/api/sportsgameodds';
+import { getSharpApiBookmakerLines } from '@/lib/api/sharpapi';
 
 const NO_DRAW_SPORTS = new Set([
   'basketball', 'baseball', 'tennis', 'mma', 'boxing', 'golf',
@@ -48,6 +49,20 @@ export async function GET(
         draw: hasDraw && typeof match.odds.draw === 'number' ? match.odds.draw : undefined,
         away: match.odds.away,
       }];
+    }
+
+    // Tertiary: SharpAPI (DraftKings + FanDuel via free tier, ~60 s delay).
+    // Only attempted when the first two sources produced nothing.
+    if (lines.length === 0) {
+      const sharpLines = await getSharpApiBookmakerLines(
+        match.homeTeam.name,
+        match.awayTeam.name,
+        isoKickoff,
+        hasDraw,
+      );
+      if (sharpLines.length > 0) {
+        lines = sharpLines;
+      }
     }
 
     return NextResponse.json(

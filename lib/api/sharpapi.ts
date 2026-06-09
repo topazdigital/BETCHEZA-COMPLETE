@@ -328,6 +328,110 @@ export async function getSharpApiOutrights(sportKey: string): Promise<SharpOutri
   return result;
 }
 
+// ── Per-match bookmaker lines ─────────────────────────────────────────────────
+
+/** Raw SharpAPI event cache — kept separate so it can be shared by both the index and per-match lookup. */
+let rawEventsCache: { data: SharpEvent[]; ts: number } | null = null;
+
+async function getRawEvents(): Promise<SharpEvent[]> {
+  if (rawEventsCache && Date.now() - rawEventsCache.ts < CACHE_TTL_MS) {
+    return rawEventsCache.data;
+  }
+
+  const apiKey = await getApiKey('sharp_api_key');
+  if (!apiKey) return [];
+
+  const res = await sharpFetch<SharpOddsResponse>('odds', {
+    oddsFormat: 'decimal',
+    markets: 'h2h',
+  });
+
+  const events: SharpEvent[] = res?.data || res?.events || [];
+  if (events.length > 0) rawEventsCache = { data: events, ts: Date.now() };
+  return events;
+}
+
+/** Fuzzy team-name equality — strips non-alphanumeric and compares 5-char prefix. */
+function teamMatch(a: string, b: string): boolean {
+  const an = normalizeTeam(a);
+  const bn = normalizeTeam(b);
+  if (an === bn) return true;
+  const minLen = Math.min(an.length, bn.length);
+  return minLen >= 4 && an.slice(0, minLen) === bn.slice(0, minLen);
+}
+
+export interface SharpBookmakerLine {
+  bookmaker: string;
+  display: string;
+  home: number;
+  draw?: number;
+  away: number;
+}
+
+/**
+ * Return per-bookmaker h2h lines from SharpAPI for a specific match.
+ * Used as a tertiary fallback in the bookmaker-odds endpoint when both
+ * SportsGameOdds and ESPN-embedded odds are empty.
+ *
+ * Free tier provides DraftKings + FanDuel lines with ~60 s delay.
+ */
+export async function getSharpApiBookmakerLines(
+  homeTeam: string,
+  awayTeam: string,
+  kickoffIso: string,
+  hasDraw: boolean,
+): Promise<SharpBookmakerLine[]> {
+  const events = await getRawEvents();
+  if (!events.length) return [];
+
+  const dateKey = kickoffIso.split('T')[0];
+
+  const ev = events.find(e => {
+    const d = new Date(e.commence_time).toISOString().split('T')[0];
+    return (
+      d === dateKey &&
+      teamMatch(e.home_team, homeTeam) &&
+      teamMatch(e.away_team, awayTeam)
+    );
+  });
+
+  if (!ev?.bookmakers?.length) return [];
+
+  const lines: SharpBookmakerLine[] = [];
+  for (const bm of ev.bookmakers) {
+    const h2h = bm.markets.find(m => m.key === 'h2h');
+    if (!h2h) continue;
+
+    const homeO = h2h.outcomes.find(o => o.name === ev.home_team || o.name === 'Home');
+    const awayO = h2h.outcomes.find(o => o.name === ev.away_team || o.name === 'Away');
+    const drawO = h2h.outcomes.find(o => o.name === 'Draw');
+
+    if (!homeO || !awayO) continue;
+
+    const bookId = bm.key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    lines.push({
+      bookmaker: bookId,
+      display: bm.title || prettyBmName(bm.key),
+      home: homeO.price,
+      away: awayO.price,
+      ...(hasDraw && drawO ? { draw: drawO.price } : {}),
+    });
+  }
+
+  return lines;
+}
+
+function prettyBmName(key: string): string {
+  const map: Record<string, string> = {
+    draftkings: 'DraftKings',
+    fanduel: 'FanDuel',
+    betmgm: 'BetMGM',
+    espnbet: 'ESPN BET',
+    caesars: 'Caesars',
+  };
+  return map[key.toLowerCase()] || key.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /**
  * Test the API key and return basic status information.
  */
