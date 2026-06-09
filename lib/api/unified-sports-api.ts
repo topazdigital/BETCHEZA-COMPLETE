@@ -5244,7 +5244,7 @@ export const LEAGUE_TO_ODDS_KEYS: Record<number, string[]> = {
   51: ['soccer_italy_coppa_italia_winner'],
   53: ['soccer_france_coupe_winner'],
   // ─── Soccer — internationals ───
-  29: ['soccer_fifa_world_cup_winner'],
+  29: ['soccer_fifa_world_cup', 'soccer_fifa_world_cup_winner'],
   30: ['soccer_uefa_european_championship_winner', 'soccer_uefa_euros_qualification_winner'],
   31: ['soccer_conmebol_copa_america_winner'],
   24: ['soccer_caf_africa_cup_of_nations_winner'],
@@ -5309,27 +5309,10 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
 
   const sportKeys = LEAGUE_TO_ODDS_KEYS[leagueId];
   if (!sportKeys || sportKeys.length === 0) {
-    // No Odds API mapping for this league (e.g. KPL, small/regional leagues).
-    // Try SGO first, then static curated data, then standings-derived synthetic.
     if (sgoOutrights.length > 0) {
       setCache(cacheKey, sgoOutrights);
       return sgoOutrights;
     }
-    const { getStaticOutrights } = await import('@/lib/api/static-outrights');
-    const staticData = getStaticOutrights(leagueId);
-    if (staticData.length > 0) {
-      setCache(cacheKey, staticData);
-      return staticData;
-    }
-    // Fall through to standings-derived synthetic odds for any league
-    try {
-      const standingsOutright = await buildOutrightFromStandings(leagueId);
-      if (standingsOutright) {
-        const derived = [standingsOutright];
-        setCache(cacheKey, derived);
-        return derived;
-      }
-    } catch { /* standings not available */ }
     setCache(cacheKey, []);
     return [];
   }
@@ -5339,19 +5322,10 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
   const activeKeys = await getActiveOutrightKeys();
   const callableKeys = sportKeys.filter(k => activeKeys.has(k));
   if (callableKeys.length === 0) {
-    // No active outright keys from The Odds API — prefer curated static odds,
-    // then SGO, then standings (in that order of quality).
     if (sgoOutrights.length > 0) {
       setCache(cacheKey, sgoOutrights);
       return sgoOutrights;
     }
-    const { getStaticOutrights } = await import('@/lib/api/static-outrights');
-    const staticData = getStaticOutrights(leagueId);
-    if (staticData.length > 0) {
-      setCache(cacheKey, staticData);
-      return staticData;
-    }
-    // No synthetic/computed outrights — only show real bookmaker data
     setCache(cacheKey, []);
     return [];
   }
@@ -5414,33 +5388,6 @@ export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> 
     if (!seen.has(key)) {
       outrights.push(sgo);
       seen.add(key);
-    }
-  }
-
-  // ─── Curated static fallback ────────────────────────────────────────────
-  // If both live providers returned nothing, use hand-curated bookmaker odds
-  // sourced from Oddschecker / UK/EU sportsbooks. These are far more realistic
-  // than the standings-derived computation and cover all major leagues.
-  if (outrights.length === 0) {
-    const { getStaticOutrights } = await import('@/lib/api/static-outrights');
-    const staticData = getStaticOutrights(leagueId);
-    if (staticData.length > 0) {
-      setCache(cacheKey, staticData);
-      return staticData;
-    }
-    // ─── Free standing-derived odds fallback ─────────────────────────────
-    // When no API key or quota is available, compute outright odds from
-    // current league standings (positions → title probability → decimal odds).
-    // This is completely free and uses ESPN's public scoreboard data.
-    try {
-      const standingsOutright = await buildOutrightFromStandings(leagueId);
-      if (standingsOutright) {
-        const derived = [standingsOutright];
-        setCache(cacheKey, derived);
-        return derived;
-      }
-    } catch {
-      // Standings not available — return empty rather than crash
     }
   }
 
