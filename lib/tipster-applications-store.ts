@@ -14,7 +14,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { query } from './db';
+import { execute, queryOne } from './db';
 
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -163,24 +163,43 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
   if (input.decision === 'approve') {
     let dbOk = false;
     try {
-      // Step 1: promote the user's role (and optionally grant verified badge)
-      await query(
-        `UPDATE users SET role = 'tipster'${input.grantVerified ? ', is_verified = 1' : ''} WHERE id = ?`,
-        [row.userId]
-      );
-      dbOk = true;
+      const verifiedSql = input.grantVerified ? ', is_verified = 1' : '';
 
-      // Step 2: ensure a tipster_profiles row exists.
-      // Only use columns guaranteed to exist in the current schema.
-      // The instrumentation startup migration adds bio/created_at/is_verified
-      // columns, but we must not reference them here in case the migration
-      // hasn't run yet (e.g. very first deploy with an old schema).
-      await query(
-        `INSERT INTO tipster_profiles (user_id, updated_at)
-         VALUES (?, NOW())
-         ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+      // Use execute() to get real affectedRows (query() always returns affectedRows: undefined)
+      const r1 = await execute(
+        `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
         [row.userId]
       );
+
+      if (r1.affectedRows > 0) {
+        dbOk = true;
+      } else {
+        // Stored userId may be stale — fall back to username lookup
+        console.warn(`[tipster-applications] approve: userId ${row.userId} matched 0 rows, trying username "${row.username}"`);
+        const found = await queryOne<{ id: number }>(
+          'SELECT id FROM users WHERE username = ? LIMIT 1',
+          [row.username]
+        );
+        if (found) {
+          const r2 = await execute(
+            `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
+            [found.id]
+          );
+          if (r2.affectedRows > 0) {
+            row.userId = found.id;
+            dbOk = true;
+          }
+        }
+      }
+
+      if (dbOk) {
+        await execute(
+          `INSERT INTO tipster_profiles (user_id, updated_at)
+           VALUES (?, NOW())
+           ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+          [row.userId]
+        );
+      }
     } catch (e) {
       console.warn('[tipster-applications] DB role update failed (in-memory/file state still applied):', e instanceof Error ? e.message : e);
     }
@@ -199,17 +218,47 @@ export async function reapplyDbRole(id: string): Promise<boolean> {
   let dbOk = false;
   try {
     const verifiedSql = row.verifiedGranted ? ', is_verified = 1' : '';
-    await query(
+
+    // Use execute() so we get real affectedRows back (query() always returns affectedRows: undefined)
+    const r1 = await execute(
       `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
       [row.userId]
     );
-    dbOk = true;
-    await query(
-      `INSERT INTO tipster_profiles (user_id, updated_at)
-       VALUES (?, NOW())
-       ON DUPLICATE KEY UPDATE updated_at = NOW()`,
-      [row.userId]
-    );
+
+    if (r1.affectedRows > 0) {
+      dbOk = true;
+    } else {
+      // Stored userId didn't match — fall back to looking up by username
+      console.warn(`[tipster-applications] reapply: userId ${row.userId} matched 0 rows, trying username "${row.username}"`);
+      const found = await queryOne<{ id: number }>(
+        'SELECT id FROM users WHERE username = ? LIMIT 1',
+        [row.username]
+      );
+      if (found) {
+        const r2 = await execute(
+          `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
+          [found.id]
+        );
+        if (r2.affectedRows > 0) {
+          row.userId = found.id; // correct the stale userId in the store
+          dbOk = true;
+        } else {
+          console.warn(`[tipster-applications] reapply: username "${row.username}" also matched 0 rows`);
+        }
+      } else {
+        console.warn(`[tipster-applications] reapply: no user found with username "${row.username}"`);
+      }
+    }
+
+    if (dbOk) {
+      // Ensure tipster_profiles row exists
+      await execute(
+        `INSERT INTO tipster_profiles (user_id, updated_at)
+         VALUES (?, NOW())
+         ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+        [row.userId]
+      );
+    }
   } catch (e) {
     console.warn('[tipster-applications] reapply DB role failed:', e instanceof Error ? e.message : e);
   }
