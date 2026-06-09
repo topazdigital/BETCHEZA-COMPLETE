@@ -314,6 +314,32 @@ else
   echo -e "${RED}Could not auto-reload Apache — run: systemctl reload httpd${NC}"
 fi
 
+# ── Step 4e: Clear stale match cache from MySQL ───────────────────────────────
+# After a deploy the DB match_cache table may contain old data (missing
+# international matches, stale odds, etc.).  Clearing it forces the next
+# request to fetch a completely fresh set from ESPN and other sources.
+echo -e "${YELLOW}[4e/5] Clearing stale match cache from database...${NC}"
+DB_HOST_VAL=$(grep -E '^(DB_HOST|MYSQL_HOST)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+DB_USER_VAL=$(grep -E '^(DB_USER|MYSQL_USER)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+DB_PASS_VAL=$(grep -E '^(DB_PASSWORD|MYSQL_PASSWORD)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+DB_NAME_VAL=$(grep -E '^(DB_NAME|MYSQL_DATABASE)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+DB_PORT_VAL=$(grep -E '^(DB_PORT|MYSQL_PORT)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+DB_PORT_VAL="${DB_PORT_VAL:-3306}"
+
+if [ -n "$DB_HOST_VAL" ] && [ -n "$DB_USER_VAL" ] && [ -n "$DB_NAME_VAL" ]; then
+  if mysql -h "$DB_HOST_VAL" -P "$DB_PORT_VAL" -u "$DB_USER_VAL" -p"$DB_PASS_VAL" \
+       "$DB_NAME_VAL" -e "DELETE FROM match_cache WHERE cache_key='all_matches';" 2>/dev/null; then
+    echo -e "${GREEN}match_cache cleared — next request will fetch fresh data from ESPN${NC}"
+  else
+    echo -e "${YELLOW}Could not clear match_cache (table may not exist yet — OK on first deploy)${NC}"
+  fi
+  # Also nuke the tmp file cache on the server
+  rm -f /tmp/betcheza_matches_cache.json 2>/dev/null && \
+    echo -e "${GREEN}Removed /tmp/betcheza_matches_cache.json${NC}" || true
+else
+  echo -e "${YELLOW}DB credentials not found in .env.local — skipping cache clear${NC}"
+fi
+
 # ── Step 5: Clean PM2 restart ─────────────────────────────────────────────────
 echo -e "${YELLOW}[5/5] Restarting Node.js server...${NC}"
 

@@ -5985,3 +5985,27 @@ export function getSportIcon(slug: string): string {
 // Export ESPN leagues config for external use
 export { ESPN_LEAGUES };
 export type { ESPNLeagueConfig };
+
+/**
+ * Wipes all match cache layers so the next getAllMatches() call
+ * does a fresh fetch from ESPN and other sources.
+ * Used by the admin cache-refresh endpoint and deploy scripts.
+ */
+export async function clearMatchCache(): Promise<void> {
+  // 1. Clear in-memory cache
+  g_allMatchesCache.data = null;
+  g_allMatchesCache.ts   = 0;
+  g_allMatchesCache.promise = null;
+
+  // 2. Clear MySQL cache
+  try {
+    const { query } = await import('../db');
+    await query(`DELETE FROM match_cache WHERE cache_key = 'all_matches'`);
+  } catch { /* non-fatal */ }
+
+  // 3. Clear file cache
+  try {
+    const { unlink } = await import('fs/promises');
+    await unlink(ALLMATCHES_PERSIST_FILE);
+  } catch { /* non-fatal */ }
+}
