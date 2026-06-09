@@ -310,86 +310,138 @@ export function MatchCardNew({
             </Link>
           )}
 
-          {/* Extra market columns — xl+ screens only (Total Goals / BTTS) */}
-          {match.markets && match.markets.length > 0 && !isFinished && !isLive && (() => {
-            const ouMkt = match.markets!.find(m =>
+          {/* Odds — 1X2 always first, then O/U 2.5 and BTTS on xl screens (all clickable) */}
+          {match.odds && !isFinished && (() => {
+            const ouMkt = !isLive && match.markets ? match.markets.find(m =>
               (m.key ?? '').toLowerCase().includes('total') ||
               m.name.toLowerCase().includes('over') ||
               m.name.toLowerCase().includes('total goals')
-            );
-            const bttsMkt = match.markets!.find(m =>
+            ) : undefined;
+            const bttsMkt = !isLive && match.markets ? match.markets.find(m =>
               (m.key ?? '').toLowerCase().includes('btts') ||
               m.name.toLowerCase().includes('both teams')
-            );
-            if (!ouMkt && !bttsMkt) return null;
+            ) : undefined;
             const ouOver  = ouMkt?.outcomes.find(o => o.name.toLowerCase().includes('over'));
             const ouUnder = ouMkt?.outcomes.find(o => o.name.toLowerCase().includes('under'));
             const bttsYes = bttsMkt?.outcomes.find(o => o.name.toLowerCase() === 'yes');
             const bttsNo  = bttsMkt?.outcomes.find(o => o.name.toLowerCase() === 'no');
+            const hasExtra = !!(ouOver || ouUnder || bttsYes || bttsNo);
             return (
-              <div className="hidden xl:flex shrink-0 items-center gap-1.5" onClick={(e) => e.preventDefault()}>
-                {ouMkt && (ouOver || ouUnder) && (
-                  <div className="flex flex-col items-center gap-0.5 rounded-md border border-border/60 bg-muted/30 px-1.5 py-1 min-w-[52px]">
-                    <span className="text-[8px] font-bold uppercase tracking-wide text-muted-foreground">O/U 2.5</span>
+              <div className="flex shrink-0 items-end gap-2">
+                {/* 1X2 group */}
+                <div className="flex flex-col items-center gap-0.5">
+                  {hasExtra && (
+                    <span className="hidden xl:block text-[8px] font-bold uppercase tracking-wide text-muted-foreground leading-none">1X2</span>
+                  )}
+                  <div className="flex gap-0.5">
+                    <OddsButton
+                      value={match.odds.home}
+                      label={isTwoWay ? 'H' : '1'}
+                      format={settings.oddsFormat}
+                      matchId={match.id}
+                      matchSlug={slug}
+                      matchName={matchName}
+                      outcomeName={match.homeTeam.name}
+                      marketKey="h2h"
+                      marketName={marketName}
+                    />
+                    {!isTwoWay && match.odds.draw !== undefined && (
+                      <OddsButton
+                        value={match.odds.draw}
+                        label="X"
+                        format={settings.oddsFormat}
+                        matchId={match.id}
+                        matchSlug={slug}
+                        matchName={matchName}
+                        outcomeName="Draw"
+                        marketKey="h2h"
+                        marketName={marketName}
+                      />
+                    )}
+                    <OddsButton
+                      value={match.odds.away}
+                      label={isTwoWay ? 'A' : '2'}
+                      format={settings.oddsFormat}
+                      matchId={match.id}
+                      matchSlug={slug}
+                      matchName={matchName}
+                      outcomeName={match.awayTeam.name}
+                      marketKey="h2h"
+                      marketName={marketName}
+                    />
+                  </div>
+                </div>
+                {/* O/U 2.5 group — xl screens, clickable OddsButton */}
+                {(ouOver || ouUnder) && (
+                  <div className="hidden xl:flex flex-col items-center gap-0.5">
+                    <span className="text-[8px] font-bold uppercase tracking-wide text-muted-foreground leading-none">O/U 2.5</span>
                     <div className="flex gap-0.5">
-                      {ouOver && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{ouOver.price.toFixed(2)}</span>}
-                      {ouUnder && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-blue-600 dark:text-blue-400 tabular-nums">{ouUnder.price.toFixed(2)}</span>}
+                      {ouOver && (
+                        <OddsButton
+                          value={ouOver.price}
+                          label="Ov"
+                          format={settings.oddsFormat}
+                          matchId={match.id}
+                          matchSlug={slug}
+                          matchName={matchName}
+                          outcomeName="Over 2.5"
+                          marketKey="totals"
+                          marketName="Over/Under 2.5"
+                        />
+                      )}
+                      {ouUnder && (
+                        <OddsButton
+                          value={ouUnder.price}
+                          label="Un"
+                          format={settings.oddsFormat}
+                          matchId={match.id}
+                          matchSlug={slug}
+                          matchName={matchName}
+                          outcomeName="Under 2.5"
+                          marketKey="totals"
+                          marketName="Over/Under 2.5"
+                        />
+                      )}
                     </div>
                   </div>
                 )}
-                {bttsMkt && (bttsYes || bttsNo) && (
-                  <div className="flex flex-col items-center gap-0.5 rounded-md border border-border/60 bg-muted/30 px-1.5 py-1 min-w-[52px]">
-                    <span className="text-[8px] font-bold uppercase tracking-wide text-muted-foreground">BTTS</span>
+                {/* BTTS group — xl screens, clickable OddsButton */}
+                {(bttsYes || bttsNo) && (
+                  <div className="hidden xl:flex flex-col items-center gap-0.5">
+                    <span className="text-[8px] font-bold uppercase tracking-wide text-muted-foreground leading-none">BTTS</span>
                     <div className="flex gap-0.5">
-                      {bttsYes && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{bttsYes.price.toFixed(2)}</span>}
-                      {bttsNo && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-rose-600 dark:text-rose-400 tabular-nums">{bttsNo.price.toFixed(2)}</span>}
+                      {bttsYes && (
+                        <OddsButton
+                          value={bttsYes.price}
+                          label="Yes"
+                          format={settings.oddsFormat}
+                          matchId={match.id}
+                          matchSlug={slug}
+                          matchName={matchName}
+                          outcomeName="Yes"
+                          marketKey="btts"
+                          marketName="Both Teams to Score"
+                        />
+                      )}
+                      {bttsNo && (
+                        <OddsButton
+                          value={bttsNo.price}
+                          label="No"
+                          format={settings.oddsFormat}
+                          matchId={match.id}
+                          matchSlug={slug}
+                          matchName={matchName}
+                          outcomeName="No"
+                          marketKey="btts"
+                          marketName="Both Teams to Score"
+                        />
+                      )}
                     </div>
                   </div>
                 )}
               </div>
             );
           })()}
-
-          {/* Odds — fixed-width boxes so they never push team names off-screen */}
-          {match.odds && !isFinished && (
-            <div className="flex shrink-0 gap-0.5">
-              <OddsButton
-                value={match.odds.home}
-                label={isTwoWay ? 'H' : '1'}
-                format={settings.oddsFormat}
-                matchId={match.id}
-                matchSlug={slug}
-                matchName={matchName}
-                outcomeName={match.homeTeam.name}
-                marketKey="h2h"
-                marketName={marketName}
-              />
-              {!isTwoWay && match.odds.draw !== undefined && (
-                <OddsButton
-                  value={match.odds.draw}
-                  label="X"
-                  format={settings.oddsFormat}
-                  matchId={match.id}
-                  matchSlug={slug}
-                  matchName={matchName}
-                  outcomeName="Draw"
-                  marketKey="h2h"
-                  marketName={marketName}
-                />
-              )}
-              <OddsButton
-                value={match.odds.away}
-                label={isTwoWay ? 'A' : '2'}
-                format={settings.oddsFormat}
-                matchId={match.id}
-                matchSlug={slug}
-                matchName={matchName}
-                outcomeName={match.awayTeam.name}
-                marketKey="h2h"
-                marketName={marketName}
-              />
-            </div>
-          )}
         </div>
 
         {/* AI Pick row — mobile only, below main row */}
