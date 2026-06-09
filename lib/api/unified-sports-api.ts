@@ -175,6 +175,7 @@ export interface Outcome {
 
 export interface Standing {
   position: number;
+  group?: string;
   team: {
     id: string;
     name: string;
@@ -5082,6 +5083,8 @@ interface ESPNStandingEntry {
 
 interface ESPNStandingsResponse {
   children?: Array<{
+    name?: string;
+    abbreviation?: string;
     standings?: { entries?: ESPNStandingEntry[] };
   }>;
   standings?: { entries?: ESPNStandingEntry[] };
@@ -5131,11 +5134,25 @@ export async function getLeagueStandings(leagueId: number, seasonYear?: number):
 
   if (!data) return [];
 
-  // ESPN packages standings either at top-level or in `children[].standings.entries`
-  const entries: ESPNStandingEntry[] =
-    data.standings?.entries ||
-    data.children?.flatMap(c => c.standings?.entries || []) ||
-    [];
+  // ESPN packages standings either at top-level or in `children[].standings.entries`.
+  // For group-stage tournaments (World Cup, AFCON, Copa America, etc.) each child
+  // represents one group and carries a `name` like "Group A".
+  type EntryWithGroup = ESPNStandingEntry & { _group?: string };
+
+  let entries: EntryWithGroup[];
+  const hasNamedGroups = data.children?.some(c => c.name);
+
+  if (hasNamedGroups && data.children) {
+    entries = data.children.flatMap(c =>
+      (c.standings?.entries || []).map(e => ({ ...e, _group: c.name || c.abbreviation }))
+    );
+  } else {
+    entries = (
+      data.standings?.entries ||
+      data.children?.flatMap(c => c.standings?.entries || []) ||
+      []
+    ) as EntryWithGroup[];
+  }
 
   const standings: Standing[] = entries.map((e, idx) => {
     const won = pickStat(e.stats, ['wins', 'gameswon']);
@@ -5150,6 +5167,7 @@ export async function getLeagueStandings(leagueId: number, seasonYear?: number):
 
     return {
       position: rank,
+      group: e._group,
       team: {
         id: String(e.team?.id || idx),
         name: e.team?.displayName || e.team?.shortDisplayName || `Team ${idx + 1}`,
@@ -5164,7 +5182,11 @@ export async function getLeagueStandings(leagueId: number, seasonYear?: number):
       goalDifference,
       points,
     };
-  }).sort((a, b) => a.position - b.position);
+  }).sort((a, b) => {
+    // When groups exist, sort within each group by position
+    if (a.group && b.group && a.group !== b.group) return a.group.localeCompare(b.group);
+    return a.position - b.position;
+  });
 
   setCache(cacheKey, standings);
   return standings;

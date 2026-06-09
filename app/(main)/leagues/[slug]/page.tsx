@@ -40,6 +40,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 interface StandingRow {
   position: number
+  group?: string
   team: { id: string; name: string; logo?: string; href?: string | null }
   played: number
   won: number
@@ -515,94 +516,7 @@ export default function LeaguePage({ params }: PageProps) {
               )}
 
               {/* Full standings table */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-1.5 text-sm">
-                    <Trophy className="h-3.5 w-3.5 text-warning" />
-                    League Table
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  {standingsLoading ? (
-                    <LoadingBox />
-                  ) : standings.length === 0 ? (
-                    <EmptyState
-                      icon={AlertCircle}
-                      title="No standings available"
-                      hint="Standings are not published for this competition or the season hasn't started yet."
-                    />
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
-                            <th className="pb-1.5 pr-2 text-left font-bold">#</th>
-                            <th className="pb-1.5 text-left font-bold">Team</th>
-                            <th className="pb-1.5 text-center font-bold">P</th>
-                            <th className="pb-1.5 text-center font-bold">W</th>
-                            <th className="pb-1.5 text-center font-bold">D</th>
-                            <th className="pb-1.5 text-center font-bold">L</th>
-                            <th className="pb-1.5 text-center font-bold hidden sm:table-cell">GF</th>
-                            <th className="pb-1.5 text-center font-bold hidden sm:table-cell">GA</th>
-                            <th className="pb-1.5 text-center font-bold">GD</th>
-                            <th className="pb-1.5 pl-2 text-center font-bold">Pts</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {standings.map((row) => (
-                            <tr
-                              key={row.team.id}
-                              className={cn(
-                                "border-b transition-colors hover:bg-muted/50",
-                                row.position <= 4 && "bg-success/5",
-                                row.position >= standings.length - 2 && "bg-destructive/5"
-                              )}
-                            >
-                              <td className="py-1.5 pr-2">
-                                <span className={cn(
-                                  "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black",
-                                  row.position <= 4 && "bg-success text-success-foreground",
-                                  row.position >= standings.length - 2 && "bg-destructive text-destructive-foreground"
-                                )}>
-                                  {row.position}
-                                </span>
-                              </td>
-                              <td className="py-1.5">
-                                {row.team.href ? (
-                                  <Link
-                                    href={row.team.href}
-                                    className="group flex items-center gap-1.5 hover:text-primary"
-                                  >
-                                    <TeamLogo teamName={row.team.name} logoUrl={row.team.logo} size="xs" />
-                                    <span className="truncate font-semibold group-hover:underline">{row.team.name}</span>
-                                  </Link>
-                                ) : (
-                                  <div className="flex items-center gap-1.5">
-                                    <TeamLogo teamName={row.team.name} logoUrl={row.team.logo} size="xs" />
-                                    <span className="truncate font-semibold">{row.team.name}</span>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-1.5 text-center font-medium">{row.played}</td>
-                              <td className="py-1.5 text-center text-success font-medium">{row.won}</td>
-                              <td className="py-1.5 text-center font-medium">{row.drawn}</td>
-                              <td className="py-1.5 text-center text-destructive font-medium">{row.lost}</td>
-                              <td className="py-1.5 text-center hidden sm:table-cell text-muted-foreground">{row.goalsFor}</td>
-                              <td className="py-1.5 text-center hidden sm:table-cell text-muted-foreground">{row.goalsAgainst}</td>
-                              <td className="py-1.5 text-center font-bold">
-                                <span className={row.goalDifference > 0 ? "text-success" : row.goalDifference < 0 ? "text-destructive" : "text-muted-foreground"}>
-                                  {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
-                                </span>
-                              </td>
-                              <td className="py-1.5 pl-2 text-center font-black">{row.points}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <StandingsSection standings={standings} standingsLoading={standingsLoading} />
             </div>
 
             {/* ── Right sidebar: outrights + scorers ─────────────── */}
@@ -762,6 +676,194 @@ export default function LeaguePage({ params }: PageProps) {
 }
 
 /* ── Rich SEO content block ─────────────────────────────────────────────── */
+
+// ── Standings section: handles both flat tables and group-stage format ────────
+
+function MiniStandingsTable({ rows, totalRows }: { rows: StandingRow[]; totalRows: number }) {
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
+          <th className="pb-1.5 pr-2 text-left font-bold">#</th>
+          <th className="pb-1.5 text-left font-bold">Team</th>
+          <th className="pb-1.5 text-center font-bold">P</th>
+          <th className="pb-1.5 text-center font-bold">W</th>
+          <th className="pb-1.5 text-center font-bold">D</th>
+          <th className="pb-1.5 text-center font-bold">L</th>
+          <th className="pb-1.5 text-center font-bold hidden sm:table-cell">GD</th>
+          <th className="pb-1.5 pl-2 text-center font-bold">Pts</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr
+            key={row.team.id}
+            className={cn(
+              "border-b transition-colors hover:bg-muted/50",
+              i < 2 && "bg-success/5",
+              i >= rows.length - 1 && rows.length > 2 && "bg-destructive/5"
+            )}
+          >
+            <td className="py-1.5 pr-2">
+              <span className={cn(
+                "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black",
+                i < 2 && "bg-success text-success-foreground",
+                i >= rows.length - 1 && rows.length > 2 && "bg-destructive text-destructive-foreground"
+              )}>
+                {i + 1}
+              </span>
+            </td>
+            <td className="py-1.5">
+              {row.team.href ? (
+                <Link href={row.team.href} className="group flex items-center gap-1.5 hover:text-primary">
+                  <TeamLogo teamName={row.team.name} logoUrl={row.team.logo} size="xs" />
+                  <span className="truncate font-semibold group-hover:underline max-w-[110px]">{row.team.name}</span>
+                </Link>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <TeamLogo teamName={row.team.name} logoUrl={row.team.logo} size="xs" />
+                  <span className="truncate font-semibold max-w-[110px]">{row.team.name}</span>
+                </div>
+              )}
+            </td>
+            <td className="py-1.5 text-center font-medium">{row.played}</td>
+            <td className="py-1.5 text-center text-success font-medium">{row.won}</td>
+            <td className="py-1.5 text-center font-medium">{row.drawn}</td>
+            <td className="py-1.5 text-center text-destructive font-medium">{row.lost}</td>
+            <td className="py-1.5 text-center font-bold hidden sm:table-cell">
+              <span className={row.goalDifference > 0 ? "text-success" : row.goalDifference < 0 ? "text-destructive" : "text-muted-foreground"}>
+                {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
+              </span>
+            </td>
+            <td className="py-1.5 pl-2 text-center font-black">{row.points}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function StandingsSection({ standings, standingsLoading }: { standings: StandingRow[]; standingsLoading: boolean }) {
+  const hasGroups = standings.some(s => s.group)
+
+  const groupedStandings = useMemo(() => {
+    if (!hasGroups) return null
+    const map: Record<string, StandingRow[]> = {}
+    for (const row of standings) {
+      const g = row.group || 'General'
+      if (!map[g]) map[g] = []
+      map[g].push(row)
+    }
+    return map
+  }, [standings, hasGroups])
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-1.5 text-sm">
+          <Trophy className="h-3.5 w-3.5 text-warning" />
+          {hasGroups ? 'Group Stage' : 'League Table'}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {standingsLoading ? (
+          <LoadingBox />
+        ) : standings.length === 0 ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="No standings available"
+            hint="Standings are not published for this competition or the season hasn't started yet."
+          />
+        ) : groupedStandings ? (
+          // Group-stage format: World Cup, AFCON, Copa America, Euro etc.
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {Object.entries(groupedStandings)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([groupName, rows]) => (
+                <div key={groupName}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                      {groupName}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border">
+                    <MiniStandingsTable rows={rows} totalRows={standings.length} />
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          // Flat table: regular league
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <th className="pb-1.5 pr-2 text-left font-bold">#</th>
+                  <th className="pb-1.5 text-left font-bold">Team</th>
+                  <th className="pb-1.5 text-center font-bold">P</th>
+                  <th className="pb-1.5 text-center font-bold">W</th>
+                  <th className="pb-1.5 text-center font-bold">D</th>
+                  <th className="pb-1.5 text-center font-bold">L</th>
+                  <th className="pb-1.5 text-center font-bold hidden sm:table-cell">GF</th>
+                  <th className="pb-1.5 text-center font-bold hidden sm:table-cell">GA</th>
+                  <th className="pb-1.5 text-center font-bold">GD</th>
+                  <th className="pb-1.5 pl-2 text-center font-bold">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {standings.map((row) => (
+                  <tr
+                    key={row.team.id}
+                    className={cn(
+                      "border-b transition-colors hover:bg-muted/50",
+                      row.position <= 4 && "bg-success/5",
+                      row.position >= standings.length - 2 && "bg-destructive/5"
+                    )}
+                  >
+                    <td className="py-1.5 pr-2">
+                      <span className={cn(
+                        "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black",
+                        row.position <= 4 && "bg-success text-success-foreground",
+                        row.position >= standings.length - 2 && "bg-destructive text-destructive-foreground"
+                      )}>
+                        {row.position}
+                      </span>
+                    </td>
+                    <td className="py-1.5">
+                      {row.team.href ? (
+                        <Link href={row.team.href} className="group flex items-center gap-1.5 hover:text-primary">
+                          <TeamLogo teamName={row.team.name} logoUrl={row.team.logo} size="xs" />
+                          <span className="truncate font-semibold group-hover:underline">{row.team.name}</span>
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <TeamLogo teamName={row.team.name} logoUrl={row.team.logo} size="xs" />
+                          <span className="truncate font-semibold">{row.team.name}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-1.5 text-center font-medium">{row.played}</td>
+                    <td className="py-1.5 text-center text-success font-medium">{row.won}</td>
+                    <td className="py-1.5 text-center font-medium">{row.drawn}</td>
+                    <td className="py-1.5 text-center text-destructive font-medium">{row.lost}</td>
+                    <td className="py-1.5 text-center hidden sm:table-cell text-muted-foreground">{row.goalsFor}</td>
+                    <td className="py-1.5 text-center hidden sm:table-cell text-muted-foreground">{row.goalsAgainst}</td>
+                    <td className="py-1.5 text-center font-bold">
+                      <span className={row.goalDifference > 0 ? "text-success" : row.goalDifference < 0 ? "text-destructive" : "text-muted-foreground"}>
+                        {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
+                      </span>
+                    </td>
+                    <td className="py-1.5 pl-2 text-center font-black">{row.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 interface LeagueRichContentProps {
   league: { id: number; name: string; slug: string; country: string; countryCode: string; sportId: number; tier: number }
