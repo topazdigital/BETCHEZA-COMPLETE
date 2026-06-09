@@ -137,7 +137,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-2 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {stats.map((stat) => {
           const Icon = ICONS[stat.icon] || Users
           const tone = ICON_COLORS[stat.icon] || { color: "text-blue-500", bg: "bg-blue-500/10" }

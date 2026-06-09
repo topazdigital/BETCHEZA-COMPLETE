@@ -98,8 +98,22 @@ export async function POST(req: NextRequest) {
       return matchDate.toDateString() === dayDate.toDateString();
     }).slice(0, 30);
 
-    const matchList = (targetMatches.length > 0 ? targetMatches : soccerMatches.slice(0, 30))
-      .map((m) => `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${m.odds ? ` | Odds: H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''}`)
+    // If fewer than 2 soccer matches today, also pull all-sport matches for that day
+    let extendedPool = targetMatches;
+    if (targetMatches.length < 2) {
+      const allTodayMatches = upcoming.filter((m) => {
+        const matchDate = new Date(m.kickoffTime);
+        return matchDate.toDateString() === dayDate.toDateString();
+      });
+      extendedPool = [
+        ...targetMatches,
+        ...allTodayMatches.filter(m => m.sport.slug !== 'soccer' && m.sport.slug !== 'football'),
+      ].slice(0, 30);
+    }
+
+    const fallbackPool = extendedPool.length > 0 ? extendedPool : (soccerMatches.length > 0 ? soccerMatches : upcoming).slice(0, 30);
+    const matchList = (extendedPool.length > 0 ? extendedPool : fallbackPool)
+      .map((m) => `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Sport: ${m.sport.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${m.odds ? ` | Odds: H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''}`)
       .join('\n');
 
     const today = new Date(dayData.date).toDateString();
@@ -286,6 +300,36 @@ OUTPUT FORMAT — Return ONLY valid JSON, no markdown, no explanation outside JS
   stored.days[dayIdx].picks = picks;
   stored.days[dayIdx].combinedOdds = parseFloat(combinedOdds.toFixed(2));
   fileStoreSet(`strategy-week-${weekId}`, stored);
+
+  // Persist AI-generated picks to DB so the manual email sender can find them
+  try {
+    const { execute: dbExecute, query: dbQuery } = await import('@/lib/db');
+    await dbQuery(`CREATE TABLE IF NOT EXISTS daily_strategy (
+      date date NOT NULL PRIMARY KEY,
+      week_id varchar(20) NOT NULL,
+      day_number tinyint NOT NULL,
+      stake int NOT NULL DEFAULT 1000,
+      save_amount int NOT NULL DEFAULT 0,
+      target_win int NOT NULL DEFAULT 3000,
+      combined_odds decimal(6,3) NOT NULL DEFAULT 0,
+      status enum('upcoming','active','completed') NOT NULL DEFAULT 'upcoming',
+      result enum('win','loss') DEFAULT NULL,
+      actual_return int DEFAULT NULL,
+      picks longtext,
+      is_manual tinyint(1) NOT NULL DEFAULT 0,
+      scheduled_for date DEFAULT NULL,
+      generated_at datetime DEFAULT NULL,
+      posted_at datetime DEFAULT NULL,
+      settled_at datetime DEFAULT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(() => {});
+    const dayD = stored.days[dayIdx];
+    await dbExecute(
+      `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, posted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), generated_at = NOW(), posted_at = NOW(), status = 'active'`,
+      [dayD.date, weekId, dayD.day, dayD.stake, dayD.save, dayD.targetWin, dayD.combinedOdds, JSON.stringify(picks)]
+    );
+  } catch { /* non-fatal — file store is source of truth */ }
 
   // Email all active strategy subscribers (non-blocking)
   const emailDay = stored.days[dayIdx] as DayPrediction;

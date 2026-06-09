@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { TrendingUp, RefreshCw, CheckCircle2, XCircle, Circle, Save, Loader2, Plus, Trash2, Calendar, Clock, PenLine, Bot, ChevronDown, ChevronUp, Wrench } from 'lucide-react';
+import { TrendingUp, RefreshCw, CheckCircle2, XCircle, Circle, Save, Loader2, Plus, Trash2, Calendar, Clock, PenLine, Bot, ChevronDown, ChevronUp, Wrench, Users, Mail, Send, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '@/app/api/strategy/predictions/route';
@@ -503,6 +503,159 @@ function ResettleButton({ onDone }: { onDone: () => void }) {
   );
 }
 
+interface SubscriberRow {
+  userId: number;
+  email: string;
+  username: string;
+  displayName: string;
+  phone: string;
+  paidAt: string;
+  expiresAt: string;
+  daysRemaining: number;
+}
+
+function SubscribersPanel() {
+  const { data, isLoading } = useSWR<{ active: SubscriberRow[]; expired: SubscriberRow[]; pending: unknown[] }>(
+    '/api/admin/strategy-subscribers',
+    fetcher,
+    { refreshInterval: 30_000 }
+  );
+
+  const [sendingAll, setSendingAll] = useState(false);
+  const [sendingId, setSendingId] = useState<number | null>(null);
+  const [sendMsg, setSendMsg] = useState('');
+  const [sendError, setSendError] = useState('');
+
+  const active = data?.active || [];
+  const expired = data?.expired || [];
+
+  const sendToAll = async () => {
+    setSendingAll(true);
+    setSendMsg('');
+    setSendError('');
+    try {
+      const res = await fetch('/api/admin/strategy/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setSendMsg(d.message || `Sent to ${d.sent} subscriber${d.sent !== 1 ? 's' : ''}`);
+      } else {
+        setSendError(d.error || 'Failed to send');
+      }
+    } catch {
+      setSendError('Network error');
+    } finally {
+      setSendingAll(false);
+    }
+  };
+
+  const sendToUser = async (userId: number) => {
+    setSendingId(userId);
+    setSendMsg('');
+    setSendError('');
+    try {
+      const res = await fetch('/api/admin/strategy/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setSendMsg(`Email sent.`);
+      } else {
+        setSendError(d.error || 'Failed');
+      }
+    } catch {
+      setSendError('Network error');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card h-fit sticky top-14">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+            <Users className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Subscribers</p>
+            <p className="text-[10px] text-muted-foreground">{active.length} active · {expired.length} expired</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Send to all */}
+      <div className="p-3 border-b border-border space-y-2">
+        <Button
+          size="sm"
+          onClick={sendToAll}
+          disabled={sendingAll || active.length === 0}
+          className="w-full h-8 gap-1.5 text-xs"
+        >
+          {sendingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          {sendingAll ? 'Sending…' : `Send Today's Picks to All (${active.length})`}
+        </Button>
+        {sendMsg && (
+          <div className="flex items-center gap-1.5 rounded-md bg-green-500/10 px-2.5 py-1.5 text-xs text-green-700 dark:text-green-400">
+            <CheckCircle2 className="h-3 w-3 shrink-0" /> {sendMsg}
+          </div>
+        )}
+        {sendError && (
+          <div className="flex items-center gap-1.5 rounded-md bg-red-500/10 px-2.5 py-1.5 text-xs text-red-600">
+            <AlertCircle className="h-3 w-3 shrink-0" /> {sendError}
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground">
+          Sends today&apos;s published picks to all active subscribers via email.
+        </p>
+      </div>
+
+      {/* Subscriber list */}
+      <div className="divide-y divide-border max-h-[440px] overflow-y-auto">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : active.length === 0 ? (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+            No active subscribers yet.
+          </div>
+        ) : (
+          active.map((sub) => (
+            <div key={sub.userId} className="flex items-center justify-between gap-2 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium truncate">{sub.displayName || sub.username}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{sub.email || sub.phone}</p>
+                <p className="text-[10px] text-emerald-600 font-medium">{sub.daysRemaining}d left</p>
+              </div>
+              <button
+                onClick={() => sendToUser(sub.userId)}
+                disabled={sendingId === sub.userId}
+                title="Send today's picks"
+                className="shrink-0 flex items-center gap-1 rounded-md border border-border px-1.5 py-1 text-[10px] text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors disabled:opacity-50"
+              >
+                {sendingId === sub.userId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {expired.length > 0 && (
+        <div className="border-t border-border px-3 py-2">
+          <p className="text-[10px] text-muted-foreground">{expired.length} expired subscriber{expired.length !== 1 ? 's' : ''} (not included in sends)</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminStrategyPage() {
   const { data, mutate, isLoading } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
     '/api/strategy/predictions',
@@ -522,82 +675,91 @@ export default function AdminStrategyPage() {
   const isHistorical = displayedWeek?.weekId !== current?.weekId;
 
   return (
-    <div className="p-4 max-w-3xl">
-      <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <TrendingUp className="h-5 w-5" />
+    <div className="lg:grid lg:grid-cols-[1fr,300px] lg:gap-4 lg:items-start max-w-5xl">
+      {/* Left column — strategy management */}
+      <div>
+        <div className="mb-5 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <TrendingUp className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold">3 Daily Odds Strategy</h1>
+            <p className="text-sm text-muted-foreground">Post picks manually, schedule future days, or generate with AI. Manual posts block AI auto-generation for that day.</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold">3 Daily Odds Strategy</h1>
-          <p className="text-sm text-muted-foreground">Post picks manually, schedule future days, or generate with AI. Manual posts block AI auto-generation for that day.</p>
+
+        <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
+          <p className="font-semibold flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" /> How it works
+          </p>
+          <p><strong>Manual Post:</strong> Write your own picks for any day. AI will not override manually posted days.</p>
+          <p><strong>Schedule:</strong> Set picks for tomorrow or any future date — they&apos;ll be live that day.</p>
+          <p><strong>AI Generate:</strong> Let the AI create picks from live match data (only if no manual picks exist).</p>
+          <p><strong>Record Results:</strong> Mark each pick and the overall day as win/loss after matches finish.</p>
+          <p><strong>Email:</strong> Subscribers are automatically emailed when picks are published. Use the panel on the right to resend manually.</p>
         </div>
+
+        <div className="mb-4">
+          <ResettleButton onDone={mutate} />
+        </div>
+
+        {/* Week selector */}
+        {!isLoading && allWeeks.length > 1 && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {allWeeks.map((w) => {
+              const wins = w.days.filter(d => d.result === 'win').length;
+              const losses = w.days.filter(d => d.result === 'loss').length;
+              const isActive = w.weekId === activeWeekId;
+              return (
+                <button
+                  key={w.weekId}
+                  onClick={() => setSelectedWeekId(w.weekId)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+                    isActive
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                  )}
+                >
+                  <Calendar className="h-3 w-3" />
+                  {w.label}
+                  {(wins > 0 || losses > 0) && (
+                    <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold', isActive ? 'bg-white/20' : 'bg-muted')}>
+                      {wins}W/{losses}L
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {isHistorical && displayedWeek && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <Calendar className="h-3.5 w-3.5 shrink-0" />
+            <span>Editing past week of <strong>{new Date(displayedWeek.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>. Changes apply to the specific dates shown in each day.</span>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground py-8">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+          </div>
+        ) : displayedWeek ? (
+          <div className="space-y-3">
+            {displayedWeek.days.map((day) => (
+              <DayPanel key={`${displayedWeek.weekId}-${day.day}`} day={day} weekId={displayedWeek.weekId} onRefresh={mutate} isHistorical={isHistorical} />
+            ))}
+          </div>
+        ) : (
+          <div className="py-8 text-center text-sm text-muted-foreground">No strategy data found.</div>
+        )}
       </div>
 
-      <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
-        <p className="font-semibold flex items-center gap-1.5">
-          <Clock className="h-3.5 w-3.5" /> How it works
-        </p>
-        <p><strong>Manual Post:</strong> Write your own picks for any day. AI will not override manually posted days.</p>
-        <p><strong>Schedule:</strong> Set picks for tomorrow or any future date — they&apos;ll be live that day.</p>
-        <p><strong>AI Generate:</strong> Let the AI create picks from live match data (only if no manual picks exist).</p>
-        <p><strong>Record Results:</strong> Mark each pick and the overall day as win/loss after matches finish.</p>
+      {/* Right column — subscribers panel */}
+      <div className="mt-6 lg:mt-0">
+        <SubscribersPanel />
       </div>
-
-      <div className="mb-4">
-        <ResettleButton onDone={mutate} />
-      </div>
-
-      {/* Week selector */}
-      {!isLoading && allWeeks.length > 1 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {allWeeks.map((w) => {
-            const wins = w.days.filter(d => d.result === 'win').length;
-            const losses = w.days.filter(d => d.result === 'loss').length;
-            const isActive = w.weekId === activeWeekId;
-            return (
-              <button
-                key={w.weekId}
-                onClick={() => setSelectedWeekId(w.weekId)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
-                  isActive
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground'
-                )}
-              >
-                <Calendar className="h-3 w-3" />
-                {w.label}
-                {(wins > 0 || losses > 0) && (
-                  <span className={cn('rounded px-1 py-0.5 text-[10px] font-bold', isActive ? 'bg-white/20' : 'bg-muted')}>
-                    {wins}W/{losses}L
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {isHistorical && displayedWeek && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-          <Calendar className="h-3.5 w-3.5 shrink-0" />
-          <span>Editing past week of <strong>{new Date(displayedWeek.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>. Changes apply to the specific dates shown in each day.</span>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground py-8">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading...
-        </div>
-      ) : displayedWeek ? (
-        <div className="space-y-3">
-          {displayedWeek.days.map((day) => (
-            <DayPanel key={`${displayedWeek.weekId}-${day.day}`} day={day} weekId={displayedWeek.weekId} onRefresh={mutate} isHistorical={isHistorical} />
-          ))}
-        </div>
-      ) : (
-        <div className="py-8 text-center text-sm text-muted-foreground">No strategy data found.</div>
-      )}
     </div>
   );
 }
