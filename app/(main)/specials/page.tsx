@@ -35,15 +35,24 @@ interface FlatMarket {
   slug: string;
 }
 
+// Generic market names that don't carry enough context on their own
+const GENERIC_MARKET_NAMES = new Set([
+  'tournament winner', 'league winner', 'championship winner', 'cup winner',
+  "men's champion", "women's champion", 'world series winner', 'stanley cup winner',
+  'super bowl winner',
+]);
+
 function flattenMarkets(outrights: OutrightDiscovery[]): FlatMarket[] {
   const flat: FlatMarket[] = [];
   for (const item of outrights) {
     for (const market of item.markets) {
       if (market.outcomes.length === 0) continue;
-      const titlePrefix = item.title.toLowerCase().slice(0, 8);
-      const sameName =
-        item.markets.length === 1 || market.marketName.toLowerCase().includes(titlePrefix);
-      const title = sameName ? market.marketName : `${item.title} — ${market.marketName}`;
+      // Use the item's descriptive title unless the market name adds distinct info
+      const isGeneric = GENERIC_MARKET_NAMES.has(market.marketName.toLowerCase());
+      const title =
+        item.markets.length === 1 || isGeneric
+          ? item.title
+          : `${item.title} — ${market.marketName}`;
       flat.push({
         displayTitle: title,
         category: item.category,
@@ -329,8 +338,8 @@ export default async function SpecialsPage({
           </Badge>
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          Outright winners, specials &amp; transfer markets — live prices from 25+ bookmakers via
-          SportsGameOdds
+          Outright winners, specials &amp; transfer markets — prices from Bet365, William Hill,
+          Betfair &amp; DraftKings
         </p>
       </div>
 

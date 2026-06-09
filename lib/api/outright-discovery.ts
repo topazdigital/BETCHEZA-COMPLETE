@@ -7,6 +7,7 @@
 
 import { ALL_LEAGUES } from '@/lib/sports-data';
 import { discoverAllSgoFutures } from '@/lib/api/sportsgameodds';
+import { GLOBAL_STATIC_OUTRIGHTS } from '@/lib/api/static-outrights';
 
 export interface OutrightDiscovery {
   sportKey: string;
@@ -52,14 +53,33 @@ const CATEGORY_ORDER = [
   'Other Competitions',
 ];
 
+/** Convert a GlobalStaticDiscovery entry to the OutrightDiscovery shape. */
+function staticToDiscovery(item: (typeof GLOBAL_STATIC_OUTRIGHTS)[number]): OutrightDiscovery {
+  const leagueInfo = item.leagueId ? ALL_LEAGUES.find(l => l.id === item.leagueId) : undefined;
+  const markets: OutrightMarket[] = item.markets;
+  return {
+    sportKey: item.sportKey,
+    slug: slugify(item.sportKey.replace(/_/g, '-')),
+    title: item.title,
+    description: buildMarketDescription(markets),
+    category: item.category,
+    leagueId: item.leagueId,
+    leagueSlug: leagueInfo?.slug,
+    leagueName: leagueInfo?.name,
+    markets,
+    totalOutcomes: markets.reduce((s, m) => s + m.outcomes.length, 0),
+  };
+}
+
 export async function discoverAllOutrights(): Promise<OutrightDiscovery[]> {
   if (discoveryCache && Date.now() - discoveryCache.ts < DISCOVERY_CACHE_MS) {
     return discoveryCache.data;
   }
 
+  // Try live SGO futures first — falls back to empty array when plan has no /futures
   const sgoItems = await discoverAllSgoFutures();
 
-  const discoveries: OutrightDiscovery[] = sgoItems.map(item => {
+  const liveDiscoveries: OutrightDiscovery[] = sgoItems.map(item => {
     const leagueInfo = item.leagueId ? ALL_LEAGUES.find(l => l.id === item.leagueId) : undefined;
     const markets: OutrightMarket[] = item.markets;
     return {
@@ -75,6 +95,14 @@ export async function discoverAllOutrights(): Promise<OutrightDiscovery[]> {
       totalOutcomes: markets.reduce((s, m) => s + m.outcomes.length, 0),
     };
   });
+
+  // Merge static fallback — add any sportKey not already covered by live data
+  const liveSportKeys = new Set(liveDiscoveries.map(d => d.sportKey));
+  const staticFallbacks = GLOBAL_STATIC_OUTRIGHTS
+    .filter(item => !liveSportKeys.has(item.sportKey))
+    .map(staticToDiscovery);
+
+  const discoveries = [...liveDiscoveries, ...staticFallbacks];
 
   discoveries.sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.category);

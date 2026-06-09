@@ -315,3 +315,489 @@ const STATIC: Record<number, StaticOutright[]> = {
 export function getStaticOutrights(leagueId: number): StaticOutright[] {
   return STATIC[leagueId] ?? [];
 }
+
+// ── Global discovery format — for the Betting Markets / Specials page ─────
+// Matches OutrightDiscovery shape in outright-discovery.ts (without slug/desc).
+export interface GlobalStaticDiscovery {
+  sportKey: string;
+  title: string;
+  category: string;
+  leagueId?: number;
+  markets: Array<{
+    eventId: string;
+    marketName: string;
+    outcomes: Array<{ name: string; price: number }>;
+  }>;
+}
+
+export const GLOBAL_STATIC_OUTRIGHTS: GlobalStaticDiscovery[] = [
+  // ── International ────────────────────────────────────────────────────
+  {
+    sportKey: 'soccer_fifa_world_cup_2026_winner',
+    title: 'FIFA World Cup 2026 Winner',
+    category: 'International',
+    markets: [{
+      eventId: 'wc2026-winner',
+      marketName: 'Tournament Winner',
+      outcomes: [
+        { name: 'Argentina',   price: 4.50  },
+        { name: 'France',      price: 5.50  },
+        { name: 'Brazil',      price: 6.00  },
+        { name: 'England',     price: 7.50  },
+        { name: 'Germany',     price: 9.00  },
+        { name: 'Spain',       price: 9.00  },
+        { name: 'Portugal',    price: 12.00 },
+        { name: 'Netherlands', price: 15.00 },
+        { name: 'USA',         price: 19.00 },
+        { name: 'Uruguay',     price: 25.00 },
+        { name: 'Morocco',     price: 29.00 },
+        { name: 'Colombia',    price: 34.00 },
+        { name: 'Japan',       price: 40.00 },
+        { name: 'Mexico',      price: 41.00 },
+        { name: 'Senegal',     price: 51.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_fifa_world_cup_2026_golden_boot',
+    title: 'FIFA World Cup 2026 Top Scorer',
+    category: 'International',
+    markets: [{
+      eventId: 'wc2026-top-scorer',
+      marketName: 'Top Scorer (Golden Boot)',
+      outcomes: [
+        { name: 'Kylian Mbappé',   price: 8.00  },
+        { name: 'Erling Haaland',  price: 9.00  },
+        { name: 'Lamine Yamal',    price: 11.00 },
+        { name: 'Vinicius Jr',     price: 12.00 },
+        { name: 'Harry Kane',      price: 13.00 },
+        { name: 'Pedri',           price: 15.00 },
+        { name: 'Bukayo Saka',     price: 17.00 },
+        { name: 'Jude Bellingham', price: 19.00 },
+        { name: 'Phil Foden',      price: 19.00 },
+        { name: 'Rodri',           price: 21.00 },
+      ],
+    }],
+  },
+
+  // ── Champions League ─────────────────────────────────────────────────
+  {
+    sportKey: 'soccer_ucl_2026_27_winner',
+    title: 'Champions League 2026/27 Winner',
+    category: 'Champions League',
+    leagueId: 9,
+    markets: [{
+      eventId: 'ucl-winner-2627',
+      marketName: 'Tournament Winner',
+      outcomes: [
+        { name: 'Real Madrid',       price: 5.00  },
+        { name: 'Manchester City',   price: 6.50  },
+        { name: 'Bayern Munich',     price: 7.00  },
+        { name: 'Liverpool',         price: 7.50  },
+        { name: 'PSG',               price: 8.00  },
+        { name: 'Arsenal',           price: 9.00  },
+        { name: 'Barcelona',         price: 9.00  },
+        { name: 'Inter Milan',       price: 13.00 },
+        { name: 'Atletico Madrid',   price: 15.00 },
+        { name: 'Borussia Dortmund', price: 17.00 },
+      ],
+    }],
+  },
+
+  // ── League Winners ───────────────────────────────────────────────────
+  {
+    sportKey: 'soccer_epl_2026_27_winner',
+    title: 'Premier League 2026/27 Winner',
+    category: 'League Winners',
+    leagueId: 1,
+    markets: [{
+      eventId: 'epl-winner-2627',
+      marketName: 'League Winner',
+      outcomes: [
+        { name: 'Manchester City',   price: 3.00  },
+        { name: 'Arsenal',           price: 4.00  },
+        { name: 'Liverpool',         price: 4.50  },
+        { name: 'Chelsea',           price: 9.00  },
+        { name: 'Manchester United', price: 13.00 },
+        { name: 'Tottenham',         price: 15.00 },
+        { name: 'Newcastle',         price: 19.00 },
+        { name: 'Aston Villa',       price: 23.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_laliga_2026_27_winner',
+    title: 'La Liga 2026/27 Winner',
+    category: 'League Winners',
+    leagueId: 2,
+    markets: [{
+      eventId: 'laliga-winner-2627',
+      marketName: 'League Winner',
+      outcomes: [
+        { name: 'Real Madrid',     price: 1.85  },
+        { name: 'Barcelona',       price: 3.75  },
+        { name: 'Atletico Madrid', price: 7.00  },
+        { name: 'Athletic Club',   price: 23.00 },
+        { name: 'Villarreal',      price: 29.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_bundesliga_2026_27_winner',
+    title: 'Bundesliga 2026/27 Winner',
+    category: 'League Winners',
+    leagueId: 3,
+    markets: [{
+      eventId: 'bundesliga-winner-2627',
+      marketName: 'League Winner',
+      outcomes: [
+        { name: 'Bayern Munich',     price: 1.62  },
+        { name: 'Bayer Leverkusen',  price: 5.50  },
+        { name: 'Borussia Dortmund', price: 8.00  },
+        { name: 'RB Leipzig',        price: 11.00 },
+        { name: 'Stuttgart',         price: 17.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_seriea_2026_27_winner',
+    title: 'Serie A 2026/27 Winner',
+    category: 'League Winners',
+    leagueId: 4,
+    markets: [{
+      eventId: 'seriea-winner-2627',
+      marketName: 'League Winner',
+      outcomes: [
+        { name: 'Inter Milan',  price: 2.10  },
+        { name: 'AC Milan',     price: 4.50  },
+        { name: 'Napoli',       price: 5.50  },
+        { name: 'Juventus',     price: 7.00  },
+        { name: 'Roma',         price: 13.00 },
+        { name: 'Lazio',        price: 15.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_ligue1_2026_27_winner',
+    title: 'Ligue 1 2026/27 Winner',
+    category: 'League Winners',
+    leagueId: 5,
+    markets: [{
+      eventId: 'ligue1-winner-2627',
+      marketName: 'League Winner',
+      outcomes: [
+        { name: 'PSG',        price: 1.22  },
+        { name: 'Monaco',     price: 9.00  },
+        { name: 'Lyon',       price: 13.00 },
+        { name: 'Marseille',  price: 15.00 },
+        { name: 'Nice',       price: 21.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_championship_2026_27_winner',
+    title: 'EFL Championship 2026/27 Winner',
+    category: 'League Winners',
+    markets: [{
+      eventId: 'championship-winner-2627',
+      marketName: 'League Winner',
+      outcomes: [
+        { name: 'Sunderland',          price: 5.50  },
+        { name: 'Sheffield United',    price: 7.00  },
+        { name: 'Leeds United',        price: 7.50  },
+        { name: 'West Brom',           price: 9.00  },
+        { name: 'Millwall',            price: 11.00 },
+        { name: 'Coventry City',       price: 13.00 },
+        { name: 'Norwich City',        price: 13.00 },
+        { name: 'Watford',             price: 15.00 },
+      ],
+    }],
+  },
+
+  // ── European Cups ────────────────────────────────────────────────────
+  {
+    sportKey: 'soccer_uel_2026_27_winner',
+    title: 'Europa League 2026/27 Winner',
+    category: 'European Cups',
+    leagueId: 10,
+    markets: [{
+      eventId: 'uel-winner-2627',
+      marketName: 'Tournament Winner',
+      outcomes: [
+        { name: 'Manchester United', price: 6.00  },
+        { name: 'Roma',              price: 7.00  },
+        { name: 'Atletico Madrid',   price: 7.50  },
+        { name: 'Lazio',             price: 9.00  },
+        { name: 'Porto',             price: 9.00  },
+        { name: 'Ajax',              price: 11.00 },
+        { name: 'Sevilla',           price: 11.00 },
+        { name: 'Galatasaray',       price: 13.00 },
+      ],
+    }],
+  },
+
+  // ── NBA ──────────────────────────────────────────────────────────────
+  {
+    sportKey: 'basketball_nba_2026_champion',
+    title: 'NBA Championship 2026',
+    category: 'NBA',
+    leagueId: 101,
+    markets: [{
+      eventId: 'nba-champion-2026',
+      marketName: 'Championship Winner',
+      outcomes: [
+        { name: 'Oklahoma City Thunder',  price: 2.75  },
+        { name: 'Boston Celtics',         price: 3.50  },
+        { name: 'Cleveland Cavaliers',    price: 5.00  },
+        { name: 'Golden State Warriors',  price: 8.00  },
+        { name: 'Minnesota Timberwolves', price: 9.00  },
+        { name: 'Denver Nuggets',         price: 10.00 },
+        { name: 'New York Knicks',        price: 11.00 },
+        { name: 'Miami Heat',             price: 23.00 },
+      ],
+    }],
+  },
+
+  // ── NFL ──────────────────────────────────────────────────────────────
+  {
+    sportKey: 'americanfootball_nfl_super_bowl_lxi',
+    title: 'NFL Super Bowl LXI Winner',
+    category: 'NFL',
+    leagueId: 401,
+    markets: [{
+      eventId: 'nfl-sb-lxi',
+      marketName: 'Super Bowl Winner',
+      outcomes: [
+        { name: 'Kansas City Chiefs',    price: 6.50  },
+        { name: 'San Francisco 49ers',   price: 7.50  },
+        { name: 'Philadelphia Eagles',   price: 8.00  },
+        { name: 'Buffalo Bills',         price: 9.00  },
+        { name: 'Baltimore Ravens',      price: 10.00 },
+        { name: 'Dallas Cowboys',        price: 12.00 },
+        { name: 'Cincinnati Bengals',    price: 15.00 },
+        { name: 'Detroit Lions',         price: 15.00 },
+        { name: 'Miami Dolphins',        price: 19.00 },
+        { name: 'Houston Texans',        price: 21.00 },
+      ],
+    }],
+  },
+
+  // ── MLB ──────────────────────────────────────────────────────────────
+  {
+    sportKey: 'baseball_mlb_world_series_2026',
+    title: 'MLB World Series 2026',
+    category: 'MLB',
+    leagueId: 501,
+    markets: [{
+      eventId: 'mlb-ws-2026',
+      marketName: 'World Series Winner',
+      outcomes: [
+        { name: 'Los Angeles Dodgers',   price: 5.50  },
+        { name: 'New York Yankees',      price: 6.00  },
+        { name: 'Philadelphia Phillies', price: 9.00  },
+        { name: 'Atlanta Braves',        price: 10.00 },
+        { name: 'Houston Astros',        price: 11.00 },
+        { name: 'Texas Rangers',         price: 12.00 },
+        { name: 'San Diego Padres',      price: 13.00 },
+        { name: 'Chicago Cubs',          price: 15.00 },
+        { name: 'Seattle Mariners',      price: 17.00 },
+      ],
+    }],
+  },
+
+  // ── NHL ──────────────────────────────────────────────────────────────
+  {
+    sportKey: 'icehockey_nhl_stanley_cup_2026',
+    title: 'NHL Stanley Cup 2026',
+    category: 'NHL',
+    leagueId: 601,
+    markets: [{
+      eventId: 'nhl-cup-2026',
+      marketName: 'Stanley Cup Winner',
+      outcomes: [
+        { name: 'Florida Panthers',     price: 4.50  },
+        { name: 'Colorado Avalanche',   price: 5.50  },
+        { name: 'Toronto Maple Leafs',  price: 7.00  },
+        { name: 'Vegas Golden Knights', price: 7.50  },
+        { name: 'Carolina Hurricanes',  price: 8.00  },
+        { name: 'Dallas Stars',         price: 9.00  },
+        { name: 'Boston Bruins',        price: 10.00 },
+        { name: 'Edmonton Oilers',      price: 11.00 },
+      ],
+    }],
+  },
+
+  // ── Golf ─────────────────────────────────────────────────────────────
+  {
+    sportKey: 'golf_us_open_2026',
+    title: 'US Open 2026 Winner',
+    category: 'Golf',
+    leagueId: 801,
+    markets: [{
+      eventId: 'golf-usopen-2026',
+      marketName: 'Tournament Winner',
+      outcomes: [
+        { name: 'Scottie Scheffler',  price: 5.00  },
+        { name: 'Rory McIlroy',       price: 8.00  },
+        { name: 'Xander Schauffele',  price: 9.00  },
+        { name: 'Jon Rahm',           price: 11.00 },
+        { name: 'Collin Morikawa',    price: 12.00 },
+        { name: 'Viktor Hovland',     price: 15.00 },
+        { name: 'Ludvig Åberg',       price: 17.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'golf_the_open_2026',
+    title: 'The Open Championship 2026 Winner',
+    category: 'Golf',
+    leagueId: 801,
+    markets: [{
+      eventId: 'golf-open-2026',
+      marketName: 'Tournament Winner',
+      outcomes: [
+        { name: 'Rory McIlroy',      price: 7.00  },
+        { name: 'Scottie Scheffler', price: 8.00  },
+        { name: 'Shane Lowry',       price: 11.00 },
+        { name: 'Jon Rahm',          price: 13.00 },
+        { name: 'Tommy Fleetwood',   price: 15.00 },
+        { name: 'Xander Schauffele', price: 15.00 },
+        { name: 'Collin Morikawa',   price: 17.00 },
+      ],
+    }],
+  },
+
+  // ── Tennis ───────────────────────────────────────────────────────────
+  {
+    sportKey: 'tennis_wimbledon_2026_men',
+    title: "Wimbledon 2026 Men's Singles",
+    category: 'Tennis',
+    leagueId: 901,
+    markets: [{
+      eventId: 'wimbledon-2026-men',
+      marketName: "Men's Champion",
+      outcomes: [
+        { name: 'Jannik Sinner',    price: 2.88  },
+        { name: 'Carlos Alcaraz',   price: 3.50  },
+        { name: 'Novak Djokovic',   price: 5.00  },
+        { name: 'Alexander Zverev', price: 9.00  },
+        { name: 'Daniil Medvedev',  price: 10.00 },
+        { name: 'Taylor Fritz',     price: 17.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'tennis_wimbledon_2026_women',
+    title: "Wimbledon 2026 Women's Singles",
+    category: 'Tennis',
+    leagueId: 901,
+    markets: [{
+      eventId: 'wimbledon-2026-women',
+      marketName: "Women's Champion",
+      outcomes: [
+        { name: 'Iga Swiatek',      price: 2.50  },
+        { name: 'Aryna Sabalenka',  price: 3.50  },
+        { name: 'Elena Rybakina',   price: 5.50  },
+        { name: 'Coco Gauff',       price: 7.00  },
+        { name: 'Jessica Pegula',   price: 11.00 },
+        { name: 'Madison Keys',     price: 13.00 },
+      ],
+    }],
+  },
+
+  // ── Specials (award & manager markets) ───────────────────────────────
+  {
+    sportKey: 'soccer_ballon_dor_2026',
+    title: "Ballon d'Or 2026 Winner",
+    category: 'Specials',
+    markets: [{
+      eventId: 'ballon-dor-2026',
+      marketName: "Ballon d'Or Winner",
+      outcomes: [
+        { name: 'Lamine Yamal',    price: 3.25  },
+        { name: 'Vinicius Jr',     price: 4.00  },
+        { name: 'Kylian Mbappé',   price: 5.50  },
+        { name: 'Rodri',           price: 6.00  },
+        { name: 'Erling Haaland',  price: 7.00  },
+        { name: 'Jude Bellingham', price: 9.00  },
+        { name: 'Bukayo Saka',     price: 11.00 },
+        { name: 'Pedri',           price: 13.00 },
+        { name: 'Phil Foden',      price: 15.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_fifa_best_2026',
+    title: "FIFA Best Men's Player 2026",
+    category: 'Specials',
+    markets: [{
+      eventId: 'fifa-best-2026',
+      marketName: 'FIFA Best Player',
+      outcomes: [
+        { name: 'Lamine Yamal',    price: 3.50  },
+        { name: 'Vinicius Jr',     price: 4.00  },
+        { name: 'Kylian Mbappé',   price: 5.00  },
+        { name: 'Erling Haaland',  price: 7.00  },
+        { name: 'Rodri',           price: 7.50  },
+        { name: 'Jude Bellingham', price: 9.00  },
+        { name: 'Bukayo Saka',     price: 13.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_prem_top_scorer_2026_27',
+    title: 'Premier League Top Scorer 2026/27',
+    category: 'Specials',
+    leagueId: 1,
+    markets: [{
+      eventId: 'epl-top-scorer-2627',
+      marketName: 'Top Scorer',
+      outcomes: [
+        { name: 'Erling Haaland',   price: 3.50  },
+        { name: 'Alexander Isak',   price: 7.00  },
+        { name: 'Cole Palmer',      price: 8.00  },
+        { name: 'Mohamed Salah',    price: 9.00  },
+        { name: 'Ollie Watkins',    price: 11.00 },
+        { name: 'Marcus Rashford',  price: 13.00 },
+        { name: 'Dominic Solanke',  price: 15.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_ucl_top_scorer_2026_27',
+    title: 'Champions League Top Scorer 2026/27',
+    category: 'Specials',
+    leagueId: 9,
+    markets: [{
+      eventId: 'ucl-top-scorer-2627',
+      marketName: 'Top Scorer',
+      outcomes: [
+        { name: 'Erling Haaland',       price: 5.00  },
+        { name: 'Kylian Mbappé',        price: 5.50  },
+        { name: 'Vinicius Jr',          price: 6.00  },
+        { name: 'Harry Kane',           price: 8.00  },
+        { name: 'Lamine Yamal',         price: 9.00  },
+        { name: 'Robert Lewandowski',   price: 10.00 },
+        { name: 'Bukayo Saka',          price: 13.00 },
+      ],
+    }],
+  },
+  {
+    sportKey: 'soccer_wc2026_golden_glove',
+    title: 'FIFA World Cup 2026 Best Goalkeeper',
+    category: 'Specials',
+    markets: [{
+      eventId: 'wc2026-golden-glove',
+      marketName: 'Golden Glove Award',
+      outcomes: [
+        { name: 'Alisson',            price: 6.00  },
+        { name: 'Ederson',            price: 7.00  },
+        { name: 'Mike Maignan',       price: 8.00  },
+        { name: 'Emiliano Martínez',  price: 9.00  },
+        { name: 'Jordan Pickford',    price: 11.00 },
+        { name: 'Manuel Neuer',       price: 13.00 },
+        { name: 'David Raya',         price: 13.00 },
+      ],
+    }],
+  },
+];
