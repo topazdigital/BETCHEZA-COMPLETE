@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdmin } from '@/lib/auth';
+import { getCurrentUser, isAdmin } from '@/lib/auth';
 import { bookmakerPartnershipEmail } from '@/lib/email-templates';
 
 export async function POST(request: NextRequest) {
-  const adminCheck = await verifyAdmin(request);
-  if (!adminCheck.ok) {
+  const me = await getCurrentUser();
+  if (!me || !isAdmin(me.role)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

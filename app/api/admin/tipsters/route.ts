@@ -43,8 +43,9 @@ async function getRealTipsters(): Promise<TipsterRow[]> {
       `SELECT u.id, u.username, u.display_name, u.avatar_url, u.role, u.is_verified, u.created_at,
               tp.total_tips, tp.win_rate, tp.followers_count, tp.bio, tp.subscription_price
        FROM users u
-       INNER JOIN tipster_profiles tp ON tp.user_id = u.id
-       ORDER BY tp.followers_count DESC LIMIT 500`
+       LEFT JOIN tipster_profiles tp ON tp.user_id = u.id
+       WHERE u.role = 'tipster'
+       ORDER BY COALESCE(tp.followers_count, 0) DESC LIMIT 500`
     );
     return r.rows.map(u => ({
       id: u.id,
