@@ -107,7 +107,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 <p>These Terms are governed by the laws of Kenya. Any disputes shall be subject to the exclusive jurisdiction of the courts of Nairobi, Kenya.</p>
 
 <h2>11. Contact</h2>
-<p>For questions about these Terms, contact us at <a href="mailto:legal@betcheza.com">legal@betcheza.com</a>.</p>
+<p>For questions about these Terms, contact us at <a href="mailto:legal@betcheza.co.ke">legal@betcheza.co.ke</a>.</p>
     `.trim(),
     updated_at: new Date(),
   },
@@ -173,7 +173,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
   <li>Data portability (receive your data in a machine-readable format)</li>
   <li>Withdraw consent at any time (without affecting prior processing)</li>
 </ul>
-<p>To exercise these rights, contact <a href="mailto:privacy@betcheza.com">privacy@betcheza.com</a>.</p>
+<p>To exercise these rights, contact <a href="mailto:privacy@betcheza.co.ke">privacy@betcheza.co.ke</a>.</p>
 
 <h2>8. Security</h2>
 <p>We implement industry-standard security measures including HTTPS/TLS encryption, bcrypt password hashing, HTTP-only JWT cookies, and regular security audits. No system is 100% secure; you use the Platform at your own risk.</p>
@@ -185,7 +185,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 <p>We may update this Policy periodically. We will notify you of significant changes via email or an in-app notification. Continued use of the Platform after changes constitutes acceptance.</p>
 
 <h2>11. Contact Us</h2>
-<p>Data Controller: Betcheza Ltd, Nairobi, Kenya. Email: <a href="mailto:privacy@betcheza.com">privacy@betcheza.com</a></p>
+<p>Data Controller: Betcheza Ltd, Nairobi, Kenya. Email: <a href="mailto:privacy@betcheza.co.ke">privacy@betcheza.co.ke</a></p>
     `.trim(),
     updated_at: new Date(),
   },
@@ -220,7 +220,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
   <li><strong>Session Time Reminders</strong> — We can send you reminders if you've been active on the platform for an extended period.</li>
   <li><strong>Self-Exclusion</strong> — Request a temporary or permanent exclusion from the platform by contacting support. We will process your request within 24 hours.</li>
   <li><strong>Reality Check</strong> — Track your net profit/loss against your tips on your personal dashboard.</li>
-  <li><strong>Account Closure</strong> — Close your account at any time by contacting <a href="mailto:support@betcheza.com">support@betcheza.com</a>.</li>
+  <li><strong>Account Closure</strong> — Close your account at any time by contacting <a href="mailto:support@betcheza.co.ke">support@betcheza.co.ke</a>.</li>
 </ul>
 
 <h2>Tips for Safer Betting</h2>
@@ -242,7 +242,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
   <li><strong>International — BeGambleAware:</strong> <a href="https://www.begambleaware.org" target="_blank" rel="noopener">begambleaware.org</a></li>
 </ul>
 
-<p>You can also contact us directly at <a href="mailto:support@betcheza.com">support@betcheza.com</a> if you need help accessing any of our responsible gambling tools.</p>
+<p>You can also contact us directly at <a href="mailto:support@betcheza.co.ke">support@betcheza.co.ke</a> if you need help accessing any of our responsible gambling tools.</p>
     `.trim(),
     updated_at: new Date(),
   },
@@ -316,7 +316,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 <p>Go to Settings → Notifications and toggle on the alert types you want. Your browser will ask for permission. Make sure browser notifications are enabled in your device settings.</p>
 
 <h3>I found a bug. How do I report it?</h3>
-<p>Email <a href="mailto:bugs@betcheza.com">bugs@betcheza.com</a> with a description of the issue, your browser/device, and screenshots if possible. We investigate all reports promptly.</p>
+<p>Email <a href="mailto:bugs@betcheza.co.ke">bugs@betcheza.co.ke</a> with a description of the issue, your browser/device, and screenshots if possible. We investigate all reports promptly.</p>
     `.trim(),
     updated_at: new Date(),
   },
@@ -332,39 +332,39 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 <h2>General Support</h2>
 <p>For account issues, tips disputes, billing questions, or general help:</p>
 <ul>
-  <li>📧 Email: <a href="mailto:support@betcheza.com">support@betcheza.com</a></li>
+  <li>📧 Email: <a href="mailto:support@betcheza.co.ke">support@betcheza.co.ke</a></li>
   <li>⏱ Response time: Within 24 hours on business days</li>
 </ul>
 
 <h2>Responsible Gambling</h2>
 <p>If you need to self-exclude, set betting limits, or get help with a gambling problem, we treat these requests with the highest priority:</p>
 <ul>
-  <li>📧 Email: <a href="mailto:support@betcheza.com">support@betcheza.com</a> — Subject: "Responsible Gambling"</li>
+  <li>📧 Email: <a href="mailto:support@betcheza.co.ke">support@betcheza.co.ke</a> — Subject: "Responsible Gambling"</li>
   <li>⏱ Response time: Within 2 hours</li>
 </ul>
 
 <h2>Partnerships & Affiliates</h2>
 <p>Interested in partnering with Betcheza, sponsoring content, or joining our affiliate programme?</p>
 <ul>
-  <li>📧 Email: <a href="mailto:partnerships@betcheza.com">partnerships@betcheza.com</a></li>
+  <li>📧 Email: <a href="mailto:partnerships@betcheza.co.ke">partnerships@betcheza.co.ke</a></li>
 </ul>
 
 <h2>Press & Media</h2>
 <p>For media enquiries, interview requests, and press releases:</p>
 <ul>
-  <li>📧 Email: <a href="mailto:press@betcheza.com">press@betcheza.com</a></li>
+  <li>📧 Email: <a href="mailto:press@betcheza.co.ke">press@betcheza.co.ke</a></li>
 </ul>
 
 <h2>Legal & Privacy</h2>
 <p>For data access requests, GDPR enquiries, or legal notices:</p>
 <ul>
-  <li>📧 Email: <a href="mailto:legal@betcheza.com">legal@betcheza.com</a></li>
+  <li>📧 Email: <a href="mailto:legal@betcheza.co.ke">legal@betcheza.co.ke</a></li>
 </ul>
 
 <h2>Bug Reports</h2>
 <p>Found a technical issue or security vulnerability?</p>
 <ul>
-  <li>📧 Email: <a href="mailto:bugs@betcheza.com">bugs@betcheza.com</a></li>
+  <li>📧 Email: <a href="mailto:bugs@betcheza.co.ke">bugs@betcheza.co.ke</a></li>
   <li>Please include your browser, device, and steps to reproduce the issue.</li>
 </ul>
 
@@ -462,7 +462,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 <p>We may update this Cookie Policy from time to time. Significant changes will be communicated via a notification banner on the Platform.</p>
 
 <h2>Contact</h2>
-<p>For questions about our use of cookies: <a href="mailto:privacy@betcheza.com">privacy@betcheza.com</a></p>
+<p>For questions about our use of cookies: <a href="mailto:privacy@betcheza.co.ke">privacy@betcheza.co.ke</a></p>
     `.trim(),
     updated_at: new Date(),
   },
@@ -527,7 +527,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 <p>Click the <strong>Notification Bell</strong> in the header and allow notifications when prompted by your browser. You can customise which alerts you receive in <strong>Settings → Notifications</strong>.</p>
 
 <h3>Why am I not receiving email notifications?</h3>
-<p>Check your spam/junk folder and add <strong>noreply@betcheza.com</strong> to your contacts. If the problem persists, verify that your email address is confirmed and that notifications are enabled in Settings.</p>
+<p>Check your spam/junk folder and add <strong>noreply@betcheza.co.ke</strong> to your contacts. If the problem persists, verify that your email address is confirmed and that notifications are enabled in Settings.</p>
 
 <h2>Account & Security</h2>
 <h3>How do I change my password?</h3>
@@ -540,7 +540,7 @@ const DEFAULT_PAGES: Record<StaticPageSlug, StaticPage> = {
 <p>Contact our support team via the <a href="/contact">Contact</a> page requesting account deletion. We will process the request within 7 days and send a confirmation email.</p>
 
 <h2>Still need help?</h2>
-<p>Our support team is available Monday–Friday, 8 AM–8 PM EAT. Reach us via the <a href="/contact">Contact Us</a> page or email <a href="mailto:support@betcheza.com">support@betcheza.com</a>.</p>
+<p>Our support team is available Monday–Friday, 8 AM–8 PM EAT. Reach us via the <a href="/contact">Contact Us</a> page or email <a href="mailto:support@betcheza.co.ke">support@betcheza.co.ke</a>.</p>
     `.trim(),
     updated_at: new Date(),
   },

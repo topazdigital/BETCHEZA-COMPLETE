@@ -310,6 +310,46 @@ export function MatchCardNew({
             </Link>
           )}
 
+          {/* Extra market columns — xl+ screens only (Total Goals / BTTS) */}
+          {match.markets && match.markets.length > 0 && !isFinished && !isLive && (() => {
+            const ouMkt = match.markets!.find(m =>
+              (m.key ?? '').toLowerCase().includes('total') ||
+              m.name.toLowerCase().includes('over') ||
+              m.name.toLowerCase().includes('total goals')
+            );
+            const bttsMkt = match.markets!.find(m =>
+              (m.key ?? '').toLowerCase().includes('btts') ||
+              m.name.toLowerCase().includes('both teams')
+            );
+            if (!ouMkt && !bttsMkt) return null;
+            const ouOver  = ouMkt?.outcomes.find(o => o.name.toLowerCase().includes('over'));
+            const ouUnder = ouMkt?.outcomes.find(o => o.name.toLowerCase().includes('under'));
+            const bttsYes = bttsMkt?.outcomes.find(o => o.name.toLowerCase() === 'yes');
+            const bttsNo  = bttsMkt?.outcomes.find(o => o.name.toLowerCase() === 'no');
+            return (
+              <div className="hidden xl:flex shrink-0 items-center gap-1.5" onClick={(e) => e.preventDefault()}>
+                {ouMkt && (ouOver || ouUnder) && (
+                  <div className="flex flex-col items-center gap-0.5 rounded-md border border-border/60 bg-muted/30 px-1.5 py-1 min-w-[52px]">
+                    <span className="text-[8px] font-bold uppercase tracking-wide text-muted-foreground">O/U 2.5</span>
+                    <div className="flex gap-0.5">
+                      {ouOver && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{ouOver.price.toFixed(2)}</span>}
+                      {ouUnder && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-blue-600 dark:text-blue-400 tabular-nums">{ouUnder.price.toFixed(2)}</span>}
+                    </div>
+                  </div>
+                )}
+                {bttsMkt && (bttsYes || bttsNo) && (
+                  <div className="flex flex-col items-center gap-0.5 rounded-md border border-border/60 bg-muted/30 px-1.5 py-1 min-w-[52px]">
+                    <span className="text-[8px] font-bold uppercase tracking-wide text-muted-foreground">BTTS</span>
+                    <div className="flex gap-0.5">
+                      {bttsYes && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{bttsYes.price.toFixed(2)}</span>}
+                      {bttsNo && <span className="rounded px-1 py-0.5 font-mono text-[10px] font-bold text-rose-600 dark:text-rose-400 tabular-nums">{bttsNo.price.toFixed(2)}</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Odds — fixed-width boxes so they never push team names off-screen */}
           {match.odds && !isFinished && (
             <div className="flex shrink-0 gap-0.5">
