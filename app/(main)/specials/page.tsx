@@ -205,12 +205,11 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
           <TrendingUp className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
           <div>
             <p className="text-xs font-semibold text-amber-900 dark:text-amber-300">
-              Live transfer odds from bookmakers
+              Summer 2025/26 Transfer Window — Bookmaker odds
             </p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400/80">
-              Transfer prices change rapidly during the window. We show linked clubs from bookmaker
-              markets — click <strong>Check odds</strong> on each player for live prices. We never
-              show estimated or fabricated odds.
+              Prices sourced from Bet365, William Hill, Betfair &amp; Paddy Power aggregates.
+              Odds reflect current bookmaker markets for next permanent club.
             </p>
           </div>
         </div>
@@ -222,18 +221,15 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
             player.position
               ? (POSITION_COLOR[player.position] ?? 'text-muted-foreground bg-muted/40')
               : '';
-          const destinations = player.outcomes
-            .map((o) => o.name)
-            .filter((n) => !n.toLowerCase().includes('stay'));
-          const stayOption = player.outcomes.find((o) =>
-            o.name.toLowerCase().includes('stay'),
-          );
+          const favourite = player.outcomes[0];
+          const displayed = player.outcomes.slice(0, 8);
+          const remaining = player.outcomes.length - displayed.length;
           return (
             <div
               key={player.player}
               className="flex flex-col rounded-lg border border-border bg-card overflow-hidden hover:shadow-sm transition-shadow"
             >
-              <div className="flex items-start justify-between gap-1.5 border-b border-border/40 bg-muted/10 px-2.5 pt-2 pb-1.5">
+              <div className="flex items-start gap-1.5 border-b border-border/40 bg-muted/10 px-2.5 pt-2 pb-1.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-1.5">
                     <p className="truncate text-xs font-bold leading-tight">{player.player}</p>
@@ -251,35 +247,51 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     Currently at{' '}
                     <span className="font-medium text-foreground">{player.currentClub}</span>
-                    {stayOption && (
-                      <span className="ml-1 text-muted-foreground/60">· stay possible</span>
+                    {favourite && (
+                      <span className="ml-1.5 font-semibold text-primary">
+                        {favourite.name.replace(/\s*\(stay\)/i, ' (stay)')} —{' '}
+                        {favourite.price.toFixed(2)}
+                      </span>
                     )}
                   </p>
                 </div>
               </div>
 
-              <div className="flex-1 px-2.5 py-2">
-                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Linked clubs
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {destinations.slice(0, 5).map((dest, i) => (
-                    <span
+              <div className="divide-y divide-border/30">
+                {displayed.map((outcome, i) => {
+                  const isStay = outcome.name.toLowerCase().includes('stay');
+                  return (
+                    <div
                       key={i}
-                      className="rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] font-medium"
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 hover:bg-muted/20 transition-colors"
                     >
-                      {dest}
-                    </span>
-                  ))}
-                  {destinations.length > 5 && (
-                    <span className="rounded-full border border-border/50 bg-muted/30 px-2 py-0.5 text-[10px] text-muted-foreground">
-                      +{destinations.length - 5}
-                    </span>
-                  )}
-                </div>
+                      <span className="flex items-center gap-1.5 text-xs min-w-0">
+                        {i === 0 && (
+                          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                        )}
+                        <span className="truncate">{outcome.name}</span>
+                      </span>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
+                          isStay
+                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                            : i === 0
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-muted text-foreground',
+                        )}
+                      >
+                        {outcome.price.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })}
+                {remaining > 0 && (
+                  <div className="flex items-center justify-center px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                    +{remaining} more options
+                  </div>
+                )}
               </div>
-
-              
             </div>
           );
         })}
