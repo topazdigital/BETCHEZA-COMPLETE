@@ -1127,6 +1127,23 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '1062': { name: 'UEFA Europa League', country: 'Europe', countryCode: 'EU' },
   '1063': { name: 'UEFA Conference League', country: 'Europe', countryCode: 'EU' },
   '1978': { name: 'FIFA Club World Cup', country: 'World', countryCode: 'WO' },
+  // Women's Competitions
+  '17163': { name: "UEFA Women's Champions League", country: 'Europe', countryCode: 'EU' },
+  '17167': { name: "Women's Super League", country: 'England', countryCode: 'GB-ENG' },
+  '17168': { name: "Division 1 Féminine", country: 'France', countryCode: 'FR' },
+  '17169': { name: "Frauen-Bundesliga", country: 'Germany', countryCode: 'DE' },
+  '17170': { name: "Women's WC Qualifying — UEFA", country: 'Europe', countryCode: 'EU' },
+  '17173': { name: "Women's WC Qualifying — AFC", country: 'Asia', countryCode: 'AS' },
+  '17175': { name: "Women's WC Qualifying — CONCACAF", country: 'North America', countryCode: 'NA' },
+  '17176': { name: "Women's WC Qualifying — CONMEBOL", country: 'South America', countryCode: 'SA' },
+  '17177': { name: "Women's WC Qualifying — CAF", country: 'Africa', countryCode: 'AF' },
+  '16980': { name: 'NWSL', country: 'USA', countryCode: 'US' },
+  '16981': { name: "Women's Nations League", country: 'Europe', countryCode: 'EU' },
+  '22283': { name: "Women's WC Qualifying — UEFA", country: 'Europe', countryCode: 'EU' },
+  '22284': { name: "Women's WC Qualifying — CONCACAF", country: 'North America', countryCode: 'NA' },
+  '22285': { name: "Women's WC Qualifying — AFC", country: 'Asia', countryCode: 'AS' },
+  '22286': { name: "Women's WC Qualifying — CAF", country: 'Africa', countryCode: 'AF' },
+  '22287': { name: "Women's WC Qualifying — CONMEBOL", country: 'South America', countryCode: 'SA' },
 };
 
 // Maps ESPN's internal numeric league IDs → our internal leagueId.
@@ -1158,6 +1175,19 @@ const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
   '11585': 252, // Ghana Premier League
   '11584': 9027,// Nigerian Premier League
   '11587': 256, // Tanzanian Premier League
+  // Women's WC Qualifying
+  '17170': 190, // Women's WC Qual UEFA   → internal id 190
+  '22283': 190, // Women's WC Qual UEFA alt
+  '17175': 191, // Women's WC Qual CONCACAF
+  '22284': 191, // Women's WC Qual CONCACAF alt
+  '17173': 192, // Women's WC Qual AFC
+  '22285': 192, // Women's WC Qual AFC alt
+  '17177': 193, // Women's WC Qual CAF
+  '22286': 193, // Women's WC Qual CAF alt
+  '17176': 194, // Women's WC Qual CONMEBOL
+  '22287': 194, // Women's WC Qual CONMEBOL alt
+  '17163': 200, // UEFA Women's Champions League
+  '16980': 201, // NWSL
 };
 
 // Convert a season slug like "2025-26-saudi-pro-league" or "uefa-champions-league"

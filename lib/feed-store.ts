@@ -370,7 +370,7 @@ function mapPostRows(rows: PostRow[], likedSet: Set<string>): FeedPost[] {
 // auto_tips when the feed_posts table is empty.
 
 const gSeed = globalThis as { __feedSeededAt?: number };
-const SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // Re-seed at most every 6 hours
+const SEED_INTERVAL_MS = 2 * 60 * 60 * 1000; // Re-seed every 2 hours so timestamps stay fresh
 
 const POST_TEMPLATES = [
   (match: string, pick: string, odds: string) => `Backing ${pick} in ${match} 🔥 Odds at ${odds} — let's get it! #tips`,
@@ -431,11 +431,14 @@ async function seedCommunityPostsFromTips(): Promise<boolean> {
       const likes = Math.floor((tip.tipster_id % 18) + Math.random() * 8);
 
       await query(
-        `INSERT IGNORE INTO feed_posts
+        `INSERT INTO feed_posts
           (id, user_id, author_name, author_avatar, content, match_id, match_title,
            pick, odds, image_url, room_id, likes, comment_count, created_at)
          VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0,
-           DATE_SUB(NOW(), INTERVAL ? HOUR))`,
+           DATE_SUB(NOW(), INTERVAL ? HOUR))
+         ON DUPLICATE KEY UPDATE
+           created_at = DATE_SUB(NOW(), INTERVAL (MOD(user_id, 20) + 1) HOUR),
+           content    = VALUES(content)`,
         [
           postId, tip.tipster_id, ft.displayName, ft.avatar || null,
           content, tip.match_title.slice(0, 255), tip.pick,

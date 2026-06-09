@@ -68,6 +68,9 @@ export function WorldCupOddsCard() {
   const favourite = top8[0];
   const bookmaker = favourite?.bookmaker ?? '';
 
+  // Hide entirely when loaded but no odds data is available
+  if (!isLoading && top8.length === 0) return null;
+
   return (
     <section className="mb-4">
       <Link

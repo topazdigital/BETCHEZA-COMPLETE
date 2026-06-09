@@ -401,15 +401,19 @@ export async function GET(request: NextRequest) {
       // stale entries whose status was never updated by the external API (e.g. April 18
       // matches still tagged 'scheduled' days later).
       const nowMs = Date.now();
-      const TWO_HOURS = 2 * 60 * 60 * 1000;
+      // Stale-scheduled threshold: 90 min — any "scheduled" match whose kickoff
+      // was >90 min ago is almost certainly in-progress or finished but the API
+      // status was never updated. Hide it rather than show a ghost entry.
+      const STALE_SCHEDULED_MS = 90 * 60 * 1000;
       matches = matches.filter(m => {
         if (m.status === 'cancelled' || m.status === 'postponed') return false;
         if (m.status === 'finished') {
+          // Keep finished matches only if they kicked off today
           return getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
         }
         if (m.status === 'scheduled') {
-          // Discard if kickoff was more than 2 hours in the past
-          return new Date(m.kickoffTime).getTime() >= nowMs - TWO_HOURS;
+          // Discard if kickoff was more than 90 minutes ago
+          return new Date(m.kickoffTime).getTime() >= nowMs - STALE_SCHEDULED_MS;
         }
         return true;
       });
