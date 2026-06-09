@@ -235,6 +235,29 @@ export async function register() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       `).catch(() => {});
 
+      // ── tipster_profiles: add missing columns that the schema omitted ────────
+      // The base dump doesn't include bio, created_at, or is_verified.
+      // These are added idempotently so re-running is always safe.
+      await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT NULL`).catch(() => {});
+      await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`).catch(() => {});
+      await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS is_verified TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+
+      // ── Backfill: ensure every user with role='tipster' has a profile row ──
+      // This auto-fixes any user that was approved while the INSERT was broken
+      // (missing columns caused a silent failure). Safe to run every restart.
+      await query(`
+        INSERT IGNORE INTO tipster_profiles (user_id, updated_at)
+        SELECT id, NOW() FROM users WHERE role = 'tipster'
+      `).catch(() => {});
+
+      // ── Sync is_verified on tipster_profiles from users table ────────────
+      await query(`
+        UPDATE tipster_profiles tp
+        JOIN users u ON u.id = tp.user_id
+        SET tp.is_verified = u.is_verified
+        WHERE u.role = 'tipster'
+      `).catch(() => {});
+
       console.log('[instrumentation] DB migrations applied (community_rooms + room_id + challenges)');
 
       // 4b. Backfill room_id on existing fake-tipster posts (user_id >= 1000)

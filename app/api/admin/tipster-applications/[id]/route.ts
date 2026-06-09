@@ -5,6 +5,7 @@ import { setUserRoleOverride } from '@/lib/user-role-overrides';
 import {
   getApplication,
   reviewApplication,
+  markApplicationEmailSent,
 } from '@/lib/tipster-applications-store';
 import { getTemplate as getEmailTemplate } from '@/lib/email-templates-store';
 import { renderTemplate, sendMail } from '@/lib/mailer';
@@ -95,10 +96,12 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         noteBlock: noteBlockText,
       });
 
-      await sendMail({ to: recipient, subject, html, text });
+      const mailResult = await sendMail({ to: recipient, subject, html, text });
+      await markApplicationEmailSent(updated.id, mailResult.ok === true);
     }
   } catch (err) {
     console.warn('[tipster-applications] notification email failed:', err);
+    await markApplicationEmailSent(updated.id, false).catch(() => {});
   }
 
   return NextResponse.json({ application: updated });

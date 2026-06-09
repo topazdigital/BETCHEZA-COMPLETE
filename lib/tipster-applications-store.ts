@@ -42,6 +42,10 @@ export interface TipsterApplication {
   reviewerNote?: string;
   /** True when admin approved AND granted the verified badge. */
   verifiedGranted?: boolean;
+  /** True when the DB role UPDATE actually succeeded. */
+  dbUpdated?: boolean;
+  /** True when the approval notification email was successfully sent. */
+  emailSent?: boolean;
 }
 
 const STORE_DIR = path.join(process.cwd(), '.local', 'state');
@@ -157,33 +161,44 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
   await persist();
 
   if (input.decision === 'approve') {
+    let dbOk = false;
     try {
+      // Step 1: promote the user's role (and optionally grant verified badge)
       await query(
         `UPDATE users SET role = 'tipster'${input.grantVerified ? ', is_verified = 1' : ''} WHERE id = ?`,
         [row.userId]
       );
+      dbOk = true;
 
-      if (input.grantVerified) {
-        await query(
-          `INSERT INTO tipster_profiles (user_id, is_verified, created_at, updated_at)
-           VALUES (?, 1, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE is_verified = 1, updated_at = NOW()`,
-          [row.userId]
-        );
-      } else {
-        await query(
-          `INSERT INTO tipster_profiles (user_id, created_at, updated_at)
-           VALUES (?, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE updated_at = NOW()`,
-          [row.userId]
-        );
-      }
+      // Step 2: ensure a tipster_profiles row exists.
+      // Only use columns guaranteed to exist in the current schema.
+      // The instrumentation startup migration adds bio/created_at/is_verified
+      // columns, but we must not reference them here in case the migration
+      // hasn't run yet (e.g. very first deploy with an old schema).
+      await query(
+        `INSERT INTO tipster_profiles (user_id, updated_at)
+         VALUES (?, NOW())
+         ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+        [row.userId]
+      );
     } catch (e) {
       console.warn('[tipster-applications] DB role update failed (in-memory/file state still applied):', e instanceof Error ? e.message : e);
     }
+    row.dbUpdated = dbOk;
+    await persist();
   }
 
   return row;
+}
+
+/** Mark whether the notification email was successfully sent (called from route handler). */
+export async function markApplicationEmailSent(id: string, sent: boolean): Promise<void> {
+  await ensureLoaded();
+  const row = store().applications.find(a => a.id === id);
+  if (row) {
+    row.emailSent = sent;
+    await persist();
+  }
 }
 
 /** Stats for the admin dashboard widget. */

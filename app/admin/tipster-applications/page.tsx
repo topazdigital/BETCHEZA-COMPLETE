@@ -27,6 +27,8 @@ interface AdminApplication {
   reviewedAt?: string;
   reviewerNote?: string;
   verifiedGranted?: boolean;
+  dbUpdated?: boolean;
+  emailSent?: boolean;
 }
 
 interface ApiResp {
@@ -265,10 +267,20 @@ export default function AdminTipsterApplicationsPage() {
             )}
 
             {app.status === 'approved' && (
-              <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                Approved{app.verifiedGranted ? ' with verified badge' : ''} · role updated in DB
-                {app.email && <span className="ml-1 opacity-70">· email sent</span>}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  Approved{app.verifiedGranted ? ' with verified badge' : ''}
+                  {app.dbUpdated === true && <span className="opacity-70">· role updated in DB ✓</span>}
+                  {app.dbUpdated === false && <span className="text-amber-600 dark:text-amber-400 opacity-90">· DB update failed ⚠</span>}
+                  {app.dbUpdated === undefined && <span className="opacity-50">· DB status unknown</span>}
+                </div>
+                {app.email && (
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md border ${app.emailSent === true ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : app.emailSent === false ? 'border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400' : 'border-border bg-muted/30 text-muted-foreground'}`}>
+                    <Mail className="h-3 w-3 shrink-0" />
+                    {app.emailSent === true ? `Email sent to ${app.email} ✓` : app.emailSent === false ? `Email delivery failed to ${app.email}` : `Email status unknown (${app.email})`}
+                  </div>
+                )}
               </div>
             )}
 
