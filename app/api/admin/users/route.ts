@@ -3,7 +3,7 @@ import { getCurrentUser, hashPassword } from '@/lib/auth';
 import { hasPermission, type Role, ROLE_LABELS } from '@/lib/permissions';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getUserRoleOverride, setUserRoleOverride } from '@/lib/user-role-overrides';
-import { query, execute, getPool } from '@/lib/db';
+import { query, execute, directExecute, getPool } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -250,12 +250,27 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'invalid payload' }, { status: 400 });
   }
   setUserRoleOverride(id, role);
+  let dbAffected = 0;
+  let dbError: string | undefined;
   try {
-    await query(`UPDATE users SET role = ? WHERE id = ?`, [role, id]);
+    // Use directExecute to bypass circuit breaker — pool may be silently open/tripped
+    const r = await directExecute(`UPDATE users SET role = ? WHERE id = ?`, [role, id]);
+    dbAffected = r.affectedRows;
+    if (r.affectedRows === 0) {
+      console.warn(`[admin/users] role update: id=${id} matched 0 rows in DB (in-memory override applied)`);
+    }
+    // If promoted to tipster, ensure tipster_profiles row exists
+    if (role === 'tipster' && r.affectedRows > 0) {
+      await directExecute(
+        `INSERT INTO tipster_profiles (user_id, updated_at) VALUES (?, NOW()) ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+        [id]
+      );
+    }
   } catch (e) {
-    console.warn('[admin/users] DB role update failed (in-memory override still applied):', e instanceof Error ? e.message : e);
+    dbError = e instanceof Error ? e.message : String(e);
+    console.warn('[admin/users] DB role update failed (in-memory override still applied):', dbError);
   }
-  return NextResponse.json({ success: true, id, role });
+  return NextResponse.json({ success: true, id, role, dbAffected, dbError: dbError || null });
 }
 
 export async function DELETE(request: NextRequest) {

@@ -189,6 +189,93 @@ export async function execute(sql: string, params?: unknown[]): Promise<ExecuteR
   }
 }
 
+/**
+ * Creates a FRESH one-off connection that bypasses the circuit breaker and pool entirely.
+ * Use this for critical admin writes (role changes, approvals) where a silent no-op is
+ * unacceptable — the pool circuit breaker can be open due to earlier transient errors,
+ * causing query() / execute() to silently discard writes with no error thrown.
+ *
+ * On success, resets the circuit breaker so the shared pool recovers too.
+ */
+export async function directExecute(sql: string, params?: unknown[]): Promise<ExecuteResult & { warning?: string }> {
+  const envHost     = process.env.DB_HOST     || process.env.MYSQL_HOST;
+  const envUser     = process.env.DB_USER     || process.env.MYSQL_USER;
+  const envPassword = process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD;
+  const envDatabase = process.env.DB_NAME     || process.env.MYSQL_DATABASE;
+  const fileCfg = (!envHost || !envUser || !envDatabase) ? getFileConfig() : null;
+
+  const host     = envHost     || fileCfg?.host;
+  const user     = envUser     || fileCfg?.user;
+  const password = envPassword || fileCfg?.password;
+  const database = envDatabase || fileCfg?.database;
+
+  if (!host || !user || !database) {
+    throw new Error('No database configuration available (check DB_HOST, DB_USER, DB_NAME env vars)');
+  }
+
+  const conn = await mysql.createConnection({
+    host,
+    port: fileCfg?.port || parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306'),
+    user,
+    password: password || '',
+    database,
+    connectTimeout: 10_000,
+    charset: 'utf8mb4',
+    timezone: '+00:00',
+  });
+
+  try {
+    const [result] = await conn.execute(sql, params);
+    const r = result as mysql.ResultSetHeader;
+    // A successful direct connection means the DB is reachable — reset any circuit breaker
+    if (g.__dbCircuitOpen) {
+      g.__dbCircuitOpen = false;
+      console.log('[db] directExecute: circuit breaker reset after successful connection');
+    }
+    return { insertId: r.insertId, affectedRows: r.affectedRows };
+  } finally {
+    conn.destroy();
+  }
+}
+
+/**
+ * directQuery — like directExecute but for SELECT statements that return rows.
+ * Bypasses the circuit breaker for reads when the pool is down.
+ */
+export async function directQuery<T>(sql: string, params?: unknown[]): Promise<T[]> {
+  const envHost     = process.env.DB_HOST     || process.env.MYSQL_HOST;
+  const envUser     = process.env.DB_USER     || process.env.MYSQL_USER;
+  const envPassword = process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD;
+  const envDatabase = process.env.DB_NAME     || process.env.MYSQL_DATABASE;
+  const fileCfg = (!envHost || !envUser || !envDatabase) ? getFileConfig() : null;
+
+  const host     = envHost     || fileCfg?.host;
+  const user     = envUser     || fileCfg?.user;
+  const password = envPassword || fileCfg?.password;
+  const database = envDatabase || fileCfg?.database;
+
+  if (!host || !user || !database) throw new Error('No database configuration available');
+
+  const conn = await mysql.createConnection({
+    host,
+    port: fileCfg?.port || parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306'),
+    user,
+    password: password || '',
+    database,
+    connectTimeout: 10_000,
+    charset: 'utf8mb4',
+    timezone: '+00:00',
+  });
+
+  try {
+    const [rows] = await conn.execute(sql, params);
+    if (g.__dbCircuitOpen) g.__dbCircuitOpen = false;
+    return rows as T[];
+  } finally {
+    conn.destroy();
+  }
+}
+
 export async function withTransaction<T>(
   callback: (conn: mysql.PoolConnection) => Promise<T>
 ): Promise<T> {

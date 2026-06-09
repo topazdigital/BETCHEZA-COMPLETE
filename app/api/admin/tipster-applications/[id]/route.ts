@@ -37,6 +37,44 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     return NextResponse.json({ success: ok, application: refreshed });
   }
 
+  // ── Re-send approval email for an already-approved application ─────────────
+  if (body.action === 'resend_email') {
+    const app = await getApplication(id);
+    if (!app) return NextResponse.json({ error: 'application not found' }, { status: 404 });
+    if (app.status !== 'approved') return NextResponse.json({ error: 'application is not approved' }, { status: 400 });
+
+    let recipient = app.email;
+    if (!recipient) {
+      const dbUser = await queryOne<{ email: string }>(
+        'SELECT email FROM users WHERE id = ? LIMIT 1',
+        [app.userId]
+      );
+      recipient = dbUser?.email;
+    }
+    if (!recipient) {
+      return NextResponse.json({ error: 'No email address found for this applicant' }, { status: 400 });
+    }
+
+    try {
+      const tpl = getEmailTemplate('tipster_approved');
+      const proto = request.headers.get('x-forwarded-proto') || 'http';
+      const host = request.headers.get('host') || 'localhost:5000';
+      const siteUrl = `${proto}://${host}`;
+      const verifiedLine = app.verifiedGranted ? ' with the verified badge' : '';
+      const subject = renderTemplate(tpl.subject, { name: app.displayName || app.username });
+      const html = renderTemplate(tpl.html, { name: app.displayName || app.username, siteUrl, verifiedLine, noteBlock: '' });
+      const text = renderTemplate(tpl.text, { name: app.displayName || app.username, siteUrl, verifiedLine, noteBlock: '' });
+      const mailResult = await sendMail({ to: recipient, subject, html, text });
+      await markApplicationEmailSent(app.id, mailResult.ok === true);
+      const refreshed = await getApplication(id);
+      return NextResponse.json({ success: mailResult.ok === true, application: refreshed });
+    } catch (err) {
+      console.warn('[tipster-applications] resend email failed:', err);
+      await markApplicationEmailSent(app.id, false).catch(() => {});
+      return NextResponse.json({ error: 'Email sending failed — check SMTP config in Admin → Email Setup', success: false }, { status: 500 });
+    }
+  }
+
   const decision = body.decision === 'approve' ? 'approve' : body.decision === 'reject' ? 'reject' : null;
   if (!decision) {
     return NextResponse.json({ error: 'invalid decision' }, { status: 400 });

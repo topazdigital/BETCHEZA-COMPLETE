@@ -66,6 +66,26 @@ export default function AdminTipsterApplicationsPage() {
   }
   useEffect(() => { load(); }, []);
 
+  async function resendEmail(app: AdminApplication) {
+    setBusyId(app.id + '-email');
+    try {
+      const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resend_email' }),
+      });
+      const json = await r.json().catch(() => ({}));
+      if (r.ok && json.success) {
+        addToast(`✅ Approval email re-sent to ${app.email}`, 'success');
+        await load();
+      } else {
+        addToast(json.error || 'Email sending failed — configure SMTP in Admin → Email Setup', 'error');
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function reapply(app: AdminApplication) {
     setBusyId(app.id + '-reapply');
     try {
@@ -309,9 +329,24 @@ export default function AdminTipsterApplicationsPage() {
                   )}
                 </div>
                 {app.email && (
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md border ${app.emailSent === true ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : app.emailSent === false ? 'border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400' : 'border-border bg-muted/30 text-muted-foreground'}`}>
-                    <Mail className="h-3 w-3 shrink-0" />
-                    {app.emailSent === true ? `Email sent to ${app.email} ✓` : app.emailSent === false ? `Email delivery failed to ${app.email}` : `Email status unknown (${app.email})`}
+                  <div className={`flex items-center justify-between gap-2 px-2.5 py-1 text-[11px] rounded-md border ${app.emailSent === true ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : app.emailSent === false ? 'border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400' : 'border-border bg-muted/30 text-muted-foreground'}`}>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Mail className="h-3 w-3 shrink-0" />
+                      <span className="truncate">
+                        {app.emailSent === true ? `Email sent to ${app.email} ✓` : app.emailSent === false ? `Delivery failed to ${app.email}` : `Email status unknown (${app.email})`}
+                      </span>
+                    </div>
+                    {app.emailSent !== true && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-5 text-[10px] px-1.5 shrink-0 border-border hover:bg-muted/50"
+                        onClick={() => resendEmail(app)}
+                        disabled={busyId === app.id + '-email'}
+                      >
+                        {busyId === app.id + '-email' ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : 'Re-send'}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

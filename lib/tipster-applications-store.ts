@@ -14,7 +14,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { execute, queryOne } from './db';
+import { directExecute, directQuery } from './db';
 
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -165,8 +165,10 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
     try {
       const verifiedSql = input.grantVerified ? ', is_verified = 1' : '';
 
-      // Use execute() to get real affectedRows (query() always returns affectedRows: undefined)
-      const r1 = await execute(
+      // directExecute() creates a fresh connection bypassing the circuit breaker.
+      // query()/execute() can silently no-op when the circuit is open due to earlier
+      // transient DB errors, causing the UPDATE to be discarded with no error thrown.
+      const r1 = await directExecute(
         `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
         [row.userId]
       );
@@ -176,12 +178,12 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
       } else {
         // Stored userId may be stale — fall back to username lookup
         console.warn(`[tipster-applications] approve: userId ${row.userId} matched 0 rows, trying username "${row.username}"`);
-        const found = await queryOne<{ id: number }>(
+        const found = (await directQuery<{ id: number }>(
           'SELECT id FROM users WHERE username = ? LIMIT 1',
           [row.username]
-        );
+        ))[0] ?? null;
         if (found) {
-          const r2 = await execute(
+          const r2 = await directExecute(
             `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
             [found.id]
           );
@@ -193,7 +195,7 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
       }
 
       if (dbOk) {
-        await execute(
+        await directExecute(
           `INSERT INTO tipster_profiles (user_id, updated_at)
            VALUES (?, NOW())
            ON DUPLICATE KEY UPDATE updated_at = NOW()`,
@@ -219,8 +221,9 @@ export async function reapplyDbRole(id: string): Promise<boolean> {
   try {
     const verifiedSql = row.verifiedGranted ? ', is_verified = 1' : '';
 
-    // Use execute() so we get real affectedRows back (query() always returns affectedRows: undefined)
-    const r1 = await execute(
+    // directExecute() opens a fresh connection, bypassing the circuit breaker entirely.
+    // This guarantees the SQL actually reaches the DB even if the pool is closed/tripped.
+    const r1 = await directExecute(
       `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
       [row.userId]
     );
@@ -230,12 +233,13 @@ export async function reapplyDbRole(id: string): Promise<boolean> {
     } else {
       // Stored userId didn't match — fall back to looking up by username
       console.warn(`[tipster-applications] reapply: userId ${row.userId} matched 0 rows, trying username "${row.username}"`);
-      const found = await queryOne<{ id: number }>(
+      const rows = await directQuery<{ id: number }>(
         'SELECT id FROM users WHERE username = ? LIMIT 1',
         [row.username]
       );
+      const found = rows[0] ?? null;
       if (found) {
-        const r2 = await execute(
+        const r2 = await directExecute(
           `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
           [found.id]
         );
@@ -243,7 +247,7 @@ export async function reapplyDbRole(id: string): Promise<boolean> {
           row.userId = found.id; // correct the stale userId in the store
           dbOk = true;
         } else {
-          console.warn(`[tipster-applications] reapply: username "${row.username}" also matched 0 rows`);
+          console.warn(`[tipster-applications] reapply: username "${row.username}" (id=${found.id}) also matched 0 rows — check DB enum values`);
         }
       } else {
         console.warn(`[tipster-applications] reapply: no user found with username "${row.username}"`);
@@ -252,7 +256,7 @@ export async function reapplyDbRole(id: string): Promise<boolean> {
 
     if (dbOk) {
       // Ensure tipster_profiles row exists
-      await execute(
+      await directExecute(
         `INSERT INTO tipster_profiles (user_id, updated_at)
          VALUES (?, NOW())
          ON DUPLICATE KEY UPDATE updated_at = NOW()`,
