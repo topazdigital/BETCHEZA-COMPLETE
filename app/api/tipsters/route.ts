@@ -17,6 +17,7 @@ function fakeAsPublic(t: FakeTipster) {
     isPro: t.isPro, subscriptionPrice: t.subscriptionPrice, verified: t.isVerified,
     countryCode: t.countryCode, joinedAt: t.joinedAt,
     isOnline: t.isOnline ?? false, lastSeen: t.lastSeen ?? null,
+    isFake: true,
   };
 }
 
@@ -38,7 +39,7 @@ interface PublicTipster {
   streak: number; rank: number; followers: number; isPro: boolean;
   subscriptionPrice: number | null; verified: boolean; countryCode: string | null;
   joinedAt: string | null; performanceVerified: boolean;
-  activeToday?: boolean;
+  activeToday?: boolean; isFake?: boolean;
 }
 
 function shape(row: DbTipster): PublicTipster {
@@ -54,6 +55,7 @@ function shape(row: DbTipster): PublicTipster {
     verified: !!row.is_verified, countryCode: row.country_code,
     joinedAt: row.created_at ? new Date(row.created_at).toISOString() : null,
     performanceVerified: false,
+    isFake: false,
   };
 }
 
@@ -65,12 +67,7 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10) || 50));
   const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10) || 0);
 
-  const sortColumn: Record<string, string> = {
-    rank: 't.rank ASC', winRate: 't.win_rate DESC', roi: 't.roi DESC',
-    followers: 't.followers_count DESC', streak: 't.streak DESC', totalTips: 't.total_tips DESC',
-  };
-  const orderBy = sortColumn[sortBy] || 't.rank ASC';
-
+  // ── 1. Fetch real tipsters from DB ──────────────────────────────────
   const where: string[] = ["u.role = 'tipster'"];
   const params: unknown[] = [];
 
@@ -84,19 +81,13 @@ export async function GET(request: NextRequest) {
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  // Get current user's followed tipsters for followed-first ordering
   let followedIds: number[] = [];
   try {
     const user = await getCurrentUser();
     if (user) followedIds = await getFollowedTipsters(user.userId);
   } catch {}
 
-  const followedFirstExpr = followedIds.length > 0
-    ? `CASE WHEN u.id IN (${followedIds.join(',')}) THEN 0 ELSE 1 END ASC,`
-    : '';
-
-  let rows: DbTipster[] = [];
-  let total = 0;
+  let realRows: DbTipster[] = [];
   try {
     const list = await query<DbTipster>(
       `SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.bio,
@@ -106,22 +97,16 @@ export async function GET(request: NextRequest) {
          FROM users u
          LEFT JOIN tipster_profiles t ON t.user_id = u.id
          ${whereClause}
-         ORDER BY ${followedFirstExpr} ${orderBy}
-         LIMIT ? OFFSET ?`,
-      [...params, limit, offset],
-    );
-    rows = list.rows;
-
-    const c = await query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM users u LEFT JOIN tipster_profiles t ON t.user_id = u.id ${whereClause}`,
+         ORDER BY t.rank ASC
+         LIMIT 500`,
       params,
     );
-    total = Number(c.rows?.[0]?.n ?? 0);
+    realRows = list.rows;
   } catch {
-    rows = []; total = 0;
+    realRows = [];
   }
 
-  // Which tipsters posted tips in the last 24 hours?
+  // Which real tipsters posted tips in the last 24 hours?
   const activeTodayIds = new Set<number>();
   try {
     const activeRows = await query<{ user_id: number }>(
@@ -131,88 +116,92 @@ export async function GET(request: NextRequest) {
     for (const r of activeRows.rows) activeTodayIds.add(Number(r.user_id));
   } catch { /* tips table may not exist */ }
 
-  let tipsters = rows.map(row => ({ ...shape(row), activeToday: activeTodayIds.has(row.user_id) }));
-  // Always assign ranks based on win rate + ROI for any tipster showing rank 0
-  if (tipsters.length > 0) {
-    const tipstersWithRank0 = tipsters.filter(t => t.rank === 0);
-    if (tipstersWithRank0.length > 0) {
-      const allForRanking = [...tipsters].sort((a, b) => b.winRate - a.winRate || b.roi - a.roi || b.totalTips - a.totalTips);
-      const rankMap = new Map(allForRanking.map((t, i) => [t.id, i + 1]));
-      tipsters = tipsters.map(t => ({ ...t, rank: t.rank > 0 ? t.rank : (rankMap.get(t.id) ?? tipsters.length) }));
-    }
-  }
+  // Shape real tipsters — exclude those with 0 tips AND 0 pending
+  // (they joined as a tipster but haven't posted anything yet — hide them
+  //  until they have at least 1 tip, then they'll surface in the combined list)
+  const realShaped = realRows
+    .map(row => ({ ...shape(row), activeToday: activeTodayIds.has(row.user_id) }))
+    .filter(t => t.totalTips > 0 || t.pendingTips > 0);
 
-  if (tipsters.length === 0) {
-    let fake = getFakeTipsters().map(fakeAsPublic);
-    if (search) {
-      const q = search.toLowerCase();
-      fake = fake.filter(t => t.username.toLowerCase().includes(q) || (t.displayName || '').toLowerCase().includes(q));
-    }
-    if (filter === 'pro') fake = fake.filter(t => t.isPro);
-    else if (filter === 'free') fake = fake.filter(t => !t.isPro);
-    else if (filter === 'verified') fake = fake.filter(t => t.verified);
-    // Sort by the requested field, then assign rank based on sorted position
-    fake.sort((a, b) => {
-      switch (sortBy) {
-        case 'roi': return b.roi - a.roi;
-        case 'followers': return b.followers - a.followers;
-        case 'streak': return b.streak - a.streak;
-        case 'totalTips': return b.totalTips - a.totalTips;
-        case 'winRate':
-        case 'rank':
-        default: return b.winRate - a.winRate;
-      }
-    });
-    // Always layer in REAL stats — ROI and streak are never faked.
-    // Win rate / tip counts update as soon as any tips exist.
-    fake = fake.map(t => {
-      const real = computeRealTipsterStats(t.id);
+  // Collect real tipster IDs so we don't duplicate them with fake ones
+  const realIds = new Set(realShaped.map(t => t.id));
+
+  // ── 2. Always include fake tipsters alongside real ones ──────────────
+  let fakeTipsters = getFakeTipsters()
+    .filter(f => !realIds.has(f.id)) // never collide with a real user id
+    .map(f => {
+      const pub = fakeAsPublic(f);
+      // Layer in real auto-tip stats if they exist
+      const real = computeRealTipsterStats(f.id);
       const hasSettled = real.won + real.lost >= 1;
       const hasTips = real.won + real.lost + real.pending >= 1;
       return {
-        ...t,
-        roi: computeRealRoi(t.id),
-        streak: computeRealStreak(t.id),
+        ...pub,
+        roi: computeRealRoi(f.id),
+        streak: computeRealStreak(f.id),
         performanceVerified: real.won + real.lost >= 10,
         ...(hasSettled && {
           winRate: real.winRate,
           wonTips: real.won,
           lostTips: real.lost,
           pendingTips: real.pending,
-          // DO NOT override totalTips from auto-tips — keep the catalog/DB value
         }),
-        // Tipsters with only pending tips: show 0 win rate (not fake catalog value)
         ...(!hasSettled && hasTips && {
           winRate: 0,
           pendingTips: real.pending,
-          // DO NOT override totalTips from auto-tips — keep the catalog/DB value
         }),
       };
     });
-    // Re-sort by the requested field AFTER overlaying real stats so the
-    // ordering reflects actual real-data values, not fake-catalogue values.
-    fake.sort((a, b) => {
-      switch (sortBy) {
-        case 'roi': return b.roi - a.roi;
-        case 'followers': return b.followers - a.followers;
-        case 'streak': return b.streak - a.streak;
-        case 'totalTips': return b.totalTips - a.totalTips;
-        case 'winRate':
-        case 'rank':
-        default: return b.winRate - a.winRate || b.roi - a.roi || b.totalTips - a.totalTips;
-      }
-    });
-    // Assign rank based on sorted position (reflects real data)
-    fake = fake.map((t, i) => ({ ...t, rank: i + 1 }));
-    total = fake.length;
-    tipsters = fake.slice(offset, offset + limit);
+
+  // Apply search/filter to fake tipsters
+  if (search) {
+    const q = search.toLowerCase();
+    fakeTipsters = fakeTipsters.filter(t =>
+      t.username.toLowerCase().includes(q) || (t.displayName || '').toLowerCase().includes(q)
+    );
   }
+  if (filter === 'pro') fakeTipsters = fakeTipsters.filter(t => t.isPro);
+  else if (filter === 'free') fakeTipsters = fakeTipsters.filter(t => !t.isPro);
+  else if (filter === 'verified') fakeTipsters = fakeTipsters.filter(t => t.verified);
+
+  // ── 3. Merge: real tipsters first (they earned it), then fake ────────
+  let combined: PublicTipster[] = [...realShaped, ...fakeTipsters];
+
+  // ── 4. Sort the combined pool ─────────────────────────────────────────
+  const sortFn = (a: PublicTipster, b: PublicTipster): number => {
+    // Followed tipsters always bubble up for the current user
+    const aFollowed = followedIds.includes(a.id) ? 0 : 1;
+    const bFollowed = followedIds.includes(b.id) ? 0 : 1;
+    if (aFollowed !== bFollowed) return aFollowed - bFollowed;
+
+    switch (sortBy) {
+      case 'roi':       return b.roi - a.roi;
+      case 'followers': return b.followers - a.followers;
+      case 'streak':    return b.streak - a.streak;
+      case 'totalTips': return b.totalTips - a.totalTips;
+      case 'winRate':
+      case 'rank':
+      default:          return b.winRate - a.winRate || b.roi - a.roi || b.totalTips - a.totalTips;
+    }
+  };
+
+  combined.sort(sortFn);
+
+  // ── 5. Assign fresh ranks based on sorted position ────────────────────
+  combined = combined.map((t, i) => ({ ...t, rank: i + 1 }));
+
+  const total = combined.length;
+  const tipsters = combined.slice(offset, offset + limit);
 
   const res = NextResponse.json({
-    tipsters, pagination: { total, limit, offset, hasMore: offset + limit < total },
+    tipsters,
+    pagination: { total, limit, offset, hasMore: offset + limit < total },
     stats: {
-      totalTipsters: total, proTipsters: tipsters.filter((t) => t.isPro).length,
-      avgWinRate: tipsters.length > 0 ? Math.round((tipsters.reduce((s, t) => s + t.winRate, 0) / tipsters.length) * 10) / 10 : 0,
+      totalTipsters: total,
+      proTipsters: tipsters.filter((t) => t.isPro).length,
+      avgWinRate: tipsters.length > 0
+        ? Math.round((tipsters.reduce((s, t) => s + t.winRate, 0) / tipsters.length) * 10) / 10
+        : 0,
       totalTips: tipsters.reduce((s, t) => s + t.totalTips, 0),
     },
   });
