@@ -1018,7 +1018,14 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .then(m => m.getSgoBookmakerLines(match.homeTeam.name, match.awayTeam.name, isoKickoff, hasDraw))
       .catch(() => []);
 
-    const [summary, sgoRaw] = await Promise.all([summaryPromise, sgoPromise]);
+    const FANOUT_TIMEOUT_MS = 8_000;
+    const fanoutTimeout = new Promise<[null, []]>(resolve =>
+      setTimeout(() => resolve([null, []]), FANOUT_TIMEOUT_MS)
+    );
+    const [summary, sgoRaw] = await Promise.race([
+      Promise.all([summaryPromise, sgoPromise]),
+      fanoutTimeout,
+    ]);
 
     // ── Stale-scheduled override ──────────────────────────────────────────────
     // If the cached match says "scheduled" but the kickoff was >2 hours ago,
@@ -1138,11 +1145,14 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         if (cachedH2H && now - cachedH2H.ts < H2H_CACHE_TTL) {
           h2h = cachedH2H.data;
         } else {
-          h2h = await buildH2HFallback(
-            cfg.sport, cfg.league,
-            homeTeamId, awayTeamId,
-            match.homeTeam.name, match.awayTeam.name,
-          );
+          h2h = await Promise.race([
+            buildH2HFallback(
+              cfg.sport, cfg.league,
+              homeTeamId, awayTeamId,
+              match.homeTeam.name, match.awayTeam.name,
+            ),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 4_000)),
+          ]);
           g.__h2hCache!.set(h2hKey, { data: h2h as H2HCache['data'], ts: now });
         }
       }

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Trophy, Star, ArrowLeftRight, TrendingUp, ExternalLink, ChevronRight } from 'lucide-react';
+import { Trophy, Star, ArrowLeftRight, TrendingUp, ExternalLink } from 'lucide-react';
 import { discoverAllOutrights, type OutrightDiscovery } from '@/lib/api/outright-discovery';
 import { STATIC_TRANSFER_ODDS, type TransferOddsEntry } from '@/lib/api/static-transfers';
 import { cn } from '@/lib/utils';
@@ -72,7 +72,7 @@ function MarketCard({ market }: { market: FlatMarket }) {
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden hover:shadow-sm transition-shadow">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/60 bg-muted/20">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-muted/20">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-bold leading-tight truncate">{market.displayTitle}</h3>
           {favourite && (
@@ -83,46 +83,41 @@ function MarketCard({ market }: { market: FlatMarket }) {
             </p>
           )}
         </div>
-        <a
-          href={`https://www.oddschecker.com/search?q=${encodeURIComponent(market.displayTitle)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 flex items-center gap-0.5 text-[11px] text-primary hover:underline whitespace-nowrap"
-        >
-          Compare <ExternalLink className="h-2.5 w-2.5" />
-        </a>
       </div>
       <div className="divide-y divide-border/30">
-        {displayed.map((outcome, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-muted/20 transition-colors"
-          >
-            <span className="flex items-center gap-1.5 text-xs min-w-0">
-              {i === 0 && (
-                <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              )}
-              <span className="truncate">{outcome.name}</span>
-            </span>
-            <span
-              className={cn(
-                'shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
-                i === 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-foreground',
-              )}
+        {displayed.map((outcome, i) => {
+          const row = (
+            <div
+              className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-muted/20 transition-colors"
             >
-              {outcome.price.toFixed(2)}
-            </span>
-          </div>
-        ))}
+              <span className="flex items-center gap-1.5 text-xs min-w-0">
+                {i === 0 && (
+                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                )}
+                <span className="truncate">{outcome.name}</span>
+              </span>
+              <span
+                className={cn(
+                  'shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
+                  i === 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-foreground',
+                )}
+              >
+                {outcome.price.toFixed(2)}
+              </span>
+            </div>
+          );
+          return outcome.link ? (
+            <a key={i} href={outcome.link} target="_blank" rel="noopener noreferrer nofollow">
+              {row}
+            </a>
+          ) : (
+            <div key={i}>{row}</div>
+          );
+        })}
         {remaining > 0 && (
-          <a
-            href={`https://www.oddschecker.com/search?q=${encodeURIComponent(market.displayTitle)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1 px-3 py-2 text-[11px] text-primary hover:bg-muted/20 transition-colors"
-          >
-            +{remaining} more at Oddschecker <ExternalLink className="h-3 w-3" />
-          </a>
+          <div className="flex items-center justify-center px-3 py-2 text-[11px] text-muted-foreground">
+            +{remaining} more selections
+          </div>
         )}
       </div>
     </div>
@@ -233,8 +228,6 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
           const stayOption = player.outcomes.find((o) =>
             o.name.toLowerCase().includes('stay'),
           );
-          const queryName = encodeURIComponent(`${player.player} transfer next club`);
-
           return (
             <div
               key={player.player}
@@ -286,16 +279,7 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
                 </div>
               </div>
 
-              <div className="px-2.5 pb-2.5">
-                <a
-                  href={`https://www.oddschecker.com/search?q=${queryName}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex w-full items-center justify-center gap-1.5 rounded-md bg-primary/10 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20"
-                >
-                  Check live odds <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
+              
             </div>
           );
         })}
@@ -395,14 +379,11 @@ export default async function SpecialsPage({
               icon: Star,
               message: 'No specials in current bookmaker feed',
               detail:
-                "Award markets (Ballon d'Or, FIFA Best), manager markets and international specials are sourced from bookmaker feeds that update independently. Check the bookmakers directly for live specials pricing.",
+                "Award markets (Ballon d'Or, FIFA Best), manager markets and international specials are sourced from bookmaker feeds that update independently. Check back shortly.",
               links: [
-                { label: 'Oddschecker Specials', href: 'https://www.oddschecker.com/specials' },
-                {
-                  label: 'Paddy Power Specials',
-                  href: 'https://www.paddypower.com/football/football-specials',
-                },
                 { label: 'Bet365', href: 'https://www.bet365.com' },
+                { label: 'SportPesa', href: 'https://www.sportpesa.com' },
+                { label: '1xBet', href: 'https://www.1xbet.com' },
               ],
             }}
           />

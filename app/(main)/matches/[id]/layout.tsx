@@ -27,9 +27,13 @@ async function fetchMatch(id: string): Promise<MatchData | null> {
     process.env.NEXT_PUBLIC_BASE_URL ||
     `http://localhost:${process.env.PORT || 5000}`;
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
     const r = await fetch(`${baseUrl}/api/matches/${encodeURIComponent(id)}/details`, {
       next: { revalidate: 30 },
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!r.ok) return null;
     const data = (await r.json()) as DetailsResponse;
     return data.match ?? null;

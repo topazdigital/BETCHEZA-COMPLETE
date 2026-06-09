@@ -9,7 +9,6 @@ import {
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, LogIn, LogOut, ChevronDown,
   Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen,
-  Target, ArrowLeftRight
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -152,9 +151,7 @@ const mainNavItems: NavItem[] = [
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-yellow-500", activeColor: "bg-yellow-500" },
   { href: "/challenges", label: "Challenges", icon: Swords, color: "text-red-500", activeColor: "bg-red-500" },
   { href: "/strategy", label: "3 Daily Odds Strategy", icon: TrendingUp, color: "text-emerald-500", activeColor: "bg-emerald-500" },
-  { href: "/specials?tab=outrights", label: "Outright Odds", icon: Target, color: "text-yellow-500", activeColor: "bg-yellow-500" },
-  { href: "/specials", label: "Specials & Markets", icon: Star, color: "text-rose-500", activeColor: "bg-rose-500" },
-  { href: "/specials?tab=transfers", label: "Transfer Odds", icon: ArrowLeftRight, color: "text-blue-500", activeColor: "bg-blue-500" },
+  { href: "/specials", label: "Betting Markets", icon: Star, color: "text-rose-500", activeColor: "bg-rose-500" },
   { href: "/jackpots", label: "Jackpots", icon: Trophy, color: "text-amber-500", activeColor: "bg-amber-500" },
   { href: "/competitions", label: "Competitions", icon: Star, color: "text-pink-500", activeColor: "bg-pink-500" },
   { href: "/results", label: "Results", icon: BarChart3, color: "text-slate-400", activeColor: "bg-slate-500" },
