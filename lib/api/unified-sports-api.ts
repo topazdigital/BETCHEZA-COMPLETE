@@ -989,6 +989,45 @@ async function fetchESPN(
   }
 }
 
+/**
+ * Wrapper around fetchESPN that auto-paginates when ESPN's 300-event hard cap
+ * is hit. ESPN has no cursor/page API — the only way to get more than 300
+ * events is to split the date range in half and re-fetch each half.
+ * Recursion depth is capped at 4 (max 16 requests, covering 16× the events).
+ */
+async function fetchESPNPaginated(
+  sport: string,
+  league: string,
+  startDate: Date,
+  endDate: Date,
+  depth = 0,
+): Promise<ESPNScoreboardResponseFull | null> {
+  const range = `${formatYYYYMMDD(startDate)}-${formatYYYYMMDD(endDate)}`;
+  const data = await fetchESPN(sport, league, 'scoreboard', range);
+
+  // ESPN's hard server-side cap is 300. If we got exactly 300 and haven't
+  // split too deep (max 4 levels = up to 16 sub-requests), split the window
+  // in half and merge both halves to capture every event.
+  if (data?.events?.length === 300 && depth < 4) {
+    const midMs = Math.floor((startDate.getTime() + endDate.getTime()) / 2);
+    const mid = new Date(midMs);
+    const dayAfterMid = new Date(mid.getTime() + 86_400_000);
+    const [left, right] = await Promise.all([
+      fetchESPNPaginated(sport, league, startDate, mid, depth + 1),
+      fetchESPNPaginated(sport, league, dayAfterMid, endDate, depth + 1),
+    ]);
+    const seenIds = new Set<string>();
+    const merged: ESPNScoreboardResponseFull['events'] = [];
+    for (const half of [left, right]) {
+      for (const ev of (half?.events ?? [])) {
+        if (!seenIds.has(ev.id)) { seenIds.add(ev.id); merged.push(ev); }
+      }
+    }
+    if (merged.length > 0) return { ...data, events: merged } as ESPNScoreboardResponseFull;
+  }
+  return data;
+}
+
 // ============================================
 // ESPN Global Catch-all Scoreboard
 // ============================================
@@ -1191,11 +1230,12 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
   // Add &limit=300 so ESPN returns all events (default page size is 25).
   const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}&limit=300`;
-  // Same caveat as fetchESPN: tennis, golf, baseball, basketball and hockey
-  // payloads with wide date ranges exceed the 2MB Next.js data-cache limit.
-  // Skip the data cache and rely on our in-memory setCache/getCache.
+  // Skip Next.js data-cache for sports whose 60-day scoreboard responses exceed
+  // the 2MB item limit (soccer ~3.6MB, rugby ~2.3MB, and the usual suspects).
+  // Our in-memory setCache/getCache handles TTL for these.
   const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball'
-    || sport === 'basketball' || sport === 'hockey';
+    || sport === 'basketball' || sport === 'hockey'
+    || sport === 'soccer' || sport === 'rugby';
   let data: ESPNScoreboardResponseFull | null = null;
   try {
     const r = await fetch(url, {
@@ -1204,6 +1244,32 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     });
     if (r.ok) data = await r.json() as ESPNScoreboardResponseFull;
   } catch { /* fall through */ }
+
+  // Auto-paginate: if ESPN returned exactly 300 (its hard cap), split the
+  // date window in half and merge both halves to get all events.
+  if (data?.events?.length === 300) {
+    const midMs = Math.floor((start.getTime() + end.getTime()) / 2);
+    const mid = new Date(midMs);
+    const dayAfterMid = new Date(mid.getTime() + 86_400_000);
+    const fetchHalf = async (s: Date, e: Date): Promise<ESPNScoreboardResponseFull | null> => {
+      const halfRange = `${formatYYYYMMDD(s)}-${formatYYYYMMDD(e)}`;
+      const halfUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${halfRange}&limit=300`;
+      try {
+        const r = await fetch(halfUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' as const });
+        return r.ok ? await r.json() as ESPNScoreboardResponseFull : null;
+      } catch { return null; }
+    };
+    const [left, right] = await Promise.all([fetchHalf(start, mid), fetchHalf(dayAfterMid, end)]);
+    const seenIds = new Set<string>();
+    const merged: ESPNScoreboardResponseFull['events'] = [];
+    for (const half of [left, right]) {
+      for (const ev of (half?.events ?? [])) {
+        if (!seenIds.has(ev.id)) { seenIds.add(ev.id); merged.push(ev); }
+      }
+    }
+    if (merged.length > 0) data = { ...data, events: merged } as ESPNScoreboardResponseFull;
+  }
+
   // Fallback: if the date-range request returns nothing, try the default
   // endpoint (no date parameter). This is common for tennis/golf where ESPN
   // only exposes the currently-running or most-recent tournament in scoreboard.
@@ -3699,8 +3765,10 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
   // Smaller / cup competitions (sporadic fixtures): 90 days so we surface
   // fixtures far in the future — tipsters need months-ahead visibility.
   end.setUTCDate(end.getUTCDate() + (isPriority ? 30 : 90));
-  const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
-  data = await fetchESPN(config.sport, config.league, 'scoreboard', range);
+  // Use the paginated wrapper so that leagues with >300 events in the window
+  // (e.g. NFL regular season, dense international windows) are fully fetched
+  // by recursively splitting the date range when ESPN's 300-event cap is hit.
+  data = await fetchESPNPaginated(config.sport, config.league, start, end);
   // Fall back to the default endpoint if range request fails or returns nothing.
   if (!data?.events?.length) {
     data = await fetchESPN(config.sport, config.league);
@@ -4163,8 +4231,9 @@ async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdd
     // 4 days back to catch recently finished matches for settlement
     const startDate = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000);
     const startsAfter = startDate.toISOString().split('T')[0] + 'T00:00:00Z';
-    // 3 days ahead end of day
-    const endDate = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    // 7 days ahead — pre-fetch odds for the whole upcoming week so
+    // all fixtures are enriched as soon as they appear in the schedule.
+    const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const startsBefore = endDate.toISOString().split('T')[0] + 'T23:59:59Z';
 
     const entries = await fetchSgoBulkMatchOdds(startsAfter, startsBefore);

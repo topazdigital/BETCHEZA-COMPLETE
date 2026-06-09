@@ -398,7 +398,7 @@ export async function fetchSgoBulkMatchOdds(
   const data = await sgoFetch('/events', {
     startsAfter,
     startsBefore,
-    limit: '200',
+    limit: '500',
     includeOpposingTeam: 'true',
   }) as { data?: SgoEvent[] } | null;
 
