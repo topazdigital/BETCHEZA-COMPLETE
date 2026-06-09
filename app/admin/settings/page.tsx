@@ -51,6 +51,7 @@ interface Settings {
   sportsgameodds_api_key: string
   openai_api_key: string
   football_data_api_key: string
+  sharp_api_key: string
   vapid_public_key: string
   vapid_private_key: string
   vapid_subject: string
@@ -141,6 +142,7 @@ const defaultSettings: Settings = {
   sportsgameodds_api_key: "",
   openai_api_key: "",
   football_data_api_key: "",
+  sharp_api_key: "",
   vapid_public_key: "",
   vapid_private_key: "",
   vapid_subject: "",
@@ -877,6 +879,12 @@ export default function AdminSettingsPage() {
                 hint="Powers live scores and fixtures from football-data.org. Falls back to FOOTBALL_DATA_API_KEY env var when blank."
                 value={settings.football_data_api_key || ''}
                 onChange={(v) => updateSetting('football_data_api_key', v)}
+              />
+              <ApiKeyField
+                label="SharpAPI key"
+                hint="Real-time odds from DraftKings & FanDuel (free tier). Fills in odds for matches not covered by other providers. Get one at sharpapi.io. Falls back to SHARP_API_KEY env var when blank."
+                value={settings.sharp_api_key || ''}
+                onChange={(v) => updateSetting('sharp_api_key', v)}
               />
               <div className="border-t pt-3 space-y-2.5">
                 <div>

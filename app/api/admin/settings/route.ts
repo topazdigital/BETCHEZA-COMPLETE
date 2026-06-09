@@ -55,6 +55,7 @@ const ENV_BACKED_SETTINGS: Record<string, string> = {
   google_analytics_id: 'GOOGLE_ANALYTICS_ID',
   facebook_pixel_id: 'FACEBOOK_PIXEL_ID',
   football_data_api_key: 'FOOTBALL_DATA_API_KEY',
+  sharp_api_key: 'SHARP_API_KEY',
   turnstile_site_key: 'NEXT_PUBLIC_TURNSTILE_SITE_KEY',
   turnstile_secret_key: 'TURNSTILE_SECRET_KEY',
   recaptcha_site_key: 'NEXT_PUBLIC_RECAPTCHA_SITE_KEY',

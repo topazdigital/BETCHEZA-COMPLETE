@@ -4282,48 +4282,74 @@ async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdd
 
 // Build a lookup of real odds keyed by normalized team pair.
 // Primary source: The Odds API (when key is configured).
-// Fallback source: SportsGameOdds bulk /events fetch (always attempted).
+// Secondary source: SportsGameOdds bulk /events fetch.
+// Tertiary source: SharpAPI (DraftKings/FanDuel — fills any remaining gaps).
 async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
   const { getApiKey } = await import('@/lib/api-keys');
   const apiKey = await getApiKey('the_odds_api_key');
+
+  let index: Map<string, { odds: MatchOdds; markets: Market[] }>;
+
   if (!apiKey || apiKey === 'your_api_key_here') {
     // No Odds API key — fall back to SportsGameOdds bulk match odds
-    return buildSgoOddsIndexFallback();
-  }
+    index = await buildSgoOddsIndexFallback();
+  } else {
+    const sportKeys = Object.keys(THE_ODDS_API_SPORTS);
 
-  const sportKeys = Object.keys(THE_ODDS_API_SPORTS);
+    // Fetch in small batches to avoid rate-limit bursting on free-tier accounts.
+    // The Odds API allows ~500 req/month; firing 47 at once triggers 429s which
+    // sets the 1-hour backoff flag and blocks all odds for an hour.
+    const BATCH_SIZE = 4;
+    const BATCH_DELAY_MS = 300;
+    const allResults: PromiseSettledResult<TheOddsApiEvent[]>[] = [];
+    for (let i = 0; i < sportKeys.length; i += BATCH_SIZE) {
+      if (isTheOddsApiQuotaExhausted()) break; // stop early if we hit quota mid-way
+      const batch = sportKeys.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.allSettled(batch.map(sk => fetchOddsForSport(sk)));
+      allResults.push(...batchResults);
+      if (i + BATCH_SIZE < sportKeys.length) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
 
-  // Fetch in small batches to avoid rate-limit bursting on free-tier accounts.
-  // The Odds API allows ~500 req/month; firing 47 at once triggers 429s which
-  // sets the 1-hour backoff flag and blocks all odds for an hour.
-  const BATCH_SIZE = 4;
-  const BATCH_DELAY_MS = 300;
-  const allResults: PromiseSettledResult<TheOddsApiEvent[]>[] = [];
-  for (let i = 0; i < sportKeys.length; i += BATCH_SIZE) {
-    if (isTheOddsApiQuotaExhausted()) break; // stop early if we hit quota mid-way
-    const batch = sportKeys.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.allSettled(batch.map(sk => fetchOddsForSport(sk)));
-    allResults.push(...batchResults);
-    if (i + BATCH_SIZE < sportKeys.length) {
-      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+    index = new Map<string, { odds: MatchOdds; markets: Market[] }>();
+    for (const result of allResults) {
+      if (result.status !== 'fulfilled') continue;
+      for (const ev of result.value) {
+        const { odds, markets } = aggregateBookmakerOdds(ev);
+        if (!odds) continue;
+        const home = normalizeTeamName(ev.home_team);
+        const away = normalizeTeamName(ev.away_team);
+        const dateKey = new Date(ev.commence_time).toISOString().split('T')[0];
+        // Index by both orderings — ESPN sometimes flips home/away
+        index.set(`${home}_${away}_${dateKey}`, { odds, markets: markets || [] });
+        index.set(`${away}_${home}_${dateKey}`, { odds, markets: markets || [] });
+      }
     }
   }
-  const results = allResults;
 
-  const index = new Map<string, { odds: MatchOdds; markets: Market[] }>();
-  for (const result of results) {
-    if (result.status !== 'fulfilled') continue;
-    for (const ev of result.value) {
-      const { odds, markets } = aggregateBookmakerOdds(ev);
-      if (!odds) continue;
-      const home = normalizeTeamName(ev.home_team);
-      const away = normalizeTeamName(ev.away_team);
-      const dateKey = new Date(ev.commence_time).toISOString().split('T')[0];
-      // Index by both orderings — ESPN sometimes flips home/away
-      index.set(`${home}_${away}_${dateKey}`, { odds, markets: markets || [] });
-      index.set(`${away}_${home}_${dateKey}`, { odds, markets: markets || [] });
+  // Supplement with SharpAPI odds (DraftKings + FanDuel) — fills gaps for any
+  // match not already covered by The Odds API or SportsGameOdds.
+  try {
+    const sharpApiKey = await getApiKey('sharp_api_key');
+    if (sharpApiKey) {
+      const { buildSharpApiOddsIndex } = await import('@/lib/api/sharpapi');
+      const sharpIndex = await buildSharpApiOddsIndex();
+      let filled = 0;
+      for (const [key, value] of sharpIndex) {
+        if (!index.has(key)) {
+          index.set(key, value);
+          filled++;
+        }
+      }
+      if (filled > 0) {
+        console.log(`[SharpAPI] Supplemented ${Math.round(filled / 2)} matches with DraftKings/FanDuel odds`);
+      }
     }
+  } catch (e) {
+    console.warn('[SharpAPI] odds supplement failed:', e);
   }
+
   return index;
 }
 

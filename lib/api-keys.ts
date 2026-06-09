@@ -14,7 +14,8 @@ type KnownKey =
   | 'openai_api_key'
   | 'vapid_public_key'
   | 'vapid_private_key'
-  | 'vapid_subject';
+  | 'vapid_subject'
+  | 'sharp_api_key';
 
 const ENV_MAP: Record<KnownKey, string> = {
   the_odds_api_key: 'THE_ODDS_API_KEY',
@@ -23,6 +24,7 @@ const ENV_MAP: Record<KnownKey, string> = {
   vapid_public_key: 'VAPID_PUBLIC_KEY',
   vapid_private_key: 'VAPID_PRIVATE_KEY',
   vapid_subject: 'VAPID_SUBJECT',
+  sharp_api_key: 'SHARP_API_KEY',
 };
 
 export async function getApiKey(key: KnownKey): Promise<string> {

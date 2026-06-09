@@ -33,6 +33,7 @@ export async function register() {
       vapid_subject: 'VAPID_SUBJECT',
       google_analytics_id: 'GOOGLE_ANALYTICS_ID',
       facebook_pixel_id: 'FACEBOOK_PIXEL_ID',
+      sharp_api_key: 'SHARP_API_KEY',
     };
     const g = globalThis as { __memorySettings?: Record<string, string> };
     if (!g.__memorySettings) {
