@@ -343,6 +343,7 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
 
   // SOCCER - Friendlies / International
   { sport: 'soccer', league: 'fifa.friendly', sportId: 1, leagueId: 106, leagueName: 'International Friendly', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.friendly.w', sportId: 1, leagueId: 189, leagueName: "Women's International Friendly", country: 'World', countryCode: 'WO', sportType: 'soccer' },
   { sport: 'soccer', league: 'fifa.cwc', sportId: 1, leagueId: 109, leagueName: 'FIFA Club World Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
   { sport: 'soccer', league: 'fifa.world.u20', sportId: 1, leagueId: 110, leagueName: 'FIFA U20 World Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
   { sport: 'soccer', league: 'uefa.nations', sportId: 1, leagueId: 111, leagueName: 'UEFA Nations League', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
@@ -351,6 +352,11 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'fifa.world.qualifiers.conmebol', sportId: 1, leagueId: 114, leagueName: 'World Cup Qualifying — CONMEBOL', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
   { sport: 'soccer', league: 'fifa.world.qualifiers.afc', sportId: 1, leagueId: 115, leagueName: 'World Cup Qualifying — AFC', country: 'Asia', countryCode: 'AS', sportType: 'soccer' },
   { sport: 'soccer', league: 'fifa.world.qualifiers.caf', sportId: 1, leagueId: 116, leagueName: 'World Cup Qualifying — CAF', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.uefa', sportId: 1, leagueId: 190, leagueName: "Women's World Cup Qualifying — UEFA", country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.concacaf', sportId: 1, leagueId: 191, leagueName: "Women's World Cup Qualifying — CONCACAF", country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.afc', sportId: 1, leagueId: 192, leagueName: "Women's World Cup Qualifying — AFC", country: 'Asia', countryCode: 'AS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.caf', sportId: 1, leagueId: 193, leagueName: "Women's World Cup Qualifying — CAF", country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.conmebol', sportId: 1, leagueId: 194, leagueName: "Women's World Cup Qualifying — CONMEBOL", country: 'South America', countryCode: 'SA', sportType: 'soccer' },
 
   // SOCCER - International
   { sport: 'soccer', league: 'fifa.world', sportId: 1, leagueId: 29, leagueName: 'World Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
@@ -948,9 +954,12 @@ async function fetchESPN(
   league: string,
   endpoint: string = 'scoreboard',
   dates?: string,
+  limit: number = 300,
 ): Promise<ESPNScoreboardResponseFull | null> {
   const base = `${ESPN_BASE_URL}/${sport}/${league}/${endpoint}`;
-  const url = dates ? `${base}?dates=${dates}` : base;
+  // Always include &limit=300 so ESPN returns all events for the date range
+  // (default is 25 per page which cuts off busy days like international windows).
+  const url = dates ? `${base}?dates=${dates}&limit=${limit}` : `${base}?limit=${limit}`;
 
   // ESPN tennis, golf, baseball, basketball and hockey scoreboards with wide date
   // ranges are huge (often >2MB, NHL can be 17MB) and exceed Next.js's data-cache
@@ -1180,7 +1189,8 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   const start = new Date(now); start.setUTCDate(start.getUTCDate() - 30);
   const end = new Date(now); end.setUTCDate(end.getUTCDate() + 30);
   const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
-  const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}`;
+  // Add &limit=300 so ESPN returns all events (default page size is 25).
+  const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}&limit=300`;
   // Same caveat as fetchESPN: tennis, golf, baseball, basketball and hockey
   // payloads with wide date ranges exceed the 2MB Next.js data-cache limit.
   // Skip the data cache and rely on our in-memory setCache/getCache.
@@ -1199,7 +1209,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   // only exposes the currently-running or most-recent tournament in scoreboard.
   if (!data?.events?.length) {
     try {
-      const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard`;
+      const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?limit=300`;
       const r2 = await fetch(defaultUrl, {
         headers: { Accept: 'application/json' },
         cache: 'no-store' as const,
@@ -1564,6 +1574,12 @@ const PRIORITY_LEAGUE_KEYS = new Set<string>([
   // ── International ─────────────────────────────────────────
   'fifa.world', 'fifa.wwc', 'afc.asian.qual', 'concacaf.wcq',
   'uefa.euro.qual', 'copa.america',
+  // Friendlies and women's qualifiers — high match count days need priority treatment
+  'fifa.friendly', 'fifa.friendly.w',
+  'fifa.world.qualifiers.uefa', 'fifa.world.qualifiers.concacaf',
+  'fifa.world.qualifiers.conmebol', 'fifa.world.qualifiers.afc', 'fifa.world.qualifiers.caf',
+  'fifa.wwc.qualifier.uefa', 'fifa.wwc.qualifier.concacaf',
+  'fifa.wwc.qualifier.afc', 'fifa.wwc.qualifier.caf', 'fifa.wwc.qualifier.conmebol',
   // ── Tennis (Grand Slams + tours, wide date range needed) ──
   'atp', 'wta', 'atp.challenger', 'atp.doubles', 'wta.125', 'davis.cup', 'billie.jean.king.cup',
   // ── Rugby (tournaments need 90-day forward visibility) ────
@@ -3854,6 +3870,11 @@ const THE_ODDS_API_SPORTS: Record<string, { sportId: number; leagueId: number }>
   'soccer_conmebol_copa_libertadores': { sportId: 1, leagueId: 11 },
   'soccer_fifa_world_cup': { sportId: 1, leagueId: 12 },
   'soccer_africa_cup_of_nations': { sportId: 1, leagueId: 30 },
+  // International — friendlies, Nations League, WC Qualifying
+  'soccer_international': { sportId: 1, leagueId: 106 },
+  'soccer_international_women': { sportId: 1, leagueId: 189 },
+  'soccer_copa_america': { sportId: 1, leagueId: 31 },
+  'soccer_uefa_nations_league': { sportId: 1, leagueId: 111 },
   // Basketball
   'basketball_nba': { sportId: 2, leagueId: 101 },
   'basketball_euroleague': { sportId: 2, leagueId: 103 },
