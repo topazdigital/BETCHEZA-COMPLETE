@@ -1,5 +1,6 @@
 - [Stack & run config](stack-run.md) — Next.js 16 App Router, Tailwind v4, MySQL2, custom JWT; must `rm -rf .next` before rebuild
-- [DB & fallback stores](db-fallback.md) — remote MySQL at 157.250.205.180; app runs on file/memory fallback when secrets missing
+- [DB & fallback stores](db-fallback.md) — remote MySQL at 157.250.205.180; DB_PASSWORD + JWT_SECRET set as Replit secrets; app runs on file/memory fallback when secrets missing
+- [tipster_profiles schema gaps](tipster-profiles-schema.md) — base dump missing bio/created_at/is_verified columns; instrumentation adds them + backfills profile rows for all role=tipster users on every start
 - [Notification bell components](notif-bells.md) — two separate bell components; both must be updated together
 - [Match card date labels](match-card-dates.md) — compact variant hid "Today" intentionally; fixed to show with styled label
 - [Strategy pick settlement](strategy-settlement.md) — live-scores cron settles last 3 days' picks via settleRecentPendingStrategyPicks(); admin "Resettle Picks" button on /strategy page hits /api/admin/strategy/resettle
