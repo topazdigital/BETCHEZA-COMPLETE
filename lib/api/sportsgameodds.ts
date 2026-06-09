@@ -535,7 +535,53 @@ const SGO_LEAGUE_MAP: Record<number, string[]> = {
   7:  ['PRIMEIRALIGA'], // Primeira Liga
   12: ['BRASILEIRAO'],  // Brazilian Serie A
   13: ['LIGAPROFESIONAL'], // Argentine Primera
+  101: ['NBA'],         // NBA
+  401: ['NFL'],         // NFL
+  501: ['MLB'],         // MLB
+  601: ['NHL'],         // NHL
+  2701: ['UFC'],        // MMA / UFC
+  801: ['PGA'],         // PGA Tour
+  901: ['ATP'],         // ATP Tennis
 };
+
+/** Full discovery list — used by discoverAllSgoFutures() */
+export const SGO_DISCOVERY_LEAGUES: Array<{
+  sgoId: string;
+  sportKey: string;
+  title: string;
+  category: string;
+  leagueId?: number;
+}> = [
+  // ── Soccer ────────────────────────────────────────────────────────
+  { sgoId: 'UCL',          sportKey: 'soccer_uefa_champs_league',   title: 'Champions League',    category: 'Champions League', leagueId: 9  },
+  { sgoId: 'UEFAROPA',     sportKey: 'soccer_uefa_europa_league',   title: 'Europa League',       category: 'European Cups',    leagueId: 10 },
+  { sgoId: 'UEFACONF',     sportKey: 'soccer_uefa_conf_league',     title: 'Conference League',   category: 'European Cups'                  },
+  { sgoId: 'WORLDCUP',     sportKey: 'soccer_fifa_world_cup_2026',  title: 'FIFA World Cup 2026', category: 'International'                  },
+  { sgoId: 'EPL',          sportKey: 'soccer_epl',                  title: 'Premier League',      category: 'League Winners',   leagueId: 1  },
+  { sgoId: 'LALIGA',       sportKey: 'soccer_spain_la_liga',        title: 'La Liga',             category: 'League Winners',   leagueId: 2  },
+  { sgoId: 'BUNDESLIGA',   sportKey: 'soccer_germany_bundesliga',   title: 'Bundesliga',          category: 'League Winners',   leagueId: 3  },
+  { sgoId: 'SERIEA',       sportKey: 'soccer_italy_serie_a',        title: 'Serie A',             category: 'League Winners',   leagueId: 4  },
+  { sgoId: 'LIGUE1',       sportKey: 'soccer_france_ligue_one',     title: 'Ligue 1',             category: 'League Winners',   leagueId: 5  },
+  { sgoId: 'EREDIVISIE',   sportKey: 'soccer_netherlands_eredivisie',title: 'Eredivisie',         category: 'League Winners',   leagueId: 6  },
+  { sgoId: 'PRIMEIRALIGA', sportKey: 'soccer_portugal_primeira_liga',title: 'Primeira Liga',      category: 'League Winners',   leagueId: 7  },
+  { sgoId: 'CHAMPIONSHIP', sportKey: 'soccer_england_championship', title: 'Championship',        category: 'League Winners'                 },
+  { sgoId: 'SPFL',         sportKey: 'soccer_scotland_premiership', title: 'Scottish Premiership',category: 'League Winners'                 },
+  { sgoId: 'MLS',          sportKey: 'soccer_usa_mls',              title: 'MLS',                 category: 'US Soccer',        leagueId: 11 },
+  { sgoId: 'BRASILEIRAO',  sportKey: 'soccer_brazil_campeonato',    title: 'Brasileirão',         category: 'Other Competitions',leagueId: 12 },
+  { sgoId: 'LIGAPROFESIONAL', sportKey: 'soccer_argentina_primera', title: 'Argentine Primera',   category: 'Other Competitions',leagueId: 13 },
+  { sgoId: 'LIGAMX',       sportKey: 'soccer_mexico_ligamx',        title: 'Liga MX',             category: 'Other Competitions'             },
+  // ── North American ───────────────────────────────────────────────
+  { sgoId: 'NBA',          sportKey: 'basketball_nba',              title: 'NBA',                 category: 'NBA',              leagueId: 101 },
+  { sgoId: 'NFL',          sportKey: 'americanfootball_nfl',        title: 'NFL',                 category: 'NFL',              leagueId: 401 },
+  { sgoId: 'MLB',          sportKey: 'baseball_mlb',                title: 'MLB',                 category: 'MLB',              leagueId: 501 },
+  { sgoId: 'NHL',          sportKey: 'icehockey_nhl',               title: 'NHL',                 category: 'NHL',              leagueId: 601 },
+  { sgoId: 'NCAAF',        sportKey: 'americanfootball_ncaaf',      title: 'College Football',    category: 'NCAA'                           },
+  { sgoId: 'NCAAB',        sportKey: 'basketball_ncaab',            title: 'College Basketball',  category: 'NCAA'                           },
+  // ── Other ─────────────────────────────────────────────────────────
+  { sgoId: 'PGA',          sportKey: 'golf_pga_tour',               title: 'PGA Tour',            category: 'Golf',             leagueId: 801 },
+  { sgoId: 'ATP',          sportKey: 'tennis_atp',                  title: 'Tennis (ATP)',        category: 'Tennis',           leagueId: 901 },
+  { sgoId: 'UFC',          sportKey: 'mma_ufc',                     title: 'MMA / UFC',           category: 'Boxing/MMA',       leagueId: 2701 },
+];
 
 export async function getSgoOutrights(leagueId: number): Promise<SgoOutright[]> {
   const sgoLeagues = SGO_LEAGUE_MAP[leagueId];
@@ -578,6 +624,75 @@ export async function getSgoOutrights(leagueId: number): Promise<SgoOutright[]> 
         name: fut.marketName || `${lg} Winner`,
         outcomes,
       });
+    }
+  }
+  return results;
+}
+
+// ─── Full discovery across all SGO leagues ─────────────────────────────
+
+export interface SgoDiscoveryItem {
+  sportKey: string;
+  title: string;
+  category: string;
+  leagueId?: number;
+  markets: Array<{ eventId: string; marketName: string; outcomes: Array<{ name: string; price: number; link?: string }> }>;
+}
+
+/**
+ * Fetches futures from ALL configured SGO leagues in parallel.
+ * This is the primary data source for the outrights discovery page
+ * — replaces The Odds API which has a 500 req/month free-tier limit.
+ */
+export async function discoverAllSgoFutures(): Promise<SgoDiscoveryItem[]> {
+  const apiKey = await getApiKey('sportsgameodds_api_key');
+  if (!apiKey) return [];
+
+  const BATCH = 6; // parallel fetches per round
+  const results: SgoDiscoveryItem[] = [];
+
+  for (let i = 0; i < SGO_DISCOVERY_LEAGUES.length; i += BATCH) {
+    const chunk = SGO_DISCOVERY_LEAGUES.slice(i, i + BATCH);
+    const settled = await Promise.allSettled(
+      chunk.map(async (lg) => {
+        const data = await sgoFetch('/futures', { leagueID: lg.sgoId, limit: '30' }) as {
+          data?: Array<{ futureID?: string; marketName?: string; odds?: Record<string, SgoOdd> }>;
+        } | null;
+        if (!data?.data || !Array.isArray(data.data)) return null;
+
+        const markets: SgoDiscoveryItem['markets'] = [];
+        for (const fut of data.data) {
+          if (!fut.odds) continue;
+          const outcomes: Array<{ name: string; price: number; link?: string }> = [];
+          for (const odd of Object.values(fut.odds)) {
+            if (!odd.byBookmaker) continue;
+            let bestPrice = 0;
+            let bestLink: string | undefined;
+            for (const offer of Object.values(odd.byBookmaker)) {
+              const p = offerPrice(offer);
+              if (p && p > bestPrice) { bestPrice = p; bestLink = offer.link; }
+            }
+            if (bestPrice > 1) {
+              const name = (odd.sideID || '').replace(/^(team:|player:)/, '').replace(/_/g, ' ');
+              if (name) {
+                outcomes.push({ name: name.replace(/\b\w/g, c => c.toUpperCase()), price: bestPrice, link: bestLink });
+              }
+            }
+          }
+          if (outcomes.length === 0) continue;
+          outcomes.sort((a, b) => a.price - b.price);
+          markets.push({
+            eventId: fut.futureID || `${lg.sgoId}-${fut.marketName}`,
+            marketName: fut.marketName || `${lg.title} Winner`,
+            outcomes,
+          });
+        }
+        if (markets.length === 0) return null;
+        return { ...lg, markets } satisfies SgoDiscoveryItem;
+      })
+    );
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value) results.push(r.value);
     }
   }
   return results;

@@ -545,6 +545,51 @@ export function MatchCardNew({
         </div>
       )}
 
+      {/* Secondary markets row — visible on md+ when markets are available */}
+      {match.odds && !isFinished && !isLive && match.markets && match.markets.length > 0 && (() => {
+        // Pick best secondary markets to show: prefer BTTS, O/U 2.5, then any 2-outcome market
+        const PREFER = ['btts', 'totals_2_5', 'totals', 'double_chance', 'dnb', 'draw_no_bet'];
+        const sorted = [...match.markets].sort((a, b) => {
+          const ak = (a.key || a.name || '').toLowerCase();
+          const bk = (b.key || b.name || '').toLowerCase();
+          const ai = PREFER.findIndex(p => ak.includes(p));
+          const bi = PREFER.findIndex(p => bk.includes(p));
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
+        const secondary = sorted.slice(0, 2).filter(m => m.outcomes && m.outcomes.length >= 2);
+        if (secondary.length === 0) return null;
+        return (
+          <div className="hidden md:flex gap-2 mt-1.5 flex-wrap">
+            {secondary.map((mkt) => {
+              const key = mkt.key || mkt.name || '';
+              const outcomes = mkt.outcomes.slice(0, 2);
+              return (
+                <div key={key} className="flex items-center gap-1 rounded-md bg-muted/40 px-2 py-1">
+                  <span className="text-[10px] font-semibold text-muted-foreground shrink-0 mr-0.5">
+                    {mkt.name.length > 8 ? mkt.name.replace('Both Teams to Score', 'BTTS').replace('Over/Under', 'O/U').replace('Goals', '').trim() : mkt.name}
+                  </span>
+                  {outcomes.map((o, i) => (
+                    <Link
+                      key={o.name}
+                      href={`/matches/${slug}?market=${encodeURIComponent(key)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors hover:bg-primary/10',
+                        i === 0 ? 'text-foreground' : 'text-muted-foreground'
+                      )}
+                      title={`${o.name}: ${o.price}`}
+                    >
+                      <span className="truncate max-w-[40px]">{o.name.length > 6 ? o.name.slice(0, 4) : o.name}</span>
+                      <span className="font-mono text-emerald-600 dark:text-emerald-400">{o.price.toFixed(2)}</span>
+                    </Link>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Bookmaker odds comparison strip — only for scheduled (upcoming) matches */}
       {match.odds && !isFinished && !isLive && (
         <BookmakerOddsStrip

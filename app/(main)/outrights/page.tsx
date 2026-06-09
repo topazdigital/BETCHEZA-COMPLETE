@@ -122,7 +122,7 @@ export default async function OutrightsPage() {
           <Trophy className="h-10 w-10 text-muted-foreground/30" />
           <p className="font-semibold text-sm">No live outright markets found</p>
           <p className="text-xs text-muted-foreground max-w-sm">
-            Outright markets require a live odds provider (The Odds API). Configure your API key in Admin → Settings to enable live odds.
+            Outright markets are powered by SportsGameOdds. Configure your API key in Admin → Settings to enable live futures odds.
           </p>
         </div>
       ) : (
