@@ -5216,7 +5216,7 @@ interface TheOddsApiOutrightEvent {
 // whichever ones return data — this catches seasonal markets that come and go.
 //
 // We try ALL of these in parallel; empty responses are skipped silently.
-const LEAGUE_TO_ODDS_KEYS: Record<number, string[]> = {
+export const LEAGUE_TO_ODDS_KEYS: Record<number, string[]> = {
   // ─── Soccer — top tiers ───
   1:  ['soccer_epl_winner', 'soccer_epl_top_scorer', 'soccer_epl_relegation'],
   2:  ['soccer_spain_la_liga_winner', 'soccer_spain_la_liga_top_scorer', 'soccer_spain_la_liga_relegation'],

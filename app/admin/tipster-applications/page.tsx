@@ -316,17 +316,16 @@ export default function AdminTipsterApplicationsPage() {
                     {app.dbUpdated === false && <span className="text-amber-600 dark:text-amber-400">· DB update failed ⚠</span>}
                     {app.dbUpdated === undefined && <span className="opacity-50">· DB status unknown</span>}
                   </div>
-                  {app.dbUpdated !== true && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-[10px] px-2 shrink-0 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
-                      onClick={() => reapply(app)}
-                      disabled={busyId === app.id + '-reapply'}
-                    >
-                      {busyId === app.id + '-reapply' ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Re-apply DB'}
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[10px] px-2 shrink-0 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                    onClick={() => reapply(app)}
+                    disabled={busyId === app.id + '-reapply'}
+                    title={app.dbUpdated === true ? 'Re-apply the DB role update (use this if the tipster still does not appear in the list)' : 'Apply tipster role to DB now'}
+                  >
+                    {busyId === app.id + '-reapply' ? <Loader2 className="h-3 w-3 animate-spin" /> : app.dbUpdated === true ? 'Re-apply DB' : 'Apply DB role'}
+                  </Button>
                 </div>
                 {app.email && (
                   <div className={`flex items-center justify-between gap-2 px-2.5 py-1 text-[11px] rounded-md border ${app.emailSent === true ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : app.emailSent === false ? 'border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400' : 'border-border bg-muted/30 text-muted-foreground'}`}>

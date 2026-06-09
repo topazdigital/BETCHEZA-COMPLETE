@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useMemo } from "react"
+import { use, useState, useMemo, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -9,6 +9,7 @@ import {
   ArrowLeft, Trophy, Calendar, TrendingUp,
   ChevronRight, Clock, Star, Target, Loader2,
   AlertCircle, ChevronDown, Info, Bookmark, BarChart2,
+  ArrowLeftRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +32,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useAuth } from "@/contexts/auth-context"
+import { useAuthModal } from "@/contexts/auth-modal-context"
+import { OutrightTipModal, type OutrightTipData } from "@/components/leagues/outright-tip-modal"
 
 interface PageProps {
   params: Promise<{ slug: string }>
@@ -221,6 +225,34 @@ export default function LeaguePage({ params }: PageProps) {
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 },
   )
+  const { data: scorerOddsRes } = useSWR<{
+    success: boolean; leagueId: number; marketName: string; marketKey: string;
+    outcomes: { name: string; price: number }[];
+  }>(
+    league ? `/api/leagues/${league.id}/scorer-odds` : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30 * 60_000 },
+  )
+  const { data: transferOddsRes } = useSWR<{
+    success: boolean; leagueId: number;
+    transfers: { player: string; currentClub: string; outcomes: { name: string; price: number }[] }[];
+  }>(
+    league ? `/api/leagues/${league.id}/transfer-odds` : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30 * 60_000 },
+  )
+
+  const { user } = useAuth()
+  const { open: openAuthModal } = useAuthModal()
+  const isTipster = user?.role === 'tipster' || user?.role === 'admin'
+
+  const [outTipOpen, setOutTipOpen] = useState(false)
+  const [outTipData, setOutTipData] = useState<OutrightTipData | null>(null)
+
+  const openOutrightTip = useCallback((data: OutrightTipData) => {
+    setOutTipData(data)
+    setOutTipOpen(true)
+  }, [])
 
   if (!league) {
     if (matchesLoading) {
@@ -343,6 +375,7 @@ export default function LeaguePage({ params }: PageProps) {
   const sportIcon = getSportIcon(SPORT_ICON_BY_ID[league.sportId] || 'football')
 
   return (
+    <>
     <div className="flex-1 overflow-hidden">
         <div className="px-3 py-3 md:px-4 md:py-4">
           {/* Back Button */}
@@ -577,6 +610,22 @@ export default function LeaguePage({ params }: PageProps) {
                               Bet
                             </a>
                           )}
+                          <button
+                            onClick={() => openOutrightTip({
+                              leagueId: league.id,
+                              leagueName: league.name,
+                              marketName: outrightMarket.name || 'Outright Winner',
+                              marketKey: 'outright_winner',
+                              prediction: o.name,
+                              odds: o.price,
+                              matchSlug: league.slug,
+                              sport: 'football',
+                            })}
+                            className="rounded-md bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-semibold px-1.5 py-0.5 transition-colors"
+                            title="Post a tip on this outcome"
+                          >
+                            Tip
+                          </button>
                         </div>
                       </div>
                     ))
@@ -607,57 +656,168 @@ export default function LeaguePage({ params }: PageProps) {
                         const hasId = !!s.player.id;
                         const Wrapper: React.ElementType = hasId ? Link : 'div';
                         const wrapperProps = hasId ? { href: playerHref(s.player.name, s.player.id) } : {};
+                        const scorerOddsOutcome = scorerOddsRes?.outcomes?.find(o =>
+                          o.name.toLowerCase().replace(/[^a-z]/g, '').includes(
+                            s.player.name.split(' ').pop()?.toLowerCase().replace(/[^a-z]/g, '') || ''
+                          ) || s.player.name.toLowerCase().replace(/[^a-z]/g, '').includes(
+                            o.name.split(' ').pop()?.toLowerCase().replace(/[^a-z]/g, '') || ''
+                          )
+                        );
                         return (
                         <li key={`${s.position}-${s.player.id}`}>
-                          <Wrapper
-                            {...wrapperProps}
-                            className={cn(
-                              "flex items-center gap-3 rounded-lg bg-muted/30 p-2",
-                              hasId && "transition-colors hover:bg-primary/10"
-                            )}
-                          >
-                          <span className={cn(
-                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
-                            s.position === 1 && "bg-yellow-500 text-yellow-950",
-                            s.position === 2 && "bg-gray-300 text-gray-700",
-                            s.position === 3 && "bg-amber-700 text-amber-100",
-                            s.position > 3 && "bg-muted"
-                          )}>
-                            {s.position}
-                          </span>
-                          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted">
-                            {s.player.photo ? (
-                              <Image
-                                src={s.player.photo}
-                                alt={s.player.name}
-                                fill
-                                sizes="32px"
-                                className="object-cover"
-                                unoptimized
-                              />
-                            ) : (
-                              <span className="flex h-full w-full items-center justify-center text-[10px] font-bold text-muted-foreground">
-                                {s.player.name.charAt(0)}
+                          <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-2">
+                            <Wrapper
+                              {...wrapperProps}
+                              className={cn(
+                                "flex min-w-0 flex-1 items-center gap-2",
+                                hasId && "transition-colors hover:text-primary"
+                              )}
+                            >
+                              <span className={cn(
+                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+                                s.position === 1 && "bg-yellow-500 text-yellow-950",
+                                s.position === 2 && "bg-gray-300 text-gray-700",
+                                s.position === 3 && "bg-amber-700 text-amber-100",
+                                s.position > 3 && "bg-muted"
+                              )}>
+                                {s.position}
                               </span>
+                              <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted">
+                                {s.player.photo ? (
+                                  <Image
+                                    src={s.player.photo}
+                                    alt={s.player.name}
+                                    fill
+                                    sizes="32px"
+                                    className="object-cover"
+                                    unoptimized
+                                  />
+                                ) : (
+                                  <span className="flex h-full w-full items-center justify-center text-[10px] font-bold text-muted-foreground">
+                                    {s.player.name.charAt(0)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold">{s.player.name}</p>
+                                <p className="truncate text-[11px] text-muted-foreground">{s.team.name}</p>
+                              </div>
+                              <span className="shrink-0 font-mono text-sm font-bold text-success mr-1">
+                                {s.stats.goals}⚽
+                              </span>
+                            </Wrapper>
+                            {scorerOddsOutcome && (
+                              <div className="flex shrink-0 items-center gap-1">
+                                <span className="font-mono text-xs font-bold text-amber-500">{scorerOddsOutcome.price.toFixed(2)}</span>
+                                <button
+                                  onClick={() => openOutrightTip({
+                                    leagueId: league.id,
+                                    leagueName: league.name,
+                                    marketName: `${league.name} Top Scorer`,
+                                    marketKey: 'top_scorer',
+                                    prediction: `${s.player.name} - Top Scorer`,
+                                    odds: scorerOddsOutcome.price,
+                                    matchSlug: league.slug,
+                                    sport: 'football',
+                                  })}
+                                  className="rounded-md bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-semibold px-1.5 py-0.5 transition-colors"
+                                  title="Tip this player as top scorer"
+                                >
+                                  Tip
+                                </button>
+                              </div>
                             )}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className={cn(
-                              "truncate text-sm font-semibold",
-                              hasId && "group-hover:text-primary"
-                            )}>{s.player.name}</p>
-                            <p className="truncate text-[11px] text-muted-foreground">{s.team.name}</p>
-                          </div>
-                          <span className="shrink-0 font-mono text-sm font-bold text-success">
-                            {s.stats.goals}
-                          </span>
-                          </Wrapper>
                         </li>
                       );})}
                     </ol>
                   )}
                 </CardContent>
               </Card>
+
+              {/* Top Scorer Odds (standalone market — all players) */}
+              {scorerOddsRes?.outcomes && scorerOddsRes.outcomes.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-1.5 text-xs">
+                      <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                      Top Scorer Odds
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1 pt-0">
+                    {scorerOddsRes.outcomes.slice(0, 8).map((o, idx) => (
+                      <div key={`scorer-odds-${idx}`} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                        <span className="truncate min-w-0 flex-1">{o.name}</span>
+                        <div className="ml-2 flex shrink-0 items-center gap-2">
+                          <span className="font-mono font-bold text-amber-500">{o.price.toFixed(2)}</span>
+                          <button
+                            onClick={() => openOutrightTip({
+                              leagueId: league.id,
+                              leagueName: league.name,
+                              marketName: `${league.name} Top Scorer`,
+                              marketKey: 'top_scorer',
+                              prediction: `${o.name} - Top Scorer`,
+                              odds: o.price,
+                              matchSlug: league.slug,
+                              sport: 'football',
+                            })}
+                            className="rounded-md bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-semibold px-1.5 py-0.5 transition-colors"
+                          >
+                            Tip
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Transfer Odds */}
+              {transferOddsRes?.transfers && transferOddsRes.transfers.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-1.5 text-xs">
+                      <ArrowLeftRight className="h-3.5 w-3.5 text-blue-500" />
+                      Transfer Odds
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2.5 pt-0">
+                    {transferOddsRes.transfers.slice(0, 5).map((t, ti) => (
+                      <div key={ti} className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold">{t.player}</span>
+                          <span className="text-[10px] text-muted-foreground">({t.currentClub})</span>
+                        </div>
+                        <div className="space-y-0.5">
+                          {t.outcomes.slice(0, 4).map((o, oi) => (
+                            <div key={oi} className="flex items-center justify-between rounded-md bg-muted/30 px-2 py-1 text-xs">
+                              <span className="truncate min-w-0 flex-1">{o.name}</span>
+                              <div className="ml-2 flex shrink-0 items-center gap-1.5">
+                                <span className="font-mono font-bold text-blue-500">{o.price.toFixed(2)}</span>
+                                <button
+                                  onClick={() => openOutrightTip({
+                                    leagueId: league.id,
+                                    leagueName: league.name,
+                                    marketName: `${t.player} Next Club`,
+                                    marketKey: 'player_transfer',
+                                    prediction: `${t.player} → ${o.name}`,
+                                    odds: o.price,
+                                    matchSlug: league.slug,
+                                    sport: 'football',
+                                  })}
+                                  className="rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-[10px] font-semibold px-1.5 py-0.5 transition-colors"
+                                >
+                                  Tip
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
             </aside>
           </div>
 
@@ -672,6 +832,16 @@ export default function LeaguePage({ params }: PageProps) {
           />
         </div>
       </div>
+
+      <OutrightTipModal
+        open={outTipOpen}
+        onClose={() => setOutTipOpen(false)}
+        data={outTipData}
+        isAuthenticated={!!user}
+        isTipster={isTipster}
+        onOpenAuth={(mode) => openAuthModal(mode)}
+      />
+    </>
   )
 }
 
