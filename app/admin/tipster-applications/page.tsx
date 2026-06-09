@@ -66,6 +66,26 @@ export default function AdminTipsterApplicationsPage() {
   }
   useEffect(() => { load(); }, []);
 
+  async function reapply(app: AdminApplication) {
+    setBusyId(app.id + '-reapply');
+    try {
+      const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reapply' }),
+      });
+      const json = await r.json().catch(() => ({}));
+      if (r.ok && json.success) {
+        addToast(`✅ ${app.displayName}'s DB role updated — they will now appear in the tipsters list`, 'success');
+        await load();
+      } else {
+        addToast(json.error || 'Re-apply failed — check server logs', 'error');
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function review(app: AdminApplication, decision: 'approve' | 'reject') {
     setBusyId(app.id);
     try {
@@ -267,13 +287,26 @@ export default function AdminTipsterApplicationsPage() {
             )}
 
             {app.status === 'approved' && (
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  Approved{app.verifiedGranted ? ' with verified badge' : ''}
-                  {app.dbUpdated === true && <span className="opacity-70">· role updated in DB ✓</span>}
-                  {app.dbUpdated === false && <span className="text-amber-600 dark:text-amber-400 opacity-90">· DB update failed ⚠</span>}
-                  {app.dbUpdated === undefined && <span className="opacity-50">· DB status unknown</span>}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                    <span>Approved{app.verifiedGranted ? ' with verified badge' : ''}</span>
+                    {app.dbUpdated === true && <span className="opacity-70">· DB role confirmed ✓</span>}
+                    {app.dbUpdated === false && <span className="text-amber-600 dark:text-amber-400">· DB update failed ⚠</span>}
+                    {app.dbUpdated === undefined && <span className="opacity-50">· DB status unknown</span>}
+                  </div>
+                  {app.dbUpdated !== true && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[10px] px-2 shrink-0 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                      onClick={() => reapply(app)}
+                      disabled={busyId === app.id + '-reapply'}
+                    >
+                      {busyId === app.id + '-reapply' ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Re-apply DB'}
+                    </Button>
+                  )}
                 </div>
                 {app.email && (
                   <div className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md border ${app.emailSent === true ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : app.emailSent === false ? 'border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400' : 'border-border bg-muted/30 text-muted-foreground'}`}>

@@ -191,6 +191,33 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
   return row;
 }
 
+/** Re-apply the DB role update for an already-approved application. Returns true if successful. */
+export async function reapplyDbRole(id: string): Promise<boolean> {
+  await ensureLoaded();
+  const row = store().applications.find(a => a.id === id);
+  if (!row || row.status !== 'approved') return false;
+  let dbOk = false;
+  try {
+    const verifiedSql = row.verifiedGranted ? ', is_verified = 1' : '';
+    await query(
+      `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
+      [row.userId]
+    );
+    dbOk = true;
+    await query(
+      `INSERT INTO tipster_profiles (user_id, updated_at)
+       VALUES (?, NOW())
+       ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+      [row.userId]
+    );
+  } catch (e) {
+    console.warn('[tipster-applications] reapply DB role failed:', e instanceof Error ? e.message : e);
+  }
+  row.dbUpdated = dbOk;
+  await persist();
+  return dbOk;
+}
+
 /** Mark whether the notification email was successfully sent (called from route handler). */
 export async function markApplicationEmailSent(id: string, sent: boolean): Promise<void> {
   await ensureLoaded();

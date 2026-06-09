@@ -5,6 +5,7 @@ import { setUserRoleOverride } from '@/lib/user-role-overrides';
 import {
   getApplication,
   reviewApplication,
+  reapplyDbRole,
   markApplicationEmailSent,
 } from '@/lib/tipster-applications-store';
 import { getTemplate as getEmailTemplate } from '@/lib/email-templates-store';
@@ -24,6 +25,18 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
 
   const { id } = await ctx.params;
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
+
+  // ── Re-apply DB role for an already-approved application ──────────────────
+  if (body.action === 'reapply') {
+    const app = await getApplication(id);
+    if (!app) return NextResponse.json({ error: 'application not found' }, { status: 404 });
+    if (app.status !== 'approved') return NextResponse.json({ error: 'application is not approved' }, { status: 400 });
+    const ok = await reapplyDbRole(id);
+    if (ok) setUserRoleOverride(app.userId, 'tipster');
+    const refreshed = await getApplication(id);
+    return NextResponse.json({ success: ok, application: refreshed });
+  }
+
   const decision = body.decision === 'approve' ? 'approve' : body.decision === 'reject' ? 'reject' : null;
   if (!decision) {
     return NextResponse.json({ error: 'invalid decision' }, { status: 400 });
