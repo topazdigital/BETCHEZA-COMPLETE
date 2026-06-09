@@ -1,21 +1,22 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Trophy, Star, ArrowLeftRight, TrendingUp, ExternalLink } from 'lucide-react';
-import { discoverAllOutrights, type OutrightDiscovery } from '@/lib/api/outright-discovery';
+import { Trophy, Star, ArrowLeftRight, TrendingUp, Zap, AlertCircle } from 'lucide-react';
+import { discoverAllOutrights, isOutrightsQuotaExhausted, type OutrightDiscovery } from '@/lib/api/outright-discovery';
 import { STATIC_TRANSFER_ODDS, type TransferOddsEntry } from '@/lib/api/static-transfers';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { OutrightTipButton } from '@/components/outrights/outright-tip-button';
 
 export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: 'Outright Odds, Specials & Transfer Markets | Betcheza',
   description:
-    'Outright winner odds, specials and transfer betting markets from 25+ bookmakers. EPL winner, UCL winner, top scorer markets and summer window transfer destination odds.',
+    'Live outright winner odds from real bookmakers — EPL winner, UCL winner, NBA champion, NFL Super Bowl and more. Odds update from Bet365, William Hill & DraftKings.',
   openGraph: {
     title: 'Outright Odds, Specials & Transfer Markets | Betcheza',
     description:
-      'Real bookmaker outright odds for league winners, cups, top scorers plus summer transfer destination markets.',
+      'Real-time outright odds for league winners, cups, and top scorers from 20+ bookmakers.',
     type: 'website',
   },
 };
@@ -33,9 +34,11 @@ interface FlatMarket {
   category: string;
   outcomes: { name: string; price: number; link?: string }[];
   slug: string;
+  leagueId: number;
+  sportKey: string;
+  updatedAt?: string;
 }
 
-// Generic market names that don't carry enough context on their own
 const GENERIC_MARKET_NAMES = new Set([
   'tournament winner', 'league winner', 'championship winner', 'cup winner',
   "men's champion", "women's champion", 'world series winner', 'stanley cup winner',
@@ -47,7 +50,6 @@ function flattenMarkets(outrights: OutrightDiscovery[]): FlatMarket[] {
   for (const item of outrights) {
     for (const market of item.markets) {
       if (market.outcomes.length === 0) continue;
-      // Use the item's descriptive title unless the market name adds distinct info
       const isGeneric = GENERIC_MARKET_NAMES.has(market.marketName.toLowerCase());
       const title =
         item.markets.length === 1 || isGeneric
@@ -58,6 +60,9 @@ function flattenMarkets(outrights: OutrightDiscovery[]): FlatMarket[] {
         category: item.category,
         outcomes: [...market.outcomes].sort((a, b) => a.price - b.price),
         slug: item.slug,
+        leagueId: item.leagueId ?? 0,
+        sportKey: item.sportKey,
+        updatedAt: item.updatedAt,
       });
     }
   }
@@ -76,14 +81,18 @@ function groupByCategory(markets: FlatMarket[]): Map<string, FlatMarket[]> {
 
 function MarketCard({ market }: { market: FlatMarket }) {
   const favourite = market.outcomes[0];
-  const displayed = market.outcomes.slice(0, 9);
+  const displayed = market.outcomes.slice(0, 10);
   const remaining = market.outcomes.length - displayed.length;
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden hover:shadow-sm transition-shadow">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-muted/20">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold leading-tight truncate">{market.displayTitle}</h3>
+          <Link href={`/specials/${market.slug}`} className="group">
+            <h3 className="text-sm font-bold leading-tight truncate group-hover:text-primary transition-colors">
+              {market.displayTitle}
+            </h3>
+          </Link>
           {favourite && (
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Favourite:{' '}
@@ -92,27 +101,42 @@ function MarketCard({ market }: { market: FlatMarket }) {
             </p>
           )}
         </div>
+        <Badge variant="outline" className="shrink-0 text-[9px] font-semibold text-emerald-600 border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400">
+          Live
+        </Badge>
       </div>
       <div className="divide-y divide-border/30">
         {displayed.map((outcome, i) => {
           const row = (
-            <div
-              className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-muted/20 transition-colors"
-            >
+            <div className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-muted/20 transition-colors">
               <span className="flex items-center gap-1.5 text-xs min-w-0">
                 {i === 0 && (
                   <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                 )}
                 <span className="truncate">{outcome.name}</span>
               </span>
-              <span
-                className={cn(
-                  'shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
-                  i === 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-foreground',
-                )}
-              >
-                {outcome.price.toFixed(2)}
-              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <OutrightTipButton
+                  data={{
+                    leagueId: market.leagueId,
+                    leagueName: market.displayTitle,
+                    marketName: market.displayTitle,
+                    marketKey: 'outright_winner',
+                    prediction: outcome.name,
+                    odds: outcome.price,
+                    sport: market.category,
+                  }}
+                  label="Tip"
+                />
+                <span
+                  className={cn(
+                    'rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
+                    i === 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-foreground',
+                  )}
+                >
+                  {outcome.price.toFixed(2)}
+                </span>
+              </div>
             </div>
           );
           return outcome.link ? (
@@ -124,54 +148,54 @@ function MarketCard({ market }: { market: FlatMarket }) {
           );
         })}
         {remaining > 0 && (
-          <div className="flex items-center justify-center px-3 py-2 text-[11px] text-muted-foreground">
-            +{remaining} more selections
-          </div>
+          <Link
+            href={`/specials/${market.slug}`}
+            className="flex items-center justify-center px-3 py-2 text-[11px] text-muted-foreground hover:text-primary transition-colors"
+          >
+            +{remaining} more selections →
+          </Link>
         )}
       </div>
+      {market.updatedAt && (
+        <div className="px-3 py-1.5 border-t border-border/30 text-[10px] text-muted-foreground/60">
+          Updated {market.updatedAt}
+        </div>
+      )}
     </div>
   );
 }
 
-function EmptyState({
-  icon: Icon,
-  message,
-  detail,
-  links,
-}: {
-  icon: React.ElementType;
-  message: string;
-  detail: string;
-  links: { label: string; href: string }[];
-}) {
+function EmptyState({ quotaExhausted }: { quotaExhausted: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-      <Icon className="h-10 w-10 text-muted-foreground/30" />
-      <p className="text-sm font-medium text-muted-foreground">{message}</p>
-      <p className="max-w-sm text-xs text-muted-foreground leading-relaxed">{detail}</p>
-      <div className="mt-1 flex flex-wrap justify-center gap-2">
-        {links.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted transition-colors"
-          >
-            {link.label} <ExternalLink className="h-3 w-3" />
-          </a>
-        ))}
-      </div>
+      <AlertCircle className="h-10 w-10 text-muted-foreground/30" />
+      {quotaExhausted ? (
+        <>
+          <p className="text-sm font-medium text-muted-foreground">Live odds refreshing soon</p>
+          <p className="max-w-sm text-xs text-muted-foreground leading-relaxed">
+            Our bookmaker data feed is refreshing (monthly quota). Odds will reappear automatically
+            when the feed restores. Check back shortly.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-muted-foreground">No live outright markets available right now</p>
+          <p className="max-w-sm text-xs text-muted-foreground leading-relaxed">
+            Live odds are fetched from bookmaker feeds. This can happen at the start of a new season
+            when markets haven't opened yet. Check back soon.
+          </p>
+        </>
+      )}
     </div>
   );
 }
 
-function MarketGrid({ grouped, total, emptyConfig }: {
+function MarketGrid({ grouped, total, quotaExhausted }: {
   grouped: Map<string, FlatMarket[]>;
   total: number;
-  emptyConfig: Parameters<typeof EmptyState>[0];
+  quotaExhausted: boolean;
 }) {
-  if (total === 0) return <EmptyState {...emptyConfig} />;
+  if (total === 0) return <EmptyState quotaExhausted={quotaExhausted} />;
   return (
     <div className="space-y-6">
       {Array.from(grouped.entries()).map(([category, markets]) => (
@@ -214,7 +238,7 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
           <TrendingUp className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
           <div>
             <p className="text-xs font-semibold text-amber-900 dark:text-amber-300">
-              Summer 2025/26 Transfer Window — Bookmaker odds
+              Summer Transfer Window — Bookmaker Odds
             </p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400/80">
               Prices sourced from Bet365, William Hill, Betfair &amp; Paddy Power aggregates.
@@ -243,12 +267,7 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
                   <div className="flex min-w-0 items-center gap-1.5">
                     <p className="truncate text-xs font-bold leading-tight">{player.player}</p>
                     {player.position && (
-                      <span
-                        className={cn(
-                          'shrink-0 rounded px-1 py-0 text-[9px] font-bold leading-4',
-                          posColor,
-                        )}
-                      >
+                      <span className={cn('shrink-0 rounded px-1 py-0 text-[9px] font-bold leading-4', posColor)}>
                         {player.position}
                       </span>
                     )}
@@ -280,18 +299,32 @@ function TransfersContent({ players }: { players: TransferOddsEntry[] }) {
                         )}
                         <span className="truncate">{outcome.name}</span>
                       </span>
-                      <span
-                        className={cn(
-                          'shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
-                          isStay
-                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                            : i === 0
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-muted text-foreground',
-                        )}
-                      >
-                        {outcome.price.toFixed(2)}
-                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <OutrightTipButton
+                          data={{
+                            leagueId: 0,
+                            leagueName: player.player,
+                            marketName: `${player.player} — Next Club`,
+                            marketKey: 'player_transfer',
+                            prediction: outcome.name,
+                            odds: outcome.price,
+                            sport: 'Transfers',
+                          }}
+                          label="Tip"
+                        />
+                        <span
+                          className={cn(
+                            'rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
+                            isStay
+                              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                              : i === 0
+                              ? 'bg-primary/10 text-primary'
+                              : 'bg-muted text-foreground',
+                          )}
+                        >
+                          {outcome.price.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
@@ -318,6 +351,7 @@ export default async function SpecialsPage({
   const activeTab = (TABS.some((t) => t.key === tab) ? tab : 'outrights') as TabKey;
 
   const outrights = await discoverAllOutrights().catch(() => [] as OutrightDiscovery[]);
+  const quotaExhausted = isOutrightsQuotaExhausted();
   const allMarkets = flattenMarkets(outrights);
 
   const SPECIALS_CATS = new Set(['International', 'Specials', 'European Cups', 'Champions League']);
@@ -328,22 +362,21 @@ export default async function SpecialsPage({
 
   return (
     <div className="w-full min-h-screen">
-      {/* Header */}
       <div className="border-b border-border bg-card px-3 py-3 sm:px-4">
         <div className="flex items-center gap-2">
           <Trophy className="h-4 w-4 shrink-0 text-yellow-500" />
           <h1 className="text-base font-bold sm:text-lg">Betting Markets</h1>
-          <Badge variant="secondary" className="text-[10px] font-semibold">
-            Real bookmaker odds
+          <Badge variant="secondary" className="text-[10px] font-semibold flex items-center gap-1">
+            <Zap className="h-2.5 w-2.5" />
+            Live bookmaker odds
           </Badge>
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          Outright winners, specials &amp; transfer markets — prices from Bet365, William Hill,
-          Betfair &amp; DraftKings
+          Outright winners &amp; specials — best prices from Bet365, William Hill, Betfair &amp; DraftKings.
+          Odds update every 48 hours.
         </p>
       </div>
 
-      {/* Tab nav */}
       <div className="sticky top-0 z-10 border-b border-border bg-card">
         <nav className="flex overflow-x-auto px-3 sm:px-4">
           {TABS.map((t) => {
@@ -371,42 +404,19 @@ export default async function SpecialsPage({
         </nav>
       </div>
 
-      {/* Content */}
       <div className="px-2 py-4 sm:px-3">
         {activeTab === 'outrights' && (
           <MarketGrid
             grouped={groupByCategory(outrightsMarkets)}
             total={outrightsMarkets.length}
-            emptyConfig={{
-              icon: Trophy,
-              message: 'No outright markets available right now',
-              detail:
-                'Live odds are fetched from bookmaker feeds. Check back shortly or visit the bookmakers below.',
-              links: [
-                {
-                  label: 'Oddschecker Outrights',
-                  href: 'https://www.oddschecker.com/football/english/premier-league#outrights',
-                },
-                { label: 'Bet365', href: 'https://www.bet365.com' },
-              ],
-            }}
+            quotaExhausted={quotaExhausted}
           />
         )}
         {activeTab === 'specials' && (
           <MarketGrid
             grouped={groupByCategory(specialsMarkets)}
             total={specialsMarkets.length}
-            emptyConfig={{
-              icon: Star,
-              message: 'No specials in current bookmaker feed',
-              detail:
-                "Award markets (Ballon d'Or, FIFA Best), manager markets and international specials are sourced from bookmaker feeds that update independently. Check back shortly.",
-              links: [
-                { label: 'Bet365', href: 'https://www.bet365.com' },
-                { label: 'SportPesa', href: 'https://www.sportpesa.com' },
-                { label: '1xBet', href: 'https://www.1xbet.com' },
-              ],
-            }}
+            quotaExhausted={quotaExhausted}
           />
         )}
         {activeTab === 'transfers' && <TransfersContent players={transfers} />}

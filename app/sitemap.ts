@@ -3,6 +3,8 @@ import { ALL_LEAGUES, ALL_SPORTS } from '@/lib/sports-data';
 import { getFakeTipsters } from '@/lib/fake-tipsters';
 import { getPool } from '@/lib/db';
 import { matchToSlug } from '@/lib/utils/match-url';
+import { getAllOutrightSlugs } from '@/lib/api/outright-discovery';
+import { SPECIALS } from '@/lib/api/specials';
 
 export const revalidate = 30;
 
@@ -238,12 +240,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: ['sportpesa', 'betika', 'odibets'].includes(slug) ? 0.92 : 0.82,
   }));
 
+  // Outright market SEO pages — one URL per live market (e.g. /specials/soccer-epl-winner)
+  // Uses the hardcoded slug list so these pages are indexed even before first API fetch.
+  const outrightSlugs = getAllOutrightSlugs();
+  const staticSpecialSlugs = SPECIALS.map(s => s.slug);
+  const allSpecialSlugs = Array.from(new Set([...outrightSlugs, ...staticSpecialSlugs]));
+  const outrightEntries: MetadataRoute.Sitemap = allSpecialSlugs.map(slug => ({
+    url: `${base}/specials/${slug}`,
+    lastModified: now,
+    changeFrequency: 'daily' as const,
+    priority: 0.78,
+  }));
+
   return [
     ...staticEntries,
     ...jackpotEntries,
     ...bookmakerTipEntries,
     ...sportEntries,
     ...leagueEntries,
+    ...outrightEntries,
     ...competitionEntries,
     ...tipsterEntries,
     ...matchEntries,
