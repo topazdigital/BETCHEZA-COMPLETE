@@ -152,21 +152,23 @@ export default function DashboardTipsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Become a tipster</CardTitle>
-          <CardDescription>
-            Want to publish your own picks and build a following? Apply for a tipster profile.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild>
-            <Link href="/become-tipster">
-              Apply to become a tipster <ArrowRight className="ml-1 h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
+      {user && user.role !== 'tipster' && user.role !== 'admin' && user.role !== 'moderator' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Become a tipster</CardTitle>
+            <CardDescription>
+              Want to publish your own picks and build a following? Apply for a tipster profile.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/become-tipster">
+                Apply to become a tipster <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

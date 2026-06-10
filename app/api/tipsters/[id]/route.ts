@@ -154,7 +154,7 @@ async function getRealTipsterFromDb(id: string): Promise<TipsterShape | null> {
       `SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.country_code,
               u.is_verified, u.created_at,
               t.win_rate, t.roi, t.total_tips, t.won_tips, t.lost_tips, t.pending_tips,
-              t.avg_odds, t.streak, t.rank, t.followers_count, t.is_pro, t.subscription_price
+              t.avg_odds, t.streak, t.rank_position AS rank, t.followers_count, t.is_pro, t.subscription_price
        FROM users u
        LEFT JOIN tipster_profiles t ON t.user_id = u.id
        WHERE u.role = 'tipster' AND (${numericId != null ? 'u.id = ? OR ' : ''}u.username = ?)
