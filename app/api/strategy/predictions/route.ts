@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getCurrentUser } from '@/lib/auth';
 import { query, execute } from '@/lib/db';
-import { sendMail } from '@/lib/mailer';
-import { strategyPicksEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -38,6 +36,8 @@ export interface DayPrediction {
   actualReturn?: number;
   isManual?: boolean;
   scheduledFor?: string | null;
+  isApproved?: boolean;
+  pendingApproval?: boolean;
 }
 
 export interface WeeklyStrategy {
@@ -97,6 +97,7 @@ interface DbRow {
   picks: string | null;
   is_manual: number | null;
   scheduled_for: string | null;
+  is_approved: number | null;
 }
 
 async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
@@ -126,6 +127,7 @@ async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
       actualReturn: row.actual_return || undefined,
       isManual: row.is_manual === 1,
       scheduledFor: row.scheduled_for || null,
+      isApproved: row.is_approved === 1,
     }));
 
     return days;
@@ -701,6 +703,8 @@ async function ensureTableExists(): Promise<void> {
     // Add columns if they don't exist (MySQL 5.7-compatible via ER_DUP_FIELDNAME catch)
     await query(`ALTER TABLE daily_strategy ADD COLUMN is_manual tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
     await query(`ALTER TABLE daily_strategy ADD COLUMN scheduled_for date DEFAULT NULL`).catch(() => {});
+    await query(`ALTER TABLE daily_strategy ADD COLUMN is_approved tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
+    await query(`ALTER TABLE daily_strategy ADD COLUMN approved_at datetime DEFAULT NULL`).catch(() => {});
   } catch { }
 }
 
@@ -1074,6 +1078,38 @@ export async function GET() {
   current.days = await autoSettleCompletedPicks(current.days);
   current.days = await overlayLiveScores(current.days);
   const past = await loadPastWeeks();
+
+  // Admin approval gate: hide unapproved today's picks from non-admin users.
+  // If the earliest match kickoff is ≤60 minutes away and picks exist,
+  // auto-approve as a fallback so users are never left without picks.
+  const user = await getCurrentUser().catch(() => null);
+  const isAdmin = user?.role === 'admin';
+  if (!isAdmin) {
+    const todayStr = getTodayStrEAT(new Date());
+    current.days = current.days.map(day => {
+      if (day.date !== todayStr) return day;
+      if (day.isApproved) return day;
+      if (day.picks.length === 0) return day;
+      // Check auto-approve deadline: if first match ≤60 min away, auto-approve
+      const now = Date.now();
+      const firstMatchMs = day.picks.reduce((min, p) => {
+        const t = p.matchTime ? new Date(p.matchTime).getTime() : Infinity;
+        return t < min ? t : min;
+      }, Infinity);
+      const minsUntil = isFinite(firstMatchMs) ? (firstMatchMs - now) / 60000 : Infinity;
+      if (minsUntil <= 60) {
+        // Auto-approve: admin missed the window — release picks to users
+        execute(
+          `UPDATE daily_strategy SET is_approved = 1, approved_at = NOW() WHERE date = ? AND is_approved = 0`,
+          [todayStr]
+        ).catch(() => undefined);
+        return { ...day, isApproved: true };
+      }
+      // Still awaiting admin review — hide picks
+      return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
+    });
+  }
+
   return NextResponse.json({ current, past });
 }
 
@@ -1105,54 +1141,14 @@ export async function POST(req: NextRequest) {
       try {
         await ensureTableExists();
         await execute(
-          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, scheduled_for, generated_at, posted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), is_manual = VALUES(is_manual), scheduled_for = VALUES(scheduled_for), generated_at = NOW(), posted_at = NOW(), status = VALUES(status)`,
+          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, scheduled_for, generated_at, posted_at, is_approved)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 0)
+           ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), is_manual = VALUES(is_manual), scheduled_for = VALUES(scheduled_for), generated_at = NOW(), posted_at = NOW(), status = VALUES(status), is_approved = 0`,
           [targetDate, weekId, dayData.day, dayData.stake, dayData.save, dayData.targetWin, dayData.combinedOdds, targetStatus, JSON.stringify(body.picks), isManual ? 1 : 0, scheduledFor]
         );
       } catch { }
 
-      // Email all active strategy subscribers (non-blocking)
-      if (targetStatus === 'active' && body.picks?.length > 0) {
-        const emailDay = dayData;
-        setImmediate(async () => {
-          try {
-            type AccessRecord = { userId: number; expiresAt: string };
-            const accessRecords = fileStoreGet<AccessRecord[]>('strategy-access', []);
-            const now = Date.now();
-            const activeUserIds = accessRecords
-              .filter(r => new Date(r.expiresAt).getTime() > now)
-              .map(r => r.userId);
-
-            if (activeUserIds.length === 0) return;
-
-            const placeholders = activeUserIds.map(() => '?').join(',');
-            const usersRes = await query<{ id: number; email: string; username: string; display_name: string | null }>(
-              `SELECT u.id, u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
-               FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
-               WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
-              activeUserIds
-            );
-
-            for (const u of usersRes.rows) {
-              try {
-                const tpl = strategyPicksEmail({
-                  subscriberName: u.display_name || u.username,
-                  day: emailDay.day,
-                  date: emailDay.date,
-                  stake: emailDay.stake,
-                  targetWin: emailDay.targetWin,
-                  picks: body.picks,
-                  combinedOdds: emailDay.combinedOdds,
-                });
-                await sendMail({ to: u.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
-              } catch { /* skip one failed recipient */ }
-            }
-          } catch (e) {
-            console.error('[strategy] picks email blast failed:', e);
-          }
-        });
-      }
+      // Emails are sent only after admin approves picks via /api/admin/strategy/approve
     }
     fileStoreSet(`strategy-week-${weekId}`, current);
     return NextResponse.json({ success: true, week: current });

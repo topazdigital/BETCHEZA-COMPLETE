@@ -116,12 +116,10 @@ export async function GET(request: NextRequest) {
     for (const r of activeRows.rows) activeTodayIds.add(Number(r.user_id));
   } catch { /* tips table may not exist */ }
 
-  // Shape real tipsters — exclude those with 0 tips AND 0 pending
-  // (they joined as a tipster but haven't posted anything yet — hide them
-  //  until they have at least 1 tip, then they'll surface in the combined list)
+  // Shape real tipsters — show all approved tipsters (role='tipster') even if
+  // they haven't posted tips yet, so newly-approved tipsters appear immediately
   const realShaped = realRows
-    .map(row => ({ ...shape(row), activeToday: activeTodayIds.has(row.user_id) }))
-    .filter(t => t.totalTips > 0 || t.pendingTips > 0);
+    .map(row => ({ ...shape(row), activeToday: activeTodayIds.has(row.user_id) }));
 
   // Collect real tipster IDs so we don't duplicate them with fake ones
   const realIds = new Set(realShaped.map(t => t.id));

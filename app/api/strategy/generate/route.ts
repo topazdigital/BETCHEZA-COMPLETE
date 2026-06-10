@@ -4,10 +4,6 @@ import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getUpcomingMatches } from '@/lib/api/unified-sports-api';
 import OpenAI from 'openai';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '../predictions/route';
-import { query } from '@/lib/db';
-import { sendMail } from '@/lib/mailer';
-import { strategyPicksEmail } from '@/lib/email-templates';
-import type { AccessRecord } from '../access/route';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -301,7 +297,7 @@ OUTPUT FORMAT — Return ONLY valid JSON, no markdown, no explanation outside JS
   stored.days[dayIdx].combinedOdds = parseFloat(combinedOdds.toFixed(2));
   fileStoreSet(`strategy-week-${weekId}`, stored);
 
-  // Persist AI-generated picks to DB so the manual email sender can find them
+  // Persist AI-generated picks to DB with is_approved = 0 (requires admin approval before delivery)
   try {
     const { execute: dbExecute, query: dbQuery } = await import('@/lib/db');
     await dbQuery(`CREATE TABLE IF NOT EXISTS daily_strategy (
@@ -320,52 +316,20 @@ OUTPUT FORMAT — Return ONLY valid JSON, no markdown, no explanation outside JS
       scheduled_for date DEFAULT NULL,
       generated_at datetime DEFAULT NULL,
       posted_at datetime DEFAULT NULL,
-      settled_at datetime DEFAULT NULL
+      settled_at datetime DEFAULT NULL,
+      is_approved tinyint(1) NOT NULL DEFAULT 0,
+      approved_at datetime DEFAULT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(() => {});
     const dayD = stored.days[dayIdx];
     await dbExecute(
-      `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, posted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), generated_at = NOW(), posted_at = NOW(), status = 'active'`,
+      `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, is_approved)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), 0)
+       ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), generated_at = NOW(), status = 'active', is_approved = 0`,
       [dayD.date, weekId, dayD.day, dayD.stake, dayD.save, dayD.targetWin, dayD.combinedOdds, JSON.stringify(picks)]
     );
   } catch { /* non-fatal — file store is source of truth */ }
 
-  // Email all active strategy subscribers (non-blocking)
-  const emailDay = stored.days[dayIdx] as DayPrediction;
-  setImmediate(async () => {
-    try {
-      const accessRecords = fileStoreGet<AccessRecord[]>('strategy-access', []);
-      const now = Date.now();
-      const activeUserIds = accessRecords
-        .filter(r => new Date(r.expiresAt).getTime() > now)
-        .map(r => r.userId);
-      if (activeUserIds.length === 0) return;
-      const placeholders = activeUserIds.map(() => '?').join(',');
-      const usersRes = await query<{ id: number; email: string; username: string; display_name: string | null }>(
-        `SELECT u.id, u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
-         FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
-         WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
-        activeUserIds
-      );
-      for (const u of usersRes.rows) {
-        try {
-          const tpl = strategyPicksEmail({
-            subscriberName: u.display_name || u.username,
-            day: emailDay.day,
-            date: emailDay.date,
-            stake: emailDay.stake,
-            targetWin: emailDay.targetWin,
-            picks,
-            combinedOdds: emailDay.combinedOdds,
-          });
-          await sendMail({ to: u.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
-        } catch { /* skip one failed recipient */ }
-      }
-    } catch (e) {
-      console.error('[strategy/generate] picks email blast failed:', e);
-    }
-  });
+  // Emails are sent only after admin approves picks via /api/admin/strategy/approve
 
-  return NextResponse.json({ success: true, picks, combinedOdds: parseFloat(combinedOdds.toFixed(2)) });
+  return NextResponse.json({ success: true, picks, combinedOdds: parseFloat(combinedOdds.toFixed(2)), pendingApproval: true });
 }

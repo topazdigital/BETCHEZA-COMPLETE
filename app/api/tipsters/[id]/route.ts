@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listFollowersOfTipster, listFollowedTipsters } from '@/lib/follows-store';
 import { getFakeTipsterById, getFakeTipsterByUsername, getFakeTipsterBySlug, getFakeTipsters, type FakeTipster } from '@/lib/fake-tipsters';
+import { query as dbQuery } from '@/lib/db';
 import {
   listTipsForTipster,
   seedTipsForMatch,
@@ -88,6 +89,83 @@ function fakeToShape(fake: FakeTipster): TipsterShape {
     socials: {},
     performanceVerified: false,
   };
+}
+
+interface DbUserRow {
+  id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  country_code: string | null;
+  is_verified: number | null;
+  created_at: Date | string | null;
+  win_rate: number | null;
+  roi: number | null;
+  total_tips: number | null;
+  won_tips: number | null;
+  lost_tips: number | null;
+  pending_tips: number | null;
+  avg_odds: number | null;
+  streak: number | null;
+  rank: number | null;
+  followers_count: number | null;
+  is_pro: number | null;
+  subscription_price: number | null;
+}
+
+function dbUserToShape(row: DbUserRow): TipsterShape {
+  const countryCode = row.country_code || 'KE';
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name || row.username,
+    avatar: row.avatar_url,
+    bio: row.bio || '',
+    winRate: Number(row.win_rate ?? 0),
+    roi: Number(row.roi ?? 0),
+    totalTips: Number(row.total_tips ?? 0),
+    wonTips: Number(row.won_tips ?? 0),
+    lostTips: Number(row.lost_tips ?? 0),
+    pendingTips: Number(row.pending_tips ?? 0),
+    avgOdds: Number(row.avg_odds ?? 0),
+    streak: Number(row.streak ?? 0),
+    rank: Number(row.rank ?? 0),
+    followers: Number(row.followers_count ?? 0),
+    following: 0,
+    isPro: !!row.is_pro,
+    subscriptionPrice: row.subscription_price != null ? Number(row.subscription_price) : null,
+    currency: 'KES',
+    specialties: ['Football', 'Premier League', 'KPL'],
+    verified: !!row.is_verified,
+    country: COUNTRY_NAMES[countryCode] || countryCode,
+    countryCode,
+    joinedAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    lastActive: new Date().toISOString(),
+    socials: {},
+    performanceVerified: false,
+  };
+}
+
+async function getRealTipsterFromDb(id: string): Promise<TipsterShape | null> {
+  try {
+    const numericId = /^\d+$/.test(id) ? parseInt(id, 10) : null;
+    const result = await dbQuery<DbUserRow>(
+      `SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.country_code,
+              u.is_verified, u.created_at,
+              t.win_rate, t.roi, t.total_tips, t.won_tips, t.lost_tips, t.pending_tips,
+              t.avg_odds, t.streak, t.rank, t.followers_count, t.is_pro, t.subscription_price
+       FROM users u
+       LEFT JOIN tipster_profiles t ON t.user_id = u.id
+       WHERE u.role = 'tipster' AND (${numericId != null ? 'u.id = ? OR ' : ''}u.username = ?)
+       LIMIT 1`,
+      numericId != null ? [numericId, id] : [id]
+    );
+    if (!result.rows.length) return null;
+    return dbUserToShape(result.rows[0]);
+  } catch {
+    return null;
+  }
 }
 
 // Deterministic small RNG for derived charts (sparkline/monthly).
@@ -352,16 +430,25 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
   const { id } = await context.params;
 
-  // Resolve tipster from the fake-tipster catalogue (id 1000+) or @username.
+  // Resolve tipster: check fake catalogue first (id 1000+), then fall back to real DB users.
   const fake = getFakeTipsterById(id) || getFakeTipsterByUsername(id) || getFakeTipsterBySlug(id);
-  if (!fake) {
-    return NextResponse.json({ error: 'Tipster not found' }, { status: 404 });
+  let baseTipster: TipsterShape;
+  let isRealUser = false;
+  if (fake) {
+    baseTipster = fakeToShape(fake);
+  } else {
+    const realUser = await getRealTipsterFromDb(id);
+    if (!realUser) {
+      return NextResponse.json({ error: 'Tipster not found' }, { status: 404 });
+    }
+    baseTipster = realUser;
+    isRealUser = true;
   }
 
-  const baseTipster = fakeToShape(fake);
-
-  // Compute rank based on sorted position among all fake tipsters by win rate
-  if (baseTipster.rank === 0) {
+  // Compute rank based on sorted position among all fake tipsters by win rate.
+  // Real DB users may already have a rank from tipster_profiles; only compute
+  // a fallback rank if missing (rank = 0) AND the tipster is a fake entry.
+  if (baseTipster.rank === 0 && !isRealUser) {
     const allFake = getFakeTipsters()
       .slice()
       .sort((a, b) => b.winRate - a.winRate || b.roi - a.roi || b.totalTips - a.totalTips);

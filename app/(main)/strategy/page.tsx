@@ -325,6 +325,12 @@ function DayCard({
               <p className="text-sm">Today&apos;s picks are being prepared.</p>
               <p className="text-xs">Our AI publishes picks for each day&apos;s matches — check back shortly.</p>
             </div>
+          ) : day.pendingApproval ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center text-muted-foreground">
+              <ShieldCheck className="h-8 w-8 opacity-40 text-amber-500" />
+              <p className="text-sm font-medium">Picks are being reviewed</p>
+              <p className="text-xs">Our team is verifying today&apos;s AI selections before publishing. Check back shortly.</p>
+            </div>
           ) : day.picks.length > 0 ? (
             <>
               <div className="flex items-center justify-between mb-1">

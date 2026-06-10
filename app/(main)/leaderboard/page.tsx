@@ -126,7 +126,7 @@ function HotStreaksTab({ tipsters }: { tipsters: ApiTipster[] }) {
         <div className="divide-y divide-border/50">
           {hot.map((t, i) => {
             const pct = Math.round((t.streak / maxStreak) * 100);
-            const hash = Array.from(t.username).reduce((a, c) => a + c.charCodeAt(0), 0);
+            const hash = Array.from(t.username || '').reduce((a, c) => a + c.charCodeAt(0), 0);
             const change = ((hash + i * 3) % 7) - 3;
             return (
               <Link key={t.id} href={tipsterHref(t.username, t.username)} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
@@ -194,7 +194,7 @@ export default function LeaderboardPage() {
   const data: Row[] = useMemo(() => {
     const list = apiData?.tipsters || [];
     return list.slice(0, 25).map((t, i) => {
-      const hash = Array.from(t.username).reduce((a, c) => a + c.charCodeAt(0), 0);
+      const hash = Array.from(t.username || '').reduce((a, c) => a + c.charCodeAt(0), 0);
       const change = ((hash + i * 3) % 7) - 3;
       return {
         rank: i + 1,

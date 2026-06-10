@@ -150,6 +150,32 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
   const [pickResults, setPickResults] = useState<Record<number, 'win' | 'loss'>>({});
   const [pickScores, setPickScores] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState('');
+  const [approving, setApproving] = useState(false);
+  const [isApproved, setIsApproved] = useState(!!day.isApproved);
+
+  const handleApprove = async () => {
+    setApproving(true);
+    setMsg('');
+    try {
+      const res = await fetch('/api/admin/strategy/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: day.date }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setIsApproved(true);
+        setMsg('Picks approved and emails sent to subscribers!');
+        onRefresh();
+      } else {
+        setMsg(d.error || 'Approval failed');
+      }
+    } catch {
+      setMsg('Network error');
+    } finally {
+      setApproving(false);
+    }
+  };
 
   const handleGenerateAI = async () => {
     setGenerating(true);
@@ -297,6 +323,17 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
                   {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
                   Override with AI
                 </Button>
+              )}
+              {day.picks.length > 0 && !isApproved && (
+                <Button size="sm" onClick={handleApprove} disabled={approving} className="gap-1 text-xs h-7 bg-emerald-600 hover:bg-emerald-700 text-white">
+                  {approving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  Approve &amp; Send to Users
+                </Button>
+              )}
+              {isApproved && day.picks.length > 0 && (
+                <span className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold bg-emerald-500/15 text-emerald-700">
+                  <CheckCircle2 className="h-3 w-3" /> Approved &amp; Sent
+                </span>
               )}
             </div>
           )}
