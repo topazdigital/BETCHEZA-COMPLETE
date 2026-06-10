@@ -172,6 +172,11 @@ export async function GET(request: NextRequest) {
     const bFollowed = followedIds.includes(b.id) ? 0 : 1;
     if (aFollowed !== bFollowed) return aFollowed - bFollowed;
 
+    // Real tipsters always appear before fake ones
+    const aFake = a.isFake ? 1 : 0;
+    const bFake = b.isFake ? 1 : 0;
+    if (aFake !== bFake) return aFake - bFake;
+
     switch (sortBy) {
       case 'roi':       return b.roi - a.roi;
       case 'followers': return b.followers - a.followers;

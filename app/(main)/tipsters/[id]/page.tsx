@@ -480,7 +480,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
               <div className="relative flex-shrink-0">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-bold text-primary-foreground overflow-hidden">
                   {tipster.avatar ? (
-                    <img src={tipster.avatar} alt={tipster.displayName} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={tipster.avatar} alt={tipster.displayName} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${tipster.username}`; }} />
                   ) : (
                     (tipster.displayName || tipster.username || '?').charAt(0)
                   )}

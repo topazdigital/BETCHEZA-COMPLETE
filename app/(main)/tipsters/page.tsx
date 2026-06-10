@@ -215,7 +215,7 @@ export default function TipstersPage() {
                       <div className="relative">
                         {t.avatar ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={t.avatar} alt="" className="h-8 w-8 rounded-full bg-muted object-cover" />
+                          <img src={t.avatar} alt="" className="h-8 w-8 rounded-full bg-muted object-cover" onError={(e) => { (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.username}`; }} />
                         ) : (
                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                             {t.displayName.charAt(0)}
@@ -308,7 +308,7 @@ export default function TipstersPage() {
                         <div className="relative shrink-0">
                           {tipster.avatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={tipster.avatar} alt="" className="h-10 w-10 rounded-full bg-muted object-cover" />
+                            <img src={tipster.avatar} alt="" className="h-10 w-10 rounded-full bg-muted object-cover" onError={(e) => { (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${tipster.username}`; }} />
                           ) : (
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                               {tipster.displayName.charAt(0)}
