@@ -561,10 +561,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   if (includeStats) {
+    // Real tipsters with no tips should never show fabricated stats of any kind
+    const isZeroTipReal = !tipster.isFake && tipster.totalTips === 0;
     response.monthlyStats = generateMonthlyStats(tipster);
-    response.sportBreakdown = generateSportBreakdown(tipster.specialties, tipster.totalTips);
-    response.marketBreakdown = generateMarketBreakdown(tipsterId, tipster.winRate);
-    response.roiSparkline = generateRoiSparkline(tipster.id, tipster.roi);
+    response.sportBreakdown = isZeroTipReal ? [] : generateSportBreakdown(tipster.specialties, tipster.totalTips);
+    response.marketBreakdown = isZeroTipReal ? [] : generateMarketBreakdown(tipsterId, tipster.winRate);
+    response.roiSparkline = isZeroTipReal ? [] : generateRoiSparkline(tipster.id, tipster.roi);
   }
 
   return NextResponse.json(response);
