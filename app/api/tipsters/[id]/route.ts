@@ -488,9 +488,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   if (includeTips) {
     // Fetch matches ONCE and share the result for both bootstrap + matchIndex.
+    // Use a 7-second timeout so the profile API never hangs if external APIs are slow.
     let allMatchesCached: UnifiedMatch[] = [];
     try {
-      allMatchesCached = await getAllMatches();
+      const matchPromise = getAllMatches();
+      const timeoutPromise = new Promise<UnifiedMatch[]>((_, reject) =>
+        setTimeout(() => reject(new Error('getAllMatches timeout')), 7000),
+      );
+      allMatchesCached = await Promise.race([matchPromise, timeoutPromise]);
     } catch {
       // falls back to empty — tips will still show with synthetic scores
     }

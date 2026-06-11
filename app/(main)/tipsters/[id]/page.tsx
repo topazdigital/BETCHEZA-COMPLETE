@@ -369,9 +369,28 @@ export default function TipsterProfilePage({ params }: PageProps) {
   const [tipFilter, setTipFilter] = useState<TipFilter>('all')
   const [followerDelta, setFollowerDelta] = useState(0)
   
+  // Profile data — fast, never calls getAllMatches()
   const { data, error, isLoading, mutate } = useSWR(
-    `/api/tipsters/${id}`,
+    `/api/tipsters/${id}?includeTips=false&includeStats=false`,
     fetcher
+  )
+
+  // Tips — lazy-loaded only when the Tips tab is active
+  const { data: tipsData, isLoading: tipsLoading } = useSWR(
+    data?.tipster && activeTab === 'tips'
+      ? `/api/tipsters/${id}?includeTips=true&includeStats=false`
+      : null,
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+
+  // Stats/performance — lazy-loaded only when those tabs are active
+  const { data: statsData } = useSWR(
+    data?.tipster && (activeTab === 'stats' || activeTab === 'performance')
+      ? `/api/tipsters/${id}?includeTips=false&includeStats=true`
+      : null,
+    fetcher,
+    { revalidateOnFocus: false },
   )
 
   const { data: compsData, error: compsError } = useSWR<{
@@ -453,14 +472,12 @@ export default function TipsterProfilePage({ params }: PageProps) {
     )
   }
   
-  const { tipster, recentTips, monthlyStats, sportBreakdown, marketBreakdown, roiSparkline } = data as {
-    tipster: typeof data.tipster
-    recentTips?: typeof data.recentTips
-    monthlyStats?: typeof data.monthlyStats
-    sportBreakdown?: typeof data.sportBreakdown
-    marketBreakdown?: { market: string; won: number; lost: number; total: number; winRate: number }[]
-    roiSparkline?: { day: number; roi: number }[]
-  }
+  const tipster = (data as { tipster: typeof data.tipster }).tipster
+  const recentTips = (tipsData as { recentTips?: typeof data.recentTips } | undefined)?.recentTips
+  const monthlyStats = (statsData as { monthlyStats?: typeof data.monthlyStats } | undefined)?.monthlyStats
+  const sportBreakdown = (statsData as { sportBreakdown?: typeof data.sportBreakdown } | undefined)?.sportBreakdown
+  const marketBreakdown = (statsData as { marketBreakdown?: { market: string; won: number; lost: number; total: number; winRate: number }[] } | undefined)?.marketBreakdown
+  const roiSparkline = (statsData as { roiSparkline?: { day: number; roi: number }[] } | undefined)?.roiSparkline
   
   return (
     <div className="flex-1 overflow-hidden">
@@ -784,7 +801,13 @@ export default function TipsterProfilePage({ params }: PageProps) {
           
           {/* Tips Tab */}
           <TabsContent value="tips" className="space-y-3">
-            {(() => {
+            {tipsLoading && !recentTips && (
+              <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground text-xs">
+                <Spinner className="h-4 w-4" />
+                Loading tips…
+              </div>
+            )}
+            {(!tipsLoading || recentTips) && (() => {
               type TipItem = {
                 id: number;
                 settledByProb?: boolean;
@@ -926,7 +949,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
                   </CardContent>
                 </Card>
               )
-            })()}
+            })()} 
           </TabsContent>
           
           {/* Stats Tab */}
