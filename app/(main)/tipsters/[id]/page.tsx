@@ -374,7 +374,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
     fetcher
   )
 
-  const { data: compsData } = useSWR<{
+  const { data: compsData, error: compsError } = useSWR<{
     competitions: Array<{
       id: number
       slug: string
@@ -395,6 +395,7 @@ export default function TipsterProfilePage({ params }: PageProps) {
   }>(
     activeTab === "competitions" ? `/api/tipsters/${id}/competitions` : null,
     fetcher,
+    { revalidateOnFocus: false, errorRetryCount: 2 },
   )
 
   const isOwnProfile = !!(authUser && data?.tipster && authUser.id === data.tipster.id)
@@ -1230,7 +1231,12 @@ export default function TipsterProfilePage({ params }: PageProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                {!compsData ? (
+                {compsError ? (
+                  <div className="flex flex-col items-center justify-center py-8 gap-2">
+                    <Trophy className="h-8 w-8 text-muted-foreground/30" />
+                    <p className="text-xs text-muted-foreground">No competition history yet.</p>
+                  </div>
+                ) : !compsData ? (
                   <div className="flex items-center justify-center py-8 text-muted-foreground text-xs gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Loading competition history…

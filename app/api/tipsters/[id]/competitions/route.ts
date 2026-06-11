@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import {
   getCompetitionsAsync,
-  getJoinedUserIds,
   type Competition,
   type CompetitionParticipant,
 } from '@/lib/competitions-store';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,60 +40,58 @@ export async function GET(_req: Request, ctx: RouteContext) {
   }
 
   const isFake = tipsterId >= 1000;
-  const allComps = await getCompetitionsAsync();
   const results: CompHistoryEntry[] = [];
 
-  for (const comp of allComps) {
-    let participated = false;
-    let rank: number | null = null;
-    let points: number | null = null;
-    let tips: number | null = null;
-    let winRate: number | null = null;
+  try {
+    const allComps = await getCompetitionsAsync();
 
     if (isFake) {
-      const p: CompetitionParticipant | undefined = comp.participants.find(
-        (x) => x.tipsterId === tipsterId,
-      );
-      if (p) {
-        participated = true;
-        rank = p.rank;
-        points = p.points;
-        tips = p.tips;
-        winRate = p.winRate;
+      // Fake tipsters: check in-memory participant lists only
+      for (const comp of allComps) {
+        const p: CompetitionParticipant | undefined = comp.participants.find(
+          (x) => x.tipsterId === tipsterId,
+        );
+        if (!p) continue;
+        results.push({
+          id: comp.id, slug: comp.slug, name: comp.name,
+          type: comp.type, status: comp.status,
+          startDate: comp.startDate, endDate: comp.endDate,
+          rank: p.rank, points: p.points, tips: p.tips, winRate: p.winRate,
+          prizePool: comp.prizePool, currency: comp.currency,
+          prizes: comp.prizes, entryFee: comp.entryFee,
+        });
       }
     } else {
-      const joinedIds = await getJoinedUserIds(comp.id);
-      if (joinedIds.includes(tipsterId)) {
-        participated = true;
+      // Real tipsters: single query to get all competition_ids this user joined
+      let joinedCompIds: Set<number> = new Set();
+      try {
+        const entriesResult = await query<{ competition_id: number }>(
+          `SELECT competition_id FROM competition_entries WHERE user_id = ?`,
+          [tipsterId],
+        );
+        joinedCompIds = new Set(entriesResult.rows.map(r => r.competition_id));
+      } catch {
+        // DB unavailable — return empty list gracefully
+        return NextResponse.json({ competitions: [] });
+      }
+
+      for (const comp of allComps) {
+        if (!joinedCompIds.has(comp.id)) continue;
         const p = comp.participants.find((x) => x.tipsterId === tipsterId);
-        if (p) {
-          rank = p.rank;
-          points = p.points;
-          tips = p.tips;
-          winRate = p.winRate;
-        }
+        results.push({
+          id: comp.id, slug: comp.slug, name: comp.name,
+          type: comp.type, status: comp.status,
+          startDate: comp.startDate, endDate: comp.endDate,
+          rank: p?.rank ?? null, points: p?.points ?? null,
+          tips: p?.tips ?? null, winRate: p?.winRate ?? null,
+          prizePool: comp.prizePool, currency: comp.currency,
+          prizes: comp.prizes, entryFee: comp.entryFee,
+        });
       }
     }
-
-    if (!participated) continue;
-
-    results.push({
-      id: comp.id,
-      slug: comp.slug,
-      name: comp.name,
-      type: comp.type,
-      status: comp.status,
-      startDate: comp.startDate,
-      endDate: comp.endDate,
-      rank,
-      points,
-      tips,
-      winRate,
-      prizePool: comp.prizePool,
-      currency: comp.currency,
-      prizes: comp.prizes,
-      entryFee: comp.entryFee,
-    });
+  } catch {
+    // If competitions DB is down, return empty rather than hanging
+    return NextResponse.json({ competitions: [] });
   }
 
   results.sort(

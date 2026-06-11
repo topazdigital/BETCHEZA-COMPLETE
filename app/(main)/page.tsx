@@ -550,7 +550,7 @@ export default function HomePage() {
                         <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-amber-400/40 bg-amber-500 text-lg font-bold text-white shadow-sm">
                           {totwData.tipster.avatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={totwData.tipster.avatar} alt="" className="h-full w-full object-cover" />
+                            <img src={totwData.tipster.avatar} alt="" className="h-full w-full object-cover" fetchPriority="high" loading="eager" />
                           ) : (
                             (totwData.tipster.displayName || totwData.tipster.username).charAt(0).toUpperCase()
                           )}
@@ -654,7 +654,7 @@ export default function HomePage() {
                               <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-primary text-base font-bold text-primary-foreground">
                                 {(tipster as { avatar?: string | null }).avatar ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={(tipster as { avatar?: string | null }).avatar!} alt="" className="h-full w-full object-cover" />
+                                  <img src={(tipster as { avatar?: string | null }).avatar!} alt="" className="h-full w-full object-cover" fetchPriority={index === 0 ? "high" : "auto"} loading="eager" />
                                 ) : initial}
                               </div>
                               {index < 3 && (

@@ -177,6 +177,11 @@ export async function GET(request: NextRequest) {
     const bFake = b.isFake ? 1 : 0;
     if (aFake !== bFake) return aFake - bFake;
 
+    // Tipsters with zero tips always sink to the bottom within their group
+    const aNoTips = a.totalTips === 0 ? 1 : 0;
+    const bNoTips = b.totalTips === 0 ? 1 : 0;
+    if (aNoTips !== bNoTips) return aNoTips - bNoTips;
+
     switch (sortBy) {
       case 'roi':       return b.roi - a.roi;
       case 'followers': return b.followers - a.followers;

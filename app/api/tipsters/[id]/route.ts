@@ -201,6 +201,9 @@ function generateRoiSparkline(tipsterId: number, finalRoi: number, points = 14) 
 }
 
 function generateMonthlyStats(tipster: TipsterShape) {
+  // Real tipsters with no actual tips should never show fabricated monthly data
+  if (!tipster.isFake && tipster.totalTips === 0) return [];
+
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const currentMonth = new Date().getMonth();
   const r = rng(hashStr(`monthly-${tipster.id}`));

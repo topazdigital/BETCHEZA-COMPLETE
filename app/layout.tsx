@@ -885,7 +885,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={geist.variable} suppressHydrationWarning>
-      <head />
+      <head>
+        {/* DNS prefetch + preconnect for external image/asset origins used across the app */}
+        <link rel="preconnect" href="https://media.api-sports.io" />
+        <link rel="dns-prefetch" href="https://media.api-sports.io" />
+        <link rel="preconnect" href="https://crests.football-data.org" />
+        <link rel="dns-prefetch" href="https://crests.football-data.org" />
+        <link rel="preconnect" href="https://upload.wikimedia.org" />
+        <link rel="dns-prefetch" href="https://upload.wikimedia.org" />
+        {/* Hint the browser to start the Google Fonts connection early */}
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased" suppressHydrationWarning>
         <script
           type="application/ld+json"
