@@ -4471,23 +4471,31 @@ async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
 // is served from memory. Always trigger a background refresh so data is fresh
 // by the time real users arrive (even on a completely fresh server).
 (async () => {
-  await _ensureMatchCacheTable();
-  // Try DB first (production — survives PM2 restarts)
-  const dbResult = await _readDbCache();
-  if (dbResult) {
-    g_allMatchesCache.data = dbResult.data;
-    g_allMatchesCache.ts   = dbResult.ts;
-  } else {
-    // Try file cache (dev / no-DB servers — survives restarts when in .local/state/)
-    const fileResult = await _readFileCache();
-    if (fileResult) {
-      g_allMatchesCache.data = fileResult.data;
-      g_allMatchesCache.ts   = fileResult.ts;
-    }
+  // ① FAST PATH — file cache has zero network dependency, always < 50ms.
+  //    Load it first so the very first request never blocks on a DB connection.
+  const fileResult = await _readFileCache();
+  if (fileResult) {
+    g_allMatchesCache.data = fileResult.data;
+    g_allMatchesCache.ts   = fileResult.ts;
   }
-  // Always kick off a background refresh on startup so the cache is warm
-  // regardless of whether we found stored data or not.
+
+  // ② Kick off a live ESPN refresh immediately — data will be warm within
+  //    seconds regardless of whether we found any cached data above.
   _triggerBackgroundRefresh();
+
+  // ③ SLOW PATH — DB operations happen in a setImmediate so they never
+  //    block the module-load event loop tick. Only promotes the cache if
+  //    the DB snapshot is newer than what we already loaded from the file.
+  setImmediate(async () => {
+    try {
+      await _ensureMatchCacheTable();
+      const dbResult = await _readDbCache();
+      if (dbResult && dbResult.ts > (g_allMatchesCache.ts || 0)) {
+        g_allMatchesCache.data = dbResult.data;
+        g_allMatchesCache.ts   = dbResult.ts;
+      }
+    } catch { /* non-fatal — DB may be unreachable at cold start */ }
+  });
 })();
 
 function _triggerBackgroundRefresh() {

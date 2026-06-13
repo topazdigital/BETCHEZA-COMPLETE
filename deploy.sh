@@ -333,9 +333,9 @@ if [ -n "$DB_HOST_VAL" ] && [ -n "$DB_USER_VAL" ] && [ -n "$DB_NAME_VAL" ]; then
   else
     echo -e "${YELLOW}Could not clear match_cache (table may not exist yet — OK on first deploy)${NC}"
   fi
-  # Also nuke the tmp file cache on the server
-  rm -f /tmp/betcheza_matches_cache.json 2>/dev/null && \
-    echo -e "${GREEN}Removed /tmp/betcheza_matches_cache.json${NC}" || true
+  # NOTE: Do NOT delete .local/state/matches-cache.json — it contains valid data
+  # that speeds up the very first request after a PM2 restart. The DB cache clear
+  # above is sufficient to force fresh ESPN data on the next background refresh.
 else
   echo -e "${YELLOW}DB credentials not found in .env.local — skipping cache clear${NC}"
 fi
@@ -383,6 +383,21 @@ if [ "$SUCCESS" = false ]; then
   pm2 logs betcheza --lines 30 --nostream 2>/dev/null || true
   exit 1
 fi
+
+# ── Step 6b: Pre-warm caches ──────────────────────────────────────────────────
+# Hit /api/warmup so the match cache is populated before real users arrive.
+# Without this, the first visitor after a PM2 restart would wait 8-10 s for
+# ESPN data. Warmup runs in the background so deploy.sh doesn't block.
+WARMUP_SECRET=$(grep -E '^CRON_SECRET=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+WARMUP_SECRET="${WARMUP_SECRET:-betcheza-cron-2024}"
+echo -e "${YELLOW}Pre-warming caches (background)...${NC}"
+curl -s \
+  -H "Authorization: Bearer ${WARMUP_SECRET}" \
+  --max-time 60 \
+  "http://127.0.0.1:${APP_PORT}/api/warmup" \
+  > /tmp/betcheza_warmup.json 2>/dev/null &
+WARMUP_PID=$!
+echo -e "${GREEN}  Warmup started in background (PID $WARMUP_PID)${NC}"
 
 # ── End-to-end site check via Apache ──────────────────────────────────────────
 echo ""

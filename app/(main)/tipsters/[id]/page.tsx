@@ -356,7 +356,7 @@ function SubscribeButton({ tipsterId, tipsterName, price, currency }: {
 }
 
 const fetcher = async (url: string) => {
-  const res = await fetch(url)
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
   if (!res.ok) throw new Error('Failed to fetch')
   return res.json()
 }
