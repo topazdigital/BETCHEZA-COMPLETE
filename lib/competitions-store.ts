@@ -201,6 +201,11 @@ export async function getCompetitionsAsync(): Promise<Competition[]> {
     return g.__competitionsCache;
   }
 
+  // No DB pool — preserve any in-memory seeded data rather than overwriting with []
+  if (!getPool()) {
+    return g.__competitionsCache ?? [];
+  }
+
   await ensureCompetitionColumns();
 
   try {
@@ -300,7 +305,7 @@ function buildWcCompetition(): Competition {
     name: 'FIFA World Cup 2026 — Tipster Challenge',
     description: 'The ultimate tipster competition for the biggest football event on the planet. Predict every World Cup match from group stage to the final and top the leaderboard for a massive prize pool. Open to all Betcheza members — KES 200 entry fee, tips locked at kickoff.',
     type: 'special',
-    status: 'upcoming',
+    status: 'active',
     startDate: '2026-06-11',
     endDate: '2026-07-19',
     prizePool: 50000,
@@ -355,12 +360,15 @@ export async function seedWorldCupCompetition(): Promise<void> {
     const existing = await getCompetitionsAsync();
     const alreadyExists = existing.find(c => c.slug === WC_COMP_SLUG);
 
-    // If it already exists in DB, sync the entry_fee to the current code value
+    // If it already exists in DB, sync entry_fee and status to current code values
     if (alreadyExists && getPool()) {
-      if (alreadyExists.entryFee !== 200) {
-        await execute(`UPDATE competitions SET entry_fee = 200 WHERE slug = ?`, [WC_COMP_SLUG]);
+      const updates: string[] = [];
+      if (alreadyExists.entryFee !== 200) updates.push('entry_fee = 200');
+      if (alreadyExists.status !== 'active') updates.push("status = 'active'");
+      if (updates.length > 0) {
+        await execute(`UPDATE competitions SET ${updates.join(', ')} WHERE slug = ?`, [WC_COMP_SLUG]);
         invalidateCache();
-        console.log('[competitions] World Cup 2026 entry_fee synced to 200 KES in DB');
+        console.log(`[competitions] World Cup 2026 synced in DB: ${updates.join(', ')}`);
       }
       return;
     }
@@ -373,7 +381,7 @@ export async function seedWorldCupCompetition(): Promise<void> {
         name: 'FIFA World Cup 2026 — Tipster Challenge',
         description: buildWcCompetition().description,
         type: 'special',
-        status: 'upcoming',
+        status: 'active',
         startDate: '2026-06-11',
         endDate: '2026-07-19',
         prizePool: 50000,

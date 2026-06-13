@@ -69,7 +69,7 @@ export async function GET() {
     success: true,
     competitions: enriched,
     stats: {
-      active: enriched.filter(c => c.status === 'active').length,
+      active: enriched.filter(c => c.status === 'active' || c.status === 'upcoming').length,
       upcoming: enriched.filter(c => c.status === 'upcoming').length,
       totalParticipants: enriched.reduce((s, c) => s + c.currentParticipants, 0),
       totalPrizePool: enriched.reduce((s, c) => s + c.prizePool, 0),

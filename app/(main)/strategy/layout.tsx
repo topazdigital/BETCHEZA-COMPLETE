@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: '3 Daily Sure Odds Strategy | Free Sure Odds Today | Daily Winning Tips | Betcheza',
-  description: 'Get 3 sure odds daily with our proven 7-day compounding football betting strategy. Free sure odds today, daily football predictions, and AI-powered winning tips. Grow KES 1,000 to KES 108,000 in one week. Best free betting tips Kenya, SportPesa & Betika jackpot picks, and sure 3 odds accumulator — updated every day.',
+  title: '3 Odds Daily Strategy — Free Sure Betting Tips Kenya | Betcheza',
+  description: '3 odds daily: get 3 free sure-bet football tips every day using our proven compounding strategy. AI picks for SportPesa, Betika, Odibets and all Kenyan bookmakers — updated every morning. Grow your bankroll step by step with Betcheza Kenya.',
   keywords: [
-    '3 daily sure odds', '3 sure odds today', '3 odds today free', 'sure 3 odds daily',
-    'sure 3 odds today free', 'free sure odds today', 'sure odds today', 'daily sure odds',
-    '3 daily odds', '3 odds daily', 'sure odds', '3 odds strategy', 'daily 3 odds strategy',
+    '3 odds daily', '3 odds daily Kenya', '3 odds daily strategy', 'sure 3 odds daily',
+    '3 daily odds strategy', '3 daily odds', '3 daily sure odds', '3 sure odds today',
+    '3 odds today free', 'sure 3 odds today free', 'free sure odds today', 'sure odds today', 'daily sure odds',
+    'sure odds', '3 odds strategy', 'daily 3 odds strategy',
     'compounding betting strategy', 'football betting strategy', 'bankroll management betting',
     'grow KES 1000 betting', 'betting bankroll growth Kenya', 'accumulator betting strategy',
     '7 day betting challenge', 'daily betting tips', 'daily football predictions',

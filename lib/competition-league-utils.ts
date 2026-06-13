@@ -237,7 +237,12 @@ export interface CompetitorScore {
 }
 
 function calculatePoints(won: number, lost: number, totalOdds: number, wonCount: number): number {
-  const winBonus = wonCount > 0 ? Math.floor(totalOdds / wonCount) : 0;
+  // Odds bonus = (avg_win_odds - 1) × 10, rounded to nearest integer.
+  // This means a 1.28 win earns +3 bonus, a 1.39 win earns +4 bonus,
+  // a 2.00 win earns +10 bonus, a 3.00 win earns +20 bonus, etc.
+  // Previously Math.floor(avg_odds) was used which made 1.28 and 1.39 identical (both = 1).
+  const avgWinOdds = wonCount > 0 ? totalOdds / wonCount : 0;
+  const winBonus = wonCount > 0 ? Math.round((avgWinOdds - 1) * 10) : 0;
   return won * 10 + won * winBonus - lost * 5;
 }
 
@@ -377,7 +382,7 @@ export async function computeLeaderboard(params: {
       GROUP BY at.tipster_id, up.display_name, up.avatar_url
       HAVING total_tips >= ?
       ORDER BY
-        (SUM(at.status = 'won') * 10 + FLOOR(COALESCE(SUM(CASE WHEN at.status = 'won' THEN at.odds ELSE 0 END) / NULLIF(SUM(at.status = 'won'), 0), 0)) - SUM(at.status = 'lost') * 5) DESC,
+        (SUM(at.status = 'won') * 10 + SUM(at.status = 'won') * ROUND((COALESCE(SUM(CASE WHEN at.status = 'won' THEN at.odds ELSE 0 END) / NULLIF(SUM(at.status = 'won'), 0), 1) - 1) * 10) - SUM(at.status = 'lost') * 5) DESC,
         ROUND((SUM(at.status = 'won') / NULLIF(SUM(at.status = 'won') + SUM(at.status = 'lost'), 0)) * 100, 1) DESC
       LIMIT ?
     `, [...sqlParams, minTips, limit]);
