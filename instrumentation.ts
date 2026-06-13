@@ -359,7 +359,7 @@ export async function register() {
   // on restart, without waiting up to 30 minutes for the cron cycle.
   setTimeout(async () => {
     try {
-      const base = process.env.INTERNAL_BASE_URL || 'http://localhost:5000';
+      const base = process.env.INTERNAL_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
       await fetch(`${base}/api/cron/settle-tips`, { signal: AbortSignal.timeout(30_000) });
       console.log('[instrumentation] startup settle-tips triggered');
     } catch (e) {

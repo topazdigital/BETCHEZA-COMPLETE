@@ -54,7 +54,6 @@ const nextConfig = {
       'framer-motion',
     ],
   },
-  turbopack: {},
   allowedDevOrigins: [
     '*.replit.dev',
     '*.replit.app',
