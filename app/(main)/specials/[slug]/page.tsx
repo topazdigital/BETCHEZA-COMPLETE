@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 
 interface Params { slug: string }
 
+export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
 
 export async function generateStaticParams() {

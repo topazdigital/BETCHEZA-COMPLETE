@@ -6,7 +6,8 @@ import { matchToSlug } from '@/lib/utils/match-url';
 import { getAllOutrightSlugs } from '@/lib/api/outright-discovery';
 import { SPECIALS } from '@/lib/api/specials';
 
-export const revalidate = 30;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function siteUrl(): string {
   return (
