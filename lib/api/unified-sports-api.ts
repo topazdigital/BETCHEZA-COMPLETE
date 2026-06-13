@@ -3925,6 +3925,22 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
     return true;
   });
 
+  // Never overwrite a known-good cache entry with an empty result.
+  // If ESPN returns zero events (rate-limit, temp outage, date-range edge-case)
+  // we return the stale cache instead of wiping out e.g. World Cup matches.
+  if (filtered.length === 0) {
+    const staleEntry = cache.get(cacheKey);
+    if (staleEntry) {
+      console.log(`[espn] ${cacheKey}: ESPN returned 0 events — using stale cache (${(staleEntry.data as UnifiedMatch[]).length} matches)`);
+      return staleEntry.data as UnifiedMatch[];
+    }
+    return [];
+  }
+
+  if (config.league === 'fifa.world') {
+    console.log(`[espn] fifa.world: fetched ${filtered.length} World Cup matches`);
+  }
+
   setCache(cacheKey, filtered);
   return filtered;
 }
@@ -4523,11 +4539,11 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
   const dbResult = await _readDbCache();
   if (dbResult) {
     g_allMatchesCache.data = dbResult.data;
-    g_allMatchesCache.ts   = dbResult.ts;
-    // If stale trigger background refresh, but return DB data instantly
-    if (Date.now() - dbResult.ts > ALLMATCHES_CACHE_TTL) {
-      _triggerBackgroundRefresh();
-    }
+    // IMPORTANT: stamp with NOW so Layer 1/2 serve the next 90s from memory.
+    // Using dbResult.ts (the original write time) kept the age perpetually
+    // > ALLMATCHES_STALE_TTL, causing every request to re-query the DB.
+    g_allMatchesCache.ts   = Date.now();
+    _triggerBackgroundRefresh();
     return dbResult.data;
   }
 
@@ -4535,7 +4551,9 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
   const fileResult = await _readFileCache();
   if (fileResult) {
     g_allMatchesCache.data = fileResult.data;
-    g_allMatchesCache.ts   = fileResult.ts;
+    // Same fix as Layer 3: stamp with NOW so the next 90 s of requests are
+    // served from in-memory (Layer 1) instead of re-reading the file.
+    g_allMatchesCache.ts   = Date.now();
     _triggerBackgroundRefresh();
     return fileResult.data;
   }

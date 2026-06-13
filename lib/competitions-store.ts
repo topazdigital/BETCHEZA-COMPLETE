@@ -316,8 +316,8 @@ function buildWcCompetition(): Competition {
       { place: '🥇 1st',      amount: 20000 },
       { place: '🥈 2nd',      amount: 10000 },
       { place: '🥉 3rd',      amount: 5000  },
-      { place: '4th–10th',    amount: 1500  },
-      { place: '11th–50th',   amount: 250   },
+      { place: '4th–10th',    amount: 1000  },
+      { place: '11th–50th',   amount: 200   },
     ],
     participants: [],
     rules: [
@@ -360,13 +360,27 @@ export async function seedWorldCupCompetition(): Promise<void> {
     const existing = await getCompetitionsAsync();
     const alreadyExists = existing.find(c => c.slug === WC_COMP_SLUG);
 
-    // If it already exists in DB, sync entry_fee and status to current code values
+    // If it already exists in DB, sync entry_fee, status, and prize_breakdown
     if (alreadyExists && getPool()) {
       const updates: string[] = [];
-      if (alreadyExists.entryFee !== 200) updates.push('entry_fee = 200');
-      if (alreadyExists.status !== 'active') updates.push("status = 'active'");
+      const params: unknown[] = [];
+      if (alreadyExists.entryFee !== 200) { updates.push('entry_fee = ?'); params.push(200); }
+      if (alreadyExists.status !== 'active') { updates.push("status = 'active'"); }
+      // Sync prizes — compare total to detect stale 55,500 structure
+      const currentTotal = (alreadyExists.prizes || []).reduce((s, p) => {
+        // Multiply by position count for range tiers
+        const rangeMatch = p.place.match(/(\d+)[–-](\d+)/);
+        if (rangeMatch) return s + p.amount * (parseInt(rangeMatch[2]) - parseInt(rangeMatch[1]) + 1);
+        return s + p.amount;
+      }, 0);
+      if (currentTotal !== 50000) {
+        updates.push('prize_breakdown = ?');
+        params.push(JSON.stringify(buildWcCompetition().prizes));
+        updates.push('prize_pool = 50000');
+      }
       if (updates.length > 0) {
-        await execute(`UPDATE competitions SET ${updates.join(', ')} WHERE slug = ?`, [WC_COMP_SLUG]);
+        params.push(WC_COMP_SLUG);
+        await execute(`UPDATE competitions SET ${updates.join(', ')} WHERE slug = ?`, params);
         invalidateCache();
         console.log(`[competitions] World Cup 2026 synced in DB: ${updates.join(', ')}`);
       }
@@ -643,11 +657,15 @@ export async function hasUserJoined(competitionId: number, userId: number): Prom
 }
 
 export async function getJoinedUserIds(competitionId: number): Promise<number[]> {
-  const result = await query<{ user_id: number }>(
-    `SELECT user_id FROM competition_entries WHERE competition_id = ?`,
-    [competitionId]
-  );
-  return result.rows.map(r => r.user_id);
+  try {
+    const result = await query<{ user_id: number }>(
+      `SELECT user_id FROM competition_entries WHERE competition_id = ?`,
+      [competitionId]
+    );
+    return result.rows.map(r => r.user_id);
+  } catch {
+    return [];
+  }
 }
 
 export async function kickUserFromCompetition(competitionId: number, userId: number): Promise<boolean> {
