@@ -634,7 +634,7 @@ function MatchesContent() {
           </div>
 
           {/* Match list */}
-          {isLoading ? (
+          {isLoading && allMatches.length === 0 ? (
             <div className="flex h-64 items-center justify-center"><Spinner className="h-8 w-8" /></div>
           ) : filteredMatches.length > 0 ? (
             <div className="space-y-3">

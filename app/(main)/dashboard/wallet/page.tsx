@@ -17,7 +17,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
 
-type DepositMethod = 'mpesa' | 'card' | 'bank' | 'crypto';
+type DepositMethod = 'mpesa' | 'mpesa_till' | 'card' | 'bank' | 'crypto';
 type WithdrawMethod = 'mpesa' | 'bank' | 'paypal' | 'crypto';
 
 interface Txn {
@@ -66,11 +66,14 @@ const TXN_ICON: Record<Txn['type'], { icon: typeof ArrowDownLeft; color: string;
   adjustment: { icon: Wallet, color: 'text-muted-foreground', label: 'Adjustment' },
 };
 
+const MPESA_TILL_NUMBER = '9867233';
+
 const DEPOSIT_METHODS: Array<{ id: DepositMethod; label: string; icon: typeof Smartphone; help: string }> = [
-  { id: 'mpesa', label: 'M-Pesa', icon: Smartphone, help: 'Pay via Safaricom STK push' },
-  { id: 'card',  label: 'Card',   icon: CreditCard, help: 'Visa / Mastercard / Verve' },
-  { id: 'bank',  label: 'Bank',   icon: Building2,  help: 'Bank transfer / SWIFT / SEPA' },
-  { id: 'crypto', label: 'Crypto', icon: Bitcoin,   help: 'USDT / BTC / ETH' },
+  { id: 'mpesa',      label: 'M-Pesa STK', icon: Smartphone, help: 'Instant prompt to phone' },
+  { id: 'mpesa_till', label: 'M-Pesa Till', icon: Smartphone, help: `Pay to Till ${MPESA_TILL_NUMBER}` },
+  { id: 'card',       label: 'Card',        icon: CreditCard, help: 'Visa / Mastercard / Verve' },
+  { id: 'bank',       label: 'Bank',        icon: Building2,  help: 'Bank transfer / SWIFT / SEPA' },
+  { id: 'crypto',     label: 'Crypto',      icon: Bitcoin,    help: 'USDT / BTC / ETH' },
 ];
 
 const WITHDRAW_METHODS: Array<{ id: WithdrawMethod; label: string; icon: typeof Smartphone; help: string }> = [
@@ -299,9 +302,10 @@ export default function WalletPage() {
 }
 
 function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
-  const [method, setMethod] = useState<DepositMethod>('mpesa');
+  const [method, setMethod] = useState<DepositMethod>('mpesa_till');
   const [amount, setAmount] = useState<string>('500');
   const [phone, setPhone] = useState('');
+  const [tillRef, setTillRef] = useState('');
   const [card, setCard] = useState({ number: '', exp: '', cvc: '' });
   const [bank, setBank] = useState('');
   const [crypto, setCrypto] = useState('');
@@ -337,8 +341,10 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
         result.push(DEPOSIT_METHODS.find(m => m.id === id)!);
       }
     }
-    // Always show fallback tile set if mapping produced nothing
-    return result.length > 0 ? result : DEPOSIT_METHODS;
+    const base = result.length > 0 ? result : DEPOSIT_METHODS;
+    // Always include mpesa_till (manual Till Number payment) if not already present
+    const mpesaTillEntry = DEPOSIT_METHODS.find(m => m.id === 'mpesa_till')!;
+    return base.some(m => m.id === 'mpesa_till') ? base : [mpesaTillEntry, ...base];
   })();
 
   // Poll PayHero status while an STK push is pending
@@ -389,6 +395,10 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
       setStatus({ kind: 'err', msg: 'Enter a valid M-Pesa phone (e.g. 0712345678).' });
       return;
     }
+    if (method === 'mpesa_till' && !tillRef.trim()) {
+      setStatus({ kind: 'err', msg: 'Enter your M-Pesa transaction reference (e.g. SJ12A3B4CD).' });
+      return;
+    }
     if (method === 'card') {
       if (card.number.replace(/\s/g, '').length < 13) { setStatus({ kind: 'err', msg: 'Enter a valid card number.' }); return; }
       if (!/^\d{2}\/\d{2}$/.test(card.exp)) { setStatus({ kind: 'err', msg: 'Expiry must be MM/YY.' }); return; }
@@ -405,15 +415,19 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           method,
           phone: method === 'mpesa' ? phone : undefined,
           cardLast4: method === 'card' ? card.number.replace(/\s/g, '').slice(-4) : undefined,
-          reference: method === 'bank' ? bank : method === 'crypto' ? crypto : undefined,
+          reference: method === 'bank' ? bank : method === 'crypto' ? crypto : method === 'mpesa_till' ? tillRef.trim() : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         setStatus({ kind: 'err', msg: data.error || 'Deposit failed.' });
       } else if (data.pending) {
-        setPendingRef(data.reference);
-        setStatus({ kind: 'pending', msg: `M-Pesa prompt sent to ${phone}. Enter your PIN on your phone to complete.` });
+        if (method === 'mpesa_till') {
+          setStatus({ kind: 'pending', msg: data.message || 'Payment reference received. Your wallet will be credited after admin confirmation (usually within 15 minutes).' });
+        } else {
+          setPendingRef(data.reference);
+          setStatus({ kind: 'pending', msg: `M-Pesa prompt sent to ${phone}. Enter your PIN on your phone to complete.` });
+        }
       } else {
         setStatus({ kind: 'ok', msg: `Deposited ${amt.toLocaleString()} KES — balance updated.` });
         await onDone();
@@ -433,7 +447,7 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
       </CardHeader>
       <CardContent className="space-y-4 px-4 pb-4">
         {/* Method picker — derived from admin-active gateways or default list */}
-        <div className={`grid grid-cols-2 gap-2 ${visibleMethods.length > 2 ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
+        <div className={`grid gap-2 ${visibleMethods.length <= 2 ? 'grid-cols-2' : visibleMethods.length <= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3 sm:grid-cols-5'}`}>
           {visibleMethods.map((m) => {
             const Icon = m.icon;
             const active = method === m.id;
@@ -475,6 +489,31 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
         </div>
 
         {/* Method-specific fields */}
+        {method === 'mpesa_till' && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-4 space-y-2">
+              <p className="text-xs font-bold text-green-700 dark:text-green-400 uppercase tracking-wide">How to pay via M-Pesa Till</p>
+              <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-foreground/80">
+                <li>Open <strong>M-Pesa</strong> on your phone</li>
+                <li>Select <strong>Lipa na M-Pesa</strong> → <strong>Buy Goods and Services</strong></li>
+                <li>Enter Till Number: <span className="font-mono font-bold text-green-700 dark:text-green-400 text-sm">{MPESA_TILL_NUMBER}</span></li>
+                <li>Enter the amount: <strong>KES {amount || '0'}</strong></li>
+                <li>Enter your M-Pesa PIN and confirm</li>
+                <li>Copy the <strong>M-Pesa confirmation message reference</strong> (e.g. SJ12A3B4CD) and paste it below</li>
+              </ol>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-wide">M-Pesa Transaction Reference</Label>
+              <Input
+                value={tillRef}
+                onChange={(e) => setTillRef(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                placeholder="e.g. SJ12A3B4CD"
+                className="h-9 font-mono uppercase"
+              />
+              <p className="text-[10px] text-muted-foreground">Found in the SMS confirmation from M-Pesa after payment.</p>
+            </div>
+          </div>
+        )}
         {method === 'mpesa' && (
           <div className="space-y-1">
             <Label className="text-[10px] uppercase tracking-wide">M-Pesa phone</Label>

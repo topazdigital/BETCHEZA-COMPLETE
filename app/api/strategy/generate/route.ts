@@ -70,10 +70,50 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const targetDay: number = body.day || 1;
   const weekId = getWeekId(new Date());
-  const stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
+  let stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
 
+  // If no stored week, build one from the week plan so generation always works
   if (!stored) {
-    return NextResponse.json({ error: 'No active week found. Load predictions page first.' }, { status: 404 });
+    const WEEK_PLAN = [
+      { stake: 1000,  save: 0,      targetWin: 3000  },
+      { stake: 1500,  save: 1500,   targetWin: 4500  },
+      { stake: 2500,  save: 2000,   targetWin: 7500  },
+      { stake: 5000,  save: 2500,   targetWin: 15000 },
+      { stake: 10000, save: 5000,   targetWin: 30000 },
+      { stake: 15000, save: 15000,  targetWin: 45000 },
+      { stake: 20000, save: 25000,  targetWin: 60000 },
+    ];
+    const weekStart = new Date(weekId);
+    const weekEnd = new Date(weekId);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const days = WEEK_PLAN.map((plan, i) => {
+      const dayDate = new Date(weekStart);
+      dayDate.setDate(dayDate.getDate() + i);
+      const today = new Date();
+      const status = dayDate.toDateString() === today.toDateString() ? 'active' as const
+        : dayDate < today ? 'completed' as const : 'upcoming' as const;
+      return {
+        day: i + 1,
+        date: dayDate.toISOString().slice(0, 10),
+        stake: plan.stake,
+        save: plan.save,
+        targetWin: plan.targetWin,
+        picks: [],
+        combinedOdds: 0,
+        status,
+      };
+    });
+    stored = {
+      weekId,
+      weekStart: weekStart.toISOString().slice(0, 10),
+      weekEnd: weekEnd.toISOString().slice(0, 10),
+      days,
+      generatedAt: new Date().toISOString(),
+      totalSavings: 0,
+      totalWinnings: 0,
+      weeklyProfit: 0,
+    };
+    fileStoreSet(`strategy-week-${weekId}`, stored);
   }
 
   const dayIdx = targetDay - 1;

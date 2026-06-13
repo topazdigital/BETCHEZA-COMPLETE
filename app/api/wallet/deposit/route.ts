@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 interface Body {
   amount: number;
   currency?: string;
-  method: 'mpesa' | 'card' | 'bank' | 'crypto';
+  method: 'mpesa' | 'mpesa_till' | 'card' | 'bank' | 'crypto';
   phone?: string;
   cardLast4?: string;
   reference?: string;
@@ -78,6 +78,33 @@ export async function POST(req: NextRequest) {
       { success: false, error: 'M-Pesa payments are temporarily unavailable. Please try again later or use another payment method.' },
       { status: 503 },
     );
+  }
+
+  // ── M-Pesa Till Number manual payment ──────────────────────────────────────
+  if (body.method === 'mpesa_till') {
+    if (!body.reference || body.reference.trim().length < 5) {
+      return NextResponse.json(
+        { success: false, error: 'Provide your M-Pesa transaction reference from the confirmation SMS.' },
+        { status: 400 },
+      );
+    }
+    // Store pending — admin must confirm via admin panel before wallet is credited
+    const ref = body.reference.trim().toUpperCase();
+    storePending(`TILL-${ref}`, {
+      userId: user.userId,
+      amount: body.amount,
+      currency: body.currency || 'KES',
+      phone: `TILL-${ref}`,
+      type: 'deposit',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    });
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      reference: `TILL-${ref}`,
+      message: 'Payment reference received. Your wallet will be credited after admin confirmation (usually within 15 minutes).',
+    });
   }
 
   // ── Other methods (card, bank, crypto) ──
