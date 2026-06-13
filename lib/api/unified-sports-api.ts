@@ -4397,7 +4397,10 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
 
 const ALLMATCHES_CACHE_TTL  = 30 * 1000;        // 30 sec — serve from memory (live accuracy)
 const ALLMATCHES_STALE_TTL  = 5 * 60 * 1000;   // 5 min  — stale-while-revalidate
-const ALLMATCHES_PERSIST_FILE = '/tmp/betcheza_matches_cache.json';
+// Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
+// .local/state/ is gitignored — the file is written after first fetch and
+// survives all subsequent restarts so cold-start delays never recur.
+const ALLMATCHES_PERSIST_FILE = `${process.cwd()}/.local/state/matches-cache.json`;
 
 const g_allMatchesCache: {
   data: UnifiedMatch[] | null;
@@ -4413,9 +4416,11 @@ async function _ensureMatchCacheTable(): Promise<void> {
       `CREATE TABLE IF NOT EXISTS match_cache (
          cache_key  VARCHAR(100) PRIMARY KEY,
          cached_at  BIGINT       NOT NULL,
-         payload    TEXT         NOT NULL
+         payload    MEDIUMTEXT   NOT NULL
        )`
     );
+    // Migrate existing TEXT column to MEDIUMTEXT (6 MB payload doesn't fit in TEXT)
+    await query(`ALTER TABLE match_cache MODIFY COLUMN payload MEDIUMTEXT NOT NULL`).catch(() => { /* already MEDIUMTEXT or no table yet */ });
   } catch { /* DB unavailable — graceful fallback */ }
 }
 
@@ -4465,21 +4470,26 @@ async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
   } catch { /* non-fatal */ }
 }
 
-// On startup: ensure the table exists, then try to warm in-memory cache from DB
-// so the first request is already served from memory.
+// On startup: load whatever cache exists (even stale) so the very first request
+// is served from memory. Staleness doesn't matter here — Layer 2 of getAllMatches()
+// will trigger a background refresh if needed. Users always see instant data.
 (async () => {
   await _ensureMatchCacheTable();
-  // Try DB first, then file
+  // Try DB first (production — survives PM2 restarts)
   const dbResult = await _readDbCache();
-  if (dbResult && Date.now() - dbResult.ts < ALLMATCHES_STALE_TTL) {
+  if (dbResult) {
     g_allMatchesCache.data = dbResult.data;
     g_allMatchesCache.ts   = dbResult.ts;
+    // Trigger background refresh so in-memory data becomes fresh quickly
+    _triggerBackgroundRefresh();
     return;
   }
+  // Try file cache (dev / no-DB servers — survives restarts when in .local/state/)
   const fileResult = await _readFileCache();
-  if (fileResult && Date.now() - fileResult.ts < ALLMATCHES_STALE_TTL) {
+  if (fileResult) {
     g_allMatchesCache.data = fileResult.data;
     g_allMatchesCache.ts   = fileResult.ts;
+    _triggerBackgroundRefresh();
   }
 })();
 
