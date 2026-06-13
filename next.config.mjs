@@ -65,7 +65,9 @@ const nextConfig = {
     '*.spock.replit.dev',
     '*.sisko.replit.dev',
     '*.worf.replit.dev',
-    '*.worf.replit.dev',
+    // Production custom domain — allow dev server to serve to this host
+    'betcheza.co.ke',
+    'www.betcheza.co.ke',
   ],
   async redirects() {
     return [
