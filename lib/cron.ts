@@ -10,6 +10,7 @@ const TICK_MS = 5 * 60_000; // 5 min base tick
 const JACKPOT_SYNC_EVERY_N_TICKS = 12;           // 12 × 5min = 60min
 const COMPETITION_SETTLE_EVERY_N_TICKS = 12;      // every 60min
 const COMPETITION_RULE_CHECK_EVERY_N_TICKS = 12;  // every 60min
+const CRON_FETCH_TIMEOUT_MS = 25_000;             // 25s max per cron HTTP call
 
 interface CronState {
   started: boolean;
@@ -23,9 +24,10 @@ g.__betchezaCron = g.__betchezaCron || { started: false, timer: null, tickCount:
 const state = g.__betchezaCron;
 
 function getBaseUrl(): string {
+  // In production (PM2), PORT is overridden to 3001 — INTERNAL_BASE_URL must match.
+  // Prefer the explicit env var, then fall back to the actual running port.
   return (
     process.env.INTERNAL_BASE_URL ||
-    process.env.NEXT_PUBLIC_BASE_URL ||
     (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null) ||
     `http://localhost:${process.env.PORT || 5000}`
   );
@@ -35,6 +37,7 @@ async function runMatchReminders(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/match-reminders`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) console.warn('[cron] match-reminders failed:', r.status);
@@ -47,6 +50,7 @@ async function runStrategyReminders(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/strategy-reminders`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -66,6 +70,7 @@ async function runJackpotSync(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/jackpot-sync`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -83,6 +88,7 @@ async function runLiveScores(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/live-scores`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) console.warn('[cron] live-scores failed:', r.status);
@@ -97,6 +103,7 @@ async function runDailyStrategy(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/daily-strategy`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -117,6 +124,7 @@ async function runTipOfTheDay(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/tip-of-the-day`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -152,6 +160,7 @@ async function runSettleTips(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/settle-tips`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -171,6 +180,7 @@ async function runChallengeStatusSync(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/challenge-status-sync`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -190,6 +200,7 @@ async function runFakeActivity(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/fake-activity`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) console.warn('[cron] fake-activity failed:', r.status);
@@ -202,6 +213,7 @@ async function runFakeVotes(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/fake-votes?secret=${process.env.CRON_SECRET || 'betcheza-cron-2024'}`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
     });
     if (!r.ok) console.warn('[cron] fake-votes failed:', r.status);
   } catch (e) {
@@ -213,6 +225,7 @@ async function runCompetitionRuleCheck(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/competition-rule-check`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -232,6 +245,7 @@ async function runCompetitionSettle(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/competition-settle`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {
@@ -255,6 +269,7 @@ async function runWeeklyTipsterReport(): Promise<void> {
   try {
     const r = await fetch(`${getBaseUrl()}/api/cron/weekly-tipster-report`, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(CRON_FETCH_TIMEOUT_MS),
       headers: { authorization: `Bearer ${process.env.CRON_SECRET || 'betcheza-cron-2024'}` },
     });
     if (!r.ok) {

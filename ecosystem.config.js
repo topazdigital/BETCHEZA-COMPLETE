@@ -7,10 +7,11 @@ module.exports = {
       cwd: '/home/admin/apps/betcheza',
 
       // PORT 3001 — avoids conflict with other apps on the server.
-      // This overrides whatever PORT is in .env.local.
+      // INTERNAL_BASE_URL must match so cron self-calls reach the right port.
       env: {
         PORT: '3001',
         NODE_ENV: 'production',
+        INTERNAL_BASE_URL: 'http://localhost:3001',
       },
       env_file: '.env.local',
 
@@ -21,8 +22,8 @@ module.exports = {
       min_uptime: '10s',
       restart_delay: 3000,
 
-      // Memory guard — restart if RSS exceeds 800 MB
-      max_memory_restart: '800M',
+      // Memory guard — restart if RSS exceeds 1 GB
+      max_memory_restart: '1024M',
 
       // Log config
       out_file: '/root/.pm2/logs/betcheza-out.log',
@@ -31,7 +32,7 @@ module.exports = {
       merge_logs: true,
 
       // Node.js tuning for Next.js production
-      node_args: '--max-old-space-size=512',
+      node_args: '--max-old-space-size=768',
 
       // Graceful shutdown — give Next.js time to drain connections
       kill_timeout: 10000,

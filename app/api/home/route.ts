@@ -15,8 +15,8 @@ import type { UnifiedMatch } from '@/lib/api/unified-sports-api';
 
 export const runtime = 'nodejs';
 
-// ─── In-process stale-while-revalidate cache (30 s TTL) ───────────────────────
-const HOME_CACHE_TTL = 60_000;
+// ─── In-process stale-while-revalidate cache (120 s TTL) ──────────────────────
+const HOME_CACHE_TTL = 120_000;
 let _homeCache: { data: unknown; ts: number } | null = null;
 let _homeRefreshing = false;
 
@@ -85,9 +85,11 @@ async function getTopDbTipsters(limit = 4) {
 }
 
 async function buildHomePayload(): Promise<unknown> {
-  const [allMatches, featuredConfig] = await Promise.all([
+  // Run all independent data fetches in parallel
+  const [allMatches, featuredConfig, topTipsters] = await Promise.all([
     getAllMatches().catch(() => [] as UnifiedMatch[]),
     getFeaturedConfig().catch(() => null),
+    getTopDbTipsters(4),
   ]);
 
   const LIVE_STATUSES_SET = new Set(['live', 'halftime', 'extra_time', 'penalties']);
@@ -110,52 +112,51 @@ async function buildHomePayload(): Promise<unknown> {
     timestamp: new Date().toISOString(),
   };
 
-  // Use real DB tipsters
-  const topTipsters = await getTopDbTipsters(4);
-
-  // Tipster of the week — use real performance data
-  let tipsterOfWeek: Record<string, unknown> | null = null;
+  // Tipster of the week — run in parallel with featured matches build
   const best = getTopTipsterThisWeek();
-  if (best) {
-    // Try to get DB user first, fall back to fake tipster profile for display
-    let tipsterInfo: { username: string; displayName: string; avatar: string | null; bio: string | null; isPro: boolean; verified: boolean; countryCode: string | null } | null = null;
-    try {
-      const dbRows = await query<{ username: string; display_name: string | null; avatar_url: string | null; bio: string | null; is_verified: number | null; country_code: string | null }>(
-        'SELECT username, display_name, avatar_url, bio, is_verified, country_code FROM users WHERE id = ? LIMIT 1',
-        [best.tipsterId]
-      );
-      const dbRow = dbRows.rows[0];
-      if (dbRow) {
-        tipsterInfo = {
-          username: dbRow.username,
-          displayName: dbRow.display_name || dbRow.username,
-          avatar: dbRow.avatar_url,
-          bio: dbRow.bio,
-          isPro: false,
-          verified: !!dbRow.is_verified,
-          countryCode: dbRow.country_code,
-        };
-      }
-    } catch { /* ignore */ }
 
-    if (!tipsterInfo) {
-      const fake = getFakeTipsterById(best.tipsterId);
-      if (fake) {
-        tipsterInfo = {
-          username: fake.username,
-          displayName: fake.displayName,
-          avatar: fake.avatar ?? null,
-          bio: fake.bio,
-          isPro: fake.isPro,
-          verified: fake.isVerified,
-          countryCode: fake.countryCode,
-        };
-      }
-    }
+  const [tipsterOfWeek, featuredPayload] = await Promise.all([
+    // Build tipster of the week
+    (async () => {
+      if (!best) return null;
+      let tipsterInfo: { username: string; displayName: string; avatar: string | null; bio: string | null; isPro: boolean; verified: boolean; countryCode: string | null } | null = null;
+      try {
+        const dbRows = await query<{ username: string; display_name: string | null; avatar_url: string | null; bio: string | null; is_verified: number | null; country_code: string | null }>(
+          'SELECT username, display_name, avatar_url, bio, is_verified, country_code FROM users WHERE id = ? LIMIT 1',
+          [best.tipsterId]
+        );
+        const dbRow = dbRows.rows[0];
+        if (dbRow) {
+          tipsterInfo = {
+            username: dbRow.username,
+            displayName: dbRow.display_name || dbRow.username,
+            avatar: dbRow.avatar_url,
+            bio: dbRow.bio,
+            isPro: false,
+            verified: !!dbRow.is_verified,
+            countryCode: dbRow.country_code,
+          };
+        }
+      } catch { /* ignore */ }
 
-    if (tipsterInfo) {
+      if (!tipsterInfo) {
+        const fake = getFakeTipsterById(best.tipsterId);
+        if (fake) {
+          tipsterInfo = {
+            username: fake.username,
+            displayName: fake.displayName,
+            avatar: fake.avatar ?? null,
+            bio: fake.bio,
+            isPro: fake.isPro,
+            verified: fake.isVerified,
+            countryCode: fake.countryCode,
+          };
+        }
+      }
+
+      if (!tipsterInfo) return null;
       const allTime = computeRealTipsterStats(best.tipsterId);
-      tipsterOfWeek = {
+      return {
         tipster: {
           id: best.tipsterId,
           username: tipsterInfo.username,
@@ -184,34 +185,44 @@ async function buildHomePayload(): Promise<unknown> {
         isWeekly: best.isWeekly,
         performanceVerified: allTime.won + allTime.lost >= 10,
       };
-    }
-  }
+    })(),
 
-  let featuredPayload: { enabled: boolean; items: ReturnType<typeof toFeaturedItem>[] } = { enabled: false, items: [] };
-  if (featuredConfig?.enabled) {
-    const hidden = new Set<string>(featuredConfig.hiddenMatchIds || []);
-    const pinnedItems: ReturnType<typeof toFeaturedItem>[] = [];
-    const seen = new Set<string>();
-    for (const id of (featuredConfig.pinnedMatchIds || [])) {
-      if (!id || seen.has(id) || hidden.has(id)) continue;
-      try {
-        const m = await getMatchById(id);
-        if (m) { pinnedItems.push(toFeaturedItem(m, true)); seen.add(id); }
-      } catch {}
-    }
-    const AUTO_LIMIT = Math.max(0, (featuredConfig.autoCount ?? 3) - pinnedItems.length);
-    const autoItems: ReturnType<typeof toFeaturedItem>[] = [];
-    if (AUTO_LIMIT > 0) {
-      const upcoming = (await getUpcomingMatches(featuredConfig.autoSportId || undefined).catch(() => [])) as UnifiedMatch[];
-      for (const m of upcoming) {
-        if (autoItems.length >= AUTO_LIMIT) break;
-        if (seen.has(m.id) || hidden.has(m.id)) continue;
-        autoItems.push(toFeaturedItem(m, false));
-        seen.add(m.id);
+    // Build featured matches
+    (async () => {
+      if (!featuredConfig?.enabled) return { enabled: false, items: [] };
+      const hidden = new Set<string>(featuredConfig.hiddenMatchIds || []);
+      const pinnedIds = (featuredConfig.pinnedMatchIds || []).filter((id: string) => id && !hidden.has(id));
+      const seen = new Set<string>();
+
+      // Fetch all pinned matches in parallel instead of sequentially
+      const pinnedResults = await Promise.allSettled(
+        pinnedIds.map((id: string) => getMatchById(id))
+      );
+      const pinnedItems: ReturnType<typeof toFeaturedItem>[] = [];
+      for (const res of pinnedResults) {
+        if (res.status === 'fulfilled' && res.value) {
+          const m = res.value;
+          if (!seen.has(m.id)) {
+            pinnedItems.push(toFeaturedItem(m, true));
+            seen.add(m.id);
+          }
+        }
       }
-    }
-    featuredPayload = { enabled: true, items: [...pinnedItems, ...autoItems] };
-  }
+
+      const AUTO_LIMIT = Math.max(0, (featuredConfig.autoCount ?? 3) - pinnedItems.length);
+      const autoItems: ReturnType<typeof toFeaturedItem>[] = [];
+      if (AUTO_LIMIT > 0) {
+        const upcoming = (await getUpcomingMatches(featuredConfig.autoSportId || undefined).catch(() => [])) as UnifiedMatch[];
+        for (const m of upcoming) {
+          if (autoItems.length >= AUTO_LIMIT) break;
+          if (seen.has(m.id) || hidden.has(m.id)) continue;
+          autoItems.push(toFeaturedItem(m, false));
+          seen.add(m.id);
+        }
+      }
+      return { enabled: true, items: [...pinnedItems, ...autoItems] };
+    })(),
+  ]);
 
   return { matches: matchesPayload, liveMatches: liveMatchesPayload, topTipsters: { tipsters: topTipsters }, tipsterOfWeek, featured: featuredPayload };
 }

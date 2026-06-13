@@ -259,7 +259,35 @@ export async function register() {
         WHERE u.role = 'tipster'
       `).catch(() => {});
 
-      console.log('[instrumentation] DB migrations applied (community_rooms + room_id + challenges)');
+      // ── Performance indexes — speed up the most common queries ─────────────
+      // These use CREATE INDEX IF NOT EXISTS (MariaDB 10.1+) so they're idempotent.
+      const indexMigrations = [
+        // auto_tips: tipster_id is the most-queried column (per-tipster stats)
+        `CREATE INDEX IF NOT EXISTS idx_at_tipster ON auto_tips (tipster_id)`,
+        // auto_tips: status filtering for pending/won/lost settlement queries
+        `CREATE INDEX IF NOT EXISTS idx_at_status ON auto_tips (status)`,
+        // auto_tips: kickoff for time-windowed queries
+        `CREATE INDEX IF NOT EXISTS idx_at_kickoff ON auto_tips (kickoff)`,
+        // auto_tips: composite for the most common "tipster + status" filter
+        `CREATE INDEX IF NOT EXISTS idx_at_tipster_status ON auto_tips (tipster_id, status)`,
+        // users: role is used in every tipster listing query
+        `CREATE INDEX IF NOT EXISTS idx_users_role ON users (role)`,
+        // users: email lookups (login, verification)
+        `CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)`,
+        // feed_posts: user_id for per-tipster feed queries
+        `CREATE INDEX IF NOT EXISTS idx_fp_user_id ON feed_posts (user_id)`,
+        // feed_posts: created_at for chronological feed ordering
+        `CREATE INDEX IF NOT EXISTS idx_fp_created_at ON feed_posts (created_at)`,
+        // api_cache: expires_at for cache eviction queries
+        `CREATE INDEX IF NOT EXISTS idx_ac_expires ON api_cache (expires_at)`,
+        // tipster_profiles: win_rate + roi for leaderboard ordering
+        `CREATE INDEX IF NOT EXISTS idx_tp_winrate ON tipster_profiles (win_rate DESC, roi DESC)`,
+      ];
+      for (const sql of indexMigrations) {
+        await query(sql).catch(() => {}); // silently skip if already exists or no privilege
+      }
+
+      console.log('[instrumentation] DB migrations applied (community_rooms + room_id + challenges + indexes)');
 
       // 4b. Backfill room_id on existing fake-tipster posts (user_id >= 1000)
       //     that were created before rooms existed. Match rules:
