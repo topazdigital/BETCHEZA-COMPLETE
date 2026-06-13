@@ -11,7 +11,12 @@ import { canAccessAdmin } from '@/lib/permissions';
  * user menu shows "Admin Panel" which links here.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  let user = null;
+  try {
+    user = await getCurrentUser();
+  } catch {
+    redirect('/');
+  }
 
   if (!user || !canAccessAdmin(user.role)) {
     redirect('/');

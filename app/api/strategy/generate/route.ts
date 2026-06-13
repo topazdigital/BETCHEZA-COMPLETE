@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
-import { getUpcomingMatches } from '@/lib/api/unified-sports-api';
+import { getAllMatches } from '@/lib/api/unified-sports-api';
 import OpenAI from 'openai';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '../predictions/route';
+
+// EAT = UTC+3
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
+function toEATDateStr(d: Date): string {
+  return new Date(d.getTime() + EAT_OFFSET_MS).toISOString().slice(0, 10);
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -123,32 +129,38 @@ export async function POST(req: NextRequest) {
   let picks: StrategyPick[] = [];
 
   try {
-    const upcoming = await getUpcomingMatches();
-    const soccerMatches = upcoming.filter(
-      (m) => m.sport.slug === 'soccer' || m.sport.slug === 'football'
-    );
+    // Use getAllMatches (not getUpcomingMatches) so live matches are included —
+    // today's games may already be in-progress when the admin clicks Override.
+    const allMatches = await getAllMatches();
+    const targetDateEAT = dayData.date; // YYYY-MM-DD in EAT
 
-    const dayDate = new Date(dayData.date);
-    const targetMatches = soccerMatches.filter((m) => {
-      const matchDate = new Date(m.kickoffTime);
-      return matchDate.toDateString() === dayDate.toDateString();
-    }).slice(0, 30);
+    const soccerToday = allMatches.filter(
+      (m) =>
+        (m.sport.slug === 'soccer' || m.sport.slug === 'football') &&
+        toEATDateStr(new Date(m.kickoffTime)) === targetDateEAT
+    ).slice(0, 30);
 
-    // If fewer than 2 soccer matches today, also pull all-sport matches for that day
-    let extendedPool = targetMatches;
-    if (targetMatches.length < 2) {
-      const allTodayMatches = upcoming.filter((m) => {
-        const matchDate = new Date(m.kickoffTime);
-        return matchDate.toDateString() === dayDate.toDateString();
-      });
+    // If fewer than 2 soccer matches, extend with all-sport matches for that EAT day
+    let extendedPool = soccerToday;
+    if (soccerToday.length < 2) {
+      const allToday = allMatches.filter(
+        (m) => toEATDateStr(new Date(m.kickoffTime)) === targetDateEAT
+      );
       extendedPool = [
-        ...targetMatches,
-        ...allTodayMatches.filter(m => m.sport.slug !== 'soccer' && m.sport.slug !== 'football'),
+        ...soccerToday,
+        ...allToday.filter(m => m.sport.slug !== 'soccer' && m.sport.slug !== 'football'),
       ].slice(0, 30);
     }
 
-    const fallbackPool = extendedPool.length > 0 ? extendedPool : (soccerMatches.length > 0 ? soccerMatches : upcoming).slice(0, 30);
-    const matchList = (extendedPool.length > 0 ? extendedPool : fallbackPool)
+    // If still no matches for this date, return a clear error — never use other days' games.
+    if (extendedPool.length === 0) {
+      return NextResponse.json(
+        { error: `No matches found for ${targetDateEAT}. The sports cache may still be warming up — try again in a minute.` },
+        { status: 404 }
+      );
+    }
+
+    const matchList = extendedPool
       .map((m) => `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Sport: ${m.sport.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${m.odds ? ` | Odds: H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''}`)
       .join('\n');
 
@@ -291,45 +303,26 @@ OUTPUT FORMAT — Return ONLY valid JSON, no markdown, no explanation outside JS
     }
 
     if (picks.length === 0) {
-      const pool = targetMatches.length > 0 ? targetMatches : soccerMatches;
-      picks = pool.slice(0, 2).map((m, i) => ({
+      // Non-AI fallback: pick first 2 real matches from the pool using rules-based selection.
+      // extendedPool is guaranteed non-empty (we returned 404 above if it was empty).
+      picks = extendedPool.slice(0, 2).map((m, i) => ({
         ...fallbackPick(m),
         id: `${weekId}-d${targetDay}-${i}`,
       }));
     }
   } catch (e) {
     console.error('[strategy/generate] error:', e);
+    return NextResponse.json(
+      { error: 'Failed to generate picks. Please try again.' },
+      { status: 500 }
+    );
   }
 
   if (picks.length === 0) {
-    picks = [
-      {
-        id: `${weekId}-d${targetDay}-fallback-0`,
-        homeTeam: 'Arsenal',
-        awayTeam: 'Chelsea',
-        league: 'Premier League',
-        matchTime: new Date(dayData.date).toISOString(),
-        pick: 'Arsenal Win or Draw',
-        market: 'Double Chance',
-        odds: 1.68,
-        confidence: 'Medium' as const,
-        reasoning: 'Arsenal home advantage with strong recent form makes this a value double chance.',
-        result: 'pending' as const,
-      },
-      {
-        id: `${weekId}-d${targetDay}-fallback-1`,
-        homeTeam: 'Real Madrid',
-        awayTeam: 'Atletico Madrid',
-        league: 'La Liga',
-        matchTime: new Date(dayData.date).toISOString(),
-        pick: 'Over 2.5 Goals',
-        market: 'Over/Under',
-        odds: 2.00,
-        confidence: 'Medium' as const,
-        reasoning: 'Both teams average over 1.8 goals per game. This Madrid derby historically produces goals.',
-        result: 'pending' as const,
-      },
-    ];
+    return NextResponse.json(
+      { error: 'Could not generate picks for this day. No qualifying matches found.' },
+      { status: 404 }
+    );
   }
 
   const combinedOdds = picks.reduce((acc, p) => acc * p.odds, 1);

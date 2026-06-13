@@ -312,14 +312,14 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                     href="/matches?status=live"
                     className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
                   >
-                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.live ?? 0}</div>
+                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.isLoading ? '–' : (stats.live || 0)}</div>
                     <div className="text-xs text-muted-foreground">Live Now</div>
                   </Link>
                   <Link
                     href="/matches"
                     className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
                   >
-                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.today ?? 0}</div>
+                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.isLoading ? '–' : (stats.today || 0)}</div>
                     <div className="text-xs text-muted-foreground">Today</div>
                   </Link>
                   <Link
