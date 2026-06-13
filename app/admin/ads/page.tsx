@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from "react"
 import { Save, Loader2, CheckCircle2, AlertCircle, ToggleLeft, Globe, Code, Plus, Trash2, Eye, EyeOff, Megaphone } from "lucide-react"
 import { Button } from "@/components/ui/button"

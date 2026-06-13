@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Search, Zap, Target, TrendingUp, Swords, Loader2, AlertCircle, Database } from 'lucide-react';

@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Bookmark, BookmarkX, Clock, Trophy, Loader2, LogIn, Filter, Search } from 'lucide-react';

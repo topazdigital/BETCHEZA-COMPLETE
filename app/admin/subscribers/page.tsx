@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import useSWR from 'swr';
 import { Mail, Download, RefreshCw, CheckCircle2, XCircle, Send, X, Loader2, Users } from 'lucide-react';

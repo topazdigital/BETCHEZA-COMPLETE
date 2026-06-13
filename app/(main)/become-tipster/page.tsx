@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BadgeCheck, CheckCircle2, Clock, Loader2, ShieldCheck, Trophy, XCircle } from 'lucide-react';

@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect, useRef } from "react"
 import useSWR, { mutate as globalMutate } from "swr"
 import Link from "next/link"

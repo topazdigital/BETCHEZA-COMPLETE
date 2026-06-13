@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { TrendingUp, Calendar, Trophy, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Circle, Info, Coins, Lock, Loader2, Phone, ShieldCheck, RefreshCw, X, CreditCard, Bell, BellOff, BarChart2 } from 'lucide-react';

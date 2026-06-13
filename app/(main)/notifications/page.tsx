@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { Bell, BellOff, Mail, Smartphone, Loader2, Check, AlertCircle } from 'lucide-react';
 import Link from 'next/link';

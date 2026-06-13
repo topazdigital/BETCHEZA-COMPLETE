@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
 import useSWR from 'swr';
 import { TrendingUp, RefreshCw, CheckCircle2, XCircle, Circle, Save, Loader2, Plus, Trash2, Calendar, Clock, PenLine, Bot, ChevronDown, ChevronUp, Wrench, Users, Mail, Send, AlertCircle } from 'lucide-react';

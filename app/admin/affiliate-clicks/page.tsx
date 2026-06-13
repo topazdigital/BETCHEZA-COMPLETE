@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
 import useSWR from 'swr';
 import { MousePointerClick, RefreshCw, Trash2, Globe, Trophy, Calendar, Smartphone, Layers, TrendingUp, UserPlus, DollarSign, Target } from 'lucide-react';

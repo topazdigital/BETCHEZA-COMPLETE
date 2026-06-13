@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import { Swords, Trophy, Crown, Loader2, CheckCircle2, X, AlertCircle, Settings, TrendingUp, Users, DollarSign, RefreshCw } from 'lucide-react';

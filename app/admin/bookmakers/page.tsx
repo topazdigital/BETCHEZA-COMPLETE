@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import {
   ArrowUpDown, EyeOff, ExternalLink, Loader2, Plus, Save, Trash2,

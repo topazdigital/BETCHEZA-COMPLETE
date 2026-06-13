@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic';
+
 import useSWR from "swr"
 import Link from "next/link"
 import { Wallet, CreditCard, Settings, ExternalLink, Loader2 } from "lucide-react"

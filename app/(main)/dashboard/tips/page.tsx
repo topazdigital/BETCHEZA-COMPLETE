@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import Link from 'next/link';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/auth-context';

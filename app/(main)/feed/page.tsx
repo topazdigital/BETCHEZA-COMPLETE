@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import useSWR, { mutate } from 'swr';
 import Link from 'next/link';

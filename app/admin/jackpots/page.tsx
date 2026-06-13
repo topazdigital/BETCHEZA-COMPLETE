@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useCallback } from 'react';
 import {
   Trophy, Plus, Trash2, RefreshCw, Brain, Edit3, Save, X, ChevronDown, ChevronUp,
