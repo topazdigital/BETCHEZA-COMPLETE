@@ -4468,8 +4468,8 @@ async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
 }
 
 // On startup: load whatever cache exists (even stale) so the very first request
-// is served from memory. Staleness doesn't matter here — Layer 2 of getAllMatches()
-// will trigger a background refresh if needed. Users always see instant data.
+// is served from memory. Always trigger a background refresh so data is fresh
+// by the time real users arrive (even on a completely fresh server).
 (async () => {
   await _ensureMatchCacheTable();
   // Try DB first (production — survives PM2 restarts)
@@ -4477,17 +4477,17 @@ async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
   if (dbResult) {
     g_allMatchesCache.data = dbResult.data;
     g_allMatchesCache.ts   = dbResult.ts;
-    // Trigger background refresh so in-memory data becomes fresh quickly
-    _triggerBackgroundRefresh();
-    return;
+  } else {
+    // Try file cache (dev / no-DB servers — survives restarts when in .local/state/)
+    const fileResult = await _readFileCache();
+    if (fileResult) {
+      g_allMatchesCache.data = fileResult.data;
+      g_allMatchesCache.ts   = fileResult.ts;
+    }
   }
-  // Try file cache (dev / no-DB servers — survives restarts when in .local/state/)
-  const fileResult = await _readFileCache();
-  if (fileResult) {
-    g_allMatchesCache.data = fileResult.data;
-    g_allMatchesCache.ts   = fileResult.ts;
-    _triggerBackgroundRefresh();
-  }
+  // Always kick off a background refresh on startup so the cache is warm
+  // regardless of whether we found stored data or not.
+  _triggerBackgroundRefresh();
 })();
 
 function _triggerBackgroundRefresh() {
@@ -4532,12 +4532,12 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
     return fileResult.data;
   }
 
-  // Layer 5: True cold start — must wait for external APIs (first run only)
-  if (g_allMatchesCache.promise) return g_allMatchesCache.promise;
-  g_allMatchesCache.promise = _fetchAllMatches().finally(() => {
-    g_allMatchesCache.promise = null;
-  });
-  return g_allMatchesCache.promise;
+  // Layer 5: True cold start — NEVER block the caller waiting for external APIs.
+  // Trigger the background fetch (idempotent — only one fetch runs at a time) and
+  // return whatever data we have immediately (empty array on truly fresh server).
+  // The browser's SWR will retry; the cache will be warm within 8-10 s.
+  _triggerBackgroundRefresh();
+  return g_allMatchesCache.data ?? [];
 }
 
 async function _fetchAllMatches(): Promise<UnifiedMatch[]> {

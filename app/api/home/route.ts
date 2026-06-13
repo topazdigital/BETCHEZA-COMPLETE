@@ -238,9 +238,17 @@ async function getCachedHomePayload(): Promise<unknown> {
       .finally(() => { _homeRefreshing = false; });
     return _homeCache.data;
   }
-  const data = await buildHomePayload();
-  _homeCache = { data, ts: Date.now() };
-  return data;
+  // Cold start — build and cache; getAllMatches() is now non-blocking so this
+  // completes in < 500 ms (only DB queries run, no ESPN wait).
+  if (!_homeRefreshing) {
+    _homeRefreshing = true;
+    buildHomePayload()
+      .then(data => { _homeCache = { data, ts: Date.now() }; })
+      .catch(() => {})
+      .finally(() => { _homeRefreshing = false; });
+  }
+  // Return whatever we have immediately (null on very first call — client SWR handles it)
+  return _homeCache?.data ?? null;
 }
 
 // ─── Featured helpers ─────────────────────────────────────────────────────────

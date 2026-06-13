@@ -152,9 +152,12 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
 
   // ── Single consolidated fetch: replaces 5 separate API calls ──────────────
   const { data: homeData } = useSWR('/api/home', homeFetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 5 * 60_000,
-    refreshInterval: 5 * 60_000,
+    revalidateOnFocus: true,
+    // Refresh every 90 s so newly-warmed caches (post cold-start) surface quickly.
+    // Previously 5 min — with the non-blocking cold-start fix the server always
+    // responds in < 500 ms so frequent polling is cheap.
+    dedupingInterval: 30_000,
+    refreshInterval: 90_000,
     fallbackData: initialHomeData ?? undefined,
     onSuccess(data) {
       // Only seed caches that aren't already independently fetched by child hooks.
