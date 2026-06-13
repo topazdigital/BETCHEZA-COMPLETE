@@ -166,7 +166,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
         isFake: p.tipsterId >= 1000,
       }));
 
-  const totalParticipants = participants.length;
+  const totalParticipants = Math.max(participants.length, joinedUserIds.length);
   const fillPct = Math.min(100, Math.round((totalParticipants / comp.maxParticipants) * 100));
 
   const myStanding = currentUser

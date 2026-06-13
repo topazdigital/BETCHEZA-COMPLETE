@@ -972,6 +972,7 @@ async function fetchESPN(
   try {
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000),
       ...(skipDataCache ? { cache: 'no-store' as const } : { next: { revalidate: 15 } }),
     });
 
@@ -1271,6 +1272,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   try {
     const r = await fetch(url, {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
       ...(skipDataCache ? { cache: 'no-store' as const } : { next: { revalidate: 30 } }),
     });
     if (r.ok) data = await r.json() as ESPNScoreboardResponseFull;
@@ -1286,7 +1288,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       const halfRange = `${formatYYYYMMDD(s)}-${formatYYYYMMDD(e)}`;
       const halfUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${halfRange}&limit=300`;
       try {
-        const r = await fetch(halfUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' as const });
+        const r = await fetch(halfUrl, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000), cache: 'no-store' as const });
         return r.ok ? await r.json() as ESPNScoreboardResponseFull : null;
       } catch { return null; }
     };
@@ -1309,6 +1311,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?limit=300`;
       const r2 = await fetch(defaultUrl, {
         headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(10000),
         cache: 'no-store' as const,
       });
       if (r2.ok) data = await r2.json() as ESPNScoreboardResponseFull;
@@ -2880,7 +2883,7 @@ export async function fetchESPNSummary(sport: string, league: string, eventId: s
 
   const url = `${ESPN_BASE_URL}/${sport}/${league}/summary?event=${eventId}`;
   try {
-    const r = await fetch(url, { headers: { 'Accept': 'application/json' }, next: { revalidate: 60 } });
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000), next: { revalidate: 60 } });
     if (!r.ok) return null;
     const j = await r.json() as ESPNSummaryResponse;
     setCache(cacheKey, j);

@@ -48,6 +48,7 @@ async function getTopDbTipsters(limit = 4) {
          FROM users u
          LEFT JOIN tipster_profiles t ON t.user_id = u.id
          WHERE u.role = 'tipster'
+           AND COALESCE(t.total_tips, 0) > 0
          ORDER BY t.win_rate DESC, t.roi DESC
          LIMIT ?`,
       [limit]

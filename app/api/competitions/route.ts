@@ -47,19 +47,16 @@ export async function GET() {
 
   try {
     await Promise.all(
-      summaries
-        .filter(c => c.status !== 'completed')
-        .map(async comp => {
-          try {
-            const { conditions, params } = buildTipFilter(comp);
-            const res = await query<{ cnt: number }>(
-              `SELECT COUNT(DISTINCT tipster_id) AS cnt FROM auto_tips WHERE ${conditions.join(' AND ')}`,
-              params,
-            );
-            const cnt = Number(res.rows[0]?.cnt ?? 0);
-            countMap.set(comp.id, cnt);
-          } catch { /* DB unavailable */ }
-        })
+      summaries.map(async comp => {
+        try {
+          const res = await query<{ cnt: number }>(
+            `SELECT COUNT(*) AS cnt FROM competition_entries WHERE competition_id = ?`,
+            [comp.id],
+          );
+          const cnt = Number(res.rows[0]?.cnt ?? 0);
+          if (cnt > 0) countMap.set(comp.id, cnt);
+        } catch { /* DB unavailable */ }
+      })
     );
   } catch { /* ignore batch-level errors */ }
 

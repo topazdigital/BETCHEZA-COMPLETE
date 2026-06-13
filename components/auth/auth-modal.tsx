@@ -217,7 +217,7 @@ export function AuthModal() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) close(); }}>
-      <DialogContent className="max-w-sm p-0 overflow-hidden">
+      <DialogContent className="max-w-sm w-[calc(100vw-1.5rem)] p-0 overflow-y-auto max-h-[90dvh]">
         <div className="bg-gradient-to-br from-primary/10 via-background to-background px-4 pt-4 pb-1.5">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
