@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSiteSettings } from "@/lib/hooks/use-site-settings"
-import dynamic from "next/dynamic"
+import dynamicImport from "next/dynamic"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { 
@@ -27,39 +27,39 @@ import { useMatchStats } from "@/lib/hooks/use-matches"
 import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
 import { FlagIcon } from "@/components/ui/flag-icon"
 
-const NotificationBell = dynamic(
+const NotificationBell = dynamicImport(
   () => import("@/components/notifications/notification-bell").then(m => ({ default: m.NotificationBell })),
   { ssr: false, loading: () => <div className="h-8 w-8" /> }
 )
-const Footer = dynamic(
+const Footer = dynamicImport(
   () => import("@/components/layout/footer").then(m => ({ default: m.Footer })),
   { ssr: false }
 )
-const CookieBanner = dynamic(
+const CookieBanner = dynamicImport(
   () => import("@/components/layout/cookie-banner").then(m => ({ default: m.CookieBanner })),
   { ssr: false }
 )
-const LiveScoreboardWidget = dynamic(
+const LiveScoreboardWidget = dynamicImport(
   () => import("@/components/live/live-scoreboard-widget").then(m => ({ default: m.LiveScoreboardWidget })),
   { ssr: false }
 )
-const SocialOnboardingModal = dynamic(
+const SocialOnboardingModal = dynamicImport(
   () => import("@/components/auth/social-onboarding-modal").then(m => ({ default: m.SocialOnboardingModal })),
   { ssr: false }
 )
-const PushPromptBanner = dynamic(
+const PushPromptBanner = dynamicImport(
   () => import("@/components/notifications/push-prompt-banner").then(m => ({ default: m.PushPromptBanner })),
   { ssr: false }
 )
-const WelcomeModal = dynamic(
+const WelcomeModal = dynamicImport(
   () => import("@/components/auth/welcome-modal").then(m => ({ default: m.WelcomeModal })),
   { ssr: false }
 )
-const HeaderSearch = dynamic(
+const HeaderSearch = dynamicImport(
   () => import("@/components/layout/header-search").then(m => ({ default: m.HeaderSearch })),
   { ssr: false, loading: () => <div className="h-8 w-full rounded-md bg-muted/50 animate-pulse" /> }
 )
-const WorldCupBanner = dynamic(
+const WorldCupBanner = dynamicImport(
   () => import("@/components/layout/header").then(m => ({ default: m.WorldCupBanner })),
   { ssr: false }
 )

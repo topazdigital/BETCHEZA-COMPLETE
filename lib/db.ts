@@ -15,7 +15,7 @@ interface FileDbConfig {
   database?: string;
 }
 
-const COOLDOWN_MS = 30_000;
+const COOLDOWN_MS = 60_000;
 const g = globalThis as {
   __dbCircuitOpen?: boolean;
   __dbCircuitOpenAt?: number;

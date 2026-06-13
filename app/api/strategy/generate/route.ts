@@ -57,7 +57,7 @@ function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: str
     homeTeam: match.homeTeam.name,
     awayTeam: match.awayTeam.name,
     league: match.league.name,
-    matchTime: match.kickoffTime.toISOString(),
+    matchTime: new Date(match.kickoffTime).toISOString(),
     pick,
     market,
     odds: parseFloat(odds.toFixed(2)),

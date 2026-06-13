@@ -50,7 +50,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export const revalidate = 43200;
+export const dynamic = 'force-dynamic';
 
 export default async function OutrightSlugPage({ params }: PageProps) {
   const { slug } = await params;

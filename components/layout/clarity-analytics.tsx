@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 
 const CLARITY_PROJECT_ID = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
@@ -29,18 +29,26 @@ function initClarity(projectId: string) {
   })(window, document, 'clarity', 'script', projectId);
 }
 
-export function ClarityAnalytics() {
+function ClarityPageTracker() {
   const pathname = usePathname();
 
+  useEffect(() => {
+    if (!CLARITY_PROJECT_ID || typeof window === 'undefined') return;
+    window.clarity?.('set', 'pageview', pathname);
+  }, [pathname]);
+
+  return null;
+}
+
+export function ClarityAnalytics() {
   useEffect(() => {
     if (!CLARITY_PROJECT_ID) return;
     initClarity(CLARITY_PROJECT_ID);
   }, []);
 
-  useEffect(() => {
-    if (!CLARITY_PROJECT_ID || !window.clarity) return;
-    window.clarity?.('set', 'pageview', pathname);
-  }, [pathname]);
-
-  return null;
+  return (
+    <Suspense fallback={null}>
+      <ClarityPageTracker />
+    </Suspense>
+  );
 }

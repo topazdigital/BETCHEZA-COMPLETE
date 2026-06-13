@@ -1507,12 +1507,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     // the athlete id embedded in each competitor uid (e.g. "s:850~l:851~a:4691").
     const homeAthleteId = athleteIdFromUid((resolvedHome as unknown as { uid?: string }).uid);
     const awayAthleteId = athleteIdFromUid((resolvedAway as unknown as { uid?: string }).uid);
-    const headshotBase = `https://a.espncdn.com/i/headshots/${sport}/players/full`;
     const homeLogoUrl = resolvedHome?.team?.logo
-      || (isIndividualSportType && homeAthleteId ? `${headshotBase}/${homeAthleteId}.png` : undefined)
       || (resolvedHome?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href;
     const awayLogoUrl = resolvedAway?.team?.logo
-      || (isIndividualSportType && awayAthleteId ? `${headshotBase}/${awayAthleteId}.png` : undefined)
       || (resolvedAway?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href;
 
     // Use our internal leagueId if we have a mapping, otherwise fall back to
@@ -4395,8 +4392,8 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
 // This means after the first ever warm-up, every subsequent request — including
 // after PM2 restarts — serves data in < 50ms.
 
-const ALLMATCHES_CACHE_TTL  = 30 * 1000;        // 30 sec — serve from memory (live accuracy)
-const ALLMATCHES_STALE_TTL  = 5 * 60 * 1000;   // 5 min  — stale-while-revalidate
+const ALLMATCHES_CACHE_TTL  = 90 * 1000;        // 90 sec — serve from memory (live accuracy)
+const ALLMATCHES_STALE_TTL  = 10 * 60 * 1000;  // 10 min — stale-while-revalidate
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and
 // survives all subsequent restarts so cold-start delays never recur.

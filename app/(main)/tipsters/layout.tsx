@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Best Tipsters in Kenya | Most Trusted Betting Tips | Betcheza',
   description: 'Find the most trusted betting tipsters in Kenya with verified win rates and transparent records. Follow the best prediction experts for SportPesa, Betika, Odibets and more — all free on Betcheza.',

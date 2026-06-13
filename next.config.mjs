@@ -24,6 +24,7 @@ const nextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   experimental: {
+    prerenderEarlyExit: false,
     optimizeCss: true,
     optimizePackageImports: [
       'lucide-react',
@@ -201,6 +202,21 @@ const nextConfig = {
     ]
   },
   turbopack: {},
+  webpack: (config, { isServer, nextRuntime }) => {
+    if (!isServer || nextRuntime === 'edge') {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        net: false,
+        tls: false,
+        dns: false,
+        child_process: false,
+        crypto: false,
+      };
+    }
+    return config;
+  },
 }
 
 export default nextConfig

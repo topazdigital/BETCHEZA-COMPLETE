@@ -6,7 +6,8 @@
     "dev": "next dev -p 5000 -H 0.0.0.0",
     "build": "next build",
     "start": "next start -p 5000 -H 0.0.0.0",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "postinstall": "node scripts/patch-next.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

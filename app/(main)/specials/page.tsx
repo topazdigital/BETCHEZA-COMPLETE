@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { OutrightTipButton } from '@/components/outrights/outright-tip-button';
 
-export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Outright Odds, Specials & Transfer Markets | Betcheza',

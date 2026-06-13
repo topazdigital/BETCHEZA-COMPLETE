@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth';
 import { AdminShell } from '@/components/admin/admin-shell';
 import { canAccessAdmin } from '@/lib/permissions';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Server-side admin layout.
  * Unauthenticated users → redirected to homepage (no separate admin login).

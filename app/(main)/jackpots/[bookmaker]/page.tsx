@@ -10,7 +10,9 @@ const EXTRA_KEYWORDS: Record<string, string[]> = {
   betin: ['Betin Grand Jackpot predictions Kenya','Betin Midweek Jackpot tips','Betin jackpot bonus','Betin Kenya jackpot analysis'],
   mozzartbet: ['Mozzartbet Mega Jackpot predictions','Mozzartbet Midweek Jackpot tips Kenya','Mozzartbet jackpot analysis','how to win Mozzartbet jackpot'],
 };
-export function generateStaticParams() { return SUPPORTED_BOOKMAKERS.map(b => ({ bookmaker: b.slug })); }
+export const dynamic = 'force-dynamic';
+export const dynamicParams = true;
+export function generateStaticParams() { return []; }
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { bookmaker: slug } = await params;
   const bk = SUPPORTED_BOOKMAKERS.find(b => b.slug === slug);

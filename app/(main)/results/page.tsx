@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useMemo } from "react"
 import { Calendar, Search, Trophy, TrendingUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"

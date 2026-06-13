@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist } from 'next/font/google'
 import { headers } from 'next/headers'
+
+export const dynamic = 'force-dynamic';
 // Analytics removed — not needed for self-hosted deployments
 import { ThemeProvider } from '@/components/theme-provider'
 import { UserSettingsProvider } from '@/contexts/user-settings-context'

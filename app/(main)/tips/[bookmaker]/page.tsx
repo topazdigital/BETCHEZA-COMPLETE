@@ -227,11 +227,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export function generateStaticParams() {
-  return Object.keys(BOOKMAKERS).map(b => ({ bookmaker: b }));
-}
-
-export const dynamicParams = true;
+export const dynamic = 'force-dynamic';
 
 export default async function BookmakerTipsPage({ params }: Props) {
   const { bookmaker } = await params;

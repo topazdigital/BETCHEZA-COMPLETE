@@ -16,7 +16,7 @@ import type { UnifiedMatch } from '@/lib/api/unified-sports-api';
 export const runtime = 'nodejs';
 
 // ─── In-process stale-while-revalidate cache (30 s TTL) ───────────────────────
-const HOME_CACHE_TTL = 30_000;
+const HOME_CACHE_TTL = 60_000;
 let _homeCache: { data: unknown; ts: number } | null = null;
 let _homeRefreshing = false;
 

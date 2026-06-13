@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
@@ -18,9 +20,9 @@ import { FollowTipsterButton } from '@/components/tipsters/follow-tipster-button
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { tipsterHref } from '@/lib/utils/slug';
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 
-const SidebarBanners = dynamic(
+const SidebarBanners = dynamicImport(
   () => import('@/components/home/sidebar-banners').then(m => ({ default: m.SidebarBanners })),
   { ssr: false, loading: () => null },
 );
