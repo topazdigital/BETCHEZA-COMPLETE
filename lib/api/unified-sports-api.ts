@@ -5035,6 +5035,20 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
 
   // Fetch ESPN matches, real odds index AND every supplementary feed in parallel.
   // Each .catch() ensures one source going down never blocks the others.
+  //
+  // CONCURRENCY CAP: fire at most 15 ESPN league requests at a time.
+  // Without this, all 180+ leagues fire simultaneously from the VPS, which
+  // triggers ESPN rate-limiting (429s / slow responses) and causes the entire
+  // fetch to take 15-30 s. With a cap of 15 the total time drops to ~3-5 s
+  // because each batch completes cleanly before the next batch starts.
+  const { default: pLimit } = await import('p-limit').catch(() => ({ default: null }));
+  const espnFetchFn = pLimit
+    ? (() => {
+        const limit = pLimit(15);
+        return Promise.allSettled(ESPN_LEAGUES.map(config => limit(() => getESPNMatches(config))));
+      })()
+    : Promise.allSettled(ESPN_LEAGUES.map(config => getESPNMatches(config)));
+
   const [
     espnResults,
     realOddsIndex,
@@ -5046,7 +5060,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     camel1Matches,
     sofaScoreMatches,
   ] = await Promise.all([
-    Promise.allSettled(ESPN_LEAGUES.map(config => getESPNMatches(config))),
+    espnFetchFn,
     buildRealOddsIndex(),
     fetchTSDBMatches().catch(() => [] as UnifiedMatch[]),
     fetchOpenLigaDBMatches().catch(() => [] as UnifiedMatch[]),

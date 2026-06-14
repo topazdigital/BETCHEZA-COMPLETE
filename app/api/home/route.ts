@@ -258,9 +258,13 @@ async function getCachedHomePayload(): Promise<unknown> {
   }
 
   if (_homePromise) {
+    // Wait up to 15 s on cold start — the VPS ESPN fetch can take 8-12 s
+    // when the concurrency-limited batches are running for the first time.
+    // 5 s was too short and caused the home payload to return null, leaving
+    // users staring at skeleton loaders until SWR retried 4 s later.
     const result = await Promise.race([
       _homePromise,
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 5000)),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 15000)),
     ]);
     return _homeCache?.data ?? result ?? null;
   }

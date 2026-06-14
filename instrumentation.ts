@@ -367,9 +367,19 @@ export async function register() {
   const { startCron } = await import('./lib/cron');
   startCron();
 
-  // Pre-warm the matches cache immediately on startup so the very first
-  // user request is served from cache instead of waiting for external APIs.
-  // Fire-and-forget — never blocks the server from becoming ready.
+  // Ensure the .local/state directory exists so the file cache can be written.
+  // Without this, the first ESPN fetch result is lost and every PM2 restart
+  // causes a cold-start delay for real users.
+  try {
+    const { mkdir } = await import('fs/promises');
+    await mkdir(`${process.cwd()}/.local/state`, { recursive: true });
+  } catch { /* directory already exists — safe to ignore */ }
+
+  // Pre-warm the matches cache on startup so the very first user request is
+  // served from cache instead of waiting for the full ESPN fetch.
+  // Delay 1500 ms (was 500 ms) so the module-init file-cache read completes
+  // first — this prevents the background refresh from racing the init and
+  // wasting a full ESPN round-trip when the file cache is already valid.
   setTimeout(async () => {
     try {
       const { getAllMatches } = await import('./lib/api/unified-sports-api');
@@ -378,7 +388,7 @@ export async function register() {
     } catch (e) {
       console.warn('[instrumentation] matches cache warm-up failed:', e);
     }
-  }, 500);
+  }, 1500);
 
   // Deferred settle-tips run: fires 15s after startup so that:
   //   1. The in-memory auto-tips store has had time to load from DB
