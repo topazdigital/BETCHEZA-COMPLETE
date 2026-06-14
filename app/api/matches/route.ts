@@ -446,8 +446,7 @@ export async function GET(request: NextRequest) {
       source: apiSource,
       timestamp: new Date().toISOString(),
     });
-    // Short cache — fresh enough for live scores, light enough for the VPS.
-    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     return res;
   } catch (error) {
     console.error('[Matches API] Error:', error);
