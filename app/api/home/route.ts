@@ -19,6 +19,9 @@ export const runtime = 'nodejs';
 const HOME_CACHE_TTL = 120_000;
 let _homeCache: { data: unknown; ts: number } | null = null;
 let _homeRefreshing = false;
+// Shared promise for the in-progress build — all concurrent cold-start
+// requests attach to this instead of each returning null independently.
+let _homePromise: Promise<unknown> | null = null;
 
 interface DbTipsterRow {
   user_id: number;
@@ -229,25 +232,39 @@ async function buildHomePayload(): Promise<unknown> {
 
 async function getCachedHomePayload(): Promise<unknown> {
   const now = Date.now();
+
+  // ① Warm cache — return immediately (sub-ms)
   if (_homeCache && now - _homeCache.ts < HOME_CACHE_TTL) return _homeCache.data;
+
+  // ② Stale cache — serve stale data instantly, refresh in background
   if (_homeCache && !_homeRefreshing) {
     _homeRefreshing = true;
-    buildHomePayload()
-      .then(data => { _homeCache = { data, ts: Date.now() }; })
-      .catch(() => {})
-      .finally(() => { _homeRefreshing = false; });
-    return _homeCache.data;
+    _homePromise = buildHomePayload()
+      .then(data => { _homeCache = { data, ts: Date.now() }; return data; })
+      .catch(() => null)
+      .finally(() => { _homeRefreshing = false; _homePromise = null; });
+    return _homeCache.data; // stale but instant
   }
-  // Cold start — build and cache; getAllMatches() is now non-blocking so this
-  // completes in < 500 ms (only DB queries run, no ESPN wait).
+
+  // ③ Cold start — all concurrent requests share one build promise so none
+  //    return null independently. Wait up to 5 s; fall back to null if the
+  //    build takes too long (client SWR will retry).
   if (!_homeRefreshing) {
     _homeRefreshing = true;
-    buildHomePayload()
-      .then(data => { _homeCache = { data, ts: Date.now() }; })
-      .catch(() => {})
-      .finally(() => { _homeRefreshing = false; });
+    _homePromise = buildHomePayload()
+      .then(data => { _homeCache = { data, ts: Date.now() }; return data; })
+      .catch(() => null)
+      .finally(() => { _homeRefreshing = false; _homePromise = null; });
   }
-  // Return whatever we have immediately (null on very first call — client SWR handles it)
+
+  if (_homePromise) {
+    const result = await Promise.race([
+      _homePromise,
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 5000)),
+    ]);
+    return _homeCache?.data ?? result ?? null;
+  }
+
   return _homeCache?.data ?? null;
 }
 
