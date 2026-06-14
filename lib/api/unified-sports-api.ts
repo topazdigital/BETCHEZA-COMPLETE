@@ -4409,7 +4409,7 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
 // after PM2 restarts — serves data in < 50ms.
 
 const ALLMATCHES_CACHE_TTL  = 90 * 1000;        // 90 sec — serve from memory (live accuracy)
-const ALLMATCHES_STALE_TTL  = 10 * 60 * 1000;  // 10 min — stale-while-revalidate
+const ALLMATCHES_STALE_TTL  = 30 * 60 * 1000;  // 30 min — stale-while-revalidate (was 10 min)
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and
 // survives all subsequent restarts so cold-start delays never recur.
@@ -4483,16 +4483,26 @@ async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
   } catch { /* non-fatal */ }
 }
 
+// Stored so getAllMatches() can await it if called before init finishes.
+// This prevents the race condition where the first request arrives before the
+// file cache is loaded and gets an empty array instead of stale-but-valid data.
+let _initPromise: Promise<void> | null = null;
+
 // On startup: load whatever cache exists (even stale) so the very first request
 // is served from memory. Always trigger a background refresh so data is fresh
 // by the time real users arrive (even on a completely fresh server).
-(async () => {
+_initPromise = (async () => {
   // ① FAST PATH — file cache has zero network dependency, always < 50ms.
   //    Load it first so the very first request never blocks on a DB connection.
   const fileResult = await _readFileCache();
   if (fileResult) {
     g_allMatchesCache.data = fileResult.data;
-    g_allMatchesCache.ts   = fileResult.ts;
+    // BUG FIX: stamp with NOW, not fileResult.ts.
+    // fileResult.ts is the original write time (could be hours old), which
+    // caused getAllMatches() to see age > ALLMATCHES_STALE_TTL and re-read
+    // DB/file on every single request after a restart instead of serving
+    // from Layer 1/2 (in-memory, sub-ms).
+    g_allMatchesCache.ts   = Date.now();
   }
 
   // ② Kick off a live ESPN refresh immediately — data will be warm within
@@ -4506,9 +4516,13 @@ async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
     try {
       await _ensureMatchCacheTable();
       const dbResult = await _readDbCache();
-      if (dbResult && dbResult.ts > (g_allMatchesCache.ts || 0)) {
-        g_allMatchesCache.data = dbResult.data;
-        g_allMatchesCache.ts   = dbResult.ts;
+      if (dbResult && dbResult.ts > 0) {
+        // Only promote if DB has fresher data than what's already in memory.
+        // Also fix: stamp with NOW so Layer 1/2 serve from memory correctly.
+        if (!g_allMatchesCache.data || dbResult.ts > (g_allMatchesCache.ts || 0)) {
+          g_allMatchesCache.data = dbResult.data;
+          g_allMatchesCache.ts   = Date.now();
+        }
       }
     } catch { /* non-fatal — DB may be unreachable at cold start */ }
   });
@@ -4522,6 +4536,15 @@ function _triggerBackgroundRefresh() {
 }
 
 export async function getAllMatches(): Promise<UnifiedMatch[]> {
+  // Race-condition fix: if no data yet, await the init promise (file cache read).
+  // This is fast (< 100ms) and ensures the very first request after a server start
+  // returns real cached data instead of an empty array that makes the page spin
+  // while the 8-10s background API fetch completes.
+  if (!g_allMatchesCache.data && _initPromise) {
+    await _initPromise;
+    _initPromise = null; // consumed — no need to await again
+  }
+
   const age = Date.now() - g_allMatchesCache.ts;
 
   // Layer 1: In-memory fresh — return immediately (sub-ms)

@@ -22,8 +22,11 @@ module.exports = {
       min_uptime: '10s',
       restart_delay: 3000,
 
-      // Memory guard — restart if RSS exceeds 1 GB
-      max_memory_restart: '1024M',
+      // Memory guard — restart if RSS exceeds 1.5 GB.
+      // Was 1024M, which caused frequent restarts that wiped the in-memory
+      // match cache and forced cold-start API refetches on every restart.
+      // Next.js production with many routes + match cache needs more headroom.
+      max_memory_restart: '1536M',
 
       // Log config
       out_file: '/root/.pm2/logs/betcheza-out.log',
@@ -31,8 +34,10 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
 
-      // Node.js tuning for Next.js production
-      node_args: '--max-old-space-size=768',
+      // Node.js tuning for Next.js production.
+      // Increased heap from 768MB → 1400MB to reduce GC pressure and prevent
+      // the OOM-triggered PM2 restarts that were wiping the match cache.
+      node_args: '--max-old-space-size=1400',
 
       // Graceful shutdown — give Next.js time to drain connections
       kill_timeout: 10000,

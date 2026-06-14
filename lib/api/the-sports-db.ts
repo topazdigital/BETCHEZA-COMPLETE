@@ -187,6 +187,7 @@ async function fetchLeagueRoundOrSeason(league: TSDBLeagueConfig): Promise<Unifi
         const r = await fetch(u, {
           headers: { Accept: 'application/json' },
           next: { revalidate: 900 },
+          signal: AbortSignal.timeout(8000),
         });
         if (!r.ok) return null;
         return (await r.json()) as TSDBEventsResponse;

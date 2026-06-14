@@ -136,6 +136,7 @@ async function fetchLeagueMatches(league: FDLeague, apiKey: string): Promise<Uni
     const r = await fetch(url, {
       headers: { 'X-Auth-Token': apiKey, Accept: 'application/json' },
       next: { revalidate: 900 },
+      signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) {
       cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });

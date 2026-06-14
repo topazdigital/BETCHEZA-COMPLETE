@@ -148,6 +148,7 @@ async function fetchDay(dateStr: string): Promise<UnifiedMatch[]> {
         'Cache-Control': 'no-cache',
       },
       cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!res.ok) {

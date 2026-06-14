@@ -129,7 +129,7 @@ async function fetchLeague(league: OLDBLeague): Promise<UnifiedMatch[]> {
 
   const url = `${OLDB_BASE}/getmatchdata/${league.shortcut}/${league.season}`;
   try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' }, next: { revalidate: 900 } });
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, next: { revalidate: 900 }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) {
       cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });
       return [];
