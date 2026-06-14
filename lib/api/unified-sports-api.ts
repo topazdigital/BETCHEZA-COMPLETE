@@ -4667,15 +4667,27 @@ function _triggerBackgroundRefresh() {
  * Waits for the fetch to complete and returns the refreshed match list.
  */
 export async function forceRefreshMatches(): Promise<UnifiedMatch[]> {
-  // If a fetch is already in progress, wait for it to finish first.
+  // Hard cap: never block caller for more than 30 s regardless of ESPN speed.
+  // On production servers where ESPN is slow / rate-limiting, uncapped awaits
+  // caused the warmup endpoint to hang for minutes, making Apache return 503
+  // and the deploy.sh health-check to fail, leaving the site completely down.
+  const FORCE_REFRESH_TIMEOUT = 30_000;
+
+  // If a fetch is already in progress, wait for it (capped).
   if (g_allMatchesCache.promise) {
-    await g_allMatchesCache.promise;
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, FORCE_REFRESH_TIMEOUT)),
+    ]);
   }
   // Expire the in-memory cache so _triggerBackgroundRefresh starts a new fetch.
   g_allMatchesCache.ts = 0;
   _triggerBackgroundRefresh();
   if (g_allMatchesCache.promise) {
-    await g_allMatchesCache.promise;
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, FORCE_REFRESH_TIMEOUT)),
+    ]);
   }
   return g_allMatchesCache.data ?? [];
 }
@@ -4692,12 +4704,13 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
 
   // COLD START WAIT: if still no data (e.g. DB + file cache both empty after
   // a fresh deploy) AND a background ESPN fetch is already in-progress, wait
-  // for it instead of returning an empty array. This is what the warmup endpoint
-  // needs so it doesn't report 0 matches and exit before data is ready.
-  // Without this, deploy.sh warmup could exit with "0 matches" even though
-  // the fetch was seconds away from completing.
+  // for it — but cap at 8 s so a slow/rate-limited ESPN never hangs requests.
+  // Previously this was uncapped, causing Apache 503s when ESPN timed out.
   if (!g_allMatchesCache.data && g_allMatchesCache.promise) {
-    await g_allMatchesCache.promise;
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, 8_000)),
+    ]);
     if (g_allMatchesCache.data) return g_allMatchesCache.data;
   }
 

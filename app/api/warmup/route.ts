@@ -7,12 +7,13 @@ export const runtime = 'nodejs';
 /**
  * GET /api/warmup
  *
- * Forces a live ESPN re-fetch so today's matches are in cache before users
- * hit the site. Always fetches fresh data — never returns stale file-cache
- * data from a previous day (which caused "0 matches today" after deploys).
+ * Triggers a background ESPN cache refresh so today's matches load quickly
+ * for users. Returns immediately without waiting for ESPN to complete —
+ * previously this blocked for minutes when ESPN rate-limited the server IP,
+ * causing deploy.sh health checks to fail and leaving the site with a 503.
  *
- * Called by deploy.sh immediately after `pm2 reload` finishes, and by the
- * ecosystem post_start hook. Safe to call at any time.
+ * The actual data refresh continues in the background; subsequent requests
+ * will serve fresh data once it's ready (stale-while-revalidate pattern).
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET || 'betcheza-cron-2024';
@@ -22,20 +23,16 @@ export async function GET(request: Request) {
   }
 
   const t0 = Date.now();
-  const results: Record<string, string> = {};
 
-  // Force a live ESPN re-fetch and wait for it to finish.
-  // This ensures today's matches (not yesterday's cached data) are in memory
-  // before deploy.sh completes and users start hitting the site.
-  try {
-    const matches = await forceRefreshMatches();
-    results.matches = `${matches.length} matches in ${Date.now() - t0}ms`;
-  } catch (e) {
-    results.matches = `error: ${e instanceof Error ? e.message : String(e)}`;
-  }
+  // Fire-and-forget: trigger the ESPN refresh in the background.
+  // Do NOT await it — if ESPN is slow or rate-limiting this server's IP,
+  // waiting here causes Apache to 503 and the deploy to fail entirely.
+  // The 30-second cap in forceRefreshMatches() ensures it eventually resolves.
+  forceRefreshMatches().catch(() => { /* errors logged inside */ });
 
-  // Pre-warm the home payload cache.
+  // Pre-warm the home payload cache (with a short timeout so we don't block).
   const homeT = Date.now();
+  let homeResult = 'skipped';
   try {
     const baseUrl =
       process.env.INTERNAL_BASE_URL ||
@@ -43,19 +40,22 @@ export async function GET(request: Request) {
       `http://localhost:${process.env.PORT || 5000}`;
     const homeRes = await fetch(`${baseUrl}/api/home`, {
       headers: { authorization: `Bearer ${secret}` },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(5000),
     });
-    results.home = homeRes.ok
+    homeResult = homeRes.ok
       ? `ok (${Date.now() - homeT}ms)`
       : `http ${homeRes.status} (${Date.now() - homeT}ms)`;
-  } catch (e) {
-    results.home = `error: ${e instanceof Error ? e.message : String(e)}`;
+  } catch {
+    homeResult = `timeout/error (${Date.now() - homeT}ms) — matches refreshing in background`;
   }
 
   return NextResponse.json({
     ok: true,
     totalMs: Date.now() - t0,
-    warmed: results,
+    warmed: {
+      matches: 'refreshing in background',
+      home: homeResult,
+    },
     ts: new Date().toISOString(),
   });
 }
