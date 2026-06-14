@@ -4495,7 +4495,10 @@ _initPromise = (async () => {
   // ① FAST PATH — file cache has zero network dependency, always < 50ms.
   //    Load it first so the very first request never blocks on a DB connection.
   const fileResult = await _readFileCache();
-  if (fileResult) {
+  if (fileResult && fileResult.data.length >= 5) {
+    // Only use file cache if it has meaningful data (cache poisoning guard).
+    // If the file has 0 (or near-zero) matches from a previous failed fetch,
+    // skip it so we don't serve a blank site — the DB/live fetch will populate.
     g_allMatchesCache.data = fileResult.data;
     // BUG FIX: stamp with NOW, not fileResult.ts.
     // fileResult.ts is the original write time (could be hours old), which
@@ -4543,6 +4546,17 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
   if (!g_allMatchesCache.data && _initPromise) {
     await _initPromise;
     _initPromise = null; // consumed — no need to await again
+  }
+
+  // COLD START WAIT: if still no data (e.g. DB + file cache both empty after
+  // a fresh deploy) AND a background ESPN fetch is already in-progress, wait
+  // for it instead of returning an empty array. This is what the warmup endpoint
+  // needs so it doesn't report 0 matches and exit before data is ready.
+  // Without this, deploy.sh warmup could exit with "0 matches" even though
+  // the fetch was seconds away from completing.
+  if (!g_allMatchesCache.data && g_allMatchesCache.promise) {
+    await g_allMatchesCache.promise;
+    if (g_allMatchesCache.data) return g_allMatchesCache.data;
   }
 
   const age = Date.now() - g_allMatchesCache.ts;
@@ -4982,11 +4996,25 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
 
   const sorted = sortMatchesWithPriority(windowed.length > 0 ? windowed : allMatches);
 
-  // Update all cache layers
-  g_allMatchesCache.data = sorted;
-  g_allMatchesCache.ts = Date.now();
-  void _writeDbCache(sorted);
-  void _writeFileCache(sorted);
+  // CACHE POISONING GUARD: only write to persistent cache if we got a
+  // meaningful result. A failed/rate-limited fetch returning 0 matches must
+  // NEVER overwrite a good cache — that would blank out the site for every
+  // subsequent user until the next successful fetch.
+  // Threshold: 5 matches. If all sources are down we keep the last good data.
+  const previousCount = g_allMatchesCache.data?.length ?? 0;
+  const MIN_MATCHES_TO_PERSIST = 5;
+  if (sorted.length >= MIN_MATCHES_TO_PERSIST || previousCount === 0) {
+    g_allMatchesCache.data = sorted;
+    g_allMatchesCache.ts = Date.now();
+    void _writeDbCache(sorted);
+    void _writeFileCache(sorted);
+  } else {
+    // Fetch returned too few matches — keep existing in-memory data but
+    // don't write to DB/file. Log so it's visible in PM2 logs.
+    console.warn(`[matches] fetch returned only ${sorted.length} matches (prev: ${previousCount}) — skipping cache write to protect existing data`);
+    // Still update the in-memory timestamp so we retry after TTL
+    g_allMatchesCache.ts = Date.now();
+  }
 
   // Ping IndexNow for any match pages that just appeared for the first time.
   // This tells Bing/Google to crawl them immediately rather than waiting for

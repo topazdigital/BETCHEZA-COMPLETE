@@ -384,20 +384,26 @@ if [ "$SUCCESS" = false ]; then
   exit 1
 fi
 
-# ── Step 6b: Pre-warm caches ──────────────────────────────────────────────────
-# Hit /api/warmup so the match cache is populated before real users arrive.
-# Without this, the first visitor after a PM2 restart would wait 8-10 s for
-# ESPN data. Warmup runs in the background so deploy.sh doesn't block.
+# ── Step 6b: Pre-warm caches (SYNCHRONOUS) ────────────────────────────────────
+# Hit /api/warmup and WAIT for it to finish before completing the deploy.
+# Running warmup in the background meant users could hit the site during the
+# 8-10 second ESPN fetch window and see "No matches found". Now we block here
+# until warmup confirms match data is loaded, so the site is always ready.
 WARMUP_SECRET=$(grep -E '^CRON_SECRET=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
 WARMUP_SECRET="${WARMUP_SECRET:-betcheza-cron-2024}"
-echo -e "${YELLOW}Pre-warming caches (background)...${NC}"
-curl -s \
+echo -e "${YELLOW}Pre-warming caches (waiting for completion)...${NC}"
+WARMUP_RESPONSE=$(curl -s \
   -H "Authorization: Bearer ${WARMUP_SECRET}" \
-  --max-time 60 \
-  "http://127.0.0.1:${APP_PORT}/api/warmup" \
-  > /tmp/betcheza_warmup.json 2>/dev/null &
-WARMUP_PID=$!
-echo -e "${GREEN}  Warmup started in background (PID $WARMUP_PID)${NC}"
+  --max-time 90 \
+  "http://127.0.0.1:${APP_PORT}/api/warmup" 2>/dev/null)
+WARMUP_MATCHES=$(echo "$WARMUP_RESPONSE" | grep -o '"matches":"[^"]*"' | cut -d'"' -f4 | grep -o '^[0-9]*')
+if [ -n "$WARMUP_MATCHES" ] && [ "$WARMUP_MATCHES" -gt 0 ] 2>/dev/null; then
+  echo -e "${GREEN}✓ Cache warm — ${WARMUP_MATCHES} matches loaded${NC}"
+else
+  echo -e "${YELLOW}⚠ Warmup completed but match count unclear — response: ${WARMUP_RESPONSE}${NC}"
+  # Non-fatal: ESPN may have a temporary hiccup; the site will still serve
+  # any previously cached data and refresh in the background.
+fi
 
 # ── End-to-end site check via Apache ──────────────────────────────────────────
 echo ""

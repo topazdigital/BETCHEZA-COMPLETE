@@ -15,12 +15,16 @@ module.exports = {
       },
       env_file: '.env.local',
 
-      // Restart policy — if the app crashes, PM2 brings it back
+      // Restart policy — if the app crashes, PM2 brings it back.
+      // post_start hook fires /api/warmup after every restart (including
+      // auto-restarts from memory limit) so the match cache is always
+      // pre-populated before users hit the site.
       autorestart: true,
       watch: false,
       max_restarts: 10,
       min_uptime: '10s',
       restart_delay: 3000,
+      post_start: 'sleep 8 && curl -sf -H "Authorization: Bearer betcheza-cron-2024" --max-time 90 http://localhost:3001/api/warmup > /tmp/betcheza-warmup-auto.json 2>&1 || true',
 
       // Memory guard — restart if RSS exceeds 1.5 GB.
       // Was 1024M, which caused frequent restarts that wiped the in-memory
