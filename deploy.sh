@@ -314,17 +314,118 @@ else
   echo -e "${YELLOW}Web root not found — skipping static copy${NC}"
 fi
 
-# ── 4c: Write conf.d file as the primary/authoritative proxy config ───────────
-# We write this EVERY deploy rather than deleting it.  The DA httpd.conf patch
-# above is best-effort (it fails silently when the VirtualHost can't be found);
-# this conf.d file is the reliable fallback that keeps the site proxied even
-# when the DA patch doesn't apply.  Apache includes /etc/httpd/conf.d/*.conf
-# automatically, so this file is always picked up after an httpd reload.
+# ── 4c: Patch DA httpd.conf with a robust Python script ──────────────────────
+# This patches ALL betcheza.co.ke VirtualHosts (HTTP + HTTPS) in the DA conf.
+# It is the most reliable method because it edits the authoritative config file
+# that DirectAdmin manages, rather than fighting with a separate conf.d file.
 CONFD_FILE="/etc/httpd/conf.d/${DOMAIN}.conf"
-if [ -d "/etc/httpd/conf.d" ]; then
-  cat > "$CONFD_FILE" << CONFD
+if [ -f /usr/local/directadmin/data/users/admin/httpd.conf ]; then
+  python3 << PYEOF
+import re, sys
+
+DA_CONF  = "/usr/local/directadmin/data/users/admin/httpd.conf"
+DOMAIN   = "${DOMAIN}"
+APP_PORT = ${APP_PORT}
+
+HTTP_PROXY = (
+    "\n    # Node.js reverse proxy — managed by deploy.sh\n"
+    "    ProxyPreserveHost On\n"
+    "    ProxyRequests Off\n"
+    "    RequestHeader set X-Forwarded-Proto \"http\"\n"
+    "    ProxyPass        /.well-known !\n"
+    "    ProxyPass        /_next/static/ !\n"
+    f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/ timeout=120 keepalive=On\n"
+    f"    ProxyPassReverse / http://127.0.0.1:{APP_PORT}/\n"
+    "    ProxyTimeout 120\n"
+)
+HTTPS_PROXY = HTTP_PROXY.replace('"http"', '"https"')
+
+def is_ssl(line):
+    return bool(re.search(r":443\b", line))
+
+with open(DA_CONF) as f:
+    lines = f.readlines()
+
+# Pass 1: update existing ProxyPass port numbers (handles re-deploys)
+in_betcheza = False
+vhost_ssl   = False
+new_lines   = []
+updates     = 0
+for i, line in enumerate(lines):
+    if re.search(r"<VirtualHost[^>]+>", line):
+        chunk = "".join(lines[i:i+80])
+        in_betcheza = bool(re.search(rf"(ServerName|ServerAlias)[^\n]*{re.escape(DOMAIN)}", chunk))
+        vhost_ssl = is_ssl(line)
+    if in_betcheza and re.search(r"RequestHeader\s+set\s+X-Forwarded-Proto", line):
+        expected = '"https"' if vhost_ssl else '"http"'
+        new_line = re.sub(r'"https"|"http"', expected, line)
+        if new_line != line: updates += 1
+        new_lines.append(new_line)
+        continue
+    if in_betcheza and re.search(r"ProxyPass(?:Reverse)?\s+/\s+http://127\.0\.0\.1:\d+/", line):
+        new_line = re.sub(r"(ProxyPass(?:Reverse)?\s+/\s+http://127\.0\.0\.1:)\d+(/)", rf"\g<1>{APP_PORT}\2", line)
+        if new_line != line: updates += 1
+        new_lines.append(new_line)
+        continue
+    if re.match(r"\s*</VirtualHost>", line):
+        in_betcheza = False
+    new_lines.append(line)
+
+# Pass 2: inject ProxyPass where missing
+in_betcheza = False
+vhost_ssl   = False
+final_lines = []
+patched     = 0
+for i, line in enumerate(new_lines):
+    if re.search(r"<VirtualHost[^>]+>", line):
+        chunk = "".join(new_lines[i:i+80])
+        in_betcheza = bool(re.search(rf"(ServerName|ServerAlias)[^\n]*{re.escape(DOMAIN)}", chunk))
+        vhost_ssl = is_ssl(line)
+    if in_betcheza and re.match(r"\s*</VirtualHost>", line):
+        preceding = "".join(final_lines[-60:])
+        if "ProxyPass" not in preceding:
+            final_lines.append(HTTPS_PROXY if vhost_ssl else HTTP_PROXY)
+            patched += 1
+        in_betcheza = False
+        vhost_ssl   = False
+    final_lines.append(line)
+
+total = updates + patched
+if total > 0:
+    import shutil
+    shutil.copy(DA_CONF, DA_CONF + ".bak")
+    with open(DA_CONF, "w") as f:
+        f.writelines(final_lines)
+    print(f"✓ DA httpd.conf patched: {updates} updated, {patched} injected (total {total} VHosts)")
+else:
+    # Already correctly configured — verify port matches
+    if f"127.0.0.1:{APP_PORT}" in "".join(new_lines):
+        print(f"✓ DA httpd.conf already has correct ProxyPass → port {APP_PORT}")
+    else:
+        print(f"WARNING: Could not find or patch betcheza VirtualHost in {DA_CONF}", file=sys.stderr)
+PYEOF
+
+  # Always write the HTTP conf.d as belt-and-suspenders fallback
+  # (DA patch handles HTTPS; this ensures HTTP works even if DA conf is reset)
+  if [ -d "/etc/httpd/conf.d" ]; then
+    cat > "$CONFD_FILE" << CONFD
+# Betcheza HTTP reverse-proxy fallback — written by deploy.sh $(date +%Y-%m-%d)
+# The primary proxy config lives in DirectAdmin's httpd.conf (patched above).
+# This file ensures HTTP port 80 works even if the DA patch is ever reset.
+<IfModule mod_proxy.c>
+  <IfDefine !betcheza_proxy_loaded>
+    Define betcheza_proxy_loaded
+  </IfDefine>
+</IfModule>
+CONFD
+    echo -e "${GREEN}conf.d marker written → ${CONFD_FILE}${NC}"
+  fi
+else
+  echo -e "${YELLOW}DA httpd.conf not found — writing conf.d HTTP+HTTPS proxy${NC}"
+  if [ -d "/etc/httpd/conf.d" ]; then
+    cat > "$CONFD_FILE" << CONFD
 # Betcheza reverse-proxy — written by deploy.sh $(date +%Y-%m-%d)
-# Proxy port: ${APP_PORT}  |  Domain: ${DOMAIN}
+# (DirectAdmin not detected; using standalone conf.d VirtualHost)
 <IfModule mod_proxy.c>
   <VirtualHost *:80>
     ServerName ${DOMAIN}
@@ -340,9 +441,8 @@ if [ -d "/etc/httpd/conf.d" ]; then
   </VirtualHost>
 </IfModule>
 CONFD
-  echo -e "${GREEN}conf.d proxy file written → ${CONFD_FILE}${NC}"
-else
-  echo -e "${YELLOW}No /etc/httpd/conf.d — relying on .htaccess proxy${NC}"
+    echo -e "${GREEN}conf.d proxy file written → ${CONFD_FILE}${NC}"
+  fi
 fi
 
 # ── 4d: Reload Apache to pick up DA config changes ────────────────────────────
