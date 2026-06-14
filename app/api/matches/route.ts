@@ -397,14 +397,12 @@ export async function GET(request: NextRequest) {
       matches = matches.filter(m => m.status === status);
     } else if (!status || status === 'all') {
       // Default: keep today's matches even if finished; drop finished from other days.
-      // Also drop scheduled matches whose kickoff was more than 2 hours ago — these are
-      // stale entries whose status was never updated by the external API (e.g. April 18
-      // matches still tagged 'scheduled' days later).
+      // For scheduled matches that are past their kickoff: only prune matches from
+      // OTHER days (not today) whose kickoff was >6 hours ago. Today's matches that
+      // ESPN hasn't updated yet should always stay visible — hiding them caused the
+      // "No matches today" problem when the feed was slow to update.
       const nowMs = Date.now();
-      // Stale-scheduled threshold: 90 min — any "scheduled" match whose kickoff
-      // was >90 min ago is almost certainly in-progress or finished but the API
-      // status was never updated. Hide it rather than show a ghost entry.
-      const STALE_SCHEDULED_MS = 90 * 60 * 1000;
+      const STALE_SCHEDULED_OTHER_DAY_MS = 6 * 60 * 60 * 1000; // 6 hours for non-today
       matches = matches.filter(m => {
         if (m.status === 'cancelled' || m.status === 'postponed') return false;
         if (m.status === 'finished') {
@@ -412,8 +410,11 @@ export async function GET(request: NextRequest) {
           return getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
         }
         if (m.status === 'scheduled') {
-          // Discard if kickoff was more than 90 minutes ago
-          return new Date(m.kickoffTime).getTime() >= nowMs - STALE_SCHEDULED_MS;
+          const isToday = getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
+          // Never prune today's scheduled matches — ESPN updates can be slow
+          if (isToday) return true;
+          // For past/other days: discard if kickoff was more than 6 hours ago
+          return new Date(m.kickoffTime).getTime() >= nowMs - STALE_SCHEDULED_OTHER_DAY_MS;
         }
         return true;
       });

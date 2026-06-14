@@ -434,27 +434,40 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
   }, [selectedSportId, allMatches]);
 
   const filteredMatches = useMemo(() => {
-    let result = matches.filter(m => m.status !== 'finished');
+    let result = [...matches];
     const todayKey = toLocalISODate(new Date());
     if (statusFilter !== 'live') {
       if (dateTab === 'today') {
-        // Also include early-morning next-day matches (before 06:00 local time) —
-        // e.g. a 22:00 UTC / 01:00 EAT kickoff is still "tonight" for EAT users.
+        // Include ALL today's matches — scheduled, live, AND finished.
+        // Finished matches from today are today's results; hiding them caused
+        // "No matches today" whenever all of the day's games had ended.
         const tomorrowKey = toLocalISO(1);
         result = result.filter(m => {
+          if (m.status === 'cancelled' || m.status === 'postponed') return false;
           const kickoff = new Date(m.kickoffTime);
           const k = toLocalISODate(kickoff);
           if (k === todayKey) return true;
+          // Include early-morning next-day matches (before 06:00 local time) —
+          // e.g. a 22:00 UTC / 01:00 EAT kickoff is still "tonight" for EAT users.
           return k === tomorrowKey && kickoff.getHours() < 6;
         });
       } else if (dateTab === 'upcoming') {
+        // Upcoming: only future scheduled matches, never finished ones
         result = result.filter(m => {
+          if (m.status === 'finished' || m.status === 'cancelled' || m.status === 'postponed') return false;
           const k = toLocalISODate(new Date(m.kickoffTime));
           return k > todayKey && m.status === 'scheduled';
         });
       } else if (dateTab === 'calendar' && calendarDate) {
-        result = result.filter(m => toLocalISODate(new Date(m.kickoffTime)) === calendarDate);
+        // Calendar: show all statuses for the selected date (past dates show results)
+        result = result.filter(m =>
+          m.status !== 'cancelled' && m.status !== 'postponed' &&
+          toLocalISODate(new Date(m.kickoffTime)) === calendarDate
+        );
       }
+    } else {
+      // Live filter: keep only live matches
+      result = result.filter(m => isLiveMatchStatus(m.status));
     }
     void getBrowserTimezone(); void isTodayTz;
     if (leagueFilter !== 'all') {

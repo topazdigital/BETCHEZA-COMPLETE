@@ -210,10 +210,9 @@ function toLocalISODate(d: Date): string {
 }
 
 function getTodayMatches(matches: Match[]): Match[] {
-  // Use local-ISO date so the count exactly matches the matches page's
-  // "Today" filter, AND exclude finished matches (those live on the
-  // Results page) so the badge doesn't double-count yesterday's finals
-  // that the feed still tags as "today" in UTC.
+  // Include ALL of today's matches: scheduled, live, AND finished.
+  // Excluding finished matches caused "No matches today" whenever all of
+  // the day's games had ended (e.g. after an afternoon World Cup session).
   // Also include early-morning next-day matches (before 06:00 local) —
   // e.g. a 22:00 UTC / 01:00 EAT kickoff is still "tonight" for EAT users.
   const todayKey = toLocalISODate(new Date());
@@ -221,7 +220,7 @@ function getTodayMatches(matches: Match[]): Match[] {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowKey = toLocalISODate(tomorrow);
   return matches
-    .filter(m => m.status !== 'finished' && m.status !== 'cancelled' && m.status !== 'postponed')
+    .filter(m => m.status !== 'cancelled' && m.status !== 'postponed')
     .filter(m => {
       const kickoff = new Date(m.kickoffTime);
       const k = toLocalISODate(kickoff);
