@@ -6,7 +6,7 @@
  *     whose outcome is now mathematically certain (e.g. Under line blown).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getLiveMatches, getAllMatches } from '@/lib/api/unified-sports-api';
+import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache } from '@/lib/api/unified-sports-api';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
@@ -67,6 +67,11 @@ export async function GET(req: NextRequest) {
     if (matches.length === 0) {
       return NextResponse.json({ ok: true, live: 0, goals: 0 });
     }
+
+    // Immediately patch updated scores into the main /api/matches cache so
+    // the next browser SWR poll gets fresh scores without waiting for a full
+    // background re-fetch (which takes 10-30s).
+    patchLiveScoresInMainCache(matches);
 
     const goals: Array<{ matchId: string; homeTeam: string; awayTeam: string; title: string; score: string }> = [];
     const justFinished: Array<{ matchId: string; homeTeam: string; awayTeam: string }> = [];

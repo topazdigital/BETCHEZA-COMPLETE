@@ -291,11 +291,11 @@ export function useMatches(filters?: MatchFilters) {
     url,
     matchesFetcher,
     {
-      refreshInterval: 60000,      // Refresh every 60 seconds (server caches for 3 min anyway)
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,     // Deduplicate requests within 30s window
+      refreshInterval: 15000,      // Poll every 15s — API is no-store, scores update every 30s
+      revalidateOnFocus: true,     // Immediately refetch when user returns to tab
+      dedupingInterval: 10000,     // Deduplicate requests within 10s window
       keepPreviousData: true,      // Never flash empty state during background refresh
-      revalidateIfStale: false,    // Don't refetch on mount if we already have data
+      revalidateIfStale: true,     // Always refetch on mount if data might be stale
     }
   );
 

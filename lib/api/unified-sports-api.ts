@@ -4530,7 +4530,7 @@ export function getOddsIndexMarketsForMatch(homeTeam: string, awayTeam: string):
 // This means after the first ever warm-up, every subsequent request — including
 // after PM2 restarts — serves data in < 50ms.
 
-const ALLMATCHES_CACHE_TTL  = 90 * 1000;         // 90 sec — serve from memory (live accuracy)
+const ALLMATCHES_CACHE_TTL  = 30 * 1000;         // 30 sec — serve from memory (live accuracy)
 const ALLMATCHES_STALE_TTL  = 4 * 60 * 60 * 1000; // 4 hours — serve stale if ESPN is down
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and
@@ -5428,6 +5428,43 @@ export async function getLiveMatches(): Promise<UnifiedMatch[]> {
     (m.status as string) === 'extra_time' ||
     (m.status as string) === 'penalties'
   );
+}
+
+/**
+ * Patch live match scores directly into the in-memory main cache without doing
+ * a full re-fetch. Called by the live-scores cron after every ESPN score check
+ * so that the /api/matches endpoint immediately reflects updated scores,
+ * match minutes, and status changes — no need to wait for the next full
+ * background refresh (which takes 10-30 seconds).
+ */
+export function patchLiveScoresInMainCache(liveMatches: UnifiedMatch[]): void {
+  if (!g_allMatchesCache.data?.length || !liveMatches.length) return;
+  const byId = new Map(liveMatches.map(m => [m.id, m]));
+  let changed = false;
+  g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
+    const live = byId.get(m.id);
+    if (!live) return m;
+    // Only patch if something actually changed — avoids unnecessary object churn
+    if (
+      live.homeScore === m.homeScore &&
+      live.awayScore === m.awayScore &&
+      live.status === m.status &&
+      live.matchMinute === m.matchMinute
+    ) return m;
+    changed = true;
+    return {
+      ...m,
+      homeScore: live.homeScore,
+      awayScore: live.awayScore,
+      status: live.status,
+      matchMinute: live.matchMinute,
+    };
+  });
+  // Reset TTL so the patched data is immediately served as "fresh"
+  if (changed) {
+    g_allMatchesCache.ts = Date.now();
+    console.log(`[matches] live-score patch: updated ${liveMatches.length} live matches in cache`);
+  }
 }
 
 export async function getUpcomingMatches(): Promise<UnifiedMatch[]> {

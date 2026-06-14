@@ -8,7 +8,8 @@ import {
 } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 60;
+// No revalidate — force-dynamic already disables Next.js data cache.
+// Cache-Control is set per-response below.
 
 // Sport priority - Football always first
 const SPORT_PRIORITY: Record<number, number> = {
@@ -445,7 +446,9 @@ export async function GET(request: NextRequest) {
       source: apiSource,
       timestamp: new Date().toISOString(),
     });
-    res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    // No caching — live sports data must always be fresh.
+    // Browsers and CDNs must revalidate on every request.
+    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res;
   } catch (error) {
     console.error('[Matches API] Error:', error);
