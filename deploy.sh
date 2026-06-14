@@ -73,6 +73,14 @@ fi
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
 npm install --prefer-offline
 
+# ── Step 3: Stop PM2 BEFORE building to free RAM ─────────────────────────────
+# PM2 holds ~1.4 GB of RAM for the running app. If it stays up during build,
+# the build process + PM2 together exceed the server's RAM and the OOM killer
+# terminates the build ("Killed" at "Collecting page data"). Stop PM2 first.
+echo -e "${YELLOW}[2b/5] Stopping PM2 to free RAM for build...${NC}"
+pm2 stop betcheza 2>/dev/null || true
+sleep 2
+
 # ── Step 3: Build ─────────────────────────────────────────────────────────────
 echo -e "${YELLOW}[3/5] Building...${NC}"
 # Clear stale Next.js build cache before every deploy to prevent partial-build
@@ -83,9 +91,9 @@ rm -rf "$APP_DIR/.next" 2>/dev/null || {
   find "$APP_DIR/.next" -type f -delete 2>/dev/null || true
   find "$APP_DIR/.next" -type d -empty -delete 2>/dev/null || true
 }
-# Give the build process extra heap — Next.js (especially with turbopack and
-# many routes) can exceed the default 512 MB Node.js limit.
-NODE_OPTIONS='--max-old-space-size=4096' npm run build
+# Cap build at 1.5 GB — enough for Next.js Turbopack with 80+ routes, but
+# leaves headroom on a 4 GB server. (Was 4096 which competed with PM2.)
+NODE_OPTIONS='--max-old-space-size=1500' npm run build
 
 # ── Step 4: Apache proxy config ───────────────────────────────────────────────
 echo -e "${YELLOW}[4/5] Configuring Apache reverse proxy...${NC}"
