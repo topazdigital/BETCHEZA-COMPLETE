@@ -4651,6 +4651,24 @@ _initPromise = (async () => {
       }
     } catch { /* non-fatal — DB may be unreachable at cold start */ }
   });
+
+  // ④ RETRY — On production servers, the DB circuit breaker may be open
+  //    at cold-start (localhost→::1 IPv6 issue, or MySQL max_connections hit).
+  //    The circuit cools in 10 s. Retry at 20 s so if DB had no data the
+  //    first time we still serve cached matches once the pool stabilises.
+  //    Only runs if memory cache is still empty after init.
+  setTimeout(async () => {
+    if (g_allMatchesCache.data && g_allMatchesCache.data.length >= 5) return;
+    try {
+      const { resetPool } = await import('../db');
+      resetPool(); // clear any stale circuit-breaker state
+      const dbResult = await _readDbCache();
+      if (dbResult && dbResult.data.length >= 5) {
+        g_allMatchesCache.data = dbResult.data;
+        g_allMatchesCache.ts   = Date.now();
+      }
+    } catch { /* non-fatal */ }
+  }, 20_000);
 })();
 
 function _triggerBackgroundRefresh() {

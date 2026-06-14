@@ -92,15 +92,21 @@ export function getPool(): mysql.Pool | null {
   }
 
   if (!g.__dbPool) {
+    // Normalize 'localhost' → '127.0.0.1': on many Linux servers 'localhost'
+    // resolves to ::1 (IPv6) but MySQL only listens on 127.0.0.1 (IPv4),
+    // causing ECONNREFUSED which trips the circuit breaker and kills DB caching.
+    const resolvedHost = (host === 'localhost' || host === '::1') ? '127.0.0.1' : host;
     g.__dbPool = mysql.createPool({
-      host,
+      host: resolvedHost,
       port: fileCfg?.port || parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306'),
       user,
       password: password || '',
       database,
       waitForConnections: true,
-      connectionLimit: 20,
-      queueLimit: 100,
+      // Lower limit on production to avoid exhausting MySQL's max_connections
+      // on shared servers running multiple apps (dossy, rdn-api, rdn-test, etc.)
+      connectionLimit: process.env.NODE_ENV === 'production' ? 5 : 20,
+      queueLimit: 50,
       charset: 'utf8mb4',
       timezone: '+00:00',
       connectTimeout: 10_000,
