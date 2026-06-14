@@ -446,9 +446,8 @@ export async function GET(request: NextRequest) {
       source: apiSource,
       timestamp: new Date().toISOString(),
     });
-    // No caching — live sports data must always be fresh.
-    // Browsers and CDNs must revalidate on every request.
-    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    // Short cache — fresh enough for live scores, light enough for the VPS.
+    res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
     return res;
   } catch (error) {
     console.error('[Matches API] Error:', error);

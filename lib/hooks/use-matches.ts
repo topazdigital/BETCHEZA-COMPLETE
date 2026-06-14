@@ -291,9 +291,9 @@ export function useMatches(filters?: MatchFilters) {
     url,
     matchesFetcher,
     {
-      refreshInterval: 15000,      // Poll every 15s — API is no-store, scores update every 30s
-      revalidateOnFocus: true,     // Immediately refetch when user returns to tab
-      dedupingInterval: 10000,     // Deduplicate requests within 10s window
+      refreshInterval: 30000,      // Poll every 30s — scores update every 60s server-side
+      revalidateOnFocus: true,     // Refetch when user returns to tab
+      dedupingInterval: 20000,     // Deduplicate requests within 20s window
       keepPreviousData: true,      // Never flash empty state during background refresh
       revalidateIfStale: true,     // Always refetch on mount if data might be stale
     }

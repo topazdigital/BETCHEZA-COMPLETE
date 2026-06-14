@@ -4530,7 +4530,7 @@ export function getOddsIndexMarketsForMatch(homeTeam: string, awayTeam: string):
 // This means after the first ever warm-up, every subsequent request — including
 // after PM2 restarts — serves data in < 50ms.
 
-const ALLMATCHES_CACHE_TTL  = 30 * 1000;         // 30 sec — serve from memory (live accuracy)
+const ALLMATCHES_CACHE_TTL  = 90 * 1000;         // 90 sec — serve from memory
 const ALLMATCHES_STALE_TTL  = 4 * 60 * 60 * 1000; // 4 hours — serve stale if ESPN is down
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and

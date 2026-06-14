@@ -364,18 +364,16 @@ export function startCron(): void {
 
   state.timer = setInterval(() => { void tick(); }, TICK_MS);
 
-  // Fast live-scores sub-tick: runs every 30 seconds independently of the
-  // main 5-min tick so in-play scores stay accurate during live matches.
-  // The live-scores endpoint uses a 30s ESPN cache, so this effectively
-  // polls ESPN for score changes every ~30 seconds during live games.
-  // The busy-guard inside runLiveScores prevents overlapping runs.
-  const liveTick = setInterval(() => { void runLiveScores(); }, 30_000);
-  // Unref so the live tick doesn't prevent process exit (matches PM2 behaviour)
+  // Live-scores sub-tick: every 60s (much more frequent than the 5-min main
+  // tick but low enough not to overload the VPS). Patching scores into the
+  // main cache via patchLiveScoresInMainCache() means each call is cheap —
+  // no full re-fetch required. Busy-guard prevents overlapping runs.
+  const liveTick = setInterval(() => { void runLiveScores(); }, 60_000);
   if (liveTick.unref) liveTick.unref();
 
-  // Fire live-scores once on startup (after 60s warmup) to patch in any
+  // Fire live-scores once on startup (after 90s warmup) to patch in any
   // in-progress match scores before the first 5-min tick fires.
-  setTimeout(() => { void runLiveScores(); }, 60_000);
+  setTimeout(() => { void runLiveScores(); }, 90_000);
 
-  console.log('[cron] started — match-reminders (5 min), live-scores (30 sec), challenge-status-sync (5 min), fake-activity (15 min), fake-votes (30 min), settle-tips (30 min), jackpot-sync (60 min), daily-strategy + tip-of-the-day (9am EAT)');
+  console.log('[cron] started — match-reminders (5 min), live-scores (60 sec), challenge-status-sync (5 min), fake-activity (15 min), fake-votes (30 min), settle-tips (30 min), jackpot-sync (60 min), daily-strategy + tip-of-the-day (9am EAT)');
 }
