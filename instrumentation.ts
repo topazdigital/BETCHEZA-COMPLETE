@@ -370,10 +370,14 @@ export async function register() {
   // Ensure the .local/state directory exists so the file cache can be written.
   // Without this, the first ESPN fetch result is lost and every PM2 restart
   // causes a cold-start delay for real users.
-  try {
-    const { mkdir } = await import('fs/promises');
-    await mkdir(`${process.cwd()}/.local/state`, { recursive: true });
-  } catch { /* directory already exists — safe to ignore */ }
+  // Note: fs/promises is Node.js-only — guard is already at top of register()
+  // but we use a runtime check here to satisfy Turbopack's static analysis.
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    try {
+      const fs = require('fs') as typeof import('fs');
+      fs.mkdirSync(`${process.cwd()}/.local/state`, { recursive: true });
+    } catch { /* directory already exists — safe to ignore */ }
+  }
 
   // Pre-warm the matches cache on startup so the very first user request is
   // served from cache instead of waiting for the full ESPN fetch.
