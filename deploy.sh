@@ -306,9 +306,36 @@ else
   echo -e "${YELLOW}Web root not found — skipping static copy${NC}"
 fi
 
-# ── 4c: Remove any stale conflicting conf.d file we may have created earlier ───
-rm -f "/etc/httpd/conf.d/${DOMAIN}.conf" 2>/dev/null && \
-  echo -e "${YELLOW}Removed stale /etc/httpd/conf.d/${DOMAIN}.conf${NC}" || true
+# ── 4c: Write conf.d file as the primary/authoritative proxy config ───────────
+# We write this EVERY deploy rather than deleting it.  The DA httpd.conf patch
+# above is best-effort (it fails silently when the VirtualHost can't be found);
+# this conf.d file is the reliable fallback that keeps the site proxied even
+# when the DA patch doesn't apply.  Apache includes /etc/httpd/conf.d/*.conf
+# automatically, so this file is always picked up after an httpd reload.
+CONFD_FILE="/etc/httpd/conf.d/${DOMAIN}.conf"
+if [ -d "/etc/httpd/conf.d" ]; then
+  cat > "$CONFD_FILE" << CONFD
+# Betcheza reverse-proxy — written by deploy.sh $(date +%Y-%m-%d)
+# Proxy port: ${APP_PORT}  |  Domain: ${DOMAIN}
+<IfModule mod_proxy.c>
+  <VirtualHost *:80>
+    ServerName ${DOMAIN}
+    ServerAlias www.${DOMAIN}
+    ProxyPreserveHost On
+    ProxyRequests Off
+    RequestHeader set X-Forwarded-Proto "http"
+    ProxyPass        /.well-known !
+    ProxyPass        /_next/static/ !
+    ProxyPass        / http://127.0.0.1:${APP_PORT}/ timeout=120 keepalive=On
+    ProxyPassReverse / http://127.0.0.1:${APP_PORT}/
+    ProxyTimeout 120
+  </VirtualHost>
+</IfModule>
+CONFD
+  echo -e "${GREEN}conf.d proxy file written → ${CONFD_FILE}${NC}"
+else
+  echo -e "${YELLOW}No /etc/httpd/conf.d — relying on .htaccess proxy${NC}"
+fi
 
 # ── 4d: Reload Apache to pick up DA config changes ────────────────────────────
 echo -e "${YELLOW}Reloading Apache...${NC}"
