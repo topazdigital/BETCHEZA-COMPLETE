@@ -111,8 +111,11 @@ HTTP_PROXY_BLOCK = (
     "    RequestHeader set X-Forwarded-Proto \"http\"\n"
     "    ProxyPass        /.well-known !\n"
     "    ProxyPass        /_next/static/ !\n"
-    f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/\n"
+    f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/ timeout=120 keepalive=On\n"
     f"    ProxyPassReverse / http://127.0.0.1:{APP_PORT}/\n"
+    "    ProxyTimeout 120\n"
+    "    SetEnv proxy-nokeepalive 0\n"
+    "    SetEnv force-proxy-request-1.0 0\n"
 )
 
 HTTPS_PROXY_BLOCK = (
@@ -122,8 +125,11 @@ HTTPS_PROXY_BLOCK = (
     "    RequestHeader set X-Forwarded-Proto \"https\"\n"
     "    ProxyPass        /.well-known !\n"
     "    ProxyPass        /_next/static/ !\n"
-    f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/\n"
+    f"    ProxyPass        / http://127.0.0.1:{APP_PORT}/ timeout=120 keepalive=On\n"
     f"    ProxyPassReverse / http://127.0.0.1:{APP_PORT}/\n"
+    "    ProxyTimeout 120\n"
+    "    SetEnv proxy-nokeepalive 0\n"
+    "    SetEnv force-proxy-request-1.0 0\n"
 )
 
 def is_ssl_vhost(lines, start_idx):
@@ -314,31 +320,16 @@ else
   echo -e "${RED}Could not auto-reload Apache — run: systemctl reload httpd${NC}"
 fi
 
-# ── Step 4e: Clear stale match cache from MySQL ───────────────────────────────
-# After a deploy the DB match_cache table may contain old data (missing
-# international matches, stale odds, etc.).  Clearing it forces the next
-# request to fetch a completely fresh set from ESPN and other sources.
-echo -e "${YELLOW}[4e/5] Clearing stale match cache from database...${NC}"
-DB_HOST_VAL=$(grep -E '^(DB_HOST|MYSQL_HOST)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-DB_USER_VAL=$(grep -E '^(DB_USER|MYSQL_USER)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-DB_PASS_VAL=$(grep -E '^(DB_PASSWORD|MYSQL_PASSWORD)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-DB_NAME_VAL=$(grep -E '^(DB_NAME|MYSQL_DATABASE)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-DB_PORT_VAL=$(grep -E '^(DB_PORT|MYSQL_PORT)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-DB_PORT_VAL="${DB_PORT_VAL:-3306}"
-
-if [ -n "$DB_HOST_VAL" ] && [ -n "$DB_USER_VAL" ] && [ -n "$DB_NAME_VAL" ]; then
-  if mysql -h "$DB_HOST_VAL" -P "$DB_PORT_VAL" -u "$DB_USER_VAL" -p"$DB_PASS_VAL" \
-       "$DB_NAME_VAL" -e "DELETE FROM match_cache WHERE cache_key='all_matches';" 2>/dev/null; then
-    echo -e "${GREEN}match_cache cleared — next request will fetch fresh data from ESPN${NC}"
-  else
-    echo -e "${YELLOW}Could not clear match_cache (table may not exist yet — OK on first deploy)${NC}"
-  fi
-  # NOTE: Do NOT delete .local/state/matches-cache.json — it contains valid data
-  # that speeds up the very first request after a PM2 restart. The DB cache clear
-  # above is sufficient to force fresh ESPN data on the next background refresh.
-else
-  echo -e "${YELLOW}DB credentials not found in .env.local — skipping cache clear${NC}"
-fi
+# ── Step 4e: Match cache handling ─────────────────────────────────────────────
+# Do NOT clear match_cache or matches-cache.json on deploy.
+# Clearing the cache on every deploy was the primary cause of "0 matches"
+# pages: after clearing, if ESPN returned 0 on cold start the empty result
+# was written back to DB + file, poisoning the cache for all future requests.
+# The app now protects against cache poisoning in code (MIN_MATCHES_TO_PERSIST
+# guard) and uses a 4-hour stale TTL, so existing cached data safely serves
+# users while the background ESPN refresh fetches today's matches.
+# The warmup step (6b below) forces a live ESPN re-fetch and waits for it.
+echo -e "${GREEN}[4e/5] Keeping existing match cache — no cache wipe on deploy${NC}"
 
 # ── Step 5: Clean PM2 restart ─────────────────────────────────────────────────
 echo -e "${YELLOW}[5/5] Restarting Node.js server...${NC}"
@@ -394,7 +385,7 @@ WARMUP_SECRET="${WARMUP_SECRET:-betcheza-cron-2024}"
 echo -e "${YELLOW}Pre-warming caches (waiting for completion)...${NC}"
 WARMUP_RESPONSE=$(curl -s \
   -H "Authorization: Bearer ${WARMUP_SECRET}" \
-  --max-time 90 \
+  --max-time 180 \
   "http://127.0.0.1:${APP_PORT}/api/warmup" 2>/dev/null)
 WARMUP_MATCHES=$(echo "$WARMUP_RESPONSE" | grep -o '"matches":"[^"]*"' | cut -d'"' -f4 | grep -o '^[0-9]*')
 if [ -n "$WARMUP_MATCHES" ] && [ "$WARMUP_MATCHES" -gt 0 ] 2>/dev/null; then

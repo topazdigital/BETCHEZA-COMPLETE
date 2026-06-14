@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllMatches } from '@/lib/api/unified-sports-api';
+import { forceRefreshMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -7,14 +7,12 @@ export const runtime = 'nodejs';
 /**
  * GET /api/warmup
  *
- * Pre-warms all in-process caches so the first real user request is served
- * from memory rather than triggering a cold ESPN/DB fetch.
+ * Forces a live ESPN re-fetch so today's matches are in cache before users
+ * hit the site. Always fetches fresh data — never returns stale file-cache
+ * data from a previous day (which caused "0 matches today" after deploys).
  *
  * Called by deploy.sh immediately after `pm2 reload` finishes, and by the
- * ecosystem post-start hook. Safe to call at any time — if caches are already
- * warm this returns instantly.
- *
- * Returns a JSON summary of what was warmed and how long it took.
+ * ecosystem post_start hook. Safe to call at any time.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET || 'betcheza-cron-2024';
@@ -26,15 +24,17 @@ export async function GET(request: Request) {
   const t0 = Date.now();
   const results: Record<string, string> = {};
 
-  // 1. Matches cache — the heaviest thing to warm; also warms leagues, teams, etc.
+  // Force a live ESPN re-fetch and wait for it to finish.
+  // This ensures today's matches (not yesterday's cached data) are in memory
+  // before deploy.sh completes and users start hitting the site.
   try {
-    const matches = await getAllMatches();
+    const matches = await forceRefreshMatches();
     results.matches = `${matches.length} matches in ${Date.now() - t0}ms`;
   } catch (e) {
     results.matches = `error: ${e instanceof Error ? e.message : String(e)}`;
   }
 
-  // 2. Home payload cache — fires & forgets the home route so it's ready.
+  // Pre-warm the home payload cache.
   const homeT = Date.now();
   try {
     const baseUrl =

@@ -4530,8 +4530,8 @@ export function getOddsIndexMarketsForMatch(homeTeam: string, awayTeam: string):
 // This means after the first ever warm-up, every subsequent request — including
 // after PM2 restarts — serves data in < 50ms.
 
-const ALLMATCHES_CACHE_TTL  = 90 * 1000;        // 90 sec — serve from memory (live accuracy)
-const ALLMATCHES_STALE_TTL  = 30 * 60 * 1000;  // 30 min — stale-while-revalidate (was 10 min)
+const ALLMATCHES_CACHE_TTL  = 90 * 1000;         // 90 sec — serve from memory (live accuracy)
+const ALLMATCHES_STALE_TTL  = 4 * 60 * 60 * 1000; // 4 hours — serve stale if ESPN is down
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and
 // survives all subsequent restarts so cold-start delays never recur.
@@ -4660,6 +4660,26 @@ function _triggerBackgroundRefresh() {
   });
 }
 
+/**
+ * Force an immediate live ESPN re-fetch regardless of cache age.
+ * Used by the warmup endpoint after deploy so today's matches are always
+ * live in cache before users hit the site — not yesterday's file-cache data.
+ * Waits for the fetch to complete and returns the refreshed match list.
+ */
+export async function forceRefreshMatches(): Promise<UnifiedMatch[]> {
+  // If a fetch is already in progress, wait for it to finish first.
+  if (g_allMatchesCache.promise) {
+    await g_allMatchesCache.promise;
+  }
+  // Expire the in-memory cache so _triggerBackgroundRefresh starts a new fetch.
+  g_allMatchesCache.ts = 0;
+  _triggerBackgroundRefresh();
+  if (g_allMatchesCache.promise) {
+    await g_allMatchesCache.promise;
+  }
+  return g_allMatchesCache.data ?? [];
+}
+
 export async function getAllMatches(): Promise<UnifiedMatch[]> {
   // Race-condition fix: if no data yet, await the init promise (file cache read).
   // This is fast (< 100ms) and ensures the very first request after a server start
@@ -4717,11 +4737,15 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
     return fileResult.data;
   }
 
-  // Layer 5: True cold start — NEVER block the caller waiting for external APIs.
-  // Trigger the background fetch (idempotent — only one fetch runs at a time) and
-  // return whatever data we have immediately (empty array on truly fresh server).
-  // The browser's SWR will retry; the cache will be warm within 8-10 s.
+  // Layer 5: True cold start (all caches empty) — trigger ESPN fetch and wait.
+  // This only happens when both file + DB caches are empty (first-ever deploy,
+  // or after a crash that also wiped the file cache). Blocking here is correct
+  // since there is no other data to serve, and this path should be very rare in
+  // normal operation (file cache survives PM2 restarts and deploys).
   _triggerBackgroundRefresh();
+  if (g_allMatchesCache.promise) {
+    await g_allMatchesCache.promise;
+  }
   return g_allMatchesCache.data ?? [];
 }
 
@@ -5123,9 +5147,12 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // NEVER overwrite a good cache — that would blank out the site for every
   // subsequent user until the next successful fetch.
   // Threshold: 5 matches. If all sources are down we keep the last good data.
+  // CRITICAL: Do NOT use `|| previousCount === 0` here — that was a bug that
+  // wrote empty data on cold start (when previousCount === 0 and ESPN returned
+  // nothing), poisoning the DB + file cache and causing persistent 0-match pages.
   const previousCount = g_allMatchesCache.data?.length ?? 0;
   const MIN_MATCHES_TO_PERSIST = 5;
-  if (sorted.length >= MIN_MATCHES_TO_PERSIST || previousCount === 0) {
+  if (sorted.length >= MIN_MATCHES_TO_PERSIST) {
     g_allMatchesCache.data = sorted;
     g_allMatchesCache.ts = Date.now();
     void _writeDbCache(sorted);
@@ -5134,8 +5161,13 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     // Fetch returned too few matches — keep existing in-memory data but
     // don't write to DB/file. Log so it's visible in PM2 logs.
     console.warn(`[matches] fetch returned only ${sorted.length} matches (prev: ${previousCount}) — skipping cache write to protect existing data`);
-    // Still update the in-memory timestamp so we retry after TTL
-    g_allMatchesCache.ts = Date.now();
+    if (previousCount > 0) {
+      // Warm cache: update timestamp to prevent immediate re-fetch hammering ESPN.
+      g_allMatchesCache.ts = Date.now();
+    }
+    // Cold start with bad ESPN response: leave ts at 0 so getAllMatches()
+    // triggers a retry sooner rather than waiting 90s. The next request
+    // will kick off another background fetch attempt.
   }
 
   // Ping IndexNow for any match pages that just appeared for the first time.
