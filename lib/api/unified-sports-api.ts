@@ -1821,8 +1821,11 @@ export function extractEspnOdds(
   }];
 
   // Spread / handicap — support new format (pointSpread) and old (homeTeamOdds.spreadOdds)
-  // Outcome names always include the line value (e.g. "Málaga -0.5") so the
-  // betting markets panel shows the actual handicap instead of a bare team name.
+  // For soccer: use key 'asian_handicap' (same product, different name in European markets).
+  // This prevents a duplicate entry when deriveSoccerMarkets also produces 'asian_handicap'.
+  // For other sports: keep 'spreads' (Point Spread).
+  // Outcome names always include the line value (e.g. "Málaga -0.5").
+  const isSoccerSport = sportType === 'soccer';
   let spreadLine: number | undefined;
   if (o.pointSpread?.home?.close?.odds && o.pointSpread?.away?.close?.odds) {
     const homeSpread = americanToDecimal(o.pointSpread.home.close.odds);
@@ -1831,9 +1834,10 @@ export function extractEspnOdds(
     if (homeSpread && awaySpread) {
       const hSign = spreadLine > 0 ? '+' : '';
       const aSign = -spreadLine > 0 ? '+' : '';
-      const baseName = spreadMarketName(sportType);
+      const baseName = isSoccerSport ? 'Asian Handicap' : spreadMarketName(sportType);
+      const mktKey   = isSoccerSport ? 'asian_handicap' : 'spreads';
       markets.push({
-        key: 'spreads',
+        key: mktKey,
         name: `${baseName} (${hSign}${spreadLine})`,
         outcomes: [
           { name: `${h1} ${hSign}${spreadLine}`, price: homeSpread, point: spreadLine },
@@ -1850,9 +1854,10 @@ export function extractEspnOdds(
       const awayLine =  Math.abs(o.spread);
       const hSign = homeLine > 0 ? '+' : '';
       const aSign = awayLine > 0 ? '+' : '';
-      const baseName = spreadMarketName(sportType);
+      const baseName = isSoccerSport ? 'Asian Handicap' : spreadMarketName(sportType);
+      const mktKey   = isSoccerSport ? 'asian_handicap' : 'spreads';
       markets.push({
-        key: 'spreads',
+        key: mktKey,
         name: `${baseName} (${hSign}${homeLine})`,
         outcomes: [
           { name: `${h1} ${hSign}${homeLine}`, price: homeSpread, point: homeLine },
@@ -4320,7 +4325,7 @@ async function fetchOddsForSport(sportKey: string): Promise<TheOddsApiEvent[]> {
 
   const data = await fetchTheOddsAPI(`sports/${sportKey}/odds`, {
     regions: 'uk,eu,us',
-    markets: 'h2h,spreads,totals',
+    markets: 'h2h,asian_handicap,spreads,totals',
     oddsFormat: 'decimal',
     dateFormat: 'iso',
   }) as TheOddsApiEvent[] | null;
@@ -4479,7 +4484,41 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
     console.warn('[SharpAPI] odds supplement failed:', e);
   }
 
+  // Persist so the match details route can look up extra AH lines without
+  // triggering a fresh API call.
+  _lastRealOddsIndex = index;
+
   return index;
+}
+
+// Module-level cache — written by buildRealOddsIndex, read by getOddsIndexMarketsForMatch.
+let _lastRealOddsIndex: Map<string, { odds: MatchOdds; markets: Market[] }> | null = null;
+
+/**
+ * Look up a match in the last-built real-odds index and return its markets
+ * (including any additional asian_handicap lines from TheOddsAPI bookmakers).
+ * Returns [] when the index is cold or the match is not found.
+ * Never triggers a network request — read-only cache access.
+ */
+export function getOddsIndexMarketsForMatch(homeTeam: string, awayTeam: string): Market[] {
+  if (!_lastRealOddsIndex) return [];
+  const h = normalizeTeamName(homeTeam);
+  const a = normalizeTeamName(awayTeam);
+  // Try both orderings; also try without date suffix
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  for (const dateKey of [today, tomorrow]) {
+    const entry = _lastRealOddsIndex.get(`${h}_${a}_${dateKey}`)
+      || _lastRealOddsIndex.get(`${a}_${h}_${dateKey}`);
+    if (entry) return entry.markets || [];
+  }
+  // Last resort: scan for any key that starts with home_away or away_home
+  const prefix1 = `${h}_${a}_`;
+  const prefix2 = `${a}_${h}_`;
+  for (const [key, value] of _lastRealOddsIndex) {
+    if (key.startsWith(prefix1) || key.startsWith(prefix2)) return value.markets || [];
+  }
+  return [];
 }
 
 // ─── MULTI-LAYER MATCH CACHE ──────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import MatchesClientPage from './_matches-client';
+import { getAllMatches } from '@/lib/api/unified-sports-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -219,6 +220,41 @@ export async function generateMetadata({
   };
 }
 
-export default function MatchesPage() {
-  return <MatchesClientPage />;
+export default async function MatchesPage() {
+  // Pre-warm the match cache on the server so the client never hits "No matches found"
+  // on cold start. Timeout is generous (4 s) to handle first-boot ESPN fetches;
+  // on cache-hit this resolves in < 50 ms.
+  let initialMatches: import('./_matches-client').Match[] | undefined;
+  try {
+    const result = await Promise.race([
+      getAllMatches(),
+      new Promise<null>(res => setTimeout(() => res(null), 4000)),
+    ]);
+    if (result && result.length > 0) {
+      // Shape UnifiedMatch → Match (only the fields the client needs)
+      initialMatches = result.map(m => ({
+        id: m.id,
+        sportId: m.sport.id,
+        leagueId: m.league.id,
+        homeTeam: { id: m.homeTeam.id, name: m.homeTeam.name, shortName: m.homeTeam.shortName || m.homeTeam.name, logo: m.homeTeam.logo },
+        awayTeam: { id: m.awayTeam.id, name: m.awayTeam.name, shortName: m.awayTeam.shortName || m.awayTeam.name, logo: m.awayTeam.logo },
+        kickoffTime: m.kickoffTime instanceof Date ? m.kickoffTime.toISOString() : m.kickoffTime,
+        status: m.status,
+        homeScore: m.homeScore ?? null,
+        awayScore: m.awayScore ?? null,
+        minute: m.minute,
+        period: m.period,
+        league: { id: m.league.id, name: m.league.name, slug: m.league.slug, country: m.league.country, countryCode: m.league.countryCode || '', tier: m.league.tier || 1, logo: m.league.logo },
+        sport: { id: m.sport.id, name: m.sport.name, slug: m.sport.slug, icon: m.sport.icon },
+        odds: m.odds ? { home: m.odds.home, draw: m.odds.draw, away: m.odds.away } : undefined,
+        tipsCount: 0,
+        source: m.source,
+        venue: m.venue,
+      }));
+    }
+  } catch {
+    // Fallback: client will fetch on mount
+  }
+
+  return <MatchesClientPage initialMatches={initialMatches} />;
 }

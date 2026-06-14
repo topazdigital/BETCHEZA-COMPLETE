@@ -301,7 +301,7 @@ function buildMatchesUrl(sportId: number | null, tab: DateTab, date: string): st
   return `/matches${qs}`;
 }
 
-function MatchesContent() {
+function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -392,11 +392,14 @@ function MatchesContent() {
     }
   }, [selectedSportId, dateTab, calendarDate]);
 
-  const { matches, isLoading } = useMatches({
+  const { matches: swrMatches, isLoading } = useMatches({
     sportId: selectedSportId || undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
-  const { matches: allMatches } = useMatches();
+  // Use SSR-pre-fetched initialMatches while SWR is still loading on first render
+  const matches = swrMatches.length > 0 ? swrMatches : (initialMatches || []);
+  const { matches: swrAllMatches } = useMatches();
+  const allMatches = swrAllMatches.length > 0 ? swrAllMatches : (initialMatches || []);
   const stats = useMatchStats();
 
   const matchCounts = useMemo(() => {
@@ -708,10 +711,10 @@ function MatchesContent() {
   );
 }
 
-export default function MatchesClientPage() {
+export default function MatchesClientPage({ initialMatches }: { initialMatches?: Match[] }) {
   return (
     <Suspense fallback={<div className="flex h-screen items-center justify-center"><Spinner className="h-8 w-8" /></div>}>
-      <MatchesContent />
+      <MatchesContent initialMatches={initialMatches} />
     </Suspense>
   );
 }

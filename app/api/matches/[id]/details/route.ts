@@ -7,6 +7,7 @@ import {
   getEspnEventIdFromMatchId,
   extractEspnOdds,
   deriveSoccerMarkets,
+  getOddsIndexMarketsForMatch,
   type ESPNSummaryResponse,
   type UnifiedMatch,
 } from '@/lib/api/unified-sports-api';
@@ -1093,14 +1094,47 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     // Merge strategy:
-    // 1. ESPN pickcenter markets (h2h, totals, spreads) — real provider odds → always kept.
+    // 1. ESPN pickcenter markets (h2h, asian_handicap, totals) — real provider odds → always kept.
     // 2. Derived soccer markets supplement when ESPN doesn't cover a market key.
     // 3. Non-soccer: only real ESPN markets shown; empty list if none available.
     const espnMarketKeys = new Set((summaryMarkets || []).map((m: { key: string }) => m.key));
     const supplementary = derivedMarkets.filter(m => !espnMarketKeys.has(m.key));
-    const finalMarkets = summaryMarkets && summaryMarkets.length > 0
+    const baseMarkets = summaryMarkets && summaryMarkets.length > 0
       ? [...summaryMarkets, ...supplementary]
       : (isSoccer && finalOdds ? derivedMarkets : []);
+
+    // Inject additional Asian Handicap lines from the real-odds index (TheOddsAPI
+    // bookmakers aggregated in the bulk fetch). Only add lines not already present.
+    const indexMarkets = getOddsIndexMarketsForMatch(match.homeTeam.name, match.awayTeam.name);
+    const ahIndexLines = indexMarkets.filter(m => m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt'));
+    const presentAhKeys = new Set(baseMarkets.map(m => m.key));
+    // Collect unique lines not yet shown
+    const newAhLines: typeof baseMarkets = [];
+    for (const ahMkt of ahIndexLines) {
+      // Check if this exact line (from the outcomes) is already present
+      const lineValue = ahMkt.outcomes[0]?.point;
+      const alreadyPresent = baseMarkets.some(m =>
+        (m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt')) &&
+        m.outcomes[0]?.point === lineValue
+      );
+      if (!alreadyPresent) newAhLines.push(ahMkt);
+    }
+    // Renumber alt keys to avoid collisions
+    let altIdx = [...presentAhKeys].filter(k => k.startsWith('asian_handicap')).length;
+    const renumbered = newAhLines.map(m => ({
+      ...m,
+      key: altIdx === 0 ? 'asian_handicap' : `asian_handicap_alt_${altIdx++}`,
+    }));
+    // Insert new AH lines right after the existing asian_handicap block
+    const ahInsertIdx = baseMarkets.findIndex(m => m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt'));
+    const ahEndIdx = ahInsertIdx >= 0
+      ? baseMarkets.reduce((last, m, i) => (m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt')) ? i + 1 : last, ahInsertIdx + 1)
+      : baseMarkets.length;
+    const finalMarkets = [
+      ...baseMarkets.slice(0, ahEndIdx),
+      ...renumbered,
+      ...baseMarkets.slice(ahEndIdx),
+    ];
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 
