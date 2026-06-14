@@ -155,10 +155,30 @@ export async function bulkUpdateStatusInDb(
 ): Promise<void> {
   const pool = getPool();
   if (!pool || updates.length === 0) return;
-  try {
-    await Promise.all(updates.map(u => updateTipStatusInDb(u.id, u.status, u.settledByProb)));
-  } catch (e) {
-    console.warn('[auto-tips-db] bulkUpdateStatusInDb failed:', e);
+
+  // Use a single batched UPDATE with CASE instead of N parallel execute() calls.
+  // N parallel calls exhausts the connection pool queue (queueLimit=100) when
+  // settling hundreds of tips at once, causing "Queue limit reached" flood errors.
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+    const batch = updates.slice(i, i + BATCH_SIZE);
+    try {
+      const ids = batch.map(u => u.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const statusCase = batch.map(() => `WHEN ? THEN ?`).join(' ');
+      const probCase   = batch.map(() => `WHEN ? THEN ?`).join(' ');
+      const statusParams = batch.flatMap(u => [u.id, u.status]);
+      const probParams   = batch.flatMap(u => [u.id, u.settledByProb ? 1 : 0]);
+      await pool.execute(
+        `UPDATE auto_tips
+            SET status          = CASE id ${statusCase} ELSE status END,
+                settled_by_prob = CASE id ${probCase}   ELSE settled_by_prob END
+          WHERE id IN (${placeholders})`,
+        [...statusParams, ...probParams, ...ids],
+      );
+    } catch (e) {
+      console.warn(`[auto-tips-db] bulkUpdateStatusInDb batch ${i}–${i + batch.length} failed:`, e);
+    }
   }
 }
 
