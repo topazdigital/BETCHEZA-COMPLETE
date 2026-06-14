@@ -4768,14 +4768,32 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
     return fileResult.data;
   }
 
-  // Layer 5: True cold start (all caches empty) — trigger ESPN fetch and wait.
-  // This only happens when both file + DB caches are empty (first-ever deploy,
-  // or after a crash that also wiped the file cache). Blocking here is correct
-  // since there is no other data to serve, and this path should be very rare in
-  // normal operation (file cache survives PM2 restarts and deploys).
+  // Layer 5: True cold start (all caches empty) — trigger refresh but cap at 8s.
+  // Previously this was uncapped: on production servers where ESPN is slow or
+  // rate-limiting the server IP, the promise never resolved in time, causing
+  // Apache to hold the connection open for minutes (blank white page).
+  // After the 8s cap, return [] and let the client retry — the background
+  // refresh continues and subsequent requests will hit Layer 1/2.
   _triggerBackgroundRefresh();
   if (g_allMatchesCache.promise) {
-    await g_allMatchesCache.promise;
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, 8_000)),
+    ]);
+  }
+  // One last DB read: by now the setImmediate DB read from _initPromise has
+  // almost certainly completed, and the circuit breaker (10s cooldown) has
+  // reset. This catches the race where DB cache was skipped at cold start.
+  if (!g_allMatchesCache.data) {
+    try {
+      const { resetPool } = await import('../db');
+      resetPool();
+      const dbRetry = await _readDbCache();
+      if (dbRetry?.data?.length) {
+        g_allMatchesCache.data = dbRetry.data;
+        g_allMatchesCache.ts = Date.now();
+      }
+    } catch { /* non-fatal */ }
   }
   return g_allMatchesCache.data ?? [];
 }
