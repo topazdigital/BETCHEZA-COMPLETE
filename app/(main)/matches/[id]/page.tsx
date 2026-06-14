@@ -2876,6 +2876,11 @@ const MARKET_GROUP_ORDER = [
   { key: 'double_chance',       label: 'Double Chance' },
   { key: 'draw_no_bet',         label: 'Draw No Bet' },
   { key: 'asian_handicap',      label: 'Asian Handicap' },
+  { key: 'asian_handicap_alt_1', label: 'Asian Handicap (Alt)' },
+  { key: 'asian_handicap_alt_2', label: 'Asian Handicap (Alt)' },
+  { key: 'asian_handicap_alt_3', label: 'Asian Handicap (Alt)' },
+  { key: 'spreads_alt_1',       label: 'Point Spread (Alt)' },
+  { key: 'spreads_alt_2',       label: 'Point Spread (Alt)' },
   { key: 'ht_result',           label: 'Half-Time Result' },
   { key: 'ht_ft',               label: 'HT / Full-Time' },
   { key: 'btts_and_result',     label: 'BTTS & Result' },
@@ -2902,7 +2907,11 @@ const SOCCER_TABS = [
   {
     id: 'main' as const,
     label: 'Main',
-    keys: new Set(['h2h', 'spreads', 'double_chance', 'draw_no_bet', 'asian_handicap']),
+    keys: new Set([
+      'h2h', 'spreads', 'double_chance', 'draw_no_bet',
+      'asian_handicap', 'asian_handicap_alt_1', 'asian_handicap_alt_2', 'asian_handicap_alt_3',
+      'spreads_alt_1', 'spreads_alt_2',
+    ]),
   },
   {
     id: 'goals' as const,

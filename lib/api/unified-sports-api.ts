@@ -1821,18 +1821,23 @@ export function extractEspnOdds(
   }];
 
   // Spread / handicap — support new format (pointSpread) and old (homeTeamOdds.spreadOdds)
+  // Outcome names always include the line value (e.g. "Málaga -0.5") so the
+  // betting markets panel shows the actual handicap instead of a bare team name.
   let spreadLine: number | undefined;
   if (o.pointSpread?.home?.close?.odds && o.pointSpread?.away?.close?.odds) {
     const homeSpread = americanToDecimal(o.pointSpread.home.close.odds);
     const awaySpread = americanToDecimal(o.pointSpread.away.close.odds);
     spreadLine = parseFloat(o.pointSpread.home.close.line || '0');
     if (homeSpread && awaySpread) {
+      const hSign = spreadLine > 0 ? '+' : '';
+      const aSign = -spreadLine > 0 ? '+' : '';
+      const baseName = spreadMarketName(sportType);
       markets.push({
         key: 'spreads',
-        name: spreadMarketName(sportType),
+        name: `${baseName} (${hSign}${spreadLine})`,
         outcomes: [
-          { name: h1, price: homeSpread, point: spreadLine },
-          { name: h2, price: awaySpread, point: -spreadLine },
+          { name: `${h1} ${hSign}${spreadLine}`, price: homeSpread, point: spreadLine },
+          { name: `${h2} ${aSign}${-spreadLine}`, price: awaySpread, point: -spreadLine },
         ],
       });
     }
@@ -1841,30 +1846,35 @@ export function extractEspnOdds(
     const awaySpread = americanToDecimal(o.awayTeamOdds?.spreadOdds);
     spreadLine = Math.abs(o.spread);
     if (homeSpread && awaySpread) {
+      const homeLine = -Math.abs(o.spread);
+      const awayLine =  Math.abs(o.spread);
+      const hSign = homeLine > 0 ? '+' : '';
+      const aSign = awayLine > 0 ? '+' : '';
+      const baseName = spreadMarketName(sportType);
       markets.push({
         key: 'spreads',
-        name: spreadMarketName(sportType),
+        name: `${baseName} (${hSign}${homeLine})`,
         outcomes: [
-          { name: h1, price: homeSpread, point: -Math.abs(o.spread) },
-          { name: h2, price: awaySpread, point: Math.abs(o.spread) },
+          { name: `${h1} ${hSign}${homeLine}`, price: homeSpread, point: homeLine },
+          { name: `${h2} ${aSign}${awayLine}`,  price: awaySpread, point: awayLine },
         ],
       });
     }
   }
 
-  // Totals (over/under) — sport-specific label
+  // Totals (over/under) — include the line in outcome names (e.g. "Over 2.5")
   let totalLine: number | undefined;
   if (o.overUnder !== undefined) {
-    const overOdds = americanToDecimal(o.total?.over?.close?.odds || o.overOdds);
+    const overOdds  = americanToDecimal(o.total?.over?.close?.odds  || o.overOdds);
     const underOdds = americanToDecimal(o.total?.under?.close?.odds || o.underOdds);
     totalLine = o.overUnder;
     if (overOdds && underOdds) {
       markets.push({
         key: 'totals',
-        name: totalMarketName(sportType),
+        name: `Over/Under ${o.overUnder}`,
         outcomes: [
-          { name: 'Over', price: overOdds, point: o.overUnder },
-          { name: 'Under', price: underOdds, point: o.overUnder },
+          { name: `Over ${o.overUnder}`,  price: overOdds,  point: o.overUnder },
+          { name: `Under ${o.overUnder}`, price: underOdds, point: o.overUnder },
         ],
       });
     }
@@ -4210,20 +4220,93 @@ function aggregateBookmakerOdds(event: TheOddsApiEvent): { odds?: MatchOdds; mar
     });
   }
   for (const [marketKey, outcomesMap] of marketsMap.entries()) {
+    const isHandicap = marketKey === 'asian_handicap' || marketKey === 'spreads';
+    const isTotals   = marketKey === 'totals';
+
+    // Build raw outcomes, adding the point value to the display name for handicap/totals
     const outs: Outcome[] = [];
     for (const [k, prices] of outcomesMap.entries()) {
       const [name, pointStr] = k.split('|');
-      outs.push({
-        name,
-        price: avg(prices)!,
-        ...(pointStr ? { point: parseFloat(pointStr) } : {}),
-      });
+      const point = pointStr !== undefined ? parseFloat(pointStr) : undefined;
+      let displayName = name;
+      if (point !== undefined) {
+        if (isHandicap) {
+          // e.g. "Málaga -0.5" or "Almería +0.5"
+          const sign = point > 0 ? '+' : '';
+          displayName = `${name} ${sign}${point}`;
+        } else if (isTotals) {
+          // e.g. "Over 2.5" or "Under 2.5"
+          displayName = `${name} ${point}`;
+        }
+      }
+      outs.push({ name: displayName, price: avg(prices)!, ...(point !== undefined ? { point } : {}) });
     }
-    markets.push({
-      key: marketKey,
-      name: marketKey === 'spreads' ? 'Point Spread' : marketKey === 'totals' ? 'Totals' : marketKey,
-      outcomes: outs,
-    });
+
+    if (isHandicap) {
+      // Group by handicap line so each line becomes its own Market entry.
+      // Different bookmakers sometimes offer different lines; grouping prevents
+      // duplicate team names in one market (e.g. two "Málaga" rows).
+      const lineGroups = new Map<number, Outcome[]>();
+      for (const o of outs) {
+        const line = o.point ?? 0;
+        if (!lineGroups.has(line)) lineGroups.set(line, []);
+        lineGroups.get(line)!.push(o);
+      }
+      // Only include lines with at least 2 outcomes (home + away)
+      const validLines = [...lineGroups.keys()]
+        .filter(l => (lineGroups.get(l)?.length ?? 0) >= 2)
+        .sort((a, b) => Math.abs(a) - Math.abs(b)); // most balanced line first
+
+      if (validLines.length === 0) {
+        // Fallback — no valid lines, push as-is
+        const label = marketKey === 'asian_handicap' ? 'Asian Handicap' : 'Point Spread';
+        markets.push({ key: marketKey, name: label, outcomes: outs });
+      } else {
+        validLines.forEach((line, idx) => {
+          const sign  = line > 0 ? '+' : '';
+          const label = marketKey === 'asian_handicap'
+            ? `Asian Handicap (${sign}${line})`
+            : `Point Spread (${sign}${line})`;
+          markets.push({
+            key: idx === 0 ? marketKey : `${marketKey}_alt_${idx}`,
+            name: label,
+            outcomes: lineGroups.get(line)!,
+          });
+        });
+      }
+    } else if (isTotals) {
+      // Group over/under lines similarly
+      const lineGroups = new Map<number, Outcome[]>();
+      for (const o of outs) {
+        const line = o.point ?? 0;
+        if (!lineGroups.has(line)) lineGroups.set(line, []);
+        lineGroups.get(line)!.push(o);
+      }
+      const validLines = [...lineGroups.keys()]
+        .filter(l => (lineGroups.get(l)?.length ?? 0) >= 2)
+        .sort((a, b) => a - b); // ascending by total
+
+      if (validLines.length === 0) {
+        markets.push({ key: 'totals', name: 'Over/Under', outcomes: outs });
+      } else {
+        // Prefer 2.5 as primary totals key for soccer; otherwise use smallest
+        const primaryLine = validLines.includes(2.5) ? 2.5 : validLines[0];
+        for (const line of validLines) {
+          const lineKey = line === primaryLine
+            ? 'totals'
+            : `totals_${String(line).replace('.', '_')}`;
+          markets.push({
+            key: lineKey,
+            name: `Over/Under ${line}`,
+            outcomes: lineGroups.get(line)!,
+          });
+        }
+      }
+    } else {
+      // All other markets — keep as-is with a readable name
+      const friendlyName = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      markets.push({ key: marketKey, name: friendlyName(marketKey), outcomes: outs });
+    }
   }
 
   return { odds, markets };
