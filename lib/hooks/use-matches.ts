@@ -214,10 +214,20 @@ function getTodayMatches(matches: Match[]): Match[] {
   // "Today" filter, AND exclude finished matches (those live on the
   // Results page) so the badge doesn't double-count yesterday's finals
   // that the feed still tags as "today" in UTC.
+  // Also include early-morning next-day matches (before 06:00 local) —
+  // e.g. a 22:00 UTC / 01:00 EAT kickoff is still "tonight" for EAT users.
   const todayKey = toLocalISODate(new Date());
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = toLocalISODate(tomorrow);
   return matches
     .filter(m => m.status !== 'finished' && m.status !== 'cancelled' && m.status !== 'postponed')
-    .filter(m => toLocalISODate(new Date(m.kickoffTime)) === todayKey)
+    .filter(m => {
+      const kickoff = new Date(m.kickoffTime);
+      const k = toLocalISODate(kickoff);
+      if (k === todayKey) return true;
+      return k === tomorrowKey && kickoff.getHours() < 6;
+    })
     .sort((a, b) => {
       const statusOrder: Record<string, number> = { live: 0, halftime: 1, scheduled: 2, finished: 3, postponed: 4 };
       const statusOrderA = statusOrder[a.status] ?? 5;

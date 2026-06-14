@@ -438,7 +438,15 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
     const todayKey = toLocalISODate(new Date());
     if (statusFilter !== 'live') {
       if (dateTab === 'today') {
-        result = result.filter(m => toLocalISODate(new Date(m.kickoffTime)) === todayKey);
+        // Also include early-morning next-day matches (before 06:00 local time) —
+        // e.g. a 22:00 UTC / 01:00 EAT kickoff is still "tonight" for EAT users.
+        const tomorrowKey = toLocalISO(1);
+        result = result.filter(m => {
+          const kickoff = new Date(m.kickoffTime);
+          const k = toLocalISODate(kickoff);
+          if (k === todayKey) return true;
+          return k === tomorrowKey && kickoff.getHours() < 6;
+        });
       } else if (dateTab === 'upcoming') {
         result = result.filter(m => {
           const k = toLocalISODate(new Date(m.kickoffTime));
