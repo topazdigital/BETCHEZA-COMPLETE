@@ -456,15 +456,21 @@ else
 fi
 
 # ── Step 4e: Match cache handling ─────────────────────────────────────────────
-# Do NOT clear match_cache or matches-cache.json on deploy.
-# Clearing the cache on every deploy was the primary cause of "0 matches"
-# pages: after clearing, if ESPN returned 0 on cold start the empty result
-# was written back to DB + file, poisoning the cache for all future requests.
-# The app now protects against cache poisoning in code (MIN_MATCHES_TO_PERSIST
-# guard) and uses a 4-hour stale TTL, so existing cached data safely serves
-# users while the background ESPN refresh fetches today's matches.
-# The warmup step (6b below) forces a live ESPN re-fetch and waits for it.
-echo -e "${GREEN}[4e/5] Keeping existing match cache — no cache wipe on deploy${NC}"
+# Clear the match cache on deploy so stale data from previous days is never
+# served after a redeploy. The app's 4-hour stale TTL guard now rejects old
+# caches in code too, but wiping on deploy is cleaner and prevents users from
+# seeing yesterday's matches on the "Today" tab immediately after a deploy.
+# The cache poisoning guard (MIN_MATCHES_TO_PERSIST=5) still protects against
+# empty-result overwrites — this only wipes the on-disk/DB files, not logic.
+echo -e "${YELLOW}[4e/5] Clearing stale match cache (file + DB)...${NC}"
+# Remove file cache
+rm -f "${APP_DIR}/.local/state/matches-cache.json" 2>/dev/null && echo "  ✓ Removed matches-cache.json" || true
+# Clear DB match cache table (non-fatal if DB not reachable)
+if command -v mysql &>/dev/null && [ -n "${DB_PASS:-}" ]; then
+  mysql -u"${DB_USER:-admin}" -p"${DB_PASS}" "${DB_NAME:-betcheza}" -e "DELETE FROM match_cache WHERE cache_key='all_matches';" 2>/dev/null \
+    && echo "  ✓ Cleared DB match_cache" || echo "  ⚠ DB clear skipped (table may not exist yet)"
+fi
+echo -e "${GREEN}[4e/5] Match cache cleared — fresh fetch will run on next startup${NC}"
 
 # ── Step 5: Clean PM2 restart ─────────────────────────────────────────────────
 echo -e "${YELLOW}[5/5] Restarting Node.js server...${NC}"

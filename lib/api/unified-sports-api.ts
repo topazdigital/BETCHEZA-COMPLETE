@@ -4618,16 +4618,18 @@ _initPromise = (async () => {
   //    Load it first so the very first request never blocks on a DB connection.
   const fileResult = await _readFileCache();
   if (fileResult && fileResult.data.length >= 5) {
-    // Only use file cache if it has meaningful data (cache poisoning guard).
-    // If the file has 0 (or near-zero) matches from a previous failed fetch,
-    // skip it so we don't serve a blank site — the DB/live fetch will populate.
-    g_allMatchesCache.data = fileResult.data;
-    // BUG FIX: stamp with NOW, not fileResult.ts.
-    // fileResult.ts is the original write time (could be hours old), which
-    // caused getAllMatches() to see age > ALLMATCHES_STALE_TTL and re-read
-    // DB/file on every single request after a restart instead of serving
-    // from Layer 1/2 (in-memory, sub-ms).
-    g_allMatchesCache.ts   = Date.now();
+    // Only use file cache if it has meaningful data (cache poisoning guard)
+    // AND is recent enough. Caches older than ALLMATCHES_STALE_TTL (4 hours)
+    // are almost certainly from a previous day — loading them would serve
+    // stale matches that the client "Today" filter immediately rejects (0 shown).
+    const fileAge = Date.now() - fileResult.ts;
+    if (fileAge < ALLMATCHES_STALE_TTL) {
+      g_allMatchesCache.data = fileResult.data;
+      // Stamp with NOW so Layer 1/2 serve from memory without re-reading disk.
+      g_allMatchesCache.ts   = Date.now();
+    } else {
+      console.log(`[matches] startup: file cache is ${Math.round(fileAge / 60000)}min old — skipping stale data, forcing live fetch`);
+    }
   }
 
   // ② Kick off a live ESPN refresh immediately — data will be warm within
@@ -4642,11 +4644,13 @@ _initPromise = (async () => {
       await _ensureMatchCacheTable();
       const dbResult = await _readDbCache();
       if (dbResult && dbResult.ts > 0) {
-        // Only promote if DB has fresher data than what's already in memory.
-        // Also fix: stamp with NOW so Layer 1/2 serve from memory correctly.
-        if (!g_allMatchesCache.data || dbResult.ts > (g_allMatchesCache.ts || 0)) {
+        const dbAge = Date.now() - dbResult.ts;
+        // Only promote if DB data is fresh (< 4h) and newer than what's in memory.
+        if (dbAge < ALLMATCHES_STALE_TTL && (!g_allMatchesCache.data || dbResult.ts > (g_allMatchesCache.ts || 0))) {
           g_allMatchesCache.data = dbResult.data;
           g_allMatchesCache.ts   = Date.now();
+        } else if (dbAge >= ALLMATCHES_STALE_TTL) {
+          console.log(`[matches] startup: DB cache is ${Math.round(dbAge / 60000)}min old — skipping stale DB data`);
         }
       }
     } catch { /* non-fatal — DB may be unreachable at cold start */ }
@@ -4748,24 +4752,31 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
   // Layer 3: Memory empty — try MySQL (< 50ms, survives restarts)
   const dbResult = await _readDbCache();
   if (dbResult) {
-    g_allMatchesCache.data = dbResult.data;
-    // IMPORTANT: stamp with NOW so Layer 1/2 serve the next 90s from memory.
-    // Using dbResult.ts (the original write time) kept the age perpetually
-    // > ALLMATCHES_STALE_TTL, causing every request to re-query the DB.
-    g_allMatchesCache.ts   = Date.now();
-    _triggerBackgroundRefresh();
-    return dbResult.data;
+    const dbAge = Date.now() - dbResult.ts;
+    if (dbAge < ALLMATCHES_STALE_TTL) {
+      g_allMatchesCache.data = dbResult.data;
+      // Stamp with NOW so Layer 1/2 serve the next 90s from memory.
+      g_allMatchesCache.ts   = Date.now();
+      _triggerBackgroundRefresh();
+      return dbResult.data;
+    }
+    // DB cache is too old (> 4h) — fall through to live fetch
+    console.log(`[matches] DB cache is ${Math.round(dbAge / 60000)}min old — skipping, fetching live`);
   }
 
   // Layer 4: Try file cache (no DB available)
   const fileResult = await _readFileCache();
   if (fileResult) {
-    g_allMatchesCache.data = fileResult.data;
-    // Same fix as Layer 3: stamp with NOW so the next 90 s of requests are
-    // served from in-memory (Layer 1) instead of re-reading the file.
-    g_allMatchesCache.ts   = Date.now();
-    _triggerBackgroundRefresh();
-    return fileResult.data;
+    const fileAge = Date.now() - fileResult.ts;
+    if (fileAge < ALLMATCHES_STALE_TTL) {
+      g_allMatchesCache.data = fileResult.data;
+      // Stamp with NOW so the next 90s of requests are served from memory.
+      g_allMatchesCache.ts   = Date.now();
+      _triggerBackgroundRefresh();
+      return fileResult.data;
+    }
+    // File cache is too old (> 4h) — fall through to live fetch
+    console.log(`[matches] file cache is ${Math.round(fileAge / 60000)}min old — skipping, fetching live`);
   }
 
   // Layer 5: True cold start (all caches empty) — trigger refresh but cap at 8s.
@@ -5225,8 +5236,16 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     // don't write to DB/file. Log so it's visible in PM2 logs.
     console.warn(`[matches] fetch returned only ${sorted.length} matches (prev: ${previousCount}) — skipping cache write to protect existing data`);
     if (previousCount > 0) {
-      // Warm cache: update timestamp to prevent immediate re-fetch hammering ESPN.
-      g_allMatchesCache.ts = Date.now();
+      // Only re-stamp the timestamp if the existing data is itself fresh (< 4h).
+      // If the data is stale (> 4h old), do NOT update ts — let it expire naturally
+      // so the next getAllMatches() call falls through to a live fetch instead of
+      // serving yesterday's matches forever in a 90-second spin loop.
+      const existingDataAge = Date.now() - g_allMatchesCache.ts;
+      if (existingDataAge < ALLMATCHES_STALE_TTL) {
+        g_allMatchesCache.ts = Date.now();
+      }
+      // else: leave ts as-is — once age > ALLMATCHES_STALE_TTL, Layer 2 stops
+      // returning the stale data and we fall through to a fresh live fetch.
     }
     // Cold start with bad ESPN response: leave ts at 0 so getAllMatches()
     // triggers a retry sooner rather than waiting 90s. The next request
