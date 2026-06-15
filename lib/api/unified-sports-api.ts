@@ -1163,6 +1163,10 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '1062': { name: 'UEFA Europa League', country: 'Europe', countryCode: 'EU' },
   '1063': { name: 'UEFA Conference League', country: 'Europe', countryCode: 'EU' },
   '1978': { name: 'FIFA Club World Cup', country: 'World', countryCode: 'WO' },
+  // FIFA World Cup (current tournament IDs — ESPN uses different numeric IDs each cycle)
+  '606':  { name: 'FIFA World Cup', country: 'World', countryCode: 'WO' },
+  '607':  { name: 'FIFA World Cup', country: 'World', countryCode: 'WO' },
+  '2000': { name: 'FIFA World Cup', country: 'World', countryCode: 'WO' },
   // Women's Competitions
   '17163': { name: "UEFA Women's Champions League", country: 'Europe', countryCode: 'EU' },
   '17167': { name: "Women's Super League", country: 'England', countryCode: 'GB-ENG' },
@@ -1224,6 +1228,10 @@ const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
   '22287': 194, // Women's WC Qual CONMEBOL alt
   '17163': 200, // UEFA Women's Champions League
   '16980': 201, // NWSL
+  // FIFA World Cup numeric IDs
+  '606':   29,  // FIFA World Cup 2026 (ESPN global scoreboard league id)
+  '607':   29,  // FIFA World Cup alt id
+  '2000':  29,  // FIFA World Cup alt id
 };
 
 // Convert a season slug like "2025-26-saudi-pro-league" or "uefa-champions-league"
@@ -1542,10 +1550,26 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     // the athlete id embedded in each competitor uid (e.g. "s:850~l:851~a:4691").
     const homeAthleteId = athleteIdFromUid((resolvedHome as unknown as { uid?: string }).uid);
     const awayAthleteId = athleteIdFromUid((resolvedAway as unknown as { uid?: string }).uid);
-    const homeLogoUrl = resolvedHome?.team?.logo
-      || (resolvedHome?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href;
-    const awayLogoUrl = resolvedAway?.team?.logo
-      || (resolvedAway?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href;
+    // For individual sports (tennis/golf/mma), prefer ESPN headshot over team logo or flag.
+    // ESPN headshot URL format: https://a.espncdn.com/i/headshots/<sport>/players/full/<id>.png
+    const headshotSport = sportType === 'tennis' ? 'tennis'
+      : sportType === 'golf' ? 'golf'
+      : sportType === 'mma' ? 'mma'
+      : null;
+    const homeAthleteHeadshot = isIndividualSportType && headshotSport
+      ? ((resolvedHome?.athlete as unknown as { headshot?: { href?: string } } | undefined)?.headshot?.href
+         || (homeAthleteId ? `https://a.espncdn.com/i/headshots/${headshotSport}/players/full/${homeAthleteId}.png` : undefined))
+      : undefined;
+    const awayAthleteHeadshot = isIndividualSportType && headshotSport
+      ? ((resolvedAway?.athlete as unknown as { headshot?: { href?: string } } | undefined)?.headshot?.href
+         || (awayAthleteId ? `https://a.espncdn.com/i/headshots/${headshotSport}/players/full/${awayAthleteId}.png` : undefined))
+      : undefined;
+    const homeLogoUrl = homeAthleteHeadshot
+      || resolvedHome?.team?.logo
+      || (isIndividualSportType ? undefined : (resolvedHome?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href);
+    const awayLogoUrl = awayAthleteHeadshot
+      || resolvedAway?.team?.logo
+      || (isIndividualSportType ? undefined : (resolvedAway?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href);
 
     // Use our internal leagueId if we have a mapping, otherwise fall back to
     // a deterministic synthetic id (80000 + espnNumericId). The mapping is
@@ -4983,6 +5007,18 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
       'red bull salzburg': 'salzburg', 'fc salzburg': 'salzburg', 'fc red bull salzburg': 'salzburg',
       'sk rapid wien': 'rapid', 'rapid wien': 'rapid',
       'fk crvena zvezda': 'crvenazvezda', 'red star belgrade': 'crvenazvezda', 'crvena zvezda': 'crvenazvezda',
+      // International national teams — alternate country name spellings across data sources
+      'cabo verde': 'capeverde', 'cape verde': 'capeverde',
+      'ivory coast': 'cotedivoire', 'cote d\'ivoire': 'cotedivoire', "cote d'ivoire": 'cotedivoire',
+      'democratic republic of congo': 'drcongo', 'dr congo': 'drcongo', 'congo dr': 'drcongo',
+      'republic of ireland': 'ireland', 'north macedonia': 'northmacedonia',
+      'trinidad and tobago': 'trinidadtobago', 'trinidad & tobago': 'trinidadtobago',
+      'antigua and barbuda': 'antiguabarbuda',
+      'st. kitts & nevis': 'stkittsnevis', 'saint kitts and nevis': 'stkittsnevis',
+      'st. vincent & grenadines': 'stvincentgrenadines',
+      'united states': 'usa', 'united states of america': 'usa',
+      'korea republic': 'southkorea', 'south korea': 'southkorea',
+      'korea dpr': 'northkorea', 'north korea': 'northkorea',
       // African
       'al ahly sc': 'alahly', 'al-ahly': 'alahly', 'al ahly': 'alahly',
       'es tunis': 'esperance', 'esperance sportive de tunis': 'esperance',

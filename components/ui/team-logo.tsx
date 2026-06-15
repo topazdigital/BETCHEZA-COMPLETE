@@ -292,18 +292,22 @@ export function TeamLogo({
   //      curated map doesn't list — works because ESPN serves logos at
   //      a deterministic path keyed by team id).
   // Build sport-aware ESPN CDN URL: the subfolder varies by sport slug.
-  const espnSportFolder = (() => {
-    if (!sportSlug) return 'soccer'
-    const s = sportSlug.toLowerCase()
-    if (s === 'basketball' || s === 'nba') return 'nba'
-    if (s === 'american-football' || s === 'nfl') return 'nfl'
-    if (s === 'baseball' || s === 'mlb') return 'mlb'
-    if (s === 'ice-hockey' || s === 'hockey' || s === 'nhl') return 'nhl'
-    if (s === 'tennis') return 'tennis'
-    return 'soccer'
-  })()
+  // For individual sports (tennis, golf, MMA) ESPN stores per-athlete portraits
+  // under /i/headshots/<sport>/players/full/<id>.png — NOT under /i/teamlogos/.
+  // For team sports ESPN stores crests under /i/teamlogos/<sport>/500/<id>.png.
+  const isIndividual = isIndividualSport(sportSlug)
   const cdnGuessUrl = teamId
-    ? `https://a.espncdn.com/i/teamlogos/${espnSportFolder}/500/${teamId}.png`
+    ? isIndividual
+      ? `https://a.espncdn.com/i/headshots/${sportSlug?.toLowerCase() || 'tennis'}/players/full/${teamId}.png`
+      : (() => {
+          if (!sportSlug) return `https://a.espncdn.com/i/teamlogos/soccer/500/${teamId}.png`
+          const s = sportSlug.toLowerCase()
+          if (s === 'basketball' || s === 'nba') return `https://a.espncdn.com/i/teamlogos/nba/500/${teamId}.png`
+          if (s === 'american-football' || s === 'nfl') return `https://a.espncdn.com/i/teamlogos/nfl/500/${teamId}.png`
+          if (s === 'baseball' || s === 'mlb') return `https://a.espncdn.com/i/teamlogos/mlb/500/${teamId}.png`
+          if (s === 'ice-hockey' || s === 'hockey' || s === 'nhl') return `https://a.espncdn.com/i/teamlogos/nhl/500/${teamId}.png`
+          return `https://a.espncdn.com/i/teamlogos/soccer/500/${teamId}.png`
+        })()
     : undefined
   const logoUrl = providedLogoUrl || TEAM_LOGOS[teamName] || cdnGuessUrl
   // Auto-pick athlete variant for individual sports.
