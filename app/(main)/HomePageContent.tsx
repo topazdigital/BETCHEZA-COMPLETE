@@ -81,10 +81,6 @@ const LiveSidePanel = dynamic(
   () => import('@/components/home/live-side-panel').then(m => ({ default: m.LiveSidePanel })),
   { ssr: false, loading: () => <div className="h-32 rounded-xl bg-muted/30 animate-pulse" /> }
 );
-const LiveMarquee = dynamic(
-  () => import('@/components/home/live-marquee').then(m => ({ default: m.LiveMarquee })),
-  { ssr: false, loading: () => <div className="h-24 rounded-xl bg-muted/30 animate-pulse" /> }
-);
 const SidebarBanners = dynamic(
   () => import('@/components/home/sidebar-banners').then(m => ({ default: m.SidebarBanners })),
   { ssr: false }
@@ -444,7 +440,11 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                   </Button>
                 </div>
                 {liveMatches.length > 0 ? (
-                  <LiveMarquee matches={liveMatches} tips={liveRowTips} />
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {liveMatches.slice(0, 6).map((m) => (
+                      <MatchCardNew key={m.id} match={m} variant="compact" showLeague={true} />
+                    ))}
+                  </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-border bg-card/40 px-3 py-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">

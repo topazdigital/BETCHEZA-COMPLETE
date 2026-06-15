@@ -237,6 +237,40 @@ if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   CSS_COUNT=$(find "$DOMAIN_ROOT/_next/static" -name "*.css" 2>/dev/null | wc -l)
   echo -e "${GREEN}Static files copied ($CSS_COUNT CSS file(s))${NC}"
 
+  # Static "site is starting" page — served by Apache when Node is not yet
+  # listening (connection refused = 503). Users see a friendly loading screen
+  # instead of a blank browser tab during PM2 restarts or cold-starts.
+  cat > "$DOMAIN_ROOT/loading.html" << 'LOADING_HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="8">
+<title>Betcheza — Starting up…</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f1117;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}
+  .wrap{max-width:360px;padding:2rem 1rem}
+  .logo{font-size:2rem;font-weight:900;color:#3b82f6;letter-spacing:-0.04em;margin-bottom:0.5rem}
+  .dot{display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:50%;margin:0 3px;animation:bounce 1.2s infinite ease-in-out}
+  .dot:nth-child(2){animation-delay:.2s}
+  .dot:nth-child(3){animation-delay:.4s}
+  @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-12px)}}
+  p{font-size:.9rem;color:#94a3b8;margin-top:1rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">Betcheza</div>
+  <div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  <p>Site is starting up — refreshing automatically…</p>
+</div>
+</body>
+</html>
+LOADING_HTML
+  echo -e "${GREEN}Static loading page written → ${DOMAIN_ROOT}/loading.html${NC}"
+
   cat > "$DOMAIN_ROOT/.htaccess" << HTACCESS
 # Compression
 <IfModule mod_brotli.c>
@@ -270,6 +304,14 @@ if [ -n "$DOMAIN_ROOT" ] && [ -d "$DOMAIN_ROOT" ]; then
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
+
+# When Node is down (503 connection refused), serve the static loading page.
+# ProxyErrorOverride must be On so Apache intercepts the 503 instead of the
+# empty response from a refused connection.
+<IfModule mod_proxy.c>
+  ProxyErrorOverride On
+</IfModule>
+ErrorDocument 503 /loading.html
 
 # Fallback proxy (used only if VirtualHost-level ProxyPass is absent).
 # Sets X-Forwarded-Proto so Next.js knows the original protocol — prevents

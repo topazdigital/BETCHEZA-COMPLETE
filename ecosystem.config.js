@@ -21,8 +21,8 @@ module.exports = {
       // pre-populated before users hit the site.
       autorestart: true,
       watch: false,
-      max_restarts: 10,
-      min_uptime: '10s',
+      max_restarts: 20,
+      min_uptime: '20s',
       restart_delay: 3000,
       post_start: 'sleep 30 && curl -sf -H "Authorization: Bearer betcheza-cron-2024" --max-time 180 http://localhost:3001/api/warmup > /tmp/betcheza-warmup-auto.json 2>&1 || true',
 
@@ -45,7 +45,10 @@ module.exports = {
 
       // Graceful shutdown — give Next.js time to drain connections
       kill_timeout: 10000,
-      listen_timeout: 15000,
+      // 45s gives Next.js production time to bind the port on a cold start.
+      // 15s was too short — PM2 would declare the process failed and retry,
+      // creating a restart loop that kept the site down for 30-60 seconds.
+      listen_timeout: 45000,
     },
   ],
 };
