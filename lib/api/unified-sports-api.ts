@@ -827,6 +827,35 @@ const apiStatus = {
   oddsApiIo: { working: false, lastError: '', lastCheck: 0 },
 };
 
+// ── ESPN circuit breaker ────────────────────────────────────────────────────
+// After 3 consecutive timeouts, pause all ESPN requests for 3 minutes.
+// This stops the log flood ("fetch failed TimeoutError" × 50) that occurs
+// when ESPN is slow, and lets the site serve stale-cache data quietly instead.
+const _espnCB = {
+  consecutiveFailures: 0,
+  openUntil: 0,
+  THRESHOLD: 3,
+  BACKOFF_MS: 3 * 60 * 1000, // 3 min
+};
+
+function espnCircuitOpen(): boolean {
+  if (_espnCB.openUntil && Date.now() < _espnCB.openUntil) return true;
+  if (_espnCB.openUntil) { _espnCB.openUntil = 0; _espnCB.consecutiveFailures = 0; }
+  return false;
+}
+function espnRecordSuccess() { _espnCB.consecutiveFailures = 0; _espnCB.openUntil = 0; }
+function espnRecordFailure() {
+  _espnCB.consecutiveFailures++;
+  if (_espnCB.consecutiveFailures === _espnCB.THRESHOLD) {
+    // Log only when the circuit FIRST trips, not on every subsequent call.
+    _espnCB.openUntil = Date.now() + _espnCB.BACKOFF_MS;
+    console.warn(`[ESPN] circuit open — pausing all ESPN requests for 3 min after ${_espnCB.THRESHOLD} consecutive timeouts`);
+  } else if (_espnCB.consecutiveFailures > _espnCB.THRESHOLD) {
+    // Circuit was already open; just refresh the timer silently.
+    _espnCB.openUntil = Date.now() + _espnCB.BACKOFF_MS;
+  }
+}
+
 export function getApiStatus() {
   return apiStatus;
 }
@@ -957,14 +986,11 @@ async function fetchESPN(
   dates?: string,
   limit: number = 300,
 ): Promise<ESPNScoreboardResponseFull | null> {
+  if (espnCircuitOpen()) return null;
+
   const base = `${ESPN_BASE_URL}/${sport}/${league}/${endpoint}`;
-  // Always include &limit=300 so ESPN returns all events for the date range
-  // (default is 25 per page which cuts off busy days like international windows).
   const url = dates ? `${base}?dates=${dates}&limit=${limit}` : `${base}?limit=${limit}`;
 
-  // ESPN tennis, golf, baseball, basketball and hockey scoreboards with wide date
-  // ranges are huge (often >2MB, NHL can be 17MB) and exceed Next.js's data-cache
-  // item limit. Skip the data cache for those — our in-memory cache handles TTL.
   const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball'
     || sport === 'basketball' || sport === 'hockey'
     || league === 'mlb' || league === 'nba' || league === 'nhl';
@@ -972,21 +998,30 @@ async function fetchESPN(
   try {
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000),
+      // Reduced from 10s → 5s: fail fast so pages don't hang; circuit breaker
+      // prevents repeated retries when ESPN is slow.
+      signal: AbortSignal.timeout(5000),
       ...(skipDataCache ? { cache: 'no-store' as const } : { next: { revalidate: 15 } }),
     });
 
     if (!response.ok) {
       apiStatus.espn.lastError = `HTTP ${response.status}`;
+      espnRecordFailure();
       return null;
     }
 
+    espnRecordSuccess();
     apiStatus.espn.working = true;
     apiStatus.espn.lastCheck = Date.now();
 
     return await response.json();
   } catch (error) {
+    espnRecordFailure();
     apiStatus.espn.lastError = String(error);
+    // Only log the first failure in a burst to avoid flooding the PM2 logs.
+    if (_espnCB.consecutiveFailures <= 1) {
+      console.warn('[ESPN] fetch timeout/error:', (error as Error)?.message ?? error);
+    }
     return null;
   }
 }
@@ -2888,20 +2923,47 @@ export interface ESPNSummaryResponse {
   };
 }
 
+// Tracks event IDs whose summary recently failed, so we don't retry on every
+// match-detail request. Cleared automatically after 3 minutes.
+const _summaryCooldown = new Map<string, number>();
+const SUMMARY_COOLDOWN_MS = 3 * 60 * 1000;
+
 export async function fetchESPNSummary(sport: string, league: string, eventId: string): Promise<ESPNSummaryResponse | null> {
+  if (espnCircuitOpen()) return null;
+
   const cacheKey = `espn-summary-${sport}-${league}-${eventId}`;
-  const cached = getCached<ESPNSummaryResponse>(cacheKey, 60 * 1000); // 1 min
+
+  // Negative result cache: if this event timed out recently, skip the retry.
+  const cooldownTs = _summaryCooldown.get(cacheKey);
+  if (cooldownTs && Date.now() - cooldownTs < SUMMARY_COOLDOWN_MS) return null;
+
+  const cached = getCached<ESPNSummaryResponse>(cacheKey, 60 * 1000);
   if (cached) return cached;
 
   const url = `${ESPN_BASE_URL}/${sport}/${league}/summary?event=${eventId}`;
   try {
-    const r = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000), next: { revalidate: 60 } });
-    if (!r.ok) return null;
+    const r = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      // Reduced from 8s → 4s: fail fast; negative cache prevents re-flooding.
+      signal: AbortSignal.timeout(4000),
+      next: { revalidate: 60 },
+    });
+    if (!r.ok) {
+      _summaryCooldown.set(cacheKey, Date.now());
+      return null;
+    }
     const j = await r.json() as ESPNSummaryResponse;
     setCache(cacheKey, j);
+    _summaryCooldown.delete(cacheKey);
+    espnRecordSuccess();
     return j;
   } catch (e) {
-    console.error('[ESPN summary] fetch failed', e);
+    _summaryCooldown.set(cacheKey, Date.now());
+    espnRecordFailure();
+    // Only log if this isn't a burst — prevent log flooding.
+    if (_espnCB.consecutiveFailures <= 1) {
+      console.warn('[ESPN summary] fetch failed:', (e as Error)?.message ?? e);
+    }
     return null;
   }
 }
