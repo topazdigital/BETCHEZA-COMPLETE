@@ -305,12 +305,12 @@ LOADING_HTML
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
-# When Node is down (503 connection refused), serve the static loading page.
-# ProxyErrorOverride must be On so Apache intercepts the 503 instead of the
-# empty response from a refused connection.
+# When Node is down, Apache returns 502 (connection refused) or 503.
+# ProxyErrorOverride makes Apache substitute our custom page for both.
 <IfModule mod_proxy.c>
   ProxyErrorOverride On
 </IfModule>
+ErrorDocument 502 /loading.html
 ErrorDocument 503 /loading.html
 
 # Fallback proxy (used only if VirtualHost-level ProxyPass is absent).
@@ -514,17 +514,19 @@ if command -v mysql &>/dev/null && [ -n "${DB_PASS:-}" ]; then
 fi
 echo -e "${GREEN}[4e/5] Match cache cleared — fresh fetch will run on next startup${NC}"
 
-# ── Step 5: Clean PM2 restart ─────────────────────────────────────────────────
+# ── Step 5: Restart Node.js (fast path: reload if running, start if not) ──────
 echo -e "${YELLOW}[5/5] Restarting Node.js server...${NC}"
 
-pm2 stop betcheza 2>/dev/null || true
-sleep 2
-pm2 delete betcheza 2>/dev/null || true
-sleep 1
-
+# Kill any stale process holding the port
 fuser -k -KILL "${APP_PORT}/tcp" 2>/dev/null || true
 lsof -ti:"${APP_PORT}" 2>/dev/null | xargs kill -9 2>/dev/null || true
-sleep 2
+sleep 1
+
+if pm2 describe betcheza &>/dev/null; then
+  # Process exists — delete and re-start so new ecosystem.config.js is picked up
+  pm2 delete betcheza 2>/dev/null || true
+  sleep 1
+fi
 
 if [ -f "$APP_DIR/ecosystem.config.js" ]; then
   pm2 start "$APP_DIR/ecosystem.config.js"

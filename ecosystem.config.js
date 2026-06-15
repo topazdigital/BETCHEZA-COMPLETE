@@ -6,8 +6,6 @@ module.exports = {
       args: 'start -H 0.0.0.0',
       cwd: '/home/admin/apps/betcheza',
 
-      // PORT 3001 — avoids conflict with other apps on the server.
-      // INTERNAL_BASE_URL must match so cron self-calls reach the right port.
       env: {
         PORT: '3001',
         NODE_ENV: 'production',
@@ -15,39 +13,50 @@ module.exports = {
       },
       env_file: '.env.local',
 
-      // Restart policy — if the app crashes, PM2 brings it back.
-      // post_start hook fires /api/warmup after every restart (including
-      // auto-restarts from memory limit) so the match cache is always
-      // pre-populated before users hit the site.
+      // ── Restart policy ─────────────────────────────────────────────────────
       autorestart: true,
       watch: false,
       max_restarts: 20,
+      // min_uptime: app must stay alive at least 20s or PM2 counts it as a
+      // failed start and backs off. Prevents rapid crash-loop restarts.
       min_uptime: '20s',
-      restart_delay: 3000,
-      post_start: 'sleep 30 && curl -sf -H "Authorization: Bearer betcheza-cron-2024" --max-time 180 http://localhost:3001/api/warmup > /tmp/betcheza-warmup-auto.json 2>&1 || true',
+      // Restart delay: 1s is fast enough for a quick recovery but avoids
+      // hammering ESPN/DB on an instant retry.
+      restart_delay: 1000,
+      // post_start: warm the match cache after every restart so the first
+      // user request is never a cold-start ESPN fetch.
+      // sleep 10 — enough for Next.js to finish binding the port (listen_timeout
+      // is 45s, so the process is definitely up by the time this curl fires).
+      post_start: 'sleep 10 && curl -sf -H "Authorization: Bearer betcheza-cron-2024" --max-time 180 http://localhost:3001/api/warmup > /tmp/betcheza-warmup-auto.json 2>&1 || true',
 
-      // Memory guard — restart if RSS exceeds 1.5 GB.
-      // Was 1024M, which caused frequent restarts that wiped the in-memory
-      // match cache and forced cold-start API refetches on every restart.
-      // Next.js production with many routes + match cache needs more headroom.
-      max_memory_restart: '1536M',
+      // ── Memory guard ────────────────────────────────────────────────────────
+      // CRITICAL FIX: --max-old-space-size=1400 means V8 heap tops out at
+      // 1400 MB, but RSS (what PM2 measures) is always 200-400 MB higher =
+      // 1600-1800 MB. The old 1536M threshold was BELOW normal operating RSS,
+      // so PM2 restarted the app constantly — every few minutes — causing all
+      // the observed downtime. Raising to 3000M means PM2 only restarts on a
+      // true memory leak, while the OS OOM-killer handles catastrophic cases.
+      max_memory_restart: '3000M',
 
-      // Log config
+      // ── Log config ──────────────────────────────────────────────────────────
       out_file: '/root/.pm2/logs/betcheza-out.log',
       error_file: '/root/.pm2/logs/betcheza-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
 
-      // Node.js tuning for Next.js production.
-      // Increased heap from 768MB → 1400MB to reduce GC pressure and prevent
-      // the OOM-triggered PM2 restarts that were wiping the match cache.
-      node_args: '--max-old-space-size=1400',
+      // ── Node.js tuning ──────────────────────────────────────────────────────
+      // --max-old-space-size=1400: caps V8 heap; GC kicks in before the process
+      //   bloats. Keep this — it prevents the OS OOM killer from hitting first.
+      // --unhandled-rejections=warn: unhandled Promise rejections print a
+      //   warning but DO NOT crash the process (default in Node 15+ is to
+      //   crash). Prevents rare ESPN/DB API errors from taking the site down.
+      node_args: '--max-old-space-size=1400 --unhandled-rejections=warn',
 
-      // Graceful shutdown — give Next.js time to drain connections
+      // ── Graceful shutdown ───────────────────────────────────────────────────
       kill_timeout: 10000,
-      // 45s gives Next.js production time to bind the port on a cold start.
-      // 15s was too short — PM2 would declare the process failed and retry,
-      // creating a restart loop that kept the site down for 30-60 seconds.
+      // 45s: gives Next.js production time to compile and bind the port.
+      // The old 15s value was too short — PM2 declared the process failed
+      // and retried, creating a restart loop that extended downtime to 60s+.
       listen_timeout: 45000,
     },
   ],
