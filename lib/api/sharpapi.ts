@@ -21,9 +21,29 @@ import type { MatchOdds, Market, Outcome } from './unified-sports-api';
 const BASE = 'https://api.sharpapi.io/api/v1';
 
 // ── Cache ────────────────────────────────────────────────────────────────────
-// 5-min TTL keeps us well under the 12 req/min rate limit while still providing
-// fresh-enough data (free tier has 60 s delay anyway).
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// 30-min TTL. Free tier has 60s data delay anyway, and longer TTL prevents
+// the "restart storm" pattern: PM2 restart → cache cleared → 10+ API calls
+// before cache warms → rate limit hit → 429s logged every restart.
+const CACHE_TTL_MS = 30 * 60 * 1000;
+
+// ── Circuit breaker ───────────────────────────────────────────────────────────
+// If SharpAPI returns HTTP 400 (bad request / wrong endpoint params) we back
+// off for 2 hours — 400 means the API is misconfigured, not a transient error.
+// If it returns 429 (rate limit) we back off for 10 minutes.
+let _backoffUntil = 0;
+let _backoffReason = '';
+
+function isCircuitOpen(): boolean {
+  if (_backoffUntil && Date.now() < _backoffUntil) return true;
+  _backoffUntil = 0;
+  return false;
+}
+
+function tripCircuit(reason: '400' | '429') {
+  const ms = reason === '400' ? 2 * 60 * 60 * 1000 : 10 * 60 * 1000;
+  _backoffUntil = Date.now() + ms;
+  _backoffReason = reason;
+}
 
 interface CacheEntry<T> {
   data: T;
@@ -97,6 +117,8 @@ async function sharpFetch<T>(
   path: string,
   params: Record<string, string> = {},
 ): Promise<T | null> {
+  if (isCircuitOpen()) return null;
+
   const apiKey = await getApiKey('sharp_api_key');
   if (!apiKey) return null;
 
@@ -111,11 +133,18 @@ async function sharpFetch<T>(
     } as RequestInit);
 
     if (res.status === 401) {
-      console.warn('[SharpAPI] Invalid API key');
+      console.warn('[SharpAPI] Invalid API key — disabling for 2h');
+      tripCircuit('400');
       return null;
     }
     if (res.status === 429) {
-      console.warn('[SharpAPI] Rate limit hit — backing off');
+      console.warn('[SharpAPI] Rate limit hit — backing off 10 min');
+      tripCircuit('429');
+      return null;
+    }
+    if (res.status === 400) {
+      console.warn(`[SharpAPI] HTTP 400 — bad request params, disabling for 2h`);
+      tripCircuit('400');
       return null;
     }
     if (!res.ok) {
@@ -239,9 +268,12 @@ export async function buildSharpApiOddsIndex(): Promise<Map<string, { odds: Matc
 
   const events: SharpEvent[] = res?.data || res?.events || [];
 
-  if (events.length === 0) {
-    // Fallback: fetch per sport
+  // Only attempt per-sport fallback if:
+  //  a) we got a valid response but 0 events (not a 400/429)
+  //  b) the circuit is still closed (no 400/429 tripped it)
+  if (events.length === 0 && !isCircuitOpen()) {
     for (const sport of SHARP_SPORTS) {
+      if (isCircuitOpen()) break;
       const sportRes = await sharpFetch<SharpOddsResponse>('odds', {
         sport,
         oddsFormat: 'decimal',
@@ -249,7 +281,6 @@ export async function buildSharpApiOddsIndex(): Promise<Map<string, { odds: Matc
       });
       const sportEvents: SharpEvent[] = sportRes?.data || sportRes?.events || [];
       events.push(...sportEvents);
-      // Small delay to respect 12 req/min
       await new Promise(r => setTimeout(r, 200));
     }
   }
