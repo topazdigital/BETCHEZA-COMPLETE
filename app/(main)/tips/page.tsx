@@ -21,8 +21,8 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const dayLabel   = day === 'today' ? "Today's" : day === 'tomorrow' ? "Tomorrow's" : 'Upcoming';
 
   const title = sport
-    ? `${dayLabel} Free ${sportLabel} Betting Tips | Predictions | Betcheza`
-    : `${dayLabel} Free Betting Tips | Community Predictions | Betcheza`;
+    ? `${dayLabel} Free ${sportLabel} Betting Tips | Predictions`
+    : `${dayLabel} Free Betting Tips | Community Predictions`;
 
   const description = sport
     ? `Expert ${sport} betting tips from Kenya's top-ranked tipsters. ${dayLabel.replace("'s", '')} picks with in-depth analysis and real odds — updated daily.`

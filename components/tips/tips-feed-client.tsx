@@ -188,7 +188,65 @@ function BestBetCard({ tip }: { tip: Tip }) {
 }
 
 function TipCard({ tip }: { tip: Tip }) {
+  const { isAuthenticated } = useAuth()
+  const [likes, setLikes] = useState(tip.likes)
+  const [liked, setLiked] = useState(false)
+  const [commentCount, setCommentCount] = useState(tip.comments)
+  const [showComments, setShowComments] = useState(false)
+  const [comments, setComments] = useState<Array<{ id: number; authorName: string; authorAvatar?: string; content: string; createdAt: string }>>([])
+  const [commentsLoaded, setCommentsLoaded] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [posting, setPosting] = useState(false)
+
   if (!tip.tipster) return null
+
+  const handleLike = async () => {
+    if (!isAuthenticated) return
+    const prevLiked = liked, prevLikes = likes
+    setLiked(!prevLiked)
+    setLikes(l => l + (prevLiked ? -1 : 1))
+    try {
+      const res = await fetch(`/api/tips/${tip.id}/like`, { method: prevLiked ? 'DELETE' : 'POST' })
+      if (!res.ok) throw new Error('failed')
+      const data = await res.json()
+      setLikes(data.count)
+      setLiked(data.liked)
+    } catch {
+      setLiked(prevLiked); setLikes(prevLikes)
+    }
+  }
+
+  const toggleComments = async () => {
+    setShowComments(s => !s)
+    if (commentsLoaded) return
+    try {
+      const r = await fetch(`/api/tips/${tip.id}/comments`)
+      if (r.ok) {
+        const j = await r.json()
+        setComments(j.comments || [])
+      }
+    } finally { setCommentsLoaded(true) }
+  }
+
+  const submitComment = async () => {
+    const text = draft.trim()
+    if (!text || posting) return
+    setPosting(true)
+    try {
+      const r = await fetch(`/api/tips/${tip.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      })
+      if (r.ok) {
+        const j = await r.json()
+        setComments(prev => [j.comment, ...prev])
+        setCommentCount(c => c + 1)
+        setDraft('')
+      }
+    } finally { setPosting(false) }
+  }
+
   const wr = tip.tipster.winRate
   const wrColor = wr >= 60 ? "text-emerald-600 dark:text-emerald-400" : wr >= 45 ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"
   const wrBg   = wr >= 60 ? "bg-emerald-500/10" : wr >= 45 ? "bg-amber-500/10" : "bg-rose-500/10"
@@ -255,11 +313,23 @@ function TipCard({ tip }: { tip: Tip }) {
 
       {/* Footer */}
       <div className="flex items-center gap-3 border-t border-border px-3 py-1 text-[9px] text-muted-foreground">
-        <button className="flex items-center gap-0.5 hover:text-foreground transition-colors">
-          <ThumbsUp className="h-2.5 w-2.5" /> {tip.likes}
+        <button
+          onClick={handleLike}
+          className={cn(
+            "flex items-center gap-0.5 transition-colors",
+            liked ? "text-primary font-semibold" : "hover:text-foreground",
+            !isAuthenticated && "cursor-default opacity-70"
+          )}
+          title={isAuthenticated ? (liked ? "Unlike" : "Like this tip") : "Sign in to like"}
+        >
+          <ThumbsUp className={cn("h-2.5 w-2.5", liked && "fill-current")} /> {likes}
         </button>
-        <button className="flex items-center gap-0.5 hover:text-foreground transition-colors">
-          <MessageSquare className="h-2.5 w-2.5" /> {tip.comments}
+        <button
+          onClick={toggleComments}
+          className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+          title="View comments"
+        >
+          <MessageSquare className="h-2.5 w-2.5" /> {commentCount}
         </button>
         {tip.analysis && (
           <span className="truncate max-w-[160px] hidden sm:inline">{tip.analysis}</span>
@@ -268,6 +338,45 @@ function TipCard({ tip }: { tip: Tip }) {
           {formatAge(tip.createdAt)}
         </span>
       </div>
+
+      {/* Comments panel */}
+      {showComments && (
+        <div className="border-t border-border bg-muted/30 px-3 py-2 space-y-2">
+          {commentsLoaded && comments.length === 0 && (
+            <p className="text-[9px] text-muted-foreground">No comments yet.</p>
+          )}
+          {comments.map(c => (
+            <div key={c.id} className="flex gap-1.5">
+              <div className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center text-[7px] font-bold text-primary shrink-0">
+                {c.authorName?.[0]?.toUpperCase() || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-[9px] font-semibold">{c.authorName}</span>
+                <span className="text-[9px] text-muted-foreground ml-1">{formatAge(c.createdAt)}</span>
+                <p className="text-[10px] text-foreground/80 leading-snug mt-0.5">{c.content}</p>
+              </div>
+            </div>
+          ))}
+          {isAuthenticated && (
+            <div className="flex gap-1.5 pt-0.5">
+              <input
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && submitComment()}
+                placeholder="Add a comment…"
+                className="flex-1 text-[10px] rounded border border-border bg-background px-2 py-1 outline-none focus:border-primary"
+              />
+              <button
+                onClick={submitComment}
+                disabled={posting || !draft.trim()}
+                className="text-[9px] font-semibold px-2 py-1 rounded bg-primary text-primary-foreground disabled:opacity-40"
+              >
+                {posting ? '…' : 'Post'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

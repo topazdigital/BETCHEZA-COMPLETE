@@ -437,8 +437,7 @@ async function seedCommunityPostsFromTips(): Promise<boolean> {
          VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0,
            DATE_SUB(NOW(), INTERVAL ? HOUR))
          ON DUPLICATE KEY UPDATE
-           created_at = DATE_SUB(NOW(), INTERVAL (MOD(user_id, 20) + 1) HOUR),
-           content    = VALUES(content)`,
+           content = VALUES(content)`,
         [
           postId, tip.tipster_id, ft.displayName, ft.avatar || null,
           content, tip.match_title.slice(0, 255), tip.pick,
@@ -525,8 +524,11 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
   return posts;
 }
 
-export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'commentCount' | 'createdAt'>): Promise<FeedPost> {
-  const post: FeedPost = { id: makeId('post'), likes: 0, commentCount: 0, createdAt: new Date().toISOString(), ...input };
+export async function createPost(
+  input: Omit<FeedPost, 'id' | 'likes' | 'commentCount' | 'createdAt'> & { createdAt?: string },
+): Promise<FeedPost> {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const post: FeedPost = { id: makeId('post'), likes: 0, commentCount: 0, createdAt, ...input };
 
   if (hasDb()) {
     try {
@@ -534,11 +536,11 @@ export async function createPost(input: Omit<FeedPost, 'id' | 'likes' | 'comment
         `INSERT INTO feed_posts
           (id, user_id, author_name, author_avatar, content, match_id, match_title,
            pick, odds, image_url, room_id, likes, comment_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
         [post.id, post.userId, sanitise(post.authorName), post.authorAvatar || null,
          sanitise(post.content),
          post.matchId || null, sanitise(post.matchTitle), sanitise(post.pick),
-         post.odds || null, post.imageUrl || null, post.roomId ?? null],
+         post.odds || null, post.imageUrl || null, post.roomId ?? null, createdAt],
       );
       // Store hashtags extracted from content (non-blocking)
       void storeHashtags(post.id, post.content ?? '');

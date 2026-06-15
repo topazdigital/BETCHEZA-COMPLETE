@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Best AI Football Predictor in Kenya | Free Match Predictions | Betcheza',
+  title: 'Best AI Football Predictor in Kenya | Free Match Predictions',
   description: "Betcheza's AI football predictor is the best in Kenya — get free accurate win probability, correct score predictions and sure betting tips for SportPesa, Betika, Odibets and all Kenyan bookmakers. Which AI is best for football prediction? Betcheza.",
   keywords: [
     'AI football predictor Kenya', 'best AI football predictor Kenya',

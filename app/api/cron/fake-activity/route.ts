@@ -324,6 +324,12 @@ function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+/** Returns an ISO timestamp randomly offset 0–maxMinutes minutes in the past. */
+function staggeredTs(maxMinutes = 90): string {
+  const offset = Math.floor(Math.random() * maxMinutes * 60 * 1000);
+  return new Date(Date.now() - offset).toISOString();
+}
+
 const g = globalThis as {
   __fakeActivityPostedMatches?: Set<string>;
   __fakeActivityLastRun?: number;
@@ -456,7 +462,7 @@ async function runActivity() {
     await createPost({
       userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
       content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-      pick: postPick, odds: postOdds, imageUrl: null,
+      pick: postPick, odds: postOdds, imageUrl: null, createdAt: staggeredTs(60),
     }).catch(() => {});
     g.__fakeActivityPostedMatches!.add(match.id);
     g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
@@ -588,7 +594,7 @@ export async function GET(req: NextRequest) {
         await createPost({
           userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
           content, matchId: match.id, matchTitle: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-          pick: postPick, odds: postOdds, imageUrl: null, roomId,
+          pick: postPick, odds: postOdds, imageUrl: null, roomId, createdAt: staggeredTs(60),
         });
         if (postPick && postOdds) recordActivityTip(tipster.id, match.id, postPick, postOdds);
         g.__fakeActivityPostedMatches!.add(match.id);
@@ -637,6 +643,7 @@ export async function GET(req: NextRequest) {
         await createPost({
           userId: tipster.id, authorName: tipster.displayName, authorAvatar: tipster.avatar,
           content, matchId: null, matchTitle: null, pick: null, odds: null, imageUrl: null, roomId: genRoomId,
+          createdAt: staggeredTs(120),
         });
         g.__fakeActivityTipsterLastPost!.set(tipster.id, now);
         results.postsCreated++;

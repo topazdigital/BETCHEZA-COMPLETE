@@ -96,28 +96,74 @@ export async function GET(req: NextRequest) {
     const now = Date.now();
     const statusMap = new Map<string, 'scheduled' | 'live' | 'finished'>();
 
+    // Build a kickoff-time map from DB rows so we can do time-based fallback
+    // even when the sports API is unavailable (e.g. circuit breaker open).
+    // Immediately force-settle any challenges where kickoff was >2 hours ago
+    // but match_status is still 'scheduled' (covers API-down / ESPN circuit-open cases).
+    // Do this BEFORE the per-match API loop so the settlement happens even if all
+    // API calls fail this run.
+    try {
+      await execute(
+        `UPDATE challenges
+         SET match_status = 'finished', updated_at = NOW()
+         WHERE status IN ('active','pending')
+           AND match_kickoff IS NOT NULL
+           AND match_kickoff < DATE_SUB(NOW(), INTERVAL 120 MINUTE)
+           AND match_status = 'scheduled'`,
+        []
+      );
+    } catch { /* non-fatal — we'll still try the API-based path */ }
+
+    const kickoffByMatchId = new Map<string, number>();
+    for (const row of rows) {
+      if (row.match_id && row.match_kickoff) {
+        // MySQL2 can return DATETIME as a Date object or a string — normalise both
+        const rawKo = row.match_kickoff as unknown;
+        const ms = rawKo instanceof Date
+          ? rawKo.getTime()
+          : new Date(String(rawKo)).getTime();
+        if (!isNaN(ms)) kickoffByMatchId.set(row.match_id, ms);
+      }
+    }
+
     await Promise.allSettled(uniqueMatchIds.map(async (matchId) => {
       try {
         const match = await getMatchById(matchId);
-        if (!match) return;
+
+        // Time-based fallback when API is unavailable or returns no match.
+        const koMs = match?.kickoff
+          ? (typeof match.kickoff === 'number' ? match.kickoff : new Date(match.kickoff as string).getTime())
+          : (kickoffByMatchId.get(matchId) ?? 0);
+        const elapsedMin = koMs > 0 ? (now - koMs) / 60_000 : -1;
+
+        if (!match) {
+          // API returned nothing — use kickoff time as the only signal.
+          if (elapsedMin >= 115) {
+            statusMap.set(matchId, 'finished');
+          } else if (elapsedMin >= 0) {
+            statusMap.set(matchId, 'live');
+          }
+          // If elapsedMin < 0 (future match) or no kickoff info, leave as-is.
+          return;
+        }
 
         let resolved = normaliseStatus(match.status);
 
         // Kickoff-time override: if the API still says "scheduled" but
-        // we're past kickoff (+ up to 105 min for a normal match) → treat as live.
-        // If we're >110 min past kickoff and the API still hasn't flipped → finished.
-        if (resolved === 'scheduled' && match.kickoff) {
-          const ko = typeof match.kickoff === 'number'
-            ? match.kickoff
-            : new Date(match.kickoff as string).getTime();
-          const elapsedMin = (now - ko) / 60_000;
-          if (elapsedMin >= 0 && elapsedMin < 110) resolved = 'live';
-          else if (elapsedMin >= 110) resolved = 'finished';
+        // we're past kickoff (+ up to 110 min for a normal match) → treat as live.
+        // If we're >115 min past kickoff and the API still hasn't flipped → finished.
+        if (resolved === 'scheduled' && elapsedMin >= 0) {
+          if (elapsedMin < 115) resolved = 'live';
+          else resolved = 'finished';
         }
 
         statusMap.set(matchId, resolved);
       } catch {
-        // API unavailable for this match — skip; keep existing DB status
+        // API threw — still apply time-based fallback from DB kickoff
+        const koMs = kickoffByMatchId.get(matchId) ?? 0;
+        const elapsedMin = koMs > 0 ? (now - koMs) / 60_000 : -1;
+        if (elapsedMin >= 115) statusMap.set(matchId, 'finished');
+        else if (elapsedMin >= 0) statusMap.set(matchId, 'live');
       }
     }));
 

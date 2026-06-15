@@ -3,7 +3,7 @@ import { getSiteSettings } from '@/lib/site-settings';
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSiteSettings();
-  const title = `Community Betting Tips Feed | Free Tips Kenya | ${s.site_name}`;
+  const title = `Community Betting Tips Feed | Free Tips Kenya`;
   const description = `Real-time feed of free betting tips, match analysis and predictions from Kenya's top tipsters. Follow expert picks for SportPesa, Betika, Odibets and all major bookmakers.`;
   return {
     title,

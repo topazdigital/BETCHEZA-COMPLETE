@@ -810,14 +810,24 @@ export async function seedFakeChallengesFromMatches(matches: MatchSnapshot[]): P
   const fakes = getFakeTipsters();
   if (fakes.length < 8) return 0;
 
-  // Accept scheduled, upcoming, AND live matches for seeding
+  // Only seed challenges for matches that haven't started yet (or just kicked off).
+  // Live/in-progress matches are fine if kickoff was <15 min ago so picks still make sense.
+  // Matches that are well underway or past kickoff >15 min are excluded — bettors can't
+  // sensibly make pre-match picks for a match already in progress.
+  const nowMs = Date.now();
   const upcoming = matches.filter(m => {
     const s = (m.status || '').toLowerCase();
-    return (
-      s === 'scheduled' || s === 'upcoming' || s === '' || !m.status ||
-      s === 'live' || s === '1h' || s === '2h' || s === 'ht' ||
-      s === 'inprogress' || s === 'halftime'
-    );
+    const koMs = m.kickoffTime ? new Date(m.kickoffTime).getTime() : 0;
+    const elapsedMin = koMs > 0 ? (nowMs - koMs) / 60_000 : -1;
+    const isScheduled = s === 'scheduled' || s === 'upcoming' || s === '' || !m.status;
+    // Allow "just kicked off" (< 15 min elapsed) for live matches
+    const isJustStarted = (s === 'live' || s === '1h' || s === 'inprogress') && elapsedMin >= 0 && elapsedMin < 15;
+    // Exclude if kickoff was >15 min ago (match well underway) or match is finished/settled
+    const isFinished = s === 'finished' || s === 'ft' || s === 'full-time' || s === 'completed' ||
+      s === '2h' || s === 'ht' || s === 'halftime' || s === 'aet' || s === 'pen';
+    if (isFinished) return false;
+    if (koMs > 0 && elapsedMin > 15) return false; // past >15 min → skip
+    return isScheduled || isJustStarted;
   }).slice(0, 6);
   if (upcoming.length === 0) return 0;
 

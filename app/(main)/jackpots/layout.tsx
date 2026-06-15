@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 export const metadata: Metadata = {
-  title: 'Best Jackpot Predictions Kenya Today | Free AI Tips — Betcheza',
+  title: 'Best Jackpot Predictions Kenya Today | Free AI Tips',
   description: 'Get the best free jackpot predictions in Kenya today — AI-powered tips for SportPesa Midweek & Mega Jackpot, Betika Grand Jackpot, Odibets, Betin and Mozzartbet. Most accurate jackpot banker picks updated daily.',
   keywords: [
     'best jackpot predictions Kenya', 'Kenya jackpot predictions today',
