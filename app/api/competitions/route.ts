@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getCompetitionsAsync, publicCompetitionSummary } from '@/lib/competitions-store';
+import { getCompetitionsAsync, publicCompetitionSummary, getCachedParticipantCount, cacheParticipantCount } from '@/lib/competitions-store';
 import { query } from '@/lib/db';
+import { countLeaderboardParticipants } from '@/lib/competition-league-utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,27 +44,57 @@ export async function GET() {
   const all = await getCompetitionsAsync();
   const summaries = all.map(publicCompetitionSummary);
 
-  const countMap = new Map<number, number>();
+  // Step 1: DB entries count (real sign-ups) + leaderboard count for active competitions
+  // Run both in parallel so the first request is fully populated.
+  await Promise.all([
+    // 1a. Real competition_entries rows
+    (async () => {
+      try {
+        await Promise.all(
+          summaries.map(async comp => {
+            try {
+              const res = await query<{ cnt: number }>(
+                `SELECT COUNT(*) AS cnt FROM competition_entries WHERE competition_id = ?`,
+                [comp.id],
+              );
+              const cnt = Number(res.rows[0]?.cnt ?? 0);
+              if (cnt > 0) cacheParticipantCount(comp.id, cnt);
+            } catch { /* DB unavailable */ }
+          })
+        );
+      } catch { /* ignore */ }
+    })(),
 
-  try {
-    await Promise.all(
-      summaries.map(async comp => {
-        try {
-          const res = await query<{ cnt: number }>(
-            `SELECT COUNT(*) AS cnt FROM competition_entries WHERE competition_id = ?`,
-            [comp.id],
-          );
-          const cnt = Number(res.rows[0]?.cnt ?? 0);
-          if (cnt > 0) countMap.set(comp.id, cnt);
-        } catch { /* DB unavailable */ }
-      })
-    );
-  } catch { /* ignore batch-level errors */ }
+    // 1b. Leaderboard participant count for active/upcoming competitions with no cached value yet
+    (async () => {
+      const uncached = all.filter(
+        c => (c.status === 'active' || c.status === 'upcoming') && getCachedParticipantCount(c.id) === null
+      );
+      await Promise.all(
+        uncached.map(async c => {
+          try {
+            const cnt = await countLeaderboardParticipants({
+              startDate: c.startDate,
+              endDate: c.endDate,
+              leagueId: c.leagueId,
+              leagueName: c.leagueName,
+              sportFocus: c.sportFocus,
+              matchKickoffFrom: c.matchKickoffFrom,
+              matchKickoffTo: c.matchKickoffTo,
+            });
+            if (cnt > 0) cacheParticipantCount(c.id, cnt);
+          } catch { /* DB unavailable */ }
+        })
+      );
+    })(),
+  ]);
 
-  const enriched = summaries.map(c => ({
-    ...c,
-    currentParticipants: countMap.has(c.id) ? countMap.get(c.id)! : c.currentParticipants,
-  }));
+  // Step 2: Build enriched summaries using freshly populated cache
+  const enriched = summaries.map(c => {
+    const cachedCount = getCachedParticipantCount(c.id);
+    const currentParticipants = cachedCount ?? c.currentParticipants;
+    return { ...c, currentParticipants };
+  });
 
   return NextResponse.json({
     success: true,

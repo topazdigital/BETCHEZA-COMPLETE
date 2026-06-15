@@ -67,7 +67,7 @@ export default function CompetitionsPage() {
   const { data: compsData, isLoading: compsLoading } = useSWR<CompetitionsResponse>(
     '/api/competitions',
     fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
 
   const outrightLeagues = useMemo(() => {

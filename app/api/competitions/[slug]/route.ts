@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCompetitionBySlugAsync, getCompetitionByIdAsync } from '@/lib/competitions-store';
+import { getCompetitionBySlugAsync, getCompetitionByIdAsync, cacheParticipantCount } from '@/lib/competitions-store';
 import { computeLeaderboard } from '@/lib/competition-league-utils';
 import { query } from '@/lib/db';
 
@@ -83,6 +83,8 @@ export async function GET(
   }));
 
   const actualParticipants = ranked.length;
+  // Write real count to cache so the competitions list page shows the correct number
+  cacheParticipantCount(comp.id, actualParticipants);
 
   // Derive a human-readable scope label based on competition configuration
   let scopeLabel: string;

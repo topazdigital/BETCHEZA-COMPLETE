@@ -355,10 +355,44 @@ function buildWcCompetition(): Competition {
  * — If a DB pool is available: inserts via addCompetition (idempotent — checks slug first).
  * — If no DB pool: injects directly into the in-memory cache so it's always visible.
  */
+// ─── Participant count cache (shared between list and detail routes) ──────────
+type CompParticipantCache = { count: number; updatedAt: number };
+const g2 = globalThis as { __compParticipantCounts?: Map<number, CompParticipantCache> };
+if (!g2.__compParticipantCounts) g2.__compParticipantCounts = new Map();
+
+/** Store the real leaderboard participant count for a competition (called by detail route). */
+export function cacheParticipantCount(compId: number, count: number): void {
+  g2.__compParticipantCounts!.set(compId, { count, updatedAt: Date.now() });
+}
+
+/** Read the cached participant count for a competition (max 5-minute TTL). */
+export function getCachedParticipantCount(compId: number): number | null {
+  const entry = g2.__compParticipantCounts!.get(compId);
+  if (!entry) return null;
+  if (Date.now() - entry.updatedAt > 5 * 60_000) return null;
+  return entry.count;
+}
+
 export async function seedWorldCupCompetition(): Promise<void> {
   try {
-    const existing = await getCompetitionsAsync();
-    const alreadyExists = existing.find(c => c.slug === WC_COMP_SLUG);
+    // Check DB directly (not cache) to avoid race-condition duplicates
+    let alreadyExists: Competition | undefined;
+    if (getPool()) {
+      try {
+        const dbCheck = await query<CompetitionRow>(`SELECT id, slug FROM competitions WHERE slug = ? LIMIT 1`, [WC_COMP_SLUG]);
+        if (dbCheck.rows.length > 0) {
+          alreadyExists = (await getCompetitionsAsync()).find(c => c.slug === WC_COMP_SLUG);
+          if (!alreadyExists) {
+            invalidateCache();
+            alreadyExists = (await getCompetitionsAsync()).find(c => c.slug === WC_COMP_SLUG);
+          }
+        }
+      } catch { /* fall through to in-memory check */ }
+    }
+    if (!alreadyExists) {
+      const existing = await getCompetitionsAsync();
+      alreadyExists = existing.find(c => c.slug === WC_COMP_SLUG);
+    }
 
     // If it already exists in DB, sync entry_fee, status, and prize_breakdown
     if (alreadyExists && getPool()) {
@@ -390,35 +424,23 @@ export async function seedWorldCupCompetition(): Promise<void> {
 
     const pool = getPool();
     if (pool) {
-      // DB available — persist properly
-      const input: NewCompetitionInput = {
-        name: 'FIFA World Cup 2026 — Tipster Challenge',
-        description: buildWcCompetition().description,
-        type: 'special',
-        status: 'active',
-        startDate: '2026-06-11',
-        endDate: '2026-07-19',
-        prizePool: 50000,
-        currency: 'KES',
-        entryFee: 200,
-        maxParticipants: 10000,
-        prizes: buildWcCompetition().prizes,
-        rules: buildWcCompetition().rules,
-        ruleConfig: buildWcCompetition().ruleConfig,
-        sportFocus: 'football',
-        leagueId: null,
-        leagueName: 'FIFA World Cup 2026',
-        roundBased: true,
-        matchKickoffFrom: '2026-06-11T00:00:00',
-        matchKickoffTo:   '2026-07-19T23:59:59',
-      };
-      // Override slug to our canonical one
-      const comp = await addCompetition(input);
-      if (comp.slug !== WC_COMP_SLUG) {
-        await execute(`UPDATE competitions SET slug = ? WHERE id = ?`, [WC_COMP_SLUG, comp.id]);
-        invalidateCache();
-      }
-      console.log('[competitions] World Cup 2026 competition seeded to DB');
+      // DB available — use INSERT IGNORE to prevent duplicates (slug has UNIQUE index)
+      const wc = buildWcCompetition();
+      await execute(`
+        INSERT IGNORE INTO competitions
+          (name, description, start_date, end_date, prize_pool, entry_fee, max_participants,
+           status, rules, type, sport_focus, league_id, league_name, currency,
+           prize_breakdown, slug, match_kickoff_from, match_kickoff_to, round_based,
+           rule_config, kicked_users)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        wc.name, wc.description, wc.startDate, wc.endDate, wc.prizePool, wc.entryFee,
+        wc.maxParticipants, 'active', JSON.stringify(wc.rules), wc.type, wc.sportFocus,
+        null, wc.leagueName, wc.currency, JSON.stringify(wc.prizes), WC_COMP_SLUG,
+        wc.matchKickoffFrom, wc.matchKickoffTo, 1, JSON.stringify(wc.ruleConfig), null,
+      ]);
+      invalidateCache();
+      console.log('[competitions] World Cup 2026 competition seeded to DB (INSERT IGNORE)');
     } else {
       // No DB — inject into in-memory cache
       if (!g.__competitionsCache) g.__competitionsCache = [];

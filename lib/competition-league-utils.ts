@@ -424,6 +424,64 @@ export async function computeLeaderboard(params: {
   }
 }
 
+/**
+ * Lightweight version of computeLeaderboard that only returns the participant COUNT.
+ * Used by the competitions list API to show real numbers without running the full ranking.
+ */
+export async function countLeaderboardParticipants(params: {
+  startDate: string;
+  endDate: string;
+  leagueId?: number | null;
+  leagueName?: string | null;
+  sportFocus?: string | null;
+  matchKickoffFrom?: string | null;
+  matchKickoffTo?: string | null;
+}): Promise<number> {
+  const { startDate, endDate, leagueId, leagueName, sportFocus, matchKickoffFrom, matchKickoffTo } = params;
+
+  const conditions: string[] = [
+    'at.status IN (\'won\', \'lost\', \'pending\')',
+    'at.tipster_id >= 1000', // fake tipsters always included
+  ];
+  const sqlParams: (string | number)[] = [];
+
+  if (matchKickoffFrom && matchKickoffTo) {
+    conditions.push('at.kickoff >= ?', 'at.kickoff <= ?', 'at.created_at <= at.kickoff');
+    sqlParams.push(matchKickoffFrom, matchKickoffTo);
+  } else if (leagueName || leagueId) {
+    conditions.push('at.kickoff >= ?', 'at.kickoff <= ?', 'at.created_at <= at.kickoff');
+    sqlParams.push(startDate, endDate);
+  } else {
+    conditions.push('at.created_at >= ?', 'at.created_at <= ?');
+    sqlParams.push(startDate, endDate);
+  }
+
+  if (leagueName) {
+    conditions.push('at.league LIKE ?');
+    sqlParams.push(`%${leagueName}%`);
+  } else if (sportFocus && sportFocus !== 'multi-sport') {
+    const sportMap: Record<string, string> = {
+      football: 'Football', basketball: 'Basketball', tennis: 'Tennis',
+      baseball: 'Baseball', 'ice-hockey': 'Hockey', mma: 'MMA',
+      cricket: 'Cricket', rugby: 'Rugby', golf: 'Golf',
+    };
+    const label = sportMap[sportFocus];
+    if (label) { conditions.push('at.sport LIKE ?'); sqlParams.push(`%${label}%`); }
+  }
+
+  try {
+    const result = await query<{ cnt: number }>(
+      `SELECT COUNT(DISTINCT at.tipster_id) AS cnt
+       FROM auto_tips at
+       WHERE ${conditions.join(' AND ')}`,
+      sqlParams,
+    );
+    return Number(result.rows[0]?.cnt ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export async function findLeagueRoundEndDate(leagueName: string, afterDate: string, beforeDate: string): Promise<string | null> {
   try {
     const result = await query<{ last_kickoff: string }>(`
