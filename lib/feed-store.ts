@@ -52,7 +52,7 @@ export async function getTrendingHashtags(limit = 20): Promise<Array<{ tag: stri
     const r = await query<{ tag: string; count: number }>(
       `SELECT tag, COUNT(*) AS count
        FROM feed_hashtags
-       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+       WHERE created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)
        GROUP BY tag
        ORDER BY count DESC
        LIMIT ?`,
@@ -400,8 +400,8 @@ async function seedCommunityPostsFromTips(): Promise<boolean> {
        FROM auto_tips at
        WHERE at.tipster_id >= 1000
          AND at.status = 'pending'
-         AND at.kickoff >= NOW()
-         AND at.kickoff <= DATE_ADD(NOW(), INTERVAL 5 DAY)
+         AND at.kickoff >= UTC_TIMESTAMP()
+         AND at.kickoff <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 DAY)
        GROUP BY at.tipster_id, at.match_title
        ORDER BY at.kickoff ASC, RAND()
        LIMIT 40`,
@@ -429,19 +429,21 @@ async function seedCommunityPostsFromTips(): Promise<boolean> {
 
       const hoursAgo = (tip.tipster_id % 20) + 1;
       const likes = Math.floor((tip.tipster_id % 18) + Math.random() * 8);
+      // Use JS-calculated timestamp — MySQL's NOW() runs in server local timezone (not UTC)
+      const seedTs = new Date(Date.now() - hoursAgo * 3600 * 1000)
+        .toISOString().replace('T', ' ').replace(/\.\d+Z/, '');
 
       await query(
         `INSERT INTO feed_posts
           (id, user_id, author_name, author_avatar, content, match_id, match_title,
            pick, odds, image_url, room_id, likes, comment_count, created_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0,
-           DATE_SUB(NOW(), INTERVAL ? HOUR))
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0, ?)
          ON DUPLICATE KEY UPDATE
            content = VALUES(content)`,
         [
           postId, tip.tipster_id, ft.displayName, ft.avatar || null,
           content, tip.match_title.slice(0, 255), tip.pick,
-          Number(tip.odds), likes, hoursAgo,
+          Number(tip.odds), likes, seedTs,
         ],
       ).catch(() => {});
     }
@@ -524,6 +526,12 @@ export async function listPosts(limit = 50, viewerId?: number | null): Promise<F
   return posts;
 }
 
+/** Convert any date string to MySQL DATETIME format (YYYY-MM-DD HH:MM:SS). */
+function toMysqlDatetime(iso: string): string {
+  // MySQL DATETIME does not accept ISO 8601 'T'/'Z' format — convert to space-separated
+  return iso.replace('T', ' ').replace(/\.\d+Z?$/, '').replace('Z', '');
+}
+
 export async function createPost(
   input: Omit<FeedPost, 'id' | 'likes' | 'commentCount' | 'createdAt'> & { createdAt?: string },
 ): Promise<FeedPost> {
@@ -540,7 +548,8 @@ export async function createPost(
         [post.id, post.userId, sanitise(post.authorName), post.authorAvatar || null,
          sanitise(post.content),
          post.matchId || null, sanitise(post.matchTitle), sanitise(post.pick),
-         post.odds || null, post.imageUrl || null, post.roomId ?? null, createdAt],
+         post.odds || null, post.imageUrl || null, post.roomId ?? null,
+         toMysqlDatetime(createdAt)],
       );
       // Store hashtags extracted from content (non-blocking)
       void storeHashtags(post.id, post.content ?? '');

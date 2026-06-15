@@ -9,6 +9,7 @@ import { getFakeTipsterById, getFakeTipsters } from '@/lib/fake-tipsters';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
 import { query } from '@/lib/db';
 import { matchToSlug } from '@/lib/utils/match-url';
+import { setBaselineLikes, getCommentCount } from '@/lib/tip-engagement-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -302,6 +303,13 @@ export async function GET(request: NextRequest) {
   filteredAuto = filteredAuto.filter(t => t.odds >= minOdds && (maxOdds >= 99 || t.odds <= maxOdds));
   filteredAuto.sort((a, b) => b.confidence - a.confidence);
 
+  // Lock in auto_tips.likes as the canonical baseline for getLikeCount() calls,
+  // so both the tips page and match-detail page show the same seeded value.
+  for (const tip of filteredAuto) setBaselineLikes(tip.id, tip.likes);
+
+  // Snapshot in-memory comment counts (sync — tip_comments table doesn't exist)
+  const engStore = (globalThis as { __tipEngagement?: { comments: Map<string, unknown[]> } }).__tipEngagement;
+
   const autoTipsMapped = filteredAuto.slice(0, 100).map(tip => {
     const realTipster = realTipsterMap.get(Number(tip.tipsterId));
     const fakeTipster = realTipster ? null : getFakeTipsterById(tip.tipsterId);
@@ -357,7 +365,8 @@ export async function GET(request: NextRequest) {
       confidence: tip.confidence,
       status: tip.status,
       likes: tip.likes,
-      comments: tip.comments,
+      // Use max(in-memory seeded count, auto_tips.comments) — same formula as match-detail
+      comments: Math.max(engStore?.comments.get(tip.id)?.length ?? 0, tip.comments),
       analysis: tip.analysis,
       isPremium: tip.isPremium,
       createdAt: tip.createdAt,

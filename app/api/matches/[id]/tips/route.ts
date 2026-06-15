@@ -190,7 +190,11 @@ export async function GET(
         getLikeCount(tip.id, viewer?.userId ?? null),
         getCommentCount(tip.id),
       ]);
-      return { ...tip, likes: like.count, liked: like.liked, comments: commentCount + (tip.comments || 0) };
+      // Use MAX to avoid double-counting when in-memory and auto_tips.comments are
+      // both seeded from the same baseline value.
+      const baseComments = tip.comments || 0;
+      const finalComments = commentCount > baseComments ? commentCount : baseComments;
+      return { ...tip, likes: like.count, liked: like.liked, comments: finalComments };
     } catch { return tip; }
   }));
 

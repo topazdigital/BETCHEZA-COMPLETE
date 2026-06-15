@@ -122,6 +122,8 @@ function buildContextComment(
 // ─── LIKES ────────────────────────────────────────
 const FAKE_LIKE_SEED: Record<string, number> = {};
 function getBaseline(tipId: string): number {
+  // OVERRIDE_BASELINE is set by setBaselineLikes() from the real auto_tips.likes value
+  if (OVERRIDE_BASELINE[tipId] !== undefined) return OVERRIDE_BASELINE[tipId];
   if (FAKE_LIKE_SEED[tipId] === undefined) {
     let h = 0;
     for (const c of tipId) h = ((h << 5) - h) + c.charCodeAt(0);
@@ -180,6 +182,8 @@ export async function unlikeTip(tipId: string, userId: number): Promise<{ count:
 const OVERRIDE_BASELINE: Record<string, number> = {};
 export function setBaselineLikes(tipId: string, count: number): void {
   OVERRIDE_BASELINE[tipId] = count;
+  // Also update FAKE_LIKE_SEED so getBaseline() returns the right value
+  FAKE_LIKE_SEED[tipId] = count;
 }
 
 // ─── COMMENTS ────────────────────────────────────
