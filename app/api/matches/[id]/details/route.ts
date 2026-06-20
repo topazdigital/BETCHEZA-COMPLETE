@@ -1130,11 +1130,33 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const ahEndIdx = ahInsertIdx >= 0
       ? baseMarkets.reduce((last, m, i) => (m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt')) ? i + 1 : last, ahInsertIdx + 1)
       : baseMarkets.length;
+    // Block player-prop and mock/jitter market keys — only keep real team-level markets.
+    // These keys are either player-specific (scorer, booking) or purely generated/random
+    // (corners O/U derived from a model, cards O/U, race to corners, etc.).
+    const BLOCKED_MARKET_PREFIXES = [
+      'player_',          // any player prop (anytime_scorer, player_assists, …)
+      'corners_',         // model-derived Total Corners O/U (not real bookmaker data)
+      'corners_total_',   // alternate key used in some generators
+      'cards_total_',     // Total Cards O/U — model-derived
+      'race_corners',     // Race to N Corners — model-derived
+    ];
+    const BLOCKED_MARKET_EXACT = new Set([
+      'red_card',          // Red Card in Match — model-derived
+      'penalty_awarded',   // Penalty Awarded — model-derived
+      'anytime_scorer',    // player prop
+      'first_scorer',      // player prop
+      'last_scorer',       // player prop
+      'booking_points',    // player prop
+    ]);
+    const isBlockedMarketKey = (key: string) =>
+      BLOCKED_MARKET_EXACT.has(key) ||
+      BLOCKED_MARKET_PREFIXES.some(p => key.startsWith(p));
+
     const finalMarkets = [
       ...baseMarkets.slice(0, ahEndIdx),
       ...renumbered,
       ...baseMarkets.slice(ahEndIdx),
-    ];
+    ].filter(m => !isBlockedMarketKey(m.key));
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 

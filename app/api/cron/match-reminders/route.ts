@@ -4,6 +4,7 @@ import { dispatchNotification } from '@/lib/notification-dispatcher';
 import { query, getPool } from '@/lib/db';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
 import { matchToSlug } from '@/lib/utils/match-url';
+import { sendPushToTopic } from '@/lib/push-sender';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,32 +116,89 @@ async function fetchAllUsers(): Promise<Array<{ userId: number; email?: string |
 }
 
 // ---------------------------------------------------------------------------
+// In-memory dedup for 15-min push reminders (keyed by matchId+date).
+// Using a separate set from sentMatchToUser so 1-hour and 15-min reminders
+// don't interfere with each other.
+// ---------------------------------------------------------------------------
+const g15 = globalThis as { __push15Sent?: Set<string> };
+g15.__push15Sent = g15.__push15Sent || new Set<string>();
+const PUSH15_SENT = g15.__push15Sent;
+
+function push15Key(matchId: string): string {
+  return `${matchId}|${todayStr()}`;
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 export async function GET(_req: NextRequest) {
   STATE.lastRunAt = Date.now();
   const now = Date.now();
+
+  // Window 1: 55–65 min before kickoff → 1-hour team-follow notification
   const windowStart = now + 55 * 60_000;
   const windowEnd   = now + 65 * 60_000;
+
+  // Window 2: 10–20 min before kickoff → 15-min bell-subscriber push
+  const push15Start = now + 10 * 60_000;
+  const push15End   = now + 20 * 60_000;
 
   // Ensure the dedup table exists and note whether DB is available
   const dbAvailable = await ensureTable();
 
-  // Pull upcoming matches in the 55–65 min window
-  let matches: MatchLite[] = [];
+  // Pull all upcoming matches once, then filter per window
+  let allMatches: MatchLite[] = [];
   try {
     const all = await getAllMatches();
-    matches = (all as unknown as MatchLite[]).filter(m => {
-      const t = new Date(m.kickoffTime).getTime();
-      return !isNaN(t) && t >= windowStart && t <= windowEnd;
-    });
+    allMatches = all as unknown as MatchLite[];
   } catch (e) {
     console.warn('[cron/match-reminders] failed to load matches', e);
     return NextResponse.json({ success: false, error: 'matches_load_failed' });
   }
 
+  const matches = allMatches.filter(m => {
+    const t = new Date(m.kickoffTime).getTime();
+    return !isNaN(t) && t >= windowStart && t <= windowEnd;
+  });
+
+  const matches15 = allMatches.filter(m => {
+    const t = new Date(m.kickoffTime).getTime();
+    return !isNaN(t) && t >= push15Start && t <= push15End;
+  });
+
+  // ── 15-min kickoff push: send to match_<id> bell subscribers ────────────
+  let push15Sent = 0;
+  for (const m of matches15) {
+    const key = push15Key(m.id);
+    if (PUSH15_SENT.has(key)) continue;
+    PUSH15_SENT.add(key);
+
+    const slug = matchToSlug(m.id, m.homeTeam.name, m.awayTeam.name);
+    const leagueName = m.league?.name;
+
+    try {
+      const count = await sendPushToTopic(`match_${m.id}`, {
+        title: `⚽ Kick-off in 15 minutes`,
+        body: `${m.homeTeam.name} vs ${m.awayTeam.name}${leagueName ? ` — ${leagueName}` : ''}. Head to the match page!`,
+        url: `/matches/${slug}`,
+        tag: `match-kick-${m.id}`,
+      });
+      push15Sent += count;
+    } catch (e) {
+      console.warn('[cron/match-reminders] push15 failed for', m.id, e);
+    }
+  }
+
+  // Trim the 15-min dedup set so it doesn't grow unbounded
+  if (PUSH15_SENT.size > 5_000) {
+    const keep = Array.from(PUSH15_SENT).slice(-2_500);
+    PUSH15_SENT.clear();
+    for (const k of keep) PUSH15_SENT.add(k);
+  }
+
+  // ── 1-hour team-follow notifications ────────────────────────────────────
   if (matches.length === 0) {
-    return NextResponse.json({ success: true, scanned: 0, sent: 0 });
+    return NextResponse.json({ success: true, scanned: 0, sent: 0, push15Sent, push15Matches: matches15.length });
   }
 
   const users = await fetchAllUsers();
@@ -187,5 +245,5 @@ export async function GET(_req: NextRequest) {
   }
 
   compactState();
-  return NextResponse.json({ success: true, scanned: matches.length, users: users.length, sent });
+  return NextResponse.json({ success: true, scanned: matches.length, users: users.length, sent, push15Sent, push15Matches: matches15.length });
 }
