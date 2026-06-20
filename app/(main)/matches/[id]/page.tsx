@@ -13,7 +13,7 @@ import {
   TrendingUp, Award, ChevronUp, ChevronDown, Minus,
   Users, Zap, AlertTriangle, RotateCcw, Target,
   Star, ThumbsUp, ThumbsDown, MessageCircle, Lock, ChevronRight,
-  Calendar, Pencil,
+  Calendar, Pencil, Bell, BellOff,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -42,6 +42,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { useMatches } from "@/lib/hooks/use-matches"
 import { useBetSlip } from "@/contexts/bet-slip-context"
 import { isMinuteTickingSport, isLiveMatchStatus } from "@/lib/utils/live-status"
+import { useMatchNotify } from "@/lib/hooks/use-match-notify"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -1010,6 +1011,7 @@ export default function MatchDetailPage({ params }: PageProps) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const { open: openAuthModal } = useAuthModal()
   const [savedMatch, setSavedMatch] = useState(false)
+  const { state: notifyState, toggle: toggleNotify } = useMatchNotify(id)
   const [activeTab, setActiveTab] = useState('overview')
   const [showMobileLineups, setShowMobileLineups] = useState(false)
   const [tipSubmitted, setTipSubmitted] = useState<null | { label: string; odds: number }>(null)
@@ -1285,6 +1287,20 @@ export default function MatchDetailPage({ params }: PageProps) {
               >
                 <Bookmark className={cn("h-3.5 w-3.5", savedMatch ? "fill-white text-white" : "text-white/50")} />
               </button>
+              {notifyState !== 'unsupported' && (
+                <button
+                  onClick={toggleNotify}
+                  disabled={notifyState === 'loading'}
+                  aria-label={notifyState === 'subscribed' ? 'Turn off match alerts' : 'Get match alerts'}
+                  title={notifyState === 'subscribed' ? 'Turn off match alerts' : 'Get goal & kickoff alerts'}
+                  className="p-1 rounded-full hover:bg-white/10 transition-colors disabled:opacity-50"
+                >
+                  {notifyState === 'subscribed'
+                    ? <BellOff className="h-3.5 w-3.5 text-amber-400" />
+                    : <Bell className={cn("h-3.5 w-3.5", notifyState === 'loading' ? "text-white/30 animate-pulse" : "text-white/50")} />
+                  }
+                </button>
+              )}
               <button
                 onClick={handleShare}
                 aria-label="Share this match"

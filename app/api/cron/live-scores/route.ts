@@ -224,6 +224,22 @@ export async function GET(req: NextRequest) {
         }
       } catch { /* DB unavailable — skip tip notifications */ }
 
+      // 3. Push to anyone who explicitly subscribed to this match via the bell icon
+      const matchTopic = `match_${goal.matchId}`;
+      const matchSubs = allSubs.filter(s =>
+        s.topics.includes(matchTopic) &&
+        !liveSubs.some(ls => ls.endpoint === s.endpoint)
+      );
+      for (const sub of matchSubs) {
+        sendPushToSubscription(sub, {
+          title: '⚽ Goal!',
+          body: goal.title,
+          url,
+          tag: `match-goal-${goal.matchId}`,
+        }).catch(() => {});
+        pushed++;
+      }
+
       console.log(`[live-scores] Goal detected: ${goal.title}`);
     }
 

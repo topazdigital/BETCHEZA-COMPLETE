@@ -177,6 +177,9 @@ export function MatchCardNew({
   const isLikelyEnded =
     !isLive && !isFinished &&
     match.status === 'scheduled' &&
+    // If the API has set a live minute (even without updating status), the match
+    // is in progress — don't override it as ended.
+    !(typeof match.minute === 'number' && match.minute > 0) &&
     new Date(match.kickoffTime).getTime() + durationMs < Date.now();
 
   const statusForLabel = match.status === 'halftime' ? 'halftime' : match.status;
