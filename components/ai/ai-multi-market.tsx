@@ -460,28 +460,52 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
   const bttsNoPrice = findMarketPrice(markets, "btts", n => /^no$/i.test(n))
     || (markets ? findMarketPrice(markets, "both_teams_to_score", n => /^no$/i.test(n)) : undefined)
   if (sportSlug === "soccer" || sportSlug === "football") {
-    const bttsYes = bttsRate >= 0.5
+    // Use > 0.5 (strict) so the default rate of 0.5 (no H2H data) picks No,
+    // avoiding the previous always-Yes bias from the 0.5 >= 0.5 comparison.
+    const bttsYes = bttsRate > 0.5
     picks.push({
       market: "Both Teams to Score",
       pick: bttsYes ? "Yes" : "No",
       odds: bttsYes ? bttsYesPrice : bttsNoPrice,
       confidence: Math.round(Math.min(85, Math.max(50, (bttsYes ? bttsRate : 1 - bttsRate) * 100))),
       reason: bttsYes
-        ? `Both sides have found the net in ${Math.round(bttsRate * 100)}% of recent meetings.`
-        : `Defenses have controlled the recent meetings — unders BTTS trending.`,
+        ? h2hCount > 0
+          ? `Both sides have found the net in ${Math.round(bttsRate * 100)}% of recent meetings.`
+          : `Implied probabilities and form lean toward both attacks getting on the scoresheet.`
+        : h2hCount > 0
+          ? `Defenses have controlled the recent meetings — unders BTTS trending.`
+          : `Defensive shape and odds suggest at least one clean sheet is likely.`,
       evalKey: bttsYes ? 'btts_yes' : 'btts_no',
     })
   }
 
   // ─── Over/Under — soccer/football only (goals-based lines) ───
   if (sportSlug === "soccer" || sportSlug === "football") {
+    // When there's no H2H data, use totals market odds to determine direction
+    // rather than the old default of 2.55 which always picked Over 2.5.
+    const effectiveAvgGoals = (() => {
+      if (h2hCount > 0) return avgGoals
+      const totMkt = markets?.find(m =>
+        (m.key ?? '').toLowerCase().includes('total') ||
+        m.name.toLowerCase().includes('over')
+      )
+      if (totMkt) {
+        const overO = totMkt.outcomes.find(o => /over/i.test(o.name))
+        const underO = totMkt.outcomes.find(o => /under/i.test(o.name))
+        if (overO && underO) return underO.price < overO.price ? 2.3 : 2.7
+      }
+      // Fall back to 1X2 implied strength as a proxy for goal expectation
+      const favP = Math.max(homeP, awayP)
+      return favP > 0.60 ? 2.3 : favP < 0.42 ? 2.7 : 2.5
+    })()
+
     for (const line of [1.5, 2.5, 3.5]) {
-      const over = avgGoals > line
+      const over = effectiveAvgGoals > line
       const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
         || findMarketPrice(markets, `over_under_${line.toString().replace(".", "_")}`, n => /over/i.test(n))
       const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
         || findMarketPrice(markets, `over_under_${line.toString().replace(".", "_")}`, n => /under/i.test(n))
-      const margin = Math.abs(avgGoals - line)
+      const margin = Math.abs(effectiveAvgGoals - line)
       const conf = Math.round(Math.min(86, 50 + margin * 18))
       picks.push({
         market: `Over / Under ${line} Goals`,
@@ -489,8 +513,12 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
         odds: over ? overPrice : underPrice,
         confidence: conf,
         reason: over
-          ? `Recent meetings average ${avgGoals.toFixed(1)} goals — comfortably above the ${line} line.`
-          : `Recent meetings average ${avgGoals.toFixed(1)} goals — leaning under ${line}.`,
+          ? h2hCount > 0
+            ? `Recent meetings average ${effectiveAvgGoals.toFixed(1)} goals — comfortably above the ${line} line.`
+            : `Market pricing and team profiles project an open game above ${line} goals.`
+          : h2hCount > 0
+            ? `Recent meetings average ${effectiveAvgGoals.toFixed(1)} goals — leaning under ${line}.`
+            : `Odds and defensive shape suggest a tight, lower-scoring contest.`,
         evalKey: over ? 'over' : 'under',
         line,
       })
@@ -595,14 +623,32 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
   const homeLineupBonus = lineupSignal(lineups?.home)
   const awayLineupBonus = lineupSignal(lineups?.away)
 
+  const hasRealData = hF > 0 || aF > 0 || h2hCount > 0
+
   const homeRaw = hF * formWeight + homeWinsH2h * h2hWeight + homeAdv + homeLineupBonus
   const awayRaw = aF * formWeight + awayWinsH2h * h2hWeight + awayLineupBonus
-  const drawRaw = drawsH2h * h2hWeight + (Math.abs(hF - aF) <= 2 ? 12 : 0)
+  // Draw bias only when we have real data (form or H2H) showing the teams are closely matched.
+  // The previous unconditional +12 always made "Draw" win when form data was absent.
+  const drawBias = hasRealData && Math.abs(hF - aF) <= 2 ? 8 : 0
+  const drawRaw = drawsH2h * h2hWeight + drawBias
 
-  const total = homeRaw + awayRaw + drawRaw || 1
-  const homeP = homeRaw / total
-  const awayP = awayRaw / total
-  const drawP = drawRaw / total
+  const rawTotal = homeRaw + awayRaw + drawRaw || 1
+  let homeP = homeRaw / rawTotal
+  let awayP = awayRaw / rawTotal
+  let drawP = drawRaw / rawTotal
+
+  // When there's no meaningful form or H2H data, fall back to bookmaker odds
+  // for all probability estimates rather than using arbitrary defaults that
+  // always resolve to the same predictions.
+  if (!hasRealData && odds) {
+    const rawH = 1 / Math.max(odds.home, 1.01)
+    const rawA = 1 / Math.max(odds.away, 1.01)
+    const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0
+    const t = rawH + rawA + rawD || 1
+    homeP = rawH / t
+    awayP = rawA / t
+    drawP = rawD / t
+  }
 
   const avgGoals = h2hCount > 0 ? h2hGoals / h2hCount : 2.55
   const bttsRate = h2hCount > 0 ? bothScoredCount / h2hCount : 0.5
@@ -679,35 +725,79 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
 
   // ── BTTS — driven by h2h scoring patterns ──
   if (isSoccer) {
-    const bttsYes = bttsRate >= 0.45 || (hF >= 6 && aF >= 6)
+    // When we have H2H data use the actual rate (>50% = Yes).
+    // Without H2H, require both teams to be in strong attacking form (≥7/15) for Yes.
+    // The old default of 0.5 ≥ 0.45 always picked Yes when no data was available.
+    const bttsYes = h2hCount > 0
+      ? bttsRate > 0.5
+      : hF >= 7 && aF >= 7
+    const bttsConfBase = h2hCount > 0
+      ? (bttsYes ? bttsRate : 1 - bttsRate) * 100
+      : (bttsYes ? 62 : 58)
     const bttsYesPrice = findMarketPrice(markets, "btts", n => /yes/i.test(n))
     const bttsNoPrice = findMarketPrice(markets, "btts", n => /^no$/i.test(n))
     picks.push({
       market: "Both Teams to Score",
       pick: bttsYes ? "Yes" : "No",
       odds: bttsYes ? bttsYesPrice : bttsNoPrice,
-      confidence: Math.round(Math.min(85, Math.max(50, (bttsYes ? bttsRate : 1 - bttsRate) * 100 + 10))),
+      confidence: Math.round(Math.min(85, Math.max(50, bttsConfBase + (h2hCount > 0 ? 10 : 5)))),
       reason: bttsYes
-        ? `Both attacks are firing — ${Math.round(bttsRate * 100)}% BTTS rate in recent meetings.`
-        : `At least one defence has been watertight in the recent run — leaning No.`,
+        ? h2hCount > 0
+          ? `Both attacks are firing — ${Math.round(bttsRate * 100)}% BTTS rate in recent meetings.`
+          : `Both sides are in strong attacking form — expect both to threaten the goal.`
+        : h2hCount > 0
+          ? `At least one defence has been watertight in the recent run — leaning No.`
+          : `Defensive solidity or low attacking output from one side leans No.`,
       evalKey: bttsYes ? 'btts_yes' : 'btts_no',
     })
   }
 
   // ── Goal totals — soccer/football only ──
   if (isSoccer) {
-    const line = avgGoals >= 3 ? 2.5 : avgGoals >= 2 ? 2.5 : 1.5
-    const over = avgGoals > line
+    // Determine the expected goals figure. When we have H2H data use the average.
+    // Without H2H, read the O/U 2.5 market odds directly if available — lower
+    // price on Under means a tighter game is expected and vice versa.
+    // This prevents the old 2.55 default from always picking Over 2.5.
+    const estimatedGoals = (() => {
+      if (h2hCount > 0) return avgGoals
+      // Try to read market odds for direction
+      const totMkt = markets?.find(m => (m.key ?? '').toLowerCase().includes('total'))
+      if (totMkt) {
+        const overO = totMkt.outcomes.find(o => /over/i.test(o.name))
+        const underO = totMkt.outcomes.find(o => /under/i.test(o.name))
+        if (overO && underO) {
+          // Map odds to implied goals: lower Over price → more goals expected
+          return underO.price < overO.price ? 2.3 : 2.7
+        }
+      }
+      // No market data — use 1X2 implied strength. A strong favourite often
+      // dominates possession and limits chances; balanced games tend toward more goals.
+      if (odds) {
+        const favOdds = Math.min(odds.home, odds.away)
+        if (favOdds < 1.45) return 2.3   // Strong favourite — often a tight result
+        if (favOdds > 2.2) return 2.7   // Even contest — both sides attack
+      }
+      return 2.5  // perfectly neutral — let the line decide direction via odds
+    })()
+    const line = estimatedGoals >= 3 ? 2.5 : estimatedGoals >= 2 ? 2.5 : 1.5
+    const over = estimatedGoals > line
     const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
     const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
+    const goalConf = h2hCount > 0
+      ? Math.round(Math.min(86, 55 + Math.abs(estimatedGoals - line) * 20))
+      : 56
     picks.push({
       market: `Over / Under ${line} Goals`,
       pick: over ? `Over ${line} Goals` : `Under ${line} Goals`,
       odds: over ? overPrice : underPrice,
-      confidence: Math.round(Math.min(86, 55 + Math.abs(avgGoals - line) * 20)),
+      confidence: goalConf,
       reason: over
-        ? `Recent meetings average ${avgGoals.toFixed(1)} goals — game projects to be open.`
-        : `Recent meetings average ${avgGoals.toFixed(1)} goals — leaning to a tight, low-scoring affair.`,
+        ? h2hCount > 0
+          ? `Recent meetings average ${estimatedGoals.toFixed(1)} goals — game projects to be open.`
+          : `Market and team profiles suggest an open, attacking contest above ${line}.`
+        : h2hCount > 0
+          ? `Recent meetings average ${estimatedGoals.toFixed(1)} goals — leaning to a tight, low-scoring affair.`
+          : `Defensive shape and odds imply a tight affair — leaning under ${line} goals.`,
       evalKey: over ? 'over' : 'under',
       line,
     })

@@ -157,6 +157,28 @@ export function MatchCardNew({
   const isLive = match.status === 'live' || match.status === 'halftime' || match.status === 'extra_time' || match.status === 'penalties';
   const FINISHED_STATUSES = new Set(['finished', 'ft', 'full-time', 'fulltime', 'ended', 'complete', 'completed', 'final', 'post', 'after_et', 'after_pens']);
   const isFinished = FINISHED_STATUSES.has(match.status);
+
+  // Infer "likely ended" when the API hasn't updated the status yet but the match
+  // is well past its expected end time. Sport-specific duration estimates:
+  const SPORT_DURATION_MS: Record<string, number> = {
+    soccer: 115 * 60 * 1000,
+    rugby: 115 * 60 * 1000,
+    basketball: 150 * 60 * 1000,
+    'ice-hockey': 140 * 60 * 1000,
+    hockey: 140 * 60 * 1000,
+    tennis: 240 * 60 * 1000,
+    baseball: 240 * 60 * 1000,
+    cricket: 600 * 60 * 1000,
+    'american-football': 240 * 60 * 1000,
+    mma: 90 * 60 * 1000,
+    boxing: 90 * 60 * 1000,
+  };
+  const durationMs = SPORT_DURATION_MS[match.sport.slug] ?? 130 * 60 * 1000;
+  const isLikelyEnded =
+    !isLive && !isFinished &&
+    match.status === 'scheduled' &&
+    new Date(match.kickoffTime).getTime() + durationMs < Date.now();
+
   const statusForLabel = match.status === 'halftime' ? 'halftime' : match.status;
   const isTwoWay = NO_DRAW_SPORTS.has(match.sport.slug);
 
@@ -199,7 +221,7 @@ export function MatchCardNew({
   const marketName = isTwoWay ? 'Match Winner' : '1X2';
 
   if (variant === 'compact') {
-    const aiPickArr = (match.odds && !isFinished && !isLive)
+    const aiPickArr = (match.odds && !isFinished && !isLive && !isLikelyEnded)
       ? computeSmartPick(match.odds, match.homeTeam.name, match.awayTeam.name, match.markets, match.homeTeam.form, match.awayTeam.form, match.sport.slug)
       : [];
     const aiPick = aiPickArr[0] ?? null;
@@ -223,9 +245,9 @@ export function MatchCardNew({
                   {liveStatusLabel(match.sport.slug, statusForLabel, liveMinute)}
                 </span>
               </div>
-            ) : isFinished ? (
+            ) : (isFinished || isLikelyEnded) ? (
               <div className="leading-tight text-muted-foreground">
-                <div className="text-[10px] font-bold uppercase text-foreground/70">FT</div>
+                <div className={cn("text-[10px] font-bold uppercase", isLikelyEnded && !isFinished ? "text-muted-foreground" : "text-foreground/70")}>{isLikelyEnded && !isFinished ? 'Ended' : 'FT'}</div>
                 <div className="text-[9px]">{timeStr}</div>
               </div>
             ) : (
@@ -311,7 +333,7 @@ export function MatchCardNew({
           )}
 
           {/* Odds — 1X2 always first, then O/U 2.5 and BTTS on xl screens (all clickable) */}
-          {match.odds && !isFinished && (() => {
+          {match.odds && !isFinished && !isLikelyEnded && (() => {
             const ouMkt = !isLive && match.markets ? match.markets.find(m =>
               (m.key ?? '').toLowerCase().includes('total') ||
               m.name.toLowerCase().includes('over') ||
@@ -518,9 +540,9 @@ export function MatchCardNew({
                 {liveStatusLabel(match.sport.slug, statusForLabel, liveMinute)}
               </span>
             </div>
-          ) : isFinished ? (
+          ) : (isFinished || isLikelyEnded) ? (
             <div className="text-right text-xs text-muted-foreground">
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">FT</span>
+              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", isLikelyEnded && !isFinished ? "bg-muted/50 text-muted-foreground" : "bg-muted")}>{isLikelyEnded && !isFinished ? 'Ended' : 'FT'}</span>
               <div className="mt-0.5">{formatDate(kickoffTime, timezone)} · {timeStr}</div>
             </div>
           ) : (
