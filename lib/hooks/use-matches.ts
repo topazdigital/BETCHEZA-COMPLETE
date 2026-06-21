@@ -189,9 +189,38 @@ function sortMatchesWithPriority(matches: Match[], countryCode?: string): Match[
 }
 
 // Filter helper functions
+// Sport-specific expected play durations (ms) for live-inference fallback
+const LIVE_SPORT_DURATION_MS: Record<number, number> = {
+  1: 115 * 60 * 1000,  // Soccer/Football
+  2: 150 * 60 * 1000,  // Basketball
+  3: 240 * 60 * 1000,  // Tennis
+  4: 600 * 60 * 1000,  // Cricket
+  5: 240 * 60 * 1000,  // American Football
+  6: 140 * 60 * 1000,  // Ice Hockey
+  7: 115 * 60 * 1000,  // Rugby
+  27: 90 * 60 * 1000,  // MMA/Boxing
+};
+
 function getLiveMatches(matches: Match[]): Match[] {
+  const now = Date.now();
   return matches
-    .filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'extra_time' || m.status === 'penalties')
+    .filter(m => {
+      // Explicitly live statuses
+      if (m.status === 'live' || m.status === 'halftime' || m.status === 'extra_time' || m.status === 'penalties') {
+        return true;
+      }
+      // Fallback: include 'scheduled' matches that are within their expected play window.
+      // This handles the case where ESPN's circuit breaker trips and the API hasn't
+      // updated the status from 'scheduled' to 'live' — the match IS in progress
+      // but the status is stale. We use 1.6× buffer to cover ET + penalties.
+      if (m.status === 'scheduled') {
+        const kickoffMs = new Date(m.kickoffTime).getTime();
+        const durationMs = LIVE_SPORT_DURATION_MS[m.sportId] ?? 130 * 60 * 1000;
+        const ageMs = now - kickoffMs;
+        return ageMs > 0 && ageMs < durationMs * 1.6;
+      }
+      return false;
+    })
     .sort((a, b) => {
       const sportPriorityA = SPORT_PRIORITY[a.sportId] ?? 99;
       const sportPriorityB = SPORT_PRIORITY[b.sportId] ?? 99;
@@ -291,9 +320,9 @@ export function useMatches(filters?: MatchFilters) {
     url,
     matchesFetcher,
     {
-      refreshInterval: 60000,      // Refresh every 60 seconds
+      refreshInterval: 30000,      // Refresh every 30 seconds
       revalidateOnFocus: false,
-      dedupingInterval: 30000,     // Deduplicate requests within 30s window
+      dedupingInterval: 15000,     // Deduplicate requests within 15s window
       keepPreviousData: true,      // Never flash empty state during background refresh
       revalidateIfStale: false,    // Don't refetch on mount if we already have data
     }
@@ -347,9 +376,9 @@ export function useTodayMatches() {
     '/api/matches',
     matchesFetcher,
     {
-      refreshInterval: 60000,
+      refreshInterval: 30000,
       revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      dedupingInterval: 15000,
     }
   );
 
@@ -426,9 +455,9 @@ export function useMatch(matchId: string) {
     '/api/matches',
     matchesFetcher,
     {
-      refreshInterval: 60000,
+      refreshInterval: 30000,
       revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      dedupingInterval: 15000,
     }
   );
 

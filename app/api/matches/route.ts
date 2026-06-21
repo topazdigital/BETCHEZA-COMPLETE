@@ -327,19 +327,22 @@ async function getProcessedMatches(): Promise<RouteCacheEntry> {
     // and confuse users. Only real named leagues should appear.
     matches = matches.filter(m => !/^(World\s+)?League\s+\d+$/i.test(m.league.name));
 
-    // Server-side time-based status inference: if a match is still 'scheduled'
-    // but its kickoff + expected duration has already passed, promote to 'finished'
-    // so clients see "FT" rather than stale pre-match odds. This fires when the
-    // ESPN cache is stale and hasn't updated yet. We only promote past the full
-    // duration (not to 'live') to avoid adding false positives to the Live page.
+    // Server-side time-based status inference for stale 'scheduled' matches.
+    // We use a generous buffer (durationMs × 1.5) beyond the normal match length
+    // to account for extra time, penalties, and injury time — a match at minute
+    // 105 or 120 (AET) must NOT be wrongly promoted to 'finished' and removed
+    // from the live feed. Only truly over matches (well past their extended
+    // possible duration) are promoted.
     matches = matches.map(m => {
       if (m.status !== 'scheduled') return m;
       const kickoffMs = new Date(m.kickoffTime).getTime();
       if (kickoffMs > now) return m; // hasn't kicked off yet
-      const durationMs = SERVER_SPORT_DURATION_MS[m.sport.slug] ?? 130 * 60 * 1000;
+      const baseDurationMs = SERVER_SPORT_DURATION_MS[m.sport.slug] ?? 130 * 60 * 1000;
+      // Use 1.6× buffer: soccer 115min × 1.6 = 184min, covers regulation + ET + pens
+      const thresholdMs = baseDurationMs * 1.6;
       const ageMs = now - kickoffMs;
-      if (ageMs >= durationMs) {
-        // Past expected end time — mark as finished (score shown when ESPN catches up)
+      if (ageMs >= thresholdMs) {
+        // Clearly over — mark as finished (score shown when ESPN catches up)
         return { ...m, status: 'finished' as const };
       }
       return m;
