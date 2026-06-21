@@ -4,6 +4,7 @@ import {
   getMatchesBySport,
   getMatchesByLeague,
   getMatchById,
+  matchesCacheVersion,
   type UnifiedMatch,
 } from '@/lib/api/unified-sports-api';
 
@@ -268,22 +269,45 @@ function isStaleLive(m: MatchData): boolean {
 // stale-live filter) so per-request work is only geo-sort + status filter
 // (<2 ms). Promise dedup prevents stampedes when the cache is cold.
 //
-// TTL: 90 s — comfortably within the 3-min getAllMatches() in-process TTL,
-// so background refreshes from the lower layer stay ahead of this window.
-const ROUTE_CACHE_TTL = 90_000;
+// TTL: 30 s — reduced from 90s so live-score patches propagate faster.
+// Also invalidated immediately when matchesCacheVersion changes (i.e. when
+// patchLiveScoresInMainCache or a full background refresh updates the cache).
+const ROUTE_CACHE_TTL = 30_000;
+
+// Sport-specific expected match durations in ms (including HT/breaks) for
+// server-side time-based status inference on stale 'scheduled' matches.
+const SERVER_SPORT_DURATION_MS: Record<string, number> = {
+  soccer: 115 * 60 * 1000,
+  football: 115 * 60 * 1000,
+  rugby: 115 * 60 * 1000,
+  basketball: 150 * 60 * 1000,
+  'ice-hockey': 140 * 60 * 1000,
+  hockey: 140 * 60 * 1000,
+  tennis: 240 * 60 * 1000,
+  baseball: 240 * 60 * 1000,
+  cricket: 600 * 60 * 1000,
+  'american-football': 240 * 60 * 1000,
+  mma: 90 * 60 * 1000,
+  boxing: 90 * 60 * 1000,
+};
 
 interface RouteCacheEntry {
   data: MatchData[];
   source: string;
   ts: number;
+  version: number;
 }
 
 let g_routeCache: RouteCacheEntry | null = null;
 let g_routePromise: Promise<RouteCacheEntry> | null = null;
 
 async function getProcessedMatches(): Promise<RouteCacheEntry> {
-  // Serve from in-process cache if fresh
-  if (g_routeCache && Date.now() - g_routeCache.ts < ROUTE_CACHE_TTL) {
+  // Serve from in-process cache if fresh AND the underlying cache hasn't changed
+  if (
+    g_routeCache &&
+    Date.now() - g_routeCache.ts < ROUTE_CACHE_TTL &&
+    g_routeCache.version === matchesCacheVersion
+  ) {
     return g_routeCache;
   }
 
@@ -294,6 +318,7 @@ async function getProcessedMatches(): Promise<RouteCacheEntry> {
     const apiMatches = await getAllMatches();
     const sources = new Set(apiMatches.map(m => m.source));
     const source = Array.from(sources).join('+') || 'espn';
+    const now = Date.now();
 
     let matches = apiMatches.map(convertToMatchData);
     matches = matches.filter(m => !isStaleLive(m));
@@ -302,7 +327,25 @@ async function getProcessedMatches(): Promise<RouteCacheEntry> {
     // and confuse users. Only real named leagues should appear.
     matches = matches.filter(m => !/^(World\s+)?League\s+\d+$/i.test(m.league.name));
 
-    const entry: RouteCacheEntry = { data: matches, source, ts: Date.now() };
+    // Server-side time-based status inference: if a match is still 'scheduled'
+    // but its kickoff + expected duration has already passed, promote to 'finished'
+    // so clients see "FT" rather than stale pre-match odds. This fires when the
+    // ESPN cache is stale and hasn't updated yet. We only promote past the full
+    // duration (not to 'live') to avoid adding false positives to the Live page.
+    matches = matches.map(m => {
+      if (m.status !== 'scheduled') return m;
+      const kickoffMs = new Date(m.kickoffTime).getTime();
+      if (kickoffMs > now) return m; // hasn't kicked off yet
+      const durationMs = SERVER_SPORT_DURATION_MS[m.sport.slug] ?? 130 * 60 * 1000;
+      const ageMs = now - kickoffMs;
+      if (ageMs >= durationMs) {
+        // Past expected end time — mark as finished (score shown when ESPN catches up)
+        return { ...m, status: 'finished' as const };
+      }
+      return m;
+    });
+
+    const entry: RouteCacheEntry = { data: matches, source, ts: now, version: matchesCacheVersion };
     g_routeCache = entry;
     return entry;
   })().finally(() => {

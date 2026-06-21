@@ -174,12 +174,13 @@ export function MatchCardNew({
     boxing: 90 * 60 * 1000,
   };
   const durationMs = SPORT_DURATION_MS[match.sport.slug] ?? 130 * 60 * 1000;
+  // Time-based fallback: if kickoff + expected duration has passed, the match
+  // has almost certainly ended regardless of what the API status says.
+  // We intentionally do NOT gate on match.minute > 0 — ESPN sometimes keeps
+  // status='scheduled' with minute > 0 for matches that have actually finished,
+  // which previously blocked this heuristic from triggering.
   const isLikelyEnded =
     !isLive && !isFinished &&
-    match.status === 'scheduled' &&
-    // If the API has set a live minute (even without updating status), the match
-    // is in progress — don't override it as ended.
-    !(typeof match.minute === 'number' && match.minute > 0) &&
     new Date(match.kickoffTime).getTime() + durationMs < Date.now();
 
   const statusForLabel = match.status === 'halftime' ? 'halftime' : match.status;

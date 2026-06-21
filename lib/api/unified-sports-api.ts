@@ -849,7 +849,7 @@ function espnRecordFailure() {
   if (_espnCB.consecutiveFailures === _espnCB.THRESHOLD) {
     // Log only when the circuit FIRST trips, not on every subsequent call.
     _espnCB.openUntil = Date.now() + _espnCB.BACKOFF_MS;
-    console.warn(`[ESPN] circuit open — pausing all ESPN requests for 3 min after ${_espnCB.THRESHOLD} consecutive timeouts`);
+    console.warn(`[ESPN] circuit open — pausing all ESPN requests for ${_espnCB.BACKOFF_MS / 1000}s after ${_espnCB.THRESHOLD} consecutive timeouts`);
   } else if (_espnCB.consecutiveFailures > _espnCB.THRESHOLD) {
     // Circuit was already open; just refresh the timer silently.
     _espnCB.openUntil = Date.now() + _espnCB.BACKOFF_MS;
@@ -4191,8 +4191,8 @@ export async function fetchAllMarketsForEvent(
 // This means after the first ever warm-up, every subsequent request — including
 // after PM2 restarts — serves data in < 50ms.
 
-const ALLMATCHES_CACHE_TTL  = 90 * 1000;         // 90 sec — serve from memory
-const ALLMATCHES_STALE_TTL  = 4 * 60 * 60 * 1000; // 4 hours — serve stale if ESPN is down
+const ALLMATCHES_CACHE_TTL  = 90 * 1000;          // 90 sec — serve from memory
+const ALLMATCHES_STALE_TTL  = 20 * 60 * 1000;     // 20 min — serve stale if ESPN is down (was 4h; reduced so stale statuses don't persist for hours)
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and
 // survives all subsequent restarts so cold-start delays never recur.
@@ -4902,6 +4902,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   if (sorted.length >= MIN_MATCHES_TO_PERSIST) {
     g_allMatchesCache.data = sorted;
     g_allMatchesCache.ts = Date.now();
+    matchesCacheVersion++;
     void _writeDbCache(sorted);
     void _writeFileCache(sorted);
   } else {
@@ -5110,6 +5111,11 @@ export async function getLiveMatches(): Promise<UnifiedMatch[]> {
  * match minutes, and status changes — no need to wait for the next full
  * background refresh (which takes 10-30 seconds).
  */
+// Monotonically increasing counter — bumped whenever g_allMatchesCache is updated
+// from an external source (live-score patch or background refresh). Route.ts
+// reads this to know when to invalidate its own route-level cache.
+export let matchesCacheVersion = 0;
+
 export function patchLiveScoresInMainCache(liveMatches: UnifiedMatch[]): void {
   if (!g_allMatchesCache.data?.length || !liveMatches.length) return;
   const byId = new Map(liveMatches.map(m => [m.id, m]));
@@ -5136,7 +5142,8 @@ export function patchLiveScoresInMainCache(liveMatches: UnifiedMatch[]): void {
   // Reset TTL so the patched data is immediately served as "fresh"
   if (changed) {
     g_allMatchesCache.ts = Date.now();
-    console.log(`[matches] live-score patch: updated ${liveMatches.length} live matches in cache`);
+    matchesCacheVersion++;
+    console.log(`[matches] live-score patch: updated ${liveMatches.length} live matches in cache (v${matchesCacheVersion})`);
   }
 }
 
