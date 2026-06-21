@@ -3952,18 +3952,20 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
       }
     }
 
-    index = new Map<string, { odds: MatchOdds; markets: Market[] }>();
-    for (const result of allResults) {
+    index = new Map<string, { odds: MatchOdds; markets: Market[]; eventId?: string; sportKey?: string }>();
+    for (const [j, result] of allResults.entries()) {
       if (result.status !== 'fulfilled') continue;
+      const sk = sportKeys[j];
       for (const ev of result.value) {
         const { odds, markets } = aggregateBookmakerOdds(ev);
         if (!odds) continue;
         const home = normalizeTeamName(ev.home_team);
         const away = normalizeTeamName(ev.away_team);
         const dateKey = new Date(ev.commence_time).toISOString().split('T')[0];
+        const entry = { odds, markets: markets || [], eventId: ev.id, sportKey: sk };
         // Index by both orderings — ESPN sometimes flips home/away
-        index.set(`${home}_${away}_${dateKey}`, { odds, markets: markets || [] });
-        index.set(`${away}_${home}_${dateKey}`, { odds, markets: markets || [] });
+        index.set(`${home}_${away}_${dateKey}`, entry);
+        index.set(`${away}_${home}_${dateKey}`, entry);
       }
     }
   }
@@ -3998,7 +4000,7 @@ async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; mark
 }
 
 // Module-level cache — written by buildRealOddsIndex, read by getOddsIndexMarketsForMatch.
-let _lastRealOddsIndex: Map<string, { odds: MatchOdds; markets: Market[] }> | null = null;
+let _lastRealOddsIndex: Map<string, { odds: MatchOdds; markets: Market[]; eventId?: string; sportKey?: string }> | null = null;
 
 /**
  * Look up a match in the last-built real-odds index and return its markets
@@ -4025,6 +4027,159 @@ export function getOddsIndexMarketsForMatch(homeTeam: string, awayTeam: string):
     if (key.startsWith(prefix1) || key.startsWith(prefix2)) return value.markets || [];
   }
   return [];
+}
+
+/**
+ * Return the The Odds API event ID and sport key for a match if it was indexed
+ * during the last buildRealOddsIndex call. Used by the match-detail route to
+ * do a per-event full-market fetch without scanning the whole index again.
+ */
+export function getOddsApiEventEntry(
+  homeTeam: string,
+  awayTeam: string,
+): { eventId: string; sportKey: string } | null {
+  if (!_lastRealOddsIndex) return null;
+  const h = normalizeTeamName(homeTeam);
+  const a = normalizeTeamName(awayTeam);
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  for (const dateKey of [today, tomorrow]) {
+    const entry = _lastRealOddsIndex.get(`${h}_${a}_${dateKey}`)
+      || _lastRealOddsIndex.get(`${a}_${h}_${dateKey}`);
+    if (entry?.eventId && entry?.sportKey) return { eventId: entry.eventId, sportKey: entry.sportKey };
+  }
+  const prefix1 = `${h}_${a}_`;
+  const prefix2 = `${a}_${h}_`;
+  for (const [key, value] of _lastRealOddsIndex) {
+    if ((key.startsWith(prefix1) || key.startsWith(prefix2)) && value.eventId && value.sportKey) {
+      return { eventId: value.eventId, sportKey: value.sportKey };
+    }
+  }
+  return null;
+}
+
+// ─── PER-EVENT FULL-MARKET FETCH ──────────────────────────────────────────────
+// Comprehensive market list per sport family for the per-event endpoint.
+// These cover every major DraftKings (and equivalent bookmaker) market type.
+const SPORT_FULL_MARKETS: Record<string, string> = {
+  soccer: [
+    'h2h',                        // 1X2 / Match Result
+    'spreads',                    // Asian Handicap / Spread
+    'totals',                     // Over/Under Goals
+    'btts',                       // Both Teams to Score
+    'draw_no_bet',                // Draw No Bet
+    'double_chance',              // Double Chance (1X, 12, X2)
+    'h2h_h1',                     // 1st Half – Winner
+    'totals_h1',                  // 1st Half – Over/Under
+    'h2h_h2',                     // 2nd Half – Winner
+    'totals_h2',                  // 2nd Half – Over/Under
+    'team_totals',                // Team Goals Over/Under
+    'alternate_totals',           // Alternative O/U lines
+    'alternate_spreads',          // Alternative Handicap lines
+    'player_goal_scorer_anytime', // Anytime Goalscorer
+    'player_goal_scorer_first',   // First Goalscorer
+    'player_goal_scorer_last',    // Last Goalscorer
+    'player_shot_on_target',      // Player Shots on Target
+    'player_goal_scorer_2plus',   // Player to Score 2+
+  ].join(','),
+  basketball: [
+    'h2h', 'spreads', 'totals', 'team_totals',
+    'h2h_q1', 'totals_q1', 'h2h_h1', 'totals_h1',
+    'alternate_spreads', 'alternate_totals',
+    'player_points', 'player_rebounds', 'player_assists',
+    'player_threes', 'player_blocks', 'player_steals',
+    'player_double_double', 'player_triple_double',
+    'player_points_rebounds_assists',
+    'player_points_rebounds', 'player_points_assists',
+    'player_rebounds_assists',
+  ].join(','),
+  americanfootball: [
+    'h2h', 'spreads', 'totals', 'team_totals',
+    'h2h_h1', 'totals_h1', 'h2h_q1', 'totals_q1',
+    'alternate_spreads', 'alternate_totals',
+    'player_pass_tds', 'player_pass_yds', 'player_pass_completions',
+    'player_rush_yds', 'player_rush_attempts',
+    'player_receptions', 'player_receiving_yds',
+    'player_anytime_td', 'player_1st_td', 'player_last_td',
+    'player_tackles_assists', 'player_kicking_points',
+    'player_field_goals', 'player_sacks',
+  ].join(','),
+  baseball: [
+    'h2h', 'spreads', 'totals', 'team_totals',
+    'h2h_h1', 'totals_h1', 'h2h_1st_inning', 'totals_1st_inning',
+    'alternate_totals',
+    'batter_home_runs', 'batter_hits', 'batter_total_bases',
+    'batter_rbis', 'batter_runs_scored', 'batter_stolen_bases',
+    'pitcher_strikeouts', 'pitcher_hits_allowed', 'pitcher_walks',
+    'pitcher_earned_runs',
+  ].join(','),
+  icehockey: [
+    'h2h', 'puck_line', 'totals', 'team_totals',
+    'h2h_p1', 'totals_p1', 'h2h_h1', 'totals_h1',
+    'alternate_puck_line', 'alternate_totals',
+    'player_points', 'player_goals', 'player_assists',
+    'player_shots_on_goal', 'player_power_play_points',
+    'player_blocked_shots',
+  ].join(','),
+  tennis: [
+    'h2h', 'sets', 'games',
+    'h2h_set1', 'totals_games',
+    'alternate_sets',
+  ].join(','),
+  cricket: 'h2h,totals,team_totals',
+  rugby: 'h2h,spreads,totals,team_totals,h2h_h1,totals_h1',
+  mma: 'h2h',
+  boxing: 'h2h',
+  golf: 'h2h',
+  aussierules: 'h2h,spreads,totals,team_totals,h2h_h1,totals_h1',
+  esports: 'h2h,spreads,totals',
+  default: 'h2h,spreads,totals',
+};
+
+// Per-event market cache — 1-hour TTL to preserve quota
+const _eventMarketsCache = new Map<string, { markets: Market[]; ts: number }>();
+const EVENT_MARKETS_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Fetch ALL real market odds for a specific event from The Odds API.
+ * Uses the per-event endpoint which is quota-efficient (only fires on match-detail
+ * page views, not on every bulk refresh). Caches results for 1 hour per event.
+ *
+ * Returns an empty array if The Odds API is not configured / quota exhausted.
+ */
+export async function fetchAllMarketsForEvent(
+  sportKey: string,
+  eventId: string,
+): Promise<Market[]> {
+  if (!sportKey || !eventId) return [];
+
+  const cacheKey = `${sportKey}::${eventId}`;
+  const cached = _eventMarketsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < EVENT_MARKETS_TTL_MS) return cached.markets;
+
+  if (isTheOddsApiQuotaExhausted()) return [];
+
+  // Pick the market list for this sport family
+  const sportFamily = sportKey.split('_')[0];
+  const marketsStr = SPORT_FULL_MARKETS[sportFamily] ?? SPORT_FULL_MARKETS.default;
+
+  const data = await fetchTheOddsAPI(`sports/${sportKey}/events/${eventId}/odds`, {
+    regions: 'uk,eu,us',
+    markets: marketsStr,
+    oddsFormat: 'decimal',
+    dateFormat: 'iso',
+    // Prefer DraftKings; include major US/EU books as fallback so we always
+    // have real odds even when DraftKings doesn't offer a specific market.
+    bookmakers: 'draftkings,fanduel,betmgm,pointsbet,williamhill,bet365,betway',
+  }) as TheOddsApiEvent | null;
+
+  if (!data) return [];
+
+  const { markets } = aggregateBookmakerOdds(data);
+  const result = markets ?? [];
+  _eventMarketsCache.set(cacheKey, { markets: result, ts: Date.now() });
+  console.log(`[TheOddsAPI] Per-event markets for ${eventId}: ${result.length} markets fetched`);
+  return result;
 }
 
 // ─── MULTI-LAYER MATCH CACHE ──────────────────────────────────────────────────

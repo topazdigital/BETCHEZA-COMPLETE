@@ -8,6 +8,8 @@ import {
   extractEspnOdds,
   deriveSoccerMarkets,
   getOddsIndexMarketsForMatch,
+  getOddsApiEventEntry,
+  fetchAllMarketsForEvent,
   type ESPNSummaryResponse,
   type UnifiedMatch,
 } from '@/lib/api/unified-sports-api';
@@ -1108,10 +1110,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const indexMarkets = getOddsIndexMarketsForMatch(match.homeTeam.name, match.awayTeam.name);
     const ahIndexLines = indexMarkets.filter(m => m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt'));
     const presentAhKeys = new Set(baseMarkets.map(m => m.key));
-    // Collect unique lines not yet shown
     const newAhLines: typeof baseMarkets = [];
     for (const ahMkt of ahIndexLines) {
-      // Check if this exact line (from the outcomes) is already present
       const lineValue = ahMkt.outcomes[0]?.point;
       const alreadyPresent = baseMarkets.some(m =>
         (m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt')) &&
@@ -1119,44 +1119,48 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
       if (!alreadyPresent) newAhLines.push(ahMkt);
     }
-    // Renumber alt keys to avoid collisions
     let altIdx = [...presentAhKeys].filter(k => k.startsWith('asian_handicap')).length;
     const renumbered = newAhLines.map(m => ({
       ...m,
       key: altIdx === 0 ? 'asian_handicap' : `asian_handicap_alt_${altIdx++}`,
     }));
-    // Insert new AH lines right after the existing asian_handicap block
     const ahInsertIdx = baseMarkets.findIndex(m => m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt'));
     const ahEndIdx = ahInsertIdx >= 0
       ? baseMarkets.reduce((last, m, i) => (m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt')) ? i + 1 : last, ahInsertIdx + 1)
       : baseMarkets.length;
-    // Block player-prop and mock/jitter market keys — only keep real team-level markets.
-    // These keys are either player-specific (scorer, booking) or purely generated/random
-    // (corners O/U derived from a model, cards O/U, race to corners, etc.).
-    const BLOCKED_MARKET_PREFIXES = [
-      'player_',          // any player prop (anytime_scorer, player_assists, …)
-      'corners_',         // model-derived Total Corners O/U (not real bookmaker data)
-      'corners_total_',   // alternate key used in some generators
-      'cards_total_',     // Total Cards O/U — model-derived
-      'race_corners',     // Race to N Corners — model-derived
-    ];
-    const BLOCKED_MARKET_EXACT = new Set([
-      'red_card',          // Red Card in Match — model-derived
-      'penalty_awarded',   // Penalty Awarded — model-derived
-      'anytime_scorer',    // player prop
-      'first_scorer',      // player prop
-      'last_scorer',       // player prop
-      'booking_points',    // player prop
-    ]);
-    const isBlockedMarketKey = (key: string) =>
-      BLOCKED_MARKET_EXACT.has(key) ||
-      BLOCKED_MARKET_PREFIXES.some(p => key.startsWith(p));
 
-    const finalMarkets = [
-      ...baseMarkets.slice(0, ahEndIdx),
-      ...renumbered,
-      ...baseMarkets.slice(ahEndIdx),
-    ].filter(m => !isBlockedMarketKey(m.key));
+    // Fetch all real DraftKings markets for this specific event via The Odds API
+    // per-event endpoint. Covers BTTS, Double Chance, DNB, 1st Half, alternate lines,
+    // player props (goalscorers / NBA/NFL props) — every market type The Odds API
+    // offers for this sport. Results cached per event for 1 hour to preserve quota.
+    const eventEntry = getOddsApiEventEntry(match.homeTeam.name, match.awayTeam.name);
+    const realEventMarkets = eventEntry
+      ? await fetchAllMarketsForEvent(eventEntry.sportKey, eventEntry.eventId)
+      : [];
+
+    let finalMarkets: typeof baseMarkets;
+    if (realEventMarkets.length > 0) {
+      // Real per-event markets are highest quality — override any ESPN/derived market
+      // with the same key, and supplement with ESPN markets not covered by real data.
+      const realKeys = new Set(realEventMarkets.map(m => m.key));
+      finalMarkets = [
+        ...realEventMarkets,
+        ...baseMarkets.filter(m => !realKeys.has(m.key)),
+      ];
+    } else {
+      // No per-event real markets available (event not in The Odds API index yet, or
+      // quota exhausted). Fall back to ESPN pickcenter + derived markets + extra AH lines.
+      // Only strip markets that are provably jitter/model-only (never real bookmaker data).
+      const FAKE_PREFIXES = ['corners_', 'corners_total_', 'cards_total_', 'race_corners'];
+      const FAKE_EXACT = new Set(['red_card', 'penalty_awarded', 'booking_points']);
+      const isFake = (key: string) =>
+        FAKE_EXACT.has(key) || FAKE_PREFIXES.some(p => key.startsWith(p));
+      finalMarkets = [
+        ...baseMarkets.slice(0, ahEndIdx),
+        ...renumbered,
+        ...baseMarkets.slice(ahEndIdx),
+      ].filter(m => !isFake(m.key));
+    }
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 
