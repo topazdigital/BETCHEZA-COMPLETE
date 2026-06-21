@@ -297,6 +297,10 @@ async function getProcessedMatches(): Promise<RouteCacheEntry> {
 
     let matches = apiMatches.map(convertToMatchData);
     matches = matches.filter(m => !isStaleLive(m));
+    // Filter out matches whose league name is a raw ESPN fallback like
+    // "League 23286" or "World League 3321" — these have no useful identity
+    // and confuse users. Only real named leagues should appear.
+    matches = matches.filter(m => !/^(World\s+)?League\s+\d+$/i.test(m.league.name));
 
     const entry: RouteCacheEntry = { data: matches, source, ts: Date.now() };
     g_routeCache = entry;

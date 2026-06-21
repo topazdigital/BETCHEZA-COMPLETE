@@ -299,7 +299,7 @@ function analyseMatch(input: AnalyseInput): AnalysisResult {
   awayP = Math.max(0.05, Math.min(0.85, awayP - formDelta - h2hDelta))
 
   // 5. Pick winner
-  const isSoccer = sportSlug === "soccer"
+  const isSoccer = sportSlug === "soccer" || sportSlug === "football"
   let prediction: string
   let confidence: number
   let subPrediction: string | undefined

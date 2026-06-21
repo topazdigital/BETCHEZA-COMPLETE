@@ -828,14 +828,14 @@ const apiStatus = {
 };
 
 // ── ESPN circuit breaker ────────────────────────────────────────────────────
-// After 3 consecutive timeouts, pause all ESPN requests for 3 minutes.
-// This stops the log flood ("fetch failed TimeoutError" × 50) that occurs
-// when ESPN is slow, and lets the site serve stale-cache data quietly instead.
+// After 5 consecutive timeouts, pause all ESPN requests for 30 seconds.
+// Threshold raised from 3→5 and backoff reduced from 3min→30s so that
+// temporary ESPN slowness doesn't block live match data for too long.
 const _espnCB = {
   consecutiveFailures: 0,
   openUntil: 0,
-  THRESHOLD: 3,
-  BACKOFF_MS: 3 * 60 * 1000, // 3 min
+  THRESHOLD: 5,
+  BACKOFF_MS: 30 * 1000, // 30 seconds
 };
 
 function espnCircuitOpen(): boolean {

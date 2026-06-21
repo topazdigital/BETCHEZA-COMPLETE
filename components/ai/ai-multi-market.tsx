@@ -83,7 +83,14 @@ export function AIMultiMarket({
   const picks = useMemo(() => {
     // Require odds before computing — without them predictions are meaningless
     if (!odds) return []
-    const cacheKey = `${homeTeam}|${awayTeam}|${mode}`
+    // Include h2h length and form strings in the key so picks are recomputed
+    // when async data (h2h, form) arrives after the initial odds-only render.
+    // Previously this only keyed on team names + mode, causing picks to lock
+    // with zero form/H2H data and always producing the same BTTS No / Over 2.5 output.
+    const h2hSig = h2h != null ? `h${h2h.length}` : 'hn'
+    const formSig = `${homeForm ?? ''}|${awayForm ?? ''}`
+    const marketsSig = markets != null ? `m${markets.length}` : 'mn'
+    const cacheKey = `${homeTeam}|${awayTeam}|${mode}|${h2hSig}|${formSig}|${marketsSig}`
     if (lockedPicksRef.current[cacheKey]?.length) {
       return lockedPicksRef.current[cacheKey]
     }
@@ -678,7 +685,7 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
     if (sn === 'basketball' || sn === 'nba') return 'pace-adjusted efficiency and 3-point rate'
     if (sn === 'tennis') return 'surface form and serve percentage'
     if (sn === 'hockey' || sn === 'icehockey' || sn === 'nhl') return 'goaltender save% and Corsi numbers'
-    if (sn === 'football' || sn === 'americanfootball' || sn === 'nfl') return 'yards-per-play differential and red zone efficiency'
+    if (sn === 'americanfootball' || sn === 'nfl') return 'yards-per-play differential and red zone efficiency'
     if (sn === 'mma' || sn === 'boxing') return 'striking accuracy and grappling stats'
     if (sn === 'cricket') return 'pitch conditions and batting/bowling form'
     if (sn === 'rugby') return 'scrum dominance and lineout success'
