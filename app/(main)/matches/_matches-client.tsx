@@ -396,8 +396,13 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
     sportId: selectedSportId || undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
-  // Use SSR-pre-fetched initialMatches while SWR is still loading on first render
-  const matches = swrMatches.length > 0 ? swrMatches : (initialMatches || []);
+  // Use SSR-pre-fetched initialMatches only on first render when no sport is
+  // selected. When a sport filter is active and SWR returns 0 results, show
+  // empty state instead of falling back to all-sports SSR data (which caused
+  // the basketball tab to show football matches).
+  const matches = swrMatches.length > 0
+    ? swrMatches
+    : (selectedSportId == null ? (initialMatches || []) : []);
   const { matches: swrAllMatches } = useMatches();
   const allMatches = swrAllMatches.length > 0 ? swrAllMatches : (initialMatches || []);
   const stats = useMatchStats();

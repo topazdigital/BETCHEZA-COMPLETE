@@ -5126,8 +5126,11 @@ export function patchScoresFromSupplementary(supplementaryMatches: UnifiedMatch[
   if (!g_allMatchesCache.data?.length || !supplementaryMatches.length) return;
   let changed = false;
   g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
-    // Only patch matches where we have no score data at all
-    if (m.homeScore != null || m.awayScore != null) return m;
+    // Only patch matches where ESPN has NO meaningful score.
+    // ESPN often stores scores as integer 0 (not null) for matches it fetched
+    // before kickoff — treat 0+0 as "no score" and allow supplementary override.
+    const espnTotal = (m.homeScore ?? 0) + (m.awayScore ?? 0);
+    if (espnTotal > 0) return m; // ESPN already has a real scored match — keep it
     // Find a match in the supplementary source by team name + kickoff date
     const matchDateStr = new Date(m.kickoffTime).toDateString();
     const homeNorm = m.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
@@ -5138,8 +5141,12 @@ export function patchScoresFromSupplementary(supplementaryMatches: UnifiedMatch[
       const sa = s.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
       return sd === matchDateStr && sh === homeNorm && sa === awayNorm;
     });
-    if (!supp || (supp.homeScore == null && supp.awayScore == null)) return m;
-    // Supplementary source has a score — patch it in (keep ESPN status/minute)
+    if (!supp) return m;
+    const suppTotal = (supp.homeScore ?? 0) + (supp.awayScore ?? 0);
+    // Only override if supplementary source has actual goals (suppTotal > 0).
+    // This avoids overwriting a real 0-0 draw with camel1's pre-match 0-0.
+    if (suppTotal === 0) return m;
+    // Supplementary source has a real score — patch it in
     changed = true;
     return {
       ...m,

@@ -1,6 +1,6 @@
-/* Betcheza Service Worker v6 — Offline-first caching + Push Notifications */
+/* Betcheza Service Worker v7 — Offline-first caching + Push Notifications */
 
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const STATIC_CACHE  = `bcz-static-${CACHE_VERSION}`;
 const PAGES_CACHE   = `bcz-pages-${CACHE_VERSION}`;
 const API_CACHE     = `bcz-api-${CACHE_VERSION}`;
