@@ -584,101 +584,65 @@ function SubscribeModal({
           </button>
         </div>
 
-        {/* Scrollable content — flex-1 min-h-0 is required for overflow-y-auto to work in a flex column */}
-        <div className="px-5 pb-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
-          {/* Price banner */}
-          <div className="flex items-center justify-between rounded-xl border border-green-500/30 bg-green-500/8 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-sm font-bold text-green-600 dark:text-green-400">KES 5,000 / week</p>
-                <p className="text-[11px] text-muted-foreground">7-day access, starts today</p>
-              </div>
-            </div>
-            {isAuthenticated && walletBalance > 0 && (
-              <div className="text-right">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Wallet</p>
-                <p className="text-sm font-mono font-bold text-primary">KES {walletBalance.toLocaleString()}</p>
-              </div>
-            )}
-          </div>
+        {/* ── Scrollable info + form area ── */}
+        <div className="px-5 pt-1 pb-3 space-y-3 flex-1 min-h-0 overflow-y-auto">
 
-          {/* Benefits */}
-          <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1.5">
-            {[
-              'Day 1 starts TODAY — no waiting for Monday',
-              'All 7 days of compounding picks unlocked instantly',
-              'Combined odds 3.0–4.0 every day',
-              'Renew weekly to keep the strategy running',
-              "Yesterday's picks always free — no subscription needed",
-            ].map((f, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
-                <span>{f}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* ── Not signed in ── */}
-          {!isAuthenticated ? (
-            <div className="space-y-3 text-center">
-              <p className="text-sm text-muted-foreground">Sign in to continue with your subscription</p>
-              <button
-                onClick={() => { onClose(); openAuthModal('login'); }}
-                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors"
-              >
-                Sign In / Register
-              </button>
-            </div>
-
-          /* ── Choose payment method ── */
-          ) : step === 'choose' ? (
-            <div className="space-y-3">
-              {error && <p className="text-xs text-red-500 text-center">{error}</p>}
-
-              {/* Loading balance */}
-              {balanceLoading ? (
-                <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Checking wallet balance…
+          {/* Price banner — always shown except on pending step */}
+          {step !== 'pending' && (
+            <div className="flex items-center justify-between rounded-xl border border-green-500/30 bg-green-500/8 px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-green-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-bold text-green-600 dark:text-green-400">KES 5,000 / week</p>
+                  <p className="text-[11px] text-muted-foreground">7-day access, starts today</p>
                 </div>
-              ) : (
-                <>
-                  {/* Wallet full payment */}
-                  {canPayFull && (
-                    <button
-                      onClick={handleWalletPay}
-                      disabled={loading}
-                      className="w-full rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 py-3.5 text-sm font-bold text-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-                    >
-                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
-                      Pay KES 5,000 from Wallet
-                    </button>
-                  )}
-
-                  {/* Divider — only when full wallet is an option too */}
-                  {canPayFull && (
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-px bg-border" />
-                      <span className="text-[11px] text-muted-foreground">or pay via</span>
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
-                  )}
-
-                  {/* Full M-Pesa — only shown when wallet can't partially cover */}
-                  {!canPayPartial && (
-                    <button
-                      onClick={() => setStep('mpesa-form')}
-                      className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Phone className="h-4 w-4" /> Pay KES 5,000 via M-Pesa
-                    </button>
-                  )}
-                </>
+              </div>
+              {isAuthenticated && walletBalance > 0 && (
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Wallet</p>
+                  <p className="text-sm font-mono font-bold text-primary">KES {walletBalance.toLocaleString()}</p>
+                </div>
               )}
             </div>
+          )}
 
-          /* ── Full M-Pesa form ── */
-          ) : step === 'mpesa-form' ? (
+          {/* Benefits — shown for not-auth and choose steps */}
+          {(!isAuthenticated || step === 'choose') && step !== 'pending' && (
+            <div className="rounded-xl border border-border bg-muted/30 px-4 py-2.5 space-y-1.5">
+              {[
+                'Day 1 starts TODAY — no waiting for Monday',
+                'All 7 days of compounding picks unlocked instantly',
+                'Combined odds 3.0–4.0 every day',
+                'Renew weekly to keep the strategy running',
+                "Yesterday's picks always free — no subscription needed",
+              ].map((f, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                  <span>{f}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Not signed in: prompt text only ── */}
+          {!isAuthenticated && (
+            <p className="text-sm text-muted-foreground text-center">Sign in to continue with your subscription</p>
+          )}
+
+          {/* ── Choose: error + balance loading indicator only ── */}
+          {isAuthenticated && step === 'choose' && (
+            <>
+              {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+              {balanceLoading && (
+                <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Checking wallet balance…
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── M-Pesa form: back + inputs + disclaimer ── */}
+          {isAuthenticated && step === 'mpesa-form' && (
             <div className="space-y-3">
               <button onClick={() => { setStep('choose'); setError(''); }} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                 ← Back
@@ -698,18 +662,12 @@ function SubscribeModal({
                 </div>
               </div>
               {error && <p className="text-xs text-red-500 text-center">{error}</p>}
-              <button
-                onClick={handleMpesaPay}
-                disabled={loading}
-                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : <><CreditCard className="h-4 w-4" /> Pay KES 5,000 &amp; Unlock</>}
-              </button>
               <p className="text-[11px] text-muted-foreground text-center">M-Pesa payment goes to Betcheza — this does NOT affect your wallet balance.</p>
             </div>
+          )}
 
-          /* ── Top-up form (partial wallet + remaining M-Pesa) ── */
-          ) : step === 'topup-form' ? (
+          {/* ── Top-up form: back + breakdown + inputs ── */}
+          {isAuthenticated && step === 'topup-form' && (
             <div className="space-y-3">
               <button onClick={() => { setStep('choose'); setError(''); setTopUpAmount(null); }} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                 ← Back
@@ -734,18 +692,12 @@ function SubscribeModal({
                 </div>
               </div>
               {error && <p className="text-xs text-red-500 text-center">{error}</p>}
-              <button
-                onClick={handleTopUpPay}
-                disabled={loading}
-                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</> : <><CreditCard className="h-4 w-4" /> Confirm &amp; Top Up KES {(topUpAmount ?? COST - walletBalance).toLocaleString()}</>}
-              </button>
             </div>
+          )}
 
-          /* ── Waiting for M-Pesa PIN ── */
-          ) : (
-            <div className="text-center space-y-4 py-2">
+          {/* ── Pending: full content (no footer button needed) ── */}
+          {isAuthenticated && step === 'pending' && (
+            <div className="text-center space-y-4 py-4">
               <div className="flex flex-col items-center gap-3">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 border-2 border-primary/30">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -773,6 +725,66 @@ function SubscribeModal({
             </div>
           )}
         </div>
+
+        {/* ── Sticky CTA footer — always visible, never scrolls away ── */}
+        {step !== 'pending' && (
+          <div className="shrink-0 px-5 pb-5 pt-3 border-t border-border/40">
+            {!isAuthenticated ? (
+              <button
+                onClick={() => { onClose(); openAuthModal('login'); }}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors"
+              >
+                Sign In / Register
+              </button>
+            ) : step === 'choose' ? (
+              !balanceLoading && (
+                <div className="space-y-2.5">
+                  {canPayFull && (
+                    <button
+                      onClick={handleWalletPay}
+                      disabled={loading}
+                      className="w-full rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 py-3 text-sm font-bold text-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
+                      Pay KES 5,000 from Wallet
+                    </button>
+                  )}
+                  {canPayFull && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[11px] text-muted-foreground">or pay via</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                  )}
+                  {!canPayPartial && (
+                    <button
+                      onClick={() => setStep('mpesa-form')}
+                      className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Phone className="h-4 w-4" /> Pay KES 5,000 via M-Pesa
+                    </button>
+                  )}
+                </div>
+              )
+            ) : step === 'mpesa-form' ? (
+              <button
+                onClick={handleMpesaPay}
+                disabled={loading}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : <><CreditCard className="h-4 w-4" /> Pay KES 5,000 &amp; Unlock</>}
+              </button>
+            ) : step === 'topup-form' ? (
+              <button
+                onClick={handleTopUpPay}
+                disabled={loading}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</> : <><CreditCard className="h-4 w-4" /> Confirm &amp; Top Up KES {(topUpAmount ?? COST - walletBalance).toLocaleString()}</>}
+              </button>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   );
