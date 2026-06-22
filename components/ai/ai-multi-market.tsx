@@ -1,7 +1,7 @@
 "use client"
 
 import { Brain, Sparkles, Check, X, MinusCircle, TrendingUp, Lightbulb } from "lucide-react"
-import { useMemo, useState, useRef } from "react"
+import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 
 interface Market {
@@ -76,32 +76,16 @@ export function AIMultiMarket({
   // bookmaker pricing for the SELECTION (price still shown so users see value).
   const [mode, setMode] = useState<'odds' | 'smart'>('smart')
 
-  // Lock picks once computed so they don't change when async data (h2h, form) arrives later.
-  // This prevents different users seeing different predictions for the same match.
-  const lockedPicksRef = useRef<Record<string, MarketPick[]>>({})
-
+  // Picks recompute whenever any input changes (odds, form, h2h, markets, lineups).
+  // We intentionally do NOT lock picks — the algorithm is deterministic so the
+  // same inputs always produce the same output, and locking was preventing picks
+  // from updating when async data (h2h, form) arrived after the initial render.
   const picks = useMemo(() => {
     // Require odds before computing — without them predictions are meaningless
     if (!odds) return []
-    // Include h2h length and form strings in the key so picks are recomputed
-    // when async data (h2h, form) arrives after the initial odds-only render.
-    // Previously this only keyed on team names + mode, causing picks to lock
-    // with zero form/H2H data and always producing the same BTTS No / Over 2.5 output.
-    const h2hSig = h2h != null ? `h${h2h.length}` : 'hn'
-    const formSig = `${homeForm ?? ''}|${awayForm ?? ''}`
-    const marketsSig = markets != null ? `m${markets.length}` : 'mn'
-    const cacheKey = `${homeTeam}|${awayTeam}|${mode}|${h2hSig}|${formSig}|${marketsSig}`
-    if (lockedPicksRef.current[cacheKey]?.length) {
-      return lockedPicksRef.current[cacheKey]
-    }
-    const computed =
-      mode === 'smart'
-        ? buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
-        : buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
-    if (computed.length > 0) {
-      lockedPicksRef.current[cacheKey] = computed
-    }
-    return computed
+    return mode === 'smart'
+      ? buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
+      : buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
   }, [mode, homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets, lineups])
 
   const isFinal =
