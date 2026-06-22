@@ -6,7 +6,8 @@
  *     whose outcome is now mathematically certain (e.g. Under line blown).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache } from '@/lib/api/unified-sports-api';
+import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache, patchScoresFromSupplementary } from '@/lib/api/unified-sports-api';
+import { fetchCamel1Matches } from '@/lib/api/camel1';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
@@ -64,6 +65,14 @@ export async function GET(req: NextRequest) {
     );
 
     const matches = await getLiveMatches();
+
+    // Even when ESPN is down (0 live matches), try camel1 as a score fallback.
+    // This patches null-score matches (fetched as 'scheduled') with real scores
+    // from camel1.tv, which works independently of the ESPN circuit breaker.
+    fetchCamel1Matches()
+      .then(camelMatches => { if (camelMatches.length > 0) patchScoresFromSupplementary(camelMatches); })
+      .catch(() => {});
+
     if (matches.length === 0) {
       return NextResponse.json({ ok: true, live: 0, goals: 0 });
     }

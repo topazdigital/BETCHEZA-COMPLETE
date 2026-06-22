@@ -5116,6 +5116,47 @@ export async function getLiveMatches(): Promise<UnifiedMatch[]> {
 // reads this to know when to invalidate its own route-level cache.
 export let matchesCacheVersion = 0;
 
+/**
+ * Patch scores from a supplementary source (e.g. camel1) into the main cache.
+ * Only patches matches where ESPN has null scores (match was 'scheduled' when
+ * last fetched and ESPN never returned a real score due to circuit breaker).
+ * Does NOT overwrite non-null ESPN scores to avoid introducing stale data.
+ */
+export function patchScoresFromSupplementary(supplementaryMatches: UnifiedMatch[]): void {
+  if (!g_allMatchesCache.data?.length || !supplementaryMatches.length) return;
+  let changed = false;
+  g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
+    // Only patch matches where we have no score data at all
+    if (m.homeScore != null || m.awayScore != null) return m;
+    // Find a match in the supplementary source by team name + kickoff date
+    const matchDateStr = new Date(m.kickoffTime).toDateString();
+    const homeNorm = m.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const awayNorm = m.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const supp = supplementaryMatches.find(s => {
+      const sd = new Date(s.kickoffTime).toDateString();
+      const sh = s.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+      const sa = s.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+      return sd === matchDateStr && sh === homeNorm && sa === awayNorm;
+    });
+    if (!supp || (supp.homeScore == null && supp.awayScore == null)) return m;
+    // Supplementary source has a score — patch it in (keep ESPN status/minute)
+    changed = true;
+    return {
+      ...m,
+      homeScore: supp.homeScore,
+      awayScore: supp.awayScore,
+      ...(supp.status && supp.status !== 'scheduled' && m.status === 'scheduled'
+        ? { status: supp.status }
+        : {}),
+    };
+  });
+  if (changed) {
+    g_allMatchesCache.ts = Date.now();
+    matchesCacheVersion++;
+    console.log('[matches] supplementary score patch: updated null-score matches from fallback source');
+  }
+}
+
 export function patchLiveScoresInMainCache(liveMatches: UnifiedMatch[]): void {
   if (!g_allMatchesCache.data?.length || !liveMatches.length) return;
   const byId = new Map(liveMatches.map(m => [m.id, m]));

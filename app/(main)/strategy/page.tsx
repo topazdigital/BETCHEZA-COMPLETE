@@ -566,9 +566,10 @@ function SubscribeModal({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border shadow-2xl overflow-hidden max-h-[95vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+      {/* flex flex-col so header + content + footer stack correctly; max-h prevents overflow */}
+      <div className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border shadow-2xl flex flex-col" style={{ maxHeight: 'min(95vh, 640px)' }}>
+        {/* Header — never scrolls away */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 border border-primary/30">
               <TrendingUp className="h-5 w-5 text-primary" />
@@ -583,7 +584,8 @@ function SubscribeModal({
           </button>
         </div>
 
-        <div className="px-5 pb-6 space-y-4">
+        {/* Scrollable content — flex-1 min-h-0 is required for overflow-y-auto to work in a flex column */}
+        <div className="px-5 pb-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
           {/* Price banner */}
           <div className="flex items-center justify-between rounded-xl border border-green-500/30 bg-green-500/8 px-4 py-3">
             <div className="flex items-center gap-2">
