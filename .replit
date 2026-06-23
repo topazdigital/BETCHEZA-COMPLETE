@@ -62,6 +62,8 @@ VAPID_PUBLIC_KEY = "BGuk5Un9FsDz3uAwVngkeLmMsFpjI10Y-T1RNnyoWDvsHILFGcVMFyhzZVcn
 VAPID_SUBJECT = "mailto:hello@betcheza.co.ke"
 DB_USER = "admin_betcheza"
 NODE_ENV = "development"
+DISABLE_FOTMOB = "true"
+DISABLE_SOFASCORE = "true"
 
 [deployment]
 deploymentTarget = "autoscale"

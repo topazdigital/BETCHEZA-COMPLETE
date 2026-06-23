@@ -24,6 +24,8 @@
 
 const ALLOWED_HOSTS = [
   'api.sofascore.com',
+  'api.sofascore.app',
+  'mobile.api.sofascore.app',
   'site.api.espn.com',
   'site.web.api.espn.com',
   'www.fotmob.com',
@@ -44,19 +46,15 @@ function headersForHost(host) {
   };
 
   if (host.includes('sofascore.com')) {
+    // SofaScore uses Cloudflare bot challenge — we need to look like a real
+    // mobile app client rather than a browser scraper to bypass the challenge.
     return {
-      ...common,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-      'Referer': 'https://www.sofascore.com/',
-      'Origin': 'https://www.sofascore.com',
-      'sec-ch-ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-site',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
+      'User-Agent': 'SofaScore/167 CFNetwork/1408.0.4 Darwin/22.5.0',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'x-locale': 'en_US',
     };
   }
 
