@@ -70,6 +70,9 @@ const FD_LEAGUES: FDLeague[] = [
 const cache = new Map<string, { data: UnifiedMatch[]; expires: number }>();
 const CACHE_MS = 15 * 60 * 1000;
 
+// Global mutex — only one fetch run at a time to avoid blowing the 10 req/min limit
+let _fetchInFlight: Promise<UnifiedMatch[]> | null = null;
+
 function mapStatus(s: FDMatch['status']): UnifiedMatch['status'] {
   switch (s) {
     case 'IN_PLAY': return 'live';
@@ -165,20 +168,27 @@ async function fetchLeagueMatches(league: FDLeague, apiKey: string): Promise<Uni
  * key is missing OR every league fails (free tier rate-limit kicks in fast).
  * Sequential with 700ms delay between leagues to stay under 10 req/min limit.
  */
+async function _doFetch(apiKey: string): Promise<UnifiedMatch[]> {
+  const out: UnifiedMatch[] = [];
+  for (let i = 0; i < FD_LEAGUES.length; i++) {
+    const league = FD_LEAGUES[i];
+    const matches = await fetchLeagueMatches(league, apiKey);
+    out.push(...matches);
+    // 7s between requests to stay safely under the 10 req/min free-tier limit
+    if (i < FD_LEAGUES.length - 1) await new Promise((r) => setTimeout(r, 7000));
+  }
+  console.log(`[football-data.org] fetched ${out.length} matches from ${FD_LEAGUES.length} competitions`);
+  return out;
+}
+
 export async function fetchFootballDataOrgMatches(): Promise<UnifiedMatch[]> {
   const apiKey = process.env.FOOTBALL_DATA_API_KEY;
   if (!apiKey) {
     console.warn('[football-data.org] FOOTBALL_DATA_API_KEY not set — skipping');
     return [];
   }
-  const out: UnifiedMatch[] = [];
-  for (let i = 0; i < FD_LEAGUES.length; i++) {
-    const league = FD_LEAGUES[i];
-    const matches = await fetchLeagueMatches(league, apiKey);
-    out.push(...matches);
-    // 700ms between requests to stay well under the 10 req/min free-tier limit.
-    if (i < FD_LEAGUES.length - 1) await new Promise((r) => setTimeout(r, 700));
-  }
-  console.log(`[football-data.org] fetched ${out.length} matches from ${FD_LEAGUES.length} competitions`);
-  return out;
+  // If already fetching, wait for that run and return its result
+  if (_fetchInFlight) return _fetchInFlight;
+  _fetchInFlight = _doFetch(apiKey).finally(() => { _fetchInFlight = null; });
+  return _fetchInFlight;
 }
