@@ -43,6 +43,7 @@ import { useMatches } from "@/lib/hooks/use-matches"
 import { useBetSlip } from "@/contexts/bet-slip-context"
 import { isMinuteTickingSport, isLiveMatchStatus } from "@/lib/utils/live-status"
 import { useMatchNotify } from "@/lib/hooks/use-match-notify"
+import { SgoOddsPanel } from "@/components/matches/sgo-odds-panel"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -2193,127 +2194,13 @@ export default function MatchDetailPage({ params }: PageProps) {
               </Card>
             )}
 
-            {/* Bookmaker comparison */}
-            {bookmakerOdds.length > 0 && (
-              <Card>
-                <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wide">Bookmaker Comparison</h3>
-                </div>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto md:block hidden">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-border/40 text-[10px] uppercase text-muted-foreground bg-muted/30">
-                          <th className="px-3 py-2 text-left">Bookmaker</th>
-                          <th className="px-3 py-2 text-center">1</th>
-                          {bookmakerOdds.some(o => o.draw !== undefined) && <th className="px-3 py-2 text-center">X</th>}
-                          <th className="px-3 py-2 text-center">2</th>
-                          {bookmakerOdds.some(o => o.links?.home || o.links?.away || o.links?.draw) && (
-                            <th className="px-3 py-2 text-right">Bet</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bookmakerOdds.map((o, i) => {
-                          const best1 = Math.max(...bookmakerOdds.map(x => x.home))
-                          const bestX = Math.max(...bookmakerOdds.map(x => x.draw ?? 0))
-                          const best2 = Math.max(...bookmakerOdds.map(x => x.away))
-                          const anyLinks = bookmakerOdds.some(x => x.links?.home || x.links?.away || x.links?.draw)
-                          // Pick the most useful single deeplink for the row's
-                          // "Bet now" button — prefer the side that's also the
-                          // best price for that bookmaker, otherwise fall back
-                          // to whichever link exists.
-                          const link = o.links?.home || o.links?.away || o.links?.draw
-                          return (
-                            <tr key={i} className="border-b border-border/20 hover:bg-muted/30 transition-colors">
-                              <td className="px-3 py-1.5 font-semibold text-xs">{o.bookmaker}</td>
-                              <td className="px-3 py-1.5 text-center">
-                                <span className={cn("font-mono font-bold text-xs", o.home === best1 ? "text-emerald-500" : "text-foreground")}>
-                                  {o.home.toFixed(2)}
-                                </span>
-                              </td>
-                              {bookmakerOdds.some(x => x.draw !== undefined) && (
-                                <td className="px-3 py-1.5 text-center">
-                                  {o.draw !== undefined ? (
-                                    <span className={cn("font-mono font-bold text-xs", o.draw === bestX ? "text-emerald-500" : "text-foreground")}>
-                                      {o.draw.toFixed(2)}
-                                    </span>
-                                  ) : <span className="text-muted-foreground">—</span>}
-                                </td>
-                              )}
-                              <td className="px-3 py-1.5 text-center">
-                                <span className={cn("font-mono font-bold text-xs", o.away === best2 ? "text-emerald-500" : "text-foreground")}>
-                                  {o.away.toFixed(2)}
-                                </span>
-                              </td>
-                              {anyLinks && (
-                                <td className="px-3 py-1.5 text-right">
-                                  {link ? (
-                                    <a
-                                      href={link}
-                                      target="_blank"
-                                      rel="nofollow noopener sponsored"
-                                      className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-[10px] font-semibold px-2 py-0.5 transition-colors"
-                                    >
-                                      Bet →
-                                    </a>
-                                  ) : null}
-                                </td>
-                              )}
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="space-y-2 p-3 md:hidden">
-                    {bookmakerOdds.map((o, i) => {
-                      const best1 = Math.max(...bookmakerOdds.map(x => x.home))
-                      const bestX = Math.max(...bookmakerOdds.map(x => x.draw ?? 0))
-                      const best2 = Math.max(...bookmakerOdds.map(x => x.away))
-                      const anyLinks = bookmakerOdds.some(x => x.links?.home || x.links?.away || x.links?.draw)
-                      const link = o.links?.home || o.links?.away || o.links?.draw
-                      return (
-                        <div key={i} className="rounded-lg border border-border/50 bg-muted/20 p-3">
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="text-xs font-semibold">{o.bookmaker}</span>
-                            {link && (
-                              <a
-                                href={link}
-                                target="_blank"
-                                rel="nofollow noopener sponsored"
-                                className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-500"
-                              >
-                                Bet
-                              </a>
-                            )}
-                          </div>
-                          <div className={cn('grid gap-2', o.draw !== undefined ? 'grid-cols-3' : 'grid-cols-2')}>
-                            <div className={cn('rounded-md bg-background px-2 py-1 text-center', o.home === best1 && 'text-emerald-500')}>
-                              <div className="text-[9px] uppercase text-muted-foreground">1</div>
-                              <div className="font-mono text-sm font-bold">{o.home.toFixed(2)}</div>
-                            </div>
-                            {o.draw !== undefined && (
-                              <div className={cn('rounded-md bg-background px-2 py-1 text-center', o.draw === bestX && 'text-emerald-500')}>
-                                <div className="text-[9px] uppercase text-muted-foreground">X</div>
-                                <div className="font-mono text-sm font-bold">{o.draw.toFixed(2)}</div>
-                              </div>
-                            )}
-                            <div className={cn('rounded-md bg-background px-2 py-1 text-center', o.away === best2 && 'text-emerald-500')}>
-                              <div className="text-[9px] uppercase text-muted-foreground">2</div>
-                              <div className="font-mono text-sm font-bold">{o.away.toFixed(2)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <p className="px-4 py-2 text-[10px] text-muted-foreground">
-                    Best odds highlighted in green. Affiliate-style links open the bookmaker’s bet slip in a new tab.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            {/* Live bookmaker odds comparison — fetches fresh from SGO / ESPN / SharpAPI */}
+            <SgoOddsPanel
+              matchId={match.id}
+              homeTeam={match.homeTeam.name}
+              awayTeam={match.awayTeam.name}
+              hasDraw={!NO_DRAW_SPORTS.has(sport)}
+            />
 
             {/* Spreads / Totals */}
             {bookmakerOdds.some(o => o.spread || o.total) && (
