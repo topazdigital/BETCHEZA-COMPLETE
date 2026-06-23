@@ -1031,29 +1031,49 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     ]);
 
     // ── Stale-scheduled override ──────────────────────────────────────────────
-    // If the cached match says "scheduled" but the kickoff was >2 hours ago,
-    // derive the real status (and scores) from the ESPN summary response.
-    // This handles the common case where a finished match is still cached as
-    // "scheduled" in the DB/memory cache from before the game started.
+    // If the cached match says "scheduled" but kickoff has already passed,
+    // derive the real status (live, halftime, or finished) from the ESPN
+    // summary. This fixes the common case where the match cache hasn't been
+    // updated yet from 'scheduled' → 'live' / 'finished'.
     let resolvedStatus = match.status;
     let resolvedHomeScore = match.homeScore;
     let resolvedAwayScore = match.awayScore;
+    let resolvedMinute = match.minute;
     const kickoffMs = new Date(match.kickoffTime instanceof Date ? match.kickoffTime : match.kickoffTime as unknown as string).getTime();
     const TWO_HOURS_MS = 2 * 3_600_000;
-    if (match.status === 'scheduled' && kickoffMs < now - TWO_HOURS_MS) {
+    if (match.status === 'scheduled' && kickoffMs < now) {
       const espnComp = summary?.header?.competitions?.[0];
-      const espnStatus = (espnComp as { status?: { type?: { completed?: boolean; state?: string; name?: string } } } | undefined)?.status;
-      if (espnStatus?.type?.completed || espnStatus?.type?.state === 'post') {
+      const espnStatus = (espnComp as { status?: { type?: { completed?: boolean; state?: string; name?: string; detail?: string } } } | undefined)?.status;
+      const stateRaw = espnStatus?.type?.state?.toLowerCase() || '';
+      const nameRaw = (espnStatus?.type?.name || '').toLowerCase();
+      const detailRaw = (espnStatus?.type?.detail || '').toLowerCase();
+
+      if (espnStatus?.type?.completed || stateRaw === 'post') {
         resolvedStatus = 'finished';
-        // Extract scores from header competitors
         const hc = espnComp?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'home') as { score?: string } | undefined;
         const ac = espnComp?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'away') as { score?: string } | undefined;
         if (hc?.score !== undefined) resolvedHomeScore = parseInt(hc.score, 10) || 0;
         if (ac?.score !== undefined) resolvedAwayScore = parseInt(ac.score, 10) || 0;
-        // Bust cache so the next request gets the corrected data
         g.__detailsCache!.delete(cacheKey);
         console.info(`[match details] Stale-scheduled override: ${resolvedId} → finished ${resolvedHomeScore}-${resolvedAwayScore}`);
-      } else if (!espnStatus && summary) {
+      } else if (stateRaw === 'in' || nameRaw.includes('in_progress') || nameRaw.includes('halftime') || detailRaw.includes('halftime') || detailRaw.includes('half time')) {
+        // Match is in progress or at halftime — update live status and scores from ESPN
+        resolvedStatus = (nameRaw.includes('halftime') || detailRaw.includes('halftime') || detailRaw.includes('half time')) ? 'halftime' : 'live';
+        const hc = espnComp?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'home') as { score?: string } | undefined;
+        const ac = espnComp?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'away') as { score?: string } | undefined;
+        if (hc?.score !== undefined) resolvedHomeScore = parseInt(hc.score, 10) || 0;
+        if (ac?.score !== undefined) resolvedAwayScore = parseInt(ac.score, 10) || 0;
+        // Extract current match minute from ESPN clock if available
+        const espnClock = (espnComp as { status?: { displayClock?: string; clock?: number } } | undefined)?.status;
+        if (espnClock?.displayClock) {
+          const clockParts = espnClock.displayClock.split(':');
+          const mins = parseInt(clockParts[0] || '0', 10);
+          if (!isNaN(mins)) resolvedMinute = mins;
+        }
+        // Don't cache live matches — always serve fresh on next request
+        g.__detailsCache!.delete(cacheKey);
+        console.info(`[match details] Stale-scheduled override: ${resolvedId} → ${resolvedStatus} ${resolvedHomeScore}-${resolvedAwayScore} min=${resolvedMinute}`);
+      } else if (kickoffMs < now - TWO_HOURS_MS && !espnStatus && summary) {
         // Summary exists but no recognizable status — assume finished for past matches
         resolvedStatus = 'finished';
       }
@@ -1299,7 +1319,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         status: resolvedStatus,
         homeScore: resolvedHomeScore,
         awayScore: resolvedAwayScore,
-        minute: match.minute,
+        minute: resolvedMinute,
         period: match.period,
         league: match.league,
         sport: match.sport,
