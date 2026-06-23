@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache, patchScoresFromSupplementary } from '@/lib/api/unified-sports-api';
 import { fetchCamel1Matches } from '@/lib/api/camel1';
-import { fetchSofaScoreLiveMatches } from '@/lib/api/sofascore';
+import { fetchSofaScoreLiveMatches, fetchSofaScoreTodaySchedule } from '@/lib/api/sofascore';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
@@ -75,10 +75,17 @@ export async function GET(req: NextRequest) {
       .then(camelMatches => { if (camelMatches.length > 0) patchScoresFromSupplementary(camelMatches); })
       .catch(() => {});
 
-    // SofaScore: official-style free JSON API — covers 35+ sports with real
-    // scores and match minute. Works from VPS; returns empty on Replit (403).
+    // SofaScore live: currently-in-progress matches (goals, minute updates).
     fetchSofaScoreLiveMatches()
       .then(ssLive => { if (ssLive.length > 0) patchScoresFromSupplementary(ssLive); })
+      .catch(() => {});
+
+    // SofaScore today schedule: re-fetches today+yesterday bypassing the day
+    // cache so finished matches (e.g. France 3-0 Iraq) get their real final
+    // scores patched in. The live endpoint drops matches the moment they
+    // finish, so this is the only way to capture final scorelines promptly.
+    fetchSofaScoreTodaySchedule()
+      .then(ssToday => { if (ssToday.length > 0) patchScoresFromSupplementary(ssToday); })
       .catch(() => {});
 
     if (matches.length === 0) {

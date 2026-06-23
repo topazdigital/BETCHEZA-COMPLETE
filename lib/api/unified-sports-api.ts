@@ -5124,35 +5124,47 @@ export let matchesCacheVersion = 0;
  */
 export function patchScoresFromSupplementary(supplementaryMatches: UnifiedMatch[]): void {
   if (!g_allMatchesCache.data?.length || !supplementaryMatches.length) return;
+
+  // Build a lookup by normalised team-pair + date for O(1) lookups inside the map.
+  const suppIndex = new Map<string, UnifiedMatch>();
+  for (const s of supplementaryMatches) {
+    const sd = new Date(s.kickoffTime).toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    const sh = s.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const sa = s.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    suppIndex.set(`${sd}|${sh}|${sa}`, s);
+  }
+
   let changed = false;
   g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
-    // Only patch matches where ESPN has NO meaningful score.
-    // ESPN often stores scores as integer 0 (not null) for matches it fetched
-    // before kickoff — treat 0+0 as "no score" and allow supplementary override.
-    const espnTotal = (m.homeScore ?? 0) + (m.awayScore ?? 0);
-    if (espnTotal > 0) return m; // ESPN already has a real scored match — keep it
-    // Find a match in the supplementary source by team name + kickoff date
-    const matchDateStr = new Date(m.kickoffTime).toDateString();
-    const homeNorm = m.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
-    const awayNorm = m.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
-    const supp = supplementaryMatches.find(s => {
-      const sd = new Date(s.kickoffTime).toDateString();
-      const sh = s.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
-      const sa = s.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
-      return sd === matchDateStr && sh === homeNorm && sa === awayNorm;
-    });
+    // Find a supplementary match by team name + kickoff date (UTC).
+    const md = new Date(m.kickoffTime).toISOString().slice(0, 10);
+    const mh = m.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const ma = m.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const supp = suppIndex.get(`${md}|${mh}|${ma}`);
     if (!supp) return m;
+
+    const espnTotal = (m.homeScore ?? 0) + (m.awayScore ?? 0);
     const suppTotal = (supp.homeScore ?? 0) + (supp.awayScore ?? 0);
-    // Only override if supplementary source has actual goals (suppTotal > 0).
-    // This avoids overwriting a real 0-0 draw with camel1's pre-match 0-0.
+
+    // Only override if supplementary source has actual goals (avoids overwriting
+    // a genuine 0-0 result with a pre-match null/0).
     if (suppTotal === 0) return m;
-    // Supplementary source has a real score — patch it in
+
+    // Don't override a cached score that is already higher than supplementary.
+    // (e.g. ESPN has 3-1 and SofaScore temporarily still shows 2-1 mid-update)
+    if (espnTotal > 0 && espnTotal >= suppTotal) return m;
+
+    // Supplementary source has a real / higher score — patch it in.
     changed = true;
     return {
       ...m,
       homeScore: supp.homeScore,
       awayScore: supp.awayScore,
-      ...(supp.status && supp.status !== 'scheduled' && m.status === 'scheduled'
+      // Update status if the supplementary source shows a non-scheduled status
+      // and our cached status is still scheduled or live (allows finished→finished
+      // score patches to propagate without toggling status backwards).
+      ...(supp.status && supp.status !== 'scheduled' &&
+          (m.status === 'scheduled' || m.status === 'live' || m.status === 'halftime')
         ? { status: supp.status }
         : {}),
     };

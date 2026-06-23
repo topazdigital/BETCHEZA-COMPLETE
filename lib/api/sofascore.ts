@@ -26,43 +26,46 @@ interface SportConfig {
 
 // ── Sport lists ───────────────────────────────────────────────────────────────
 
-// All sports fetched for scheduled events (today ± window)
+// All sports fetched for scheduled events (today ± window).
+// IMPORTANT: sportId values must match lib/sports-data.ts ALL_SPORTS ids so
+// that sport-filter counts and sport selector work correctly in the UI.
+// The SofaScore API URL uses `slug` (e.g. "counter-strike") not sportId.
 const SS_ALL_SPORTS: SportConfig[] = [
   // ── Traditional sports ──────────────────────────────────────────────────────
   { slug: 'football',           sportId: 1,  sportKey: 'soccer',            sportName: 'Football',           icon: '⚽' },
   { slug: 'basketball',         sportId: 2,  sportKey: 'basketball',         sportName: 'Basketball',         icon: '🏀' },
   { slug: 'tennis',             sportId: 3,  sportKey: 'tennis',             sportName: 'Tennis',             icon: '🎾' },
-  { slug: 'ice-hockey',         sportId: 7,  sportKey: 'hockey',             sportName: 'Ice Hockey',         icon: '🏒' },
-  { slug: 'baseball',           sportId: 6,  sportKey: 'baseball',           sportName: 'Baseball',           icon: '⚾' },
+  { slug: 'cricket',            sportId: 4,  sportKey: 'cricket',            sportName: 'Cricket',            icon: '🏏' },
   { slug: 'american-football',  sportId: 5,  sportKey: 'americanfootball',   sportName: 'American Football',  icon: '🏈' },
-  { slug: 'volleyball',         sportId: 14, sportKey: 'volleyball',         sportName: 'Volleyball',         icon: '🏐' },
-  { slug: 'rugby',              sportId: 12, sportKey: 'rugby',              sportName: 'Rugby',              icon: '🏉' },
-  { slug: 'cricket',            sportId: 8,  sportKey: 'cricket',            sportName: 'Cricket',            icon: '🏏' },
-  { slug: 'handball',           sportId: 24, sportKey: 'handball',           sportName: 'Handball',           icon: '🤾' },
-  { slug: 'mma',                sportId: 36, sportKey: 'mma',                sportName: 'MMA',                icon: '🥊' },
-  { slug: 'badminton',          sportId: 31, sportKey: 'badminton',          sportName: 'Badminton',          icon: '🏸' },
-  { slug: 'table-tennis',       sportId: 23, sportKey: 'tabletennis',        sportName: 'Table Tennis',       icon: '🏓' },
-  { slug: 'snooker',            sportId: 19, sportKey: 'snooker',            sportName: 'Snooker',            icon: '🎱' },
-  { slug: 'darts',              sportId: 25, sportKey: 'darts',              sportName: 'Darts',              icon: '🎯' },
-  { slug: 'futsal',             sportId: 40, sportKey: 'futsal',             sportName: 'Futsal',             icon: '⚽' },
-  { slug: 'beach-volleyball',   sportId: 34, sportKey: 'beachvolleyball',    sportName: 'Beach Volleyball',   icon: '🏐' },
-  { slug: 'water-polo',         sportId: 14, sportKey: 'waterpolo',          sportName: 'Water Polo',         icon: '🤽' },
-  { slug: 'golf',               sportId: 9,  sportKey: 'golf',               sportName: 'Golf',               icon: '⛳' },
-  { slug: 'cycling',            sportId: 17, sportKey: 'cycling',            sportName: 'Cycling',            icon: '🚴' },
-  { slug: 'boxing',             sportId: 13, sportKey: 'boxing',             sportName: 'Boxing',             icon: '🥊' },
-  { slug: 'aussie-rules',       sportId: 4,  sportKey: 'australianfootball', sportName: 'Aussie Rules',       icon: '🏈' },
-  { slug: 'rugby-league',       sportId: 20, sportKey: 'rugbyleague',        sportName: 'Rugby League',       icon: '🏉' },
-  // ── Esports ─────────────────────────────────────────────────────────────────
-  { slug: 'esports',            sportId: 50, sportKey: 'esports',            sportName: 'Esports',            icon: '🎮' },
-  { slug: 'counter-strike',     sportId: 50, sportKey: 'esports',            sportName: 'CS2',                icon: '🎮' },
-  { slug: 'dota-2',             sportId: 50, sportKey: 'esports',            sportName: 'Dota 2',             icon: '🎮' },
-  { slug: 'league-of-legends',  sportId: 50, sportKey: 'esports',            sportName: 'League of Legends',  icon: '🎮' },
-  { slug: 'valorant',           sportId: 50, sportKey: 'esports',            sportName: 'Valorant',           icon: '🎮' },
-  { slug: 'rocket-league',      sportId: 50, sportKey: 'esports',            sportName: 'Rocket League',      icon: '🚀' },
-  { slug: 'rainbow-six',        sportId: 50, sportKey: 'esports',            sportName: 'Rainbow Six Siege',  icon: '🎮' },
-  { slug: 'overwatch',          sportId: 50, sportKey: 'esports',            sportName: 'Overwatch 2',        icon: '🎮' },
-  { slug: 'king-of-glory',      sportId: 50, sportKey: 'esports',            sportName: 'King of Glory',      icon: '🎮' },
-  { slug: 'starcraft-2',        sportId: 50, sportKey: 'esports',            sportName: 'StarCraft 2',        icon: '🎮' },
+  { slug: 'baseball',           sportId: 6,  sportKey: 'baseball',           sportName: 'Baseball',           icon: '⚾' },
+  { slug: 'ice-hockey',         sportId: 7,  sportKey: 'hockey',             sportName: 'Ice Hockey',         icon: '🏒' },
+  { slug: 'rugby',              sportId: 8,  sportKey: 'rugby',              sportName: 'Rugby',              icon: '🏉' },
+  { slug: 'rugby-league',       sportId: 8,  sportKey: 'rugbyleague',        sportName: 'Rugby League',       icon: '🏉' },
+  { slug: 'volleyball',         sportId: 9,  sportKey: 'volleyball',         sportName: 'Volleyball',         icon: '🏐' },
+  { slug: 'handball',           sportId: 10, sportKey: 'handball',           sportName: 'Handball',           icon: '🤾' },
+  { slug: 'water-polo',         sportId: 11, sportKey: 'waterpolo',          sportName: 'Water Polo',         icon: '🤽' },
+  { slug: 'futsal',             sportId: 13, sportKey: 'futsal',             sportName: 'Futsal',             icon: '⚽' },
+  { slug: 'beach-volleyball',   sportId: 14, sportKey: 'beachvolleyball',    sportName: 'Beach Volleyball',   icon: '🏐' },
+  { slug: 'aussie-rules',       sportId: 16, sportKey: 'australianfootball', sportName: 'Aussie Rules',       icon: '🏉' },
+  { slug: 'golf',               sportId: 17, sportKey: 'golf',               sportName: 'Golf',               icon: '⛳' },
+  { slug: 'snooker',            sportId: 18, sportKey: 'snooker',            sportName: 'Snooker',            icon: '🎱' },
+  { slug: 'darts',              sportId: 19, sportKey: 'darts',              sportName: 'Darts',              icon: '🎯' },
+  { slug: 'table-tennis',       sportId: 20, sportKey: 'tabletennis',        sportName: 'Table Tennis',       icon: '🏓' },
+  { slug: 'badminton',          sportId: 21, sportKey: 'badminton',          sportName: 'Badminton',          icon: '🏸' },
+  { slug: 'cycling',            sportId: 23, sportKey: 'cycling',            sportName: 'Cycling',            icon: '🚴' },
+  { slug: 'boxing',             sportId: 26, sportKey: 'boxing',             sportName: 'Boxing',             icon: '🥊' },
+  { slug: 'mma',                sportId: 27, sportKey: 'mma',                sportName: 'MMA',                icon: '🥋' },
+  // ── Esports — all titles map to internal id 33 (sports-data.ts) ────────────
+  { slug: 'esports',            sportId: 33, sportKey: 'esports',            sportName: 'Esports',            icon: '🎮' },
+  { slug: 'counter-strike',     sportId: 33, sportKey: 'esports',            sportName: 'CS2',                icon: '🎮' },
+  { slug: 'dota-2',             sportId: 33, sportKey: 'esports',            sportName: 'Dota 2',             icon: '🎮' },
+  { slug: 'league-of-legends',  sportId: 33, sportKey: 'esports',            sportName: 'League of Legends',  icon: '🎮' },
+  { slug: 'valorant',           sportId: 33, sportKey: 'esports',            sportName: 'Valorant',           icon: '🎮' },
+  { slug: 'rocket-league',      sportId: 33, sportKey: 'esports',            sportName: 'Rocket League',      icon: '🚀' },
+  { slug: 'rainbow-six',        sportId: 33, sportKey: 'esports',            sportName: 'Rainbow Six Siege',  icon: '🎮' },
+  { slug: 'overwatch',          sportId: 33, sportKey: 'esports',            sportName: 'Overwatch 2',        icon: '🎮' },
+  { slug: 'king-of-glory',      sportId: 33, sportKey: 'esports',            sportName: 'King of Glory',      icon: '🎮' },
+  { slug: 'starcraft-2',        sportId: 33, sportKey: 'esports',            sportName: 'StarCraft 2',        icon: '🎮' },
 ];
 
 // Sports fetched for live events (exclude very slow/non-realtime ones)
@@ -227,6 +230,7 @@ function leagueIdFromSSId(id: number): number {
  * Football period codes:
  *   6 = 1st half  |  31 = Half time  |  7 = 2nd half
  *  41 = ET 1st    |  42 = ET 2nd     |  50 = Penalties
+ * Injury time (stoppage time) is included so "90+3" shows as 93 etc.
  */
 function calcMinute(event: SSEvent): number | null {
   const code = event.status?.code ?? 0;
@@ -237,11 +241,14 @@ function calcMinute(event: SSEvent): number | null {
   const secsInPeriod = Math.max(0, nowSecs - t.currentPeriodStartTimestamp);
   const minsInPeriod = Math.floor(secsInPeriod / 60);
 
-  if (code === 6)  return Math.min(minsInPeriod, 45);
+  const inj1 = t.injuryTime1 ?? 5;  // default 5min stoppage if not specified
+  const inj2 = t.injuryTime2 ?? 5;
+
+  if (code === 6)  return Math.min(minsInPeriod, 45 + inj1);
   if (code === 31) return 45;
-  if (code === 7)  return Math.min(45 + minsInPeriod, 90);
-  if (code === 41) return Math.min(90 + minsInPeriod, 105);
-  if (code === 42) return Math.min(105 + minsInPeriod, 120);
+  if (code === 7)  return Math.min(45 + minsInPeriod, 90 + inj2);
+  if (code === 41) return Math.min(90 + minsInPeriod, 105 + 5);
+  if (code === 42) return Math.min(105 + minsInPeriod, 120 + 5);
   if (code === 50) return 120;
   return minsInPeriod > 0 ? minsInPeriod : null;
 }
@@ -732,6 +739,56 @@ export async function findSofaScoreEventId(
   const id = found ? parseInt(found.id.replace('ss_', ''), 10) : null;
   crossRefCache.set(ckKey, { id, expires: Date.now() + CACHE_MS });
   return Number.isFinite(id) ? id : null;
+}
+
+/**
+ * Fetch today's + yesterday's scheduled events for ALL sports, bypassing the
+ * day cache so we always get current status and final scores.
+ *
+ * Called from the live-scores cron every 2 minutes so that finished matches
+ * (e.g. France 3-0 Iraq) get their real scores patched into the main cache —
+ * the live endpoint stops returning a match the moment it finishes, so the
+ * only way to pick up final scores is to re-fetch the day schedule.
+ */
+export async function fetchSofaScoreTodaySchedule(): Promise<UnifiedMatch[]> {
+  if (process.env.DISABLE_SOFASCORE === 'true') return [];
+
+  const fmt = (d: Date) =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+
+  const now       = new Date();
+  const todayStr   = fmt(now);
+  const yestStr    = fmt(new Date(now.getTime() - 86_400_000));
+
+  // Invalidate the cached day data for today and yesterday so the next
+  // fetchDayForSport() call hits the API and returns current scores.
+  for (const sport of SS_ALL_SPORTS) {
+    cache.delete(`ss-${sport.slug}-${todayStr}`);
+    cache.delete(`ss-${sport.slug}-${yestStr}`);
+  }
+
+  // Re-fetch today + yesterday for all sports (concurrency 4 to be polite)
+  const tasks: Array<() => Promise<UnifiedMatch[]>> = [];
+  for (const sport of SS_ALL_SPORTS) {
+    tasks.push(() => fetchDayForSport(todayStr, sport));
+    tasks.push(() => fetchDayForSport(yestStr,  sport));
+  }
+
+  const { default: pLimit } = await import('p-limit').catch(() => ({ default: null }));
+  const limit = pLimit ? pLimit(4) : null;
+  const settled = await Promise.allSettled(
+    limit ? tasks.map(t => limit(t)) : tasks.map(t => t()),
+  );
+
+  const out: UnifiedMatch[] = [];
+  for (const r of settled) if (r.status === 'fulfilled') out.push(...r.value);
+
+  const finished = out.filter(m => m.status === 'finished').length;
+  const live     = out.filter(m => m.status === 'live' || m.status === 'halftime').length;
+  if (out.length > 0) {
+    console.log(`[SofaScore] Today schedule refresh: ${out.length} events (${live} live, ${finished} finished)`);
+  }
+  return out;
 }
 
 /** Return the SofaScore CDN logo URL for a team ID (from ss_team_XXXX id format). */
