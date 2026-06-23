@@ -32,9 +32,17 @@ const ALLOWED_HOSTS = [
   'api.football-data.org',
   'api.the-odds-api.com',
   'www.thesportsdb.com',
+  // api-sports.io — all sports (free tier, 100 req/day)
   'v3.football.api-sports.io',
   'v3.basketball.api-sports.io',
   'v3.tennis.api-sports.io',
+  'v3.baseball.api-sports.io',
+  'v3.hockey.api-sports.io',
+  'v3.rugby.api-sports.io',
+  'v3.volleyball.api-sports.io',
+  'v3.handball.api-sports.io',
+  'v3.cricket.api-sports.io',
+  'api-sports.io',
 ];
 
 function headersForHost(host) {
