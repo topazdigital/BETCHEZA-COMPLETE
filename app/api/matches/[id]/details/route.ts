@@ -1021,12 +1021,27 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .then(m => m.getSgoBookmakerLines(match.homeTeam.name, match.awayTeam.name, isoKickoff, hasDraw))
       .catch(() => []);
 
+    // ── SofaScore event details (lineups / statistics / incidents) ─────────────
+    // For SofaScore-sourced matches (id starts with ss_) we can fetch rich
+    // event data directly. For ESPN matches this path is skipped here and only
+    // activated later as a fallback when ESPN summary is null.
+    const ssEventId: number | null = match.id.startsWith('ss_')
+      ? (parseInt(match.id.replace('ss_', ''), 10) || null)
+      : null;
+
+    type SSDetails = import('@/lib/api/sofascore').SSEventDetails | null;
+    const ssDetailsPromise: Promise<SSDetails> = ssEventId
+      ? import('@/lib/api/sofascore')
+          .then(mod => mod.fetchSofaScoreEventDetails(ssEventId))
+          .catch(() => null)
+      : Promise.resolve(null);
+
     const FANOUT_TIMEOUT_MS = 8_000;
-    const fanoutTimeout = new Promise<[null, []]>(resolve =>
-      setTimeout(() => resolve([null, []]), FANOUT_TIMEOUT_MS)
+    const fanoutTimeout = new Promise<[null, [], SSDetails]>(resolve =>
+      setTimeout(() => resolve([null, [], null]), FANOUT_TIMEOUT_MS)
     );
-    const [summary, sgoRaw] = await Promise.race([
-      Promise.all([summaryPromise, sgoPromise]),
+    const [summary, sgoRaw, ssDetails] = await Promise.race([
+      Promise.all([summaryPromise, sgoPromise, ssDetailsPromise]),
       fanoutTimeout,
     ]);
 
@@ -1244,7 +1259,60 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       console.warn('[match details] SGO merge failed:', err);
     }
 
-    const lineups = summary ? buildLineups(summary) : null;
+    // ── Pinnacle odds (public guest API, no key) ──────────────────────────────
+    try {
+      const { getPinnacleOdds } = await import('@/lib/api/pinnacle');
+      const seenBooks = new Set(bookmakerOdds.map(o => o.bookmaker.toLowerCase()));
+      if (!seenBooks.has('pinnacle')) {
+        const pinnOdds = await Promise.race([
+          getPinnacleOdds(match.homeTeam.name, match.awayTeam.name, sportType, kickoffMs),
+          new Promise<null>(r => setTimeout(() => r(null), 4_000)),
+        ]);
+        if (pinnOdds && pinnOdds.home > 1.01 && pinnOdds.away > 1.01) {
+          (bookmakerOdds as Array<Record<string, unknown>>).push({
+            bookmaker: 'Pinnacle',
+            home:  pinnOdds.home,
+            draw:  pinnOdds.draw,
+            away:  pinnOdds.away,
+            spread: pinnOdds.homeSpreadLine !== undefined
+              ? { home: pinnOdds.homeSpread, line: pinnOdds.homeSpreadLine, away: pinnOdds.awaySpread }
+              : undefined,
+            total: pinnOdds.totalLine !== undefined
+              ? { over: pinnOdds.totalOver, under: pinnOdds.totalUnder, line: pinnOdds.totalLine }
+              : undefined,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[match details] Pinnacle merge failed:', err);
+    }
+
+    // ── SofaScore cross-reference for ESPN matches when summary is null ────────
+    // If this is an ESPN match and we got no summary (ESPN timeout/circuit open),
+    // try to find and fetch SofaScore event details as a full fallback.
+    let ssDetailsFallback: import('@/lib/api/sofascore').SSEventDetails | null = ssDetails;
+    if (!ssEventId && !summary) {
+      try {
+        const ssMod = await import('@/lib/api/sofascore');
+        const sportSsSlug = match.sport?.slug === 'soccer' ? 'football' : (match.sport?.slug ?? 'football');
+        const foundId = await Promise.race([
+          ssMod.findSofaScoreEventId(match.homeTeam.name, match.awayTeam.name, kickoffMs, sportSsSlug),
+          new Promise<null>(r => setTimeout(() => r(null), 3_000)),
+        ]);
+        if (foundId) {
+          ssDetailsFallback = await ssMod.fetchSofaScoreEventDetails(foundId);
+        }
+      } catch {
+        // Silently ignore — SofaScore is unavailable (403 on shared IPs)
+      }
+    }
+
+    let lineups = summary ? buildLineups(summary) : null;
+    // Merge SofaScore lineups when ESPN has none
+    if (!lineups && ssDetailsFallback?.lineups) {
+      lineups = ssDetailsFallback.lineups as typeof lineups;
+    }
+
     let h2h = summary ? buildH2H(summary) : null;
 
     // Fallback: when ESPN's summary doesn't include H2H (common for smaller
@@ -1276,13 +1344,21 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const news = summary ? buildNews(summary) : [];
     const leaders = summary ? buildLeaders(summary) : [];
     const header = summary ? buildHeader(summary) : null;
-    const teamStats = summary ? buildTeamStats(summary) : null;
+    let teamStats = summary ? buildTeamStats(summary) : null;
+    // Fallback to SofaScore statistics when ESPN has none
+    if (!teamStats && ssDetailsFallback?.teamStats) {
+      teamStats = ssDetailsFallback.teamStats as typeof teamStats;
+    }
 
     // Extract home/away team IDs from header competitors for event attribution
     const competition = summary?.header?.competitions?.[0];
     const homeComp = competition?.competitors?.find(c => c.homeAway === 'home');
     const awayComp = competition?.competitors?.find(c => c.homeAway === 'away');
-    const matchEvents = summary ? buildMatchEvents(summary, homeComp?.team?.id, awayComp?.team?.id) : [];
+    let matchEvents = summary ? buildMatchEvents(summary, homeComp?.team?.id, awayComp?.team?.id) : [];
+    // Fallback to SofaScore incidents (goals, cards, subs) when ESPN has none
+    if (matchEvents.length === 0 && ssDetailsFallback?.matchEvents?.length) {
+      matchEvents = ssDetailsFallback.matchEvents as typeof matchEvents;
+    }
     const segmentBreakdown = summary ? buildSegmentBreakdown(summary, cfg?.sportType || 'soccer') : null;
 
     // Extract leg/round info from ESPN competition notes (e.g. "2nd Leg", "Leg 2 of 2", "Agg: 2-1")

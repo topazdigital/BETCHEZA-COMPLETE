@@ -11,6 +11,7 @@ import type { UnifiedMatch } from './unified-sports-api';
 const SS_BASE      = 'https://api.sofascore.com/api/v1';
 const CACHE_MS     = 10 * 60 * 1000;  // 10 min for scheduled matches
 const LIVE_CACHE_MS = 60 * 1000;       // 1 min for live matches
+const DETAIL_CACHE_MS = 90 * 1000;    // 90 sec for event details
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -23,32 +24,48 @@ interface SportConfig {
   icon: string;
 }
 
+// ── Sport lists ───────────────────────────────────────────────────────────────
+
 // All sports fetched for scheduled events (today ± window)
 const SS_ALL_SPORTS: SportConfig[] = [
-  { slug: 'football',           sportId: 1,  sportKey: 'soccer',           sportName: 'Football',           icon: '⚽' },
-  { slug: 'basketball',         sportId: 2,  sportKey: 'basketball',        sportName: 'Basketball',         icon: '🏀' },
-  { slug: 'tennis',             sportId: 3,  sportKey: 'tennis',            sportName: 'Tennis',             icon: '🎾' },
-  { slug: 'ice-hockey',         sportId: 7,  sportKey: 'hockey',            sportName: 'Ice Hockey',         icon: '🏒' },
-  { slug: 'baseball',           sportId: 6,  sportKey: 'baseball',          sportName: 'Baseball',           icon: '⚾' },
-  { slug: 'american-football',  sportId: 5,  sportKey: 'americanfootball',  sportName: 'American Football',  icon: '🏈' },
-  { slug: 'volleyball',         sportId: 14, sportKey: 'volleyball',        sportName: 'Volleyball',         icon: '🏐' },
-  { slug: 'rugby',              sportId: 12, sportKey: 'rugby',             sportName: 'Rugby',              icon: '🏉' },
-  { slug: 'cricket',            sportId: 8,  sportKey: 'cricket',           sportName: 'Cricket',            icon: '🏏' },
-  { slug: 'handball',           sportId: 24, sportKey: 'handball',          sportName: 'Handball',           icon: '🤾' },
-  { slug: 'mma',                sportId: 36, sportKey: 'mma',               sportName: 'MMA',                icon: '🥊' },
-  { slug: 'badminton',          sportId: 31, sportKey: 'badminton',         sportName: 'Badminton',          icon: '🏸' },
-  { slug: 'table-tennis',       sportId: 23, sportKey: 'tabletennis',       sportName: 'Table Tennis',       icon: '🏓' },
-  { slug: 'snooker',            sportId: 19, sportKey: 'snooker',           sportName: 'Snooker',            icon: '🎱' },
-  { slug: 'darts',              sportId: 25, sportKey: 'darts',             sportName: 'Darts',              icon: '🎯' },
-  { slug: 'futsal',             sportId: 40, sportKey: 'futsal',            sportName: 'Futsal',             icon: '⚽' },
-  { slug: 'beach-volleyball',   sportId: 34, sportKey: 'beachvolleyball',   sportName: 'Beach Volleyball',   icon: '🏐' },
-  { slug: 'water-polo',         sportId: 14, sportKey: 'waterpolo',         sportName: 'Water Polo',         icon: '🤽' },
-  { slug: 'golf',               sportId: 9,  sportKey: 'golf',              sportName: 'Golf',               icon: '⛳' },
-  { slug: 'cycling',            sportId: 17, sportKey: 'cycling',           sportName: 'Cycling',            icon: '🚴' },
+  // ── Traditional sports ──────────────────────────────────────────────────────
+  { slug: 'football',           sportId: 1,  sportKey: 'soccer',            sportName: 'Football',           icon: '⚽' },
+  { slug: 'basketball',         sportId: 2,  sportKey: 'basketball',         sportName: 'Basketball',         icon: '🏀' },
+  { slug: 'tennis',             sportId: 3,  sportKey: 'tennis',             sportName: 'Tennis',             icon: '🎾' },
+  { slug: 'ice-hockey',         sportId: 7,  sportKey: 'hockey',             sportName: 'Ice Hockey',         icon: '🏒' },
+  { slug: 'baseball',           sportId: 6,  sportKey: 'baseball',           sportName: 'Baseball',           icon: '⚾' },
+  { slug: 'american-football',  sportId: 5,  sportKey: 'americanfootball',   sportName: 'American Football',  icon: '🏈' },
+  { slug: 'volleyball',         sportId: 14, sportKey: 'volleyball',         sportName: 'Volleyball',         icon: '🏐' },
+  { slug: 'rugby',              sportId: 12, sportKey: 'rugby',              sportName: 'Rugby',              icon: '🏉' },
+  { slug: 'cricket',            sportId: 8,  sportKey: 'cricket',            sportName: 'Cricket',            icon: '🏏' },
+  { slug: 'handball',           sportId: 24, sportKey: 'handball',           sportName: 'Handball',           icon: '🤾' },
+  { slug: 'mma',                sportId: 36, sportKey: 'mma',                sportName: 'MMA',                icon: '🥊' },
+  { slug: 'badminton',          sportId: 31, sportKey: 'badminton',          sportName: 'Badminton',          icon: '🏸' },
+  { slug: 'table-tennis',       sportId: 23, sportKey: 'tabletennis',        sportName: 'Table Tennis',       icon: '🏓' },
+  { slug: 'snooker',            sportId: 19, sportKey: 'snooker',            sportName: 'Snooker',            icon: '🎱' },
+  { slug: 'darts',              sportId: 25, sportKey: 'darts',              sportName: 'Darts',              icon: '🎯' },
+  { slug: 'futsal',             sportId: 40, sportKey: 'futsal',             sportName: 'Futsal',             icon: '⚽' },
+  { slug: 'beach-volleyball',   sportId: 34, sportKey: 'beachvolleyball',    sportName: 'Beach Volleyball',   icon: '🏐' },
+  { slug: 'water-polo',         sportId: 14, sportKey: 'waterpolo',          sportName: 'Water Polo',         icon: '🤽' },
+  { slug: 'golf',               sportId: 9,  sportKey: 'golf',               sportName: 'Golf',               icon: '⛳' },
+  { slug: 'cycling',            sportId: 17, sportKey: 'cycling',            sportName: 'Cycling',            icon: '🚴' },
+  { slug: 'boxing',             sportId: 13, sportKey: 'boxing',             sportName: 'Boxing',             icon: '🥊' },
+  { slug: 'aussie-rules',       sportId: 4,  sportKey: 'australianfootball', sportName: 'Aussie Rules',       icon: '🏈' },
+  { slug: 'rugby-league',       sportId: 20, sportKey: 'rugbyleague',        sportName: 'Rugby League',       icon: '🏉' },
+  // ── Esports ─────────────────────────────────────────────────────────────────
+  { slug: 'esports',            sportId: 50, sportKey: 'esports',            sportName: 'Esports',            icon: '🎮' },
+  { slug: 'counter-strike',     sportId: 50, sportKey: 'esports',            sportName: 'CS2',                icon: '🎮' },
+  { slug: 'dota-2',             sportId: 50, sportKey: 'esports',            sportName: 'Dota 2',             icon: '🎮' },
+  { slug: 'league-of-legends',  sportId: 50, sportKey: 'esports',            sportName: 'League of Legends',  icon: '🎮' },
+  { slug: 'valorant',           sportId: 50, sportKey: 'esports',            sportName: 'Valorant',           icon: '🎮' },
+  { slug: 'rocket-league',      sportId: 50, sportKey: 'esports',            sportName: 'Rocket League',      icon: '🚀' },
+  { slug: 'rainbow-six',        sportId: 50, sportKey: 'esports',            sportName: 'Rainbow Six Siege',  icon: '🎮' },
+  { slug: 'overwatch',          sportId: 50, sportKey: 'esports',            sportName: 'Overwatch 2',        icon: '🎮' },
+  { slug: 'king-of-glory',      sportId: 50, sportKey: 'esports',            sportName: 'King of Glory',      icon: '🎮' },
+  { slug: 'starcraft-2',        sportId: 50, sportKey: 'esports',            sportName: 'StarCraft 2',        icon: '🎮' },
 ];
 
-// Sports fetched for live events — all from SS_ALL_SPORTS except slow/rare ones
-// (Golf, Cycling rarely have meaningful real-time live scores)
+// Sports fetched for live events (exclude very slow/non-realtime ones)
 const SS_LIVE_SPORTS: SportConfig[] = SS_ALL_SPORTS.filter(
   s => !['golf', 'cycling'].includes(s.slug)
 );
@@ -109,10 +126,82 @@ interface SSEvent {
   roundInfo?: { round?: number };
 }
 
+// ── SofaScore event detail interfaces ────────────────────────────────────────
+
+interface SSLineupsPlayer {
+  player: { id: number; name: string; shortName?: string; position?: string };
+  position: string;
+  jerseyNumber: string;
+  substitute: boolean;
+  captain?: boolean;
+}
+
+interface SSLineupsResponse {
+  home?: {
+    formation?: string;
+    players?: SSLineupsPlayer[];
+    missingPlayers?: Array<{ player: { id: number; name: string }; type: string }>;
+  };
+  away?: {
+    formation?: string;
+    players?: SSLineupsPlayer[];
+    missingPlayers?: Array<{ player: { id: number; name: string }; type: string }>;
+  };
+  confirmed?: boolean;
+}
+
+interface SSStatItem {
+  name: string;
+  home: string | number;
+  away: string | number;
+  homeValue?: number;
+  awayValue?: number;
+  key?: string;
+  compareCode?: number;
+}
+
+interface SSStatGroup {
+  groupName: string;
+  statisticsItems: SSStatItem[];
+}
+
+interface SSStatPeriod {
+  period: string;
+  groups: SSStatGroup[];
+}
+
+interface SSStatisticsResponse {
+  statistics?: SSStatPeriod[];
+}
+
+interface SSIncident {
+  time: number;
+  addedTime?: number;
+  type?: string;
+  incidentType: string;
+  incidentClass?: string;
+  isHome?: boolean;
+  homeScore?: number;
+  awayScore?: number;
+  player?: { id: number; name: string; shortName?: string };
+  playerIn?: { id: number; name: string; shortName?: string };
+  playerOut?: { id: number; name: string; shortName?: string };
+  assist1?: { id: number; name: string; shortName?: string };
+  description?: string;
+  reason?: string;
+  rescinded?: boolean;
+}
+
+interface SSIncidentsResponse {
+  incidents?: SSIncident[];
+}
+
 // ── Caches ────────────────────────────────────────────────────────────────────
 
-const cache      = new Map<string, { data: UnifiedMatch[]; expires: number }>();
-const liveCache  = new Map<string, { data: UnifiedMatch[]; expires: number }>();
+const cache       = new Map<string, { data: UnifiedMatch[]; expires: number }>();
+const liveCache   = new Map<string, { data: UnifiedMatch[]; expires: number }>();
+const detailCache = new Map<number, { data: SSEventDetails; expires: number }>();
+const crossRefCache = new Map<string, { id: number | null; expires: number }>();
 
 // ── Status & minute helpers ───────────────────────────────────────────────────
 
@@ -135,8 +224,6 @@ function leagueIdFromSSId(id: number): number {
 
 /**
  * Calculate the current match minute from SofaScore timing data.
- * SofaScore provides currentPeriodStartTimestamp (Unix seconds) for the active period.
- *
  * Football period codes:
  *   6 = 1st half  |  31 = Half time  |  7 = 2nd half
  *  41 = ET 1st    |  42 = ET 2nd     |  50 = Penalties
@@ -150,12 +237,12 @@ function calcMinute(event: SSEvent): number | null {
   const secsInPeriod = Math.max(0, nowSecs - t.currentPeriodStartTimestamp);
   const minsInPeriod = Math.floor(secsInPeriod / 60);
 
-  if (code === 6)  return Math.min(minsInPeriod, 45);         // 1st half
-  if (code === 31) return 45;                                  // Half time
-  if (code === 7)  return Math.min(45 + minsInPeriod, 90);    // 2nd half
-  if (code === 41) return Math.min(90 + minsInPeriod, 105);   // ET 1st
-  if (code === 42) return Math.min(105 + minsInPeriod, 120);  // ET 2nd
-  if (code === 50) return 120;                                 // Penalties
+  if (code === 6)  return Math.min(minsInPeriod, 45);
+  if (code === 31) return 45;
+  if (code === 7)  return Math.min(45 + minsInPeriod, 90);
+  if (code === 41) return Math.min(90 + minsInPeriod, 105);
+  if (code === 42) return Math.min(105 + minsInPeriod, 120);
+  if (code === 50) return 120;
   return minsInPeriod > 0 ? minsInPeriod : null;
 }
 
@@ -269,15 +356,12 @@ function dateStr(offsetDays: number): string {
 }
 
 /**
- * Fetch SofaScore events for all 20 sports, today ± window.
+ * Fetch SofaScore events for all 30+ sports, today ± window.
  * Uses p-limit (concurrency 6) so we don't flood SofaScore.
- * Results are cached 10 minutes per sport-day pair.
- * Works on VPS; returns empty array silently on Replit/Vercel (403).
  */
 export async function fetchSofaScoreMatches(): Promise<UnifiedMatch[]> {
   if (process.env.DISABLE_SOFASCORE === 'true') return [];
 
-  // Fetch yesterday + today + next 4 days for each sport
   const days = [-1, 0, 1, 2, 3, 4].map(dateStr);
   const tasks: Array<() => Promise<UnifiedMatch[]>> = [];
   for (const sport of SS_ALL_SPORTS) {
@@ -286,7 +370,6 @@ export async function fetchSofaScoreMatches(): Promise<UnifiedMatch[]> {
     }
   }
 
-  // Run with concurrency limit to avoid flooding SofaScore
   const { default: pLimit } = await import('p-limit').catch(() => ({ default: null }));
   const limit = pLimit ? pLimit(6) : null;
 
@@ -303,9 +386,8 @@ export async function fetchSofaScoreMatches(): Promise<UnifiedMatch[]> {
   return out;
 }
 
-// ── Live match fetching (all sports) ─────────────────────────────────────────
+// ── Live match fetching ───────────────────────────────────────────────────────
 
-/** Fetch all currently live events for one sport. Cached for 1 minute. */
 async function fetchLiveForSport(sport: SportConfig): Promise<UnifiedMatch[]> {
   const ck  = `ss-live-${sport.slug}`;
   const hit = liveCache.get(ck);
@@ -328,11 +410,6 @@ async function fetchLiveForSport(sport: SportConfig): Promise<UnifiedMatch[]> {
   return out;
 }
 
-/**
- * Fetch all currently live events across all major sports from SofaScore.
- * Returns real scores, exact match minute, and accurate status.
- * Works on a dedicated VPS; returns empty array silently on Replit/Vercel (403).
- */
 export async function fetchSofaScoreLiveMatches(): Promise<UnifiedMatch[]> {
   if (process.env.DISABLE_SOFASCORE === 'true') return [];
 
@@ -346,16 +423,8 @@ export async function fetchSofaScoreLiveMatches(): Promise<UnifiedMatch[]> {
   return out;
 }
 
-// ── Single-match live score lookup (used by details route) ────────────────────
+// ── Single-match live score lookup ────────────────────────────────────────────
 
-/**
- * Look up a specific live match on SofaScore by team names.
- * Used in the match-details route when ESPN is unavailable — returns real
- * scores and minute so the page shows actual data, not a clock guess.
- *
- * Returns null if the match is not currently live on SofaScore, or if
- * SofaScore is unreachable (403 on Replit, timeout, etc.).
- */
 export async function findSofaScoreLiveScore(
   homeTeam: string,
   awayTeam: string,
@@ -397,4 +466,281 @@ export async function findSofaScoreLiveScore(
     awayScore: found.awayScore ?? 0,
     minute:    found.matchMinute ?? null,
   };
+}
+
+// ── Event details: lineups, statistics, incidents ────────────────────────────
+
+export interface SSEventDetails {
+  lineups: {
+    confirmed: boolean;
+    home: {
+      formation?: string;
+      starting: Array<{ id: string; name: string; fullName: string; position?: string; jersey?: string; starter: true; headshot?: string; captain?: boolean }>;
+      bench: Array<{ id: string; name: string; fullName: string; position?: string; jersey?: string; starter: false; headshot?: string }>;
+    } | null;
+    away: {
+      formation?: string;
+      starting: Array<{ id: string; name: string; fullName: string; position?: string; jersey?: string; starter: true; headshot?: string; captain?: boolean }>;
+      bench: Array<{ id: string; name: string; fullName: string; position?: string; jersey?: string; starter: false; headshot?: string }>;
+    } | null;
+  } | null;
+  teamStats: {
+    home: { stats: Array<{ name: string; label: string; displayValue: string }> };
+    away: { stats: Array<{ name: string; label: string; displayValue: string }> };
+  } | null;
+  matchEvents: Array<{
+    id: string;
+    minute: string;
+    type: 'goal' | 'own_goal' | 'penalty_goal' | 'yellow_card' | 'red_card' | 'yellow_red_card' | 'substitution' | 'var' | 'other';
+    side: 'home' | 'away';
+    playerName?: string;
+    playerId?: string;
+    playerOut?: string;
+    playerOutId?: string;
+    assistName?: string;
+    homeScore?: number;
+    awayScore?: number;
+  }>;
+}
+
+function mapSSPosition(pos?: string): string | undefined {
+  if (!pos) return undefined;
+  const p = pos.toUpperCase();
+  if (p === 'G') return 'GK';
+  if (p === 'D') return 'DF';
+  if (p === 'M') return 'MF';
+  if (p === 'F') return 'FW';
+  return pos;
+}
+
+function posRank(pos?: string): number {
+  if (!pos) return 9;
+  const p = (pos || '').toUpperCase();
+  if (p === 'G' || p === 'GK') return 0;
+  if (p === 'D' || p === 'DF') return 1;
+  if (p === 'M' || p === 'MF') return 2;
+  if (p === 'F' || p === 'FW') return 3;
+  return 5;
+}
+
+function mapSSIncidentType(incident: SSIncident): SSEventDetails['matchEvents'][number]['type'] {
+  const it = (incident.incidentType || '').toLowerCase();
+  const ic = (incident.incidentClass || '').toLowerCase();
+  if (it === 'goal') {
+    if (ic === 'own-goal' || ic === 'owngoal' || ic.includes('own')) return 'own_goal';
+    if (ic === 'penalty' || ic === 'from_penalty' || ic.includes('penalty')) return 'penalty_goal';
+    return 'goal';
+  }
+  if (it === 'card') {
+    if (ic === 'red' || ic === 'direct_red') return 'red_card';
+    if (ic === 'yellow_red' || ic === 'second_yellow') return 'yellow_red_card';
+    return 'yellow_card';
+  }
+  if (it === 'substitution') return 'substitution';
+  if (it === 'var_decision' || it === 'var') return 'var';
+  return 'other';
+}
+
+/**
+ * Fetch full event details (lineups, statistics, incidents) for a SofaScore event.
+ * Cached for 90 seconds. Works from VPS; returns empty result on Replit (403).
+ */
+export async function fetchSofaScoreEventDetails(ssEventId: number): Promise<SSEventDetails> {
+  const empty: SSEventDetails = { lineups: null, teamStats: null, matchEvents: [] };
+  if (process.env.DISABLE_SOFASCORE === 'true') return empty;
+
+  const cached = detailCache.get(ssEventId);
+  if (cached && cached.expires > Date.now()) return cached.data;
+
+  const [lineupsRaw, statsRaw, incidentsRaw] = await Promise.allSettled([
+    ssGet<SSLineupsResponse>(`${SS_BASE}/event/${ssEventId}/lineups`, 7000),
+    ssGet<SSStatisticsResponse>(`${SS_BASE}/event/${ssEventId}/statistics`, 7000),
+    ssGet<SSIncidentsResponse>(`${SS_BASE}/event/${ssEventId}/incidents`, 7000),
+  ]);
+
+  // ── Lineups ────────────────────────────────────────────────────────────────
+  let lineups: SSEventDetails['lineups'] = null;
+  const lineupsData = lineupsRaw.status === 'fulfilled' ? lineupsRaw.value : null;
+  if (lineupsData) {
+    const mapSide = (side: SSLineupsResponse['home']) => {
+      if (!side?.players?.length) return null;
+      const all = side.players.map((p, idx) => ({
+        id:       String(p.player.id),
+        name:     p.player.shortName || p.player.name,
+        fullName: p.player.name,
+        position: mapSSPosition(p.position || p.player.position),
+        jersey:   p.jerseyNumber || undefined,
+        starter:  !p.substitute,
+        captain:  p.captain,
+        headshot: `https://api.sofascore.com/api/v1/player/${p.player.id}/image`,
+        _idx:     idx,
+      }));
+
+      const startingRaw = all.filter(p => p.starter);
+      startingRaw.sort((a, b) => {
+        const ra = posRank(a.position);
+        const rb = posRank(b.position);
+        if (ra !== rb) return ra - rb;
+        return a._idx - b._idx;
+      });
+
+      const starting = startingRaw.map(({ _idx, ...rest }) => ({ ...rest, starter: true as const }));
+      const bench = all
+        .filter(p => !p.starter)
+        .map(({ _idx, ...rest }) => ({ ...rest, starter: false as const }));
+
+      return { formation: side.formation, starting, bench };
+    };
+
+    const home = mapSide(lineupsData.home);
+    const away = mapSide(lineupsData.away);
+    if (home || away) {
+      lineups = { confirmed: lineupsData.confirmed ?? false, home, away };
+    }
+  }
+
+  // ── Statistics ─────────────────────────────────────────────────────────────
+  let teamStats: SSEventDetails['teamStats'] = null;
+  const statsData = statsRaw.status === 'fulfilled' ? statsRaw.value : null;
+  if (statsData?.statistics?.length) {
+    // Prefer the 'ALL' period; fall back to first period
+    const period = statsData.statistics.find(p => p.period === 'ALL') ?? statsData.statistics[0];
+    const homeStats: SSEventDetails['teamStats']['home']['stats'] = [];
+    const awayStats: SSEventDetails['teamStats']['away']['stats'] = [];
+
+    for (const group of (period?.groups || [])) {
+      for (const item of (group.statisticsItems || [])) {
+        const hVal = item.home !== undefined ? String(item.home) : '';
+        const aVal = item.away !== undefined ? String(item.away) : '';
+        if (hVal || aVal) {
+          homeStats.push({ name: item.name, label: item.name, displayValue: hVal });
+          awayStats.push({ name: item.name, label: item.name, displayValue: aVal });
+        }
+      }
+    }
+
+    if (homeStats.length > 0) {
+      teamStats = {
+        home: { stats: homeStats },
+        away: { stats: awayStats },
+      };
+    }
+  }
+
+  // ── Incidents (goals, cards, subs) ─────────────────────────────────────────
+  const matchEvents: SSEventDetails['matchEvents'] = [];
+  const incData = incidentsRaw.status === 'fulfilled' ? incidentsRaw.value : null;
+  if (incData?.incidents?.length) {
+    for (let i = 0; i < incData.incidents.length; i++) {
+      const inc = incData.incidents[i];
+      const type = mapSSIncidentType(inc);
+      if (type === 'other' || type === 'var') continue; // skip non-betting events
+      if (inc.rescinded) continue;
+
+      const addedStr = inc.addedTime ? `+${inc.addedTime}` : '';
+      const minStr   = `${inc.time}${addedStr}'`;
+      const side     = inc.isHome ? 'home' : 'away';
+
+      if (type === 'substitution') {
+        matchEvents.push({
+          id:         `ss-inc-${ssEventId}-${i}`,
+          minute:     minStr,
+          type:       'substitution',
+          side,
+          playerName: inc.playerIn?.shortName || inc.playerIn?.name,
+          playerId:   inc.playerIn ? String(inc.playerIn.id) : undefined,
+          playerOut:  inc.playerOut?.shortName || inc.playerOut?.name,
+          playerOutId: inc.playerOut ? String(inc.playerOut.id) : undefined,
+          homeScore:  inc.homeScore,
+          awayScore:  inc.awayScore,
+        });
+      } else {
+        matchEvents.push({
+          id:          `ss-inc-${ssEventId}-${i}`,
+          minute:      minStr,
+          type,
+          side,
+          playerName:  inc.player?.shortName || inc.player?.name,
+          playerId:    inc.player ? String(inc.player.id) : undefined,
+          assistName:  inc.assist1?.shortName || inc.assist1?.name,
+          homeScore:   inc.homeScore,
+          awayScore:   inc.awayScore,
+        });
+      }
+    }
+  }
+
+  const result: SSEventDetails = { lineups, teamStats, matchEvents };
+  detailCache.set(ssEventId, { data: result, expires: Date.now() + DETAIL_CACHE_MS });
+  return result;
+}
+
+/**
+ * Given a match's home/away team names, kickoff timestamp (ms), and sport slug,
+ * look up the SofaScore numeric event ID by scanning the day's cached schedule.
+ * Used to cross-reference ESPN matches with SofaScore for details enrichment.
+ * Returns null if no match found or SofaScore is unavailable.
+ */
+export async function findSofaScoreEventId(
+  homeTeam: string,
+  awayTeam: string,
+  kickoffMs: number,
+  sportSlug = 'football',
+): Promise<number | null> {
+  if (process.env.DISABLE_SOFASCORE === 'true') return null;
+
+  const ckKey = `xref_${sportSlug}_${homeTeam}_${awayTeam}_${Math.floor(kickoffMs / 3_600_000)}`;
+  const hit   = crossRefCache.get(ckKey);
+  if (hit && hit.expires > Date.now()) return hit.id;
+
+  // Find the sport config
+  const sport = SS_ALL_SPORTS.find(s => s.slug === sportSlug || s.sportKey === sportSlug)
+    ?? SS_ALL_SPORTS[0];
+
+  // Fetch the correct day
+  const kickoffDate = new Date(kickoffMs);
+  const ds = `${kickoffDate.getUTCFullYear()}-${String(kickoffDate.getUTCMonth() + 1).padStart(2, '0')}-${String(kickoffDate.getUTCDate()).padStart(2, '0')}`;
+  const matches = await fetchDayForSport(ds, sport);
+
+  const norm  = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hNorm = norm(homeTeam);
+  const aNorm = norm(awayTeam);
+
+  // Also check day before/after to handle timezone edge cases
+  const nearbyDays: string[] = [];
+  const d1 = new Date(kickoffMs - 86_400_000);
+  const d2 = new Date(kickoffMs + 86_400_000);
+  nearbyDays.push(`${d1.getUTCFullYear()}-${String(d1.getUTCMonth() + 1).padStart(2, '0')}-${String(d1.getUTCDate()).padStart(2, '0')}`);
+  nearbyDays.push(`${d2.getUTCFullYear()}-${String(d2.getUTCMonth() + 1).padStart(2, '0')}-${String(d2.getUTCDate()).padStart(2, '0')}`);
+  const extraDayMatches = (await Promise.allSettled(nearbyDays.map(d => fetchDayForSport(d, sport))))
+    .flatMap(r => r.status === 'fulfilled' ? r.value : []);
+
+  const allCandidates = [...matches, ...extraDayMatches];
+
+  const found = allCandidates.find(m => {
+    const mh = norm(m.homeTeam.name);
+    const ma = norm(m.awayTeam.name);
+    // Exact match first
+    if (mh === hNorm && ma === aNorm) return true;
+    // Partial match (one contains the other)
+    return (
+      (mh.includes(hNorm) || hNorm.includes(mh)) &&
+      (ma.includes(aNorm) || aNorm.includes(ma))
+    );
+  });
+
+  const id = found ? parseInt(found.id.replace('ss_', ''), 10) : null;
+  crossRefCache.set(ckKey, { id, expires: Date.now() + CACHE_MS });
+  return Number.isFinite(id) ? id : null;
+}
+
+/** Return the SofaScore CDN logo URL for a team ID (from ss_team_XXXX id format). */
+export function getSofaScoreTeamLogo(ssTeamId: string | number): string {
+  const numId = typeof ssTeamId === 'string' ? ssTeamId.replace('ss_team_', '') : ssTeamId;
+  return `https://api.sofascore.com/api/v1/team/${numId}/image`;
+}
+
+/** Return the SofaScore CDN player photo URL for a player ID. */
+export function getSofaScorePlayerPhoto(ssPlayerId: string | number): string {
+  return `https://api.sofascore.com/api/v1/player/${ssPlayerId}/image`;
 }
