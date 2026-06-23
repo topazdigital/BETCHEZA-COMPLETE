@@ -11,6 +11,7 @@ import { fetchFotMobMatches } from './fotmob';
 import { fetchCamel1Matches } from './camel1';
 import { fetchSofaScoreMatches } from './sofascore';
 import { fetchApiSportsMatches } from './api-sports';
+import { fetchAllSportsMatches } from './allsports';
 import { proxyFetch } from './proxy-fetch';
 
 // ============================================
@@ -4775,6 +4776,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     camel1Matches,
     sofaScoreMatches,
     apiSportsMatches,
+    allSportsMatches,
   ] = await Promise.all([
     espnFetchFn,
     buildRealOddsIndex(),
@@ -4786,6 +4788,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     fetchCamel1Matches().catch(() => [] as UnifiedMatch[]),
     fetchSofaScoreMatches().catch(() => [] as UnifiedMatch[]),
     fetchApiSportsMatches().catch(() => [] as UnifiedMatch[]),
+    fetchAllSportsMatches().catch(() => [] as UnifiedMatch[]),
   ]);
 
   for (const result of espnResults) {
@@ -4837,8 +4840,8 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // then TheSportsDB (African/exotic), then FotMob (catch-all),
   // then camel1.tv (RSC-scraped featured matches with team logos),
   // then SofaScore (broad coverage — works on production VPS, no-ops on Replit).
-  // api-sports goes after ESPN/football-data (higher trust) but before camel1/SofaScore
-  const supplementarySources: UnifiedMatch[][] = [novelGlobalEspnMatches, fdMatches, oldbMatches, tsdbMatches, apiSportsMatches, fmMatches, sofaScoreMatches, camel1Matches];
+  // allSports + api-sports after ESPN/football-data (higher trust) but before camel1/SofaScore
+  const supplementarySources: UnifiedMatch[][] = [novelGlobalEspnMatches, fdMatches, oldbMatches, tsdbMatches, allSportsMatches, apiSportsMatches, fmMatches, sofaScoreMatches, camel1Matches];
   for (const source of supplementarySources) {
     for (const match of source) {
       // Normalize league name to canonical ESPN metadata before dedup so

@@ -315,6 +315,17 @@ function mapEvent(e: SSEvent, sport: SportConfig): UnifiedMatch | null {
 // Track 403s to avoid spamming logs — log once per sport slug per process run
 const _ss403Logged = new Set<string>();
 
+// Circuit-breaker: after 5 consecutive 403s across any URL, flip the breaker
+// and skip ALL SofaScore requests for 60 minutes. This avoids hammering a
+// blocked endpoint on every cron tick. The breaker resets if a request succeeds.
+let _ssBlockedUntil = 0;
+let _ss403Count = 0;
+const SS_BLOCK_THRESHOLD = 5;
+const SS_BLOCK_TTL_MS = 60 * 60 * 1000; // 1 hour
+function ssIsBlocked(): boolean {
+  return _ssBlockedUntil > 0 && Date.now() < _ssBlockedUntil;
+}
+
 /** Shared fetch helper with browser-like headers. Routes through CF proxy when configured. */
 async function ssGet<T>(url: string, timeoutMs = 8000): Promise<T | null> {
   const via = isProxyConfigured() ? 'proxy' : 'direct';
@@ -334,20 +345,27 @@ async function ssGet<T>(url: string, timeoutMs = 8000): Promise<T | null> {
       },
     });
     if (!res.ok) {
-      // Deduplicate 403 logs — one per unique URL path segment so we don't
-      // spam the PM2 log with hundreds of identical "403 blocked" lines.
       const logKey = url.replace(/\d{4}-\d{2}-\d{2}/, 'DATE').slice(0, 80);
       if (res.status === 403) {
+        _ss403Count++;
+        if (_ss403Count >= SS_BLOCK_THRESHOLD && !ssIsBlocked()) {
+          _ssBlockedUntil = Date.now() + SS_BLOCK_TTL_MS;
+          console.warn('[SofaScore] IP blocked — circuit open for 60 min. AllSports will cover live scores.');
+        }
         if (!_ss403Logged.has(logKey)) {
           _ss403Logged.add(logKey);
-          console.warn(`[SofaScore] 403 Forbidden — IP may be blocked by SofaScore. URL: ${logKey}`);
+          if (_ss403Count <= SS_BLOCK_THRESHOLD) {
+            console.warn(`[SofaScore] 403 Forbidden — IP may be blocked by SofaScore. URL: ${logKey}`);
+          }
         }
       } else {
         console.warn(`[SofaScore] HTTP ${res.status} for ${logKey}`);
       }
       return null;
     }
-    // Clear 403 flag if a request succeeds (IP unblocked / rotated)
+    // Success — reset circuit breaker
+    _ss403Count = 0;
+    _ssBlockedUntil = 0;
     const logKey = url.replace(/\d{4}-\d{2}-\d{2}/, 'DATE').slice(0, 80);
     _ss403Logged.delete(logKey);
     return (await res.json()) as T;
@@ -393,6 +411,7 @@ function dateStr(offsetDays: number): string {
  */
 export async function fetchSofaScoreMatches(): Promise<UnifiedMatch[]> {
   if (process.env.DISABLE_SOFASCORE === 'true') return [];
+  if (ssIsBlocked()) return [];
 
   const days = [-1, 0, 1, 2, 3, 4].map(dateStr);
   const tasks: Array<() => Promise<UnifiedMatch[]>> = [];
@@ -444,6 +463,7 @@ async function fetchLiveForSport(sport: SportConfig): Promise<UnifiedMatch[]> {
 
 export async function fetchSofaScoreLiveMatches(): Promise<UnifiedMatch[]> {
   if (process.env.DISABLE_SOFASCORE === 'true') return [];
+  if (ssIsBlocked()) return [];
 
   const results = await Promise.allSettled(SS_LIVE_SPORTS.map(fetchLiveForSport));
   const out: UnifiedMatch[] = [];
@@ -777,6 +797,7 @@ export async function findSofaScoreEventId(
  */
 export async function fetchSofaScoreTodaySchedule(): Promise<UnifiedMatch[]> {
   if (process.env.DISABLE_SOFASCORE === 'true') return [];
+  if (ssIsBlocked()) return [];
 
   const fmt = (d: Date) =>
     `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache, patchScoresFromSupplementary, mergeNewMatchesIntoCache } from '@/lib/api/unified-sports-api';
 import { fetchCamel1Matches } from '@/lib/api/camel1';
 import { fetchSofaScoreLiveMatches, fetchSofaScoreTodaySchedule } from '@/lib/api/sofascore';
+import { fetchAllSportsLiveFootball } from '@/lib/api/allsports';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
@@ -75,17 +76,18 @@ export async function GET(req: NextRequest) {
       .then(camelMatches => { if (camelMatches.length > 0) patchScoresFromSupplementary(camelMatches); })
       .catch(() => {});
 
-    // SofaScore live: currently-in-progress matches (goals, minute updates).
-    // Uses mergeNewMatchesIntoCache so small-league matches not in the initial
-    // ESPN fetch are ADDED to the cache, not just score-patched.
+    // AllSports live football: currently-in-progress matches with minute + score.
+    // Primary live-score supplementary source (replaces blocked SofaScore on Replit).
+    fetchAllSportsLiveFootball()
+      .then(asLive => { if (asLive.length > 0) { patchScoresFromSupplementary(asLive); mergeNewMatchesIntoCache(asLive); } })
+      .catch(() => {});
+
+    // SofaScore live: works on production VPS, no-ops on Replit (blocked).
     fetchSofaScoreLiveMatches()
       .then(ssLive => { if (ssLive.length > 0) mergeNewMatchesIntoCache(ssLive); })
       .catch(() => {});
 
-    // SofaScore today schedule: re-fetches today+yesterday bypassing the day
-    // cache. mergeNewMatchesIntoCache both patches final scores AND adds any
-    // small-league / lower-tier matches that weren't in the initial ESPN fetch.
-    // This is the primary mechanism for pulling ALL SofaScore leagues into cache.
+    // SofaScore today schedule: works on production VPS.
     fetchSofaScoreTodaySchedule()
       .then(ssToday => { if (ssToday.length > 0) mergeNewMatchesIntoCache(ssToday); })
       .catch(() => {});
