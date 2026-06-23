@@ -7,6 +7,7 @@
 // ============================================================
 
 import type { UnifiedMatch } from './unified-sports-api';
+import { proxyFetch, isProxyConfigured } from './proxy-fetch';
 
 const SS_BASE      = 'https://api.sofascore.com/api/v1';
 const CACHE_MS     = 10 * 60 * 1000;  // 10 min for scheduled matches
@@ -314,10 +315,12 @@ function mapEvent(e: SSEvent, sport: SportConfig): UnifiedMatch | null {
 // Track 403s to avoid spamming logs — log once per sport slug per process run
 const _ss403Logged = new Set<string>();
 
-/** Shared fetch helper with browser-like headers. Returns null on any error. */
+/** Shared fetch helper with browser-like headers. Routes through CF proxy when configured. */
 async function ssGet<T>(url: string, timeoutMs = 8000): Promise<T | null> {
+  const via = isProxyConfigured() ? 'proxy' : 'direct';
   try {
-    const res = await fetch(url, {
+    const res = await proxyFetch(url, {
+      timeoutMs,
       headers: {
         'User-Agent':      UA,
         Accept:            'application/json, text/plain, */*',
@@ -325,9 +328,10 @@ async function ssGet<T>(url: string, timeoutMs = 8000): Promise<T | null> {
         Origin:            'https://www.sofascore.com',
         Referer:           'https://www.sofascore.com/',
         'Cache-Control':   'no-cache',
+        'sec-fetch-dest':  'empty',
+        'sec-fetch-mode':  'cors',
+        'sec-fetch-site':  'same-site',
       },
-      cache:  'no-store',
-      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       // Deduplicate 403 logs — one per unique URL path segment so we don't

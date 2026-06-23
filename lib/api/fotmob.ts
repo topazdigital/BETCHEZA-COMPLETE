@@ -7,6 +7,7 @@
 // ============================================
 
 import type { UnifiedMatch } from './unified-sports-api';
+import { proxyFetch, isProxyConfigured } from './proxy-fetch';
 
 const FM_BASE = 'https://www.fotmob.com/api';
 // Browser-like User-Agent — FotMob's edge sometimes 403s default Node UA.
@@ -141,11 +142,10 @@ async function fetchDay(dateStr: string): Promise<UnifiedMatch[]> {
   if (cached && cached.expires > Date.now()) return cached.data;
 
   const url = `${FM_BASE}/matches?date=${dateStr}`;
+  const via = isProxyConfigured() ? 'proxy' : 'direct';
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const r = await fetch(url, {
-      signal: controller.signal,
+    const r = await proxyFetch(url, {
+      timeoutMs: 10_000,
       headers: {
         'User-Agent': UA,
         Accept: 'application/json, text/plain, */*',
@@ -157,9 +157,9 @@ async function fetchDay(dateStr: string): Promise<UnifiedMatch[]> {
         'sec-fetch-site': 'same-origin',
         'cache-control': 'no-cache',
       },
-    }).finally(() => clearTimeout(timer));
+    });
     if (!r.ok) {
-      console.warn(`[FotMob] HTTP ${r.status} for date ${dateStr} — IP may be blocked`);
+      console.warn(`[FotMob] HTTP ${r.status} for date ${dateStr} via ${via} — IP may be blocked`);
       cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });
       return [];
     }

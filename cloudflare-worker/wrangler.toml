@@ -1,0 +1,8 @@
+name = "betcheza-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+# Optional: set CF_WORKER_SECRET here or via `wrangler secret put CF_WORKER_SECRET`
+# [vars]
+# CF_WORKER_SECRET = ""

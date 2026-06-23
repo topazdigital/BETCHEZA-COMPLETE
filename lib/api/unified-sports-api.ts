@@ -10,6 +10,7 @@ import { fetchFootballDataOrgMatches } from './football-data-org';
 import { fetchFotMobMatches } from './fotmob';
 import { fetchCamel1Matches } from './camel1';
 import { fetchSofaScoreMatches } from './sofascore';
+import { proxyFetch } from './proxy-fetch';
 
 // ============================================
 // Types
@@ -996,12 +997,9 @@ async function fetchESPN(
     || league === 'mlb' || league === 'nba' || league === 'nhl';
 
   try {
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       headers: { 'Accept': 'application/json' },
-      // Reduced from 10s → 5s: fail fast so pages don't hang; circuit breaker
-      // prevents repeated retries when ESPN is slow.
-      signal: AbortSignal.timeout(5000),
-      ...(skipDataCache ? { cache: 'no-store' as const } : { next: { revalidate: 15 } }),
+      timeoutMs: 10_000,
     });
 
     if (!response.ok) {
@@ -1313,10 +1311,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     || sport === 'soccer' || sport === 'rugby';
   let data: ESPNScoreboardResponseFull | null = null;
   try {
-    const r = await fetch(url, {
+    const r = await proxyFetch(url, {
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(10000),
-      ...(skipDataCache ? { cache: 'no-store' as const } : { next: { revalidate: 30 } }),
+      timeoutMs: 10_000,
     });
     if (r.ok) data = await r.json() as ESPNScoreboardResponseFull;
   } catch { /* fall through */ }
@@ -1331,7 +1328,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       const halfRange = `${formatYYYYMMDD(s)}-${formatYYYYMMDD(e)}`;
       const halfUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${halfRange}&limit=300`;
       try {
-        const r = await fetch(halfUrl, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000), cache: 'no-store' as const });
+        const r = await proxyFetch(halfUrl, { headers: { Accept: 'application/json' }, timeoutMs: 8_000 });
         return r.ok ? await r.json() as ESPNScoreboardResponseFull : null;
       } catch { return null; }
     };
@@ -1352,10 +1349,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   if (!data?.events?.length) {
     try {
       const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?limit=300`;
-      const r2 = await fetch(defaultUrl, {
+      const r2 = await proxyFetch(defaultUrl, {
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(10000),
-        cache: 'no-store' as const,
+        timeoutMs: 10_000,
       });
       if (r2.ok) data = await r2.json() as ESPNScoreboardResponseFull;
     } catch { /* fall through */ }
@@ -1375,10 +1371,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     await Promise.allSettled(
       tennisEndpoints.map(async (endpoint) => {
         try {
-          const r3 = await fetch(endpoint, {
+          const r3 = await proxyFetch(endpoint, {
             headers: { Accept: 'application/json' },
-            cache: 'no-store' as const,
-            signal: AbortSignal.timeout(8000),
+            timeoutMs: 8_000,
           });
           if (r3.ok) {
             const d3 = await r3.json() as ESPNScoreboardResponseFull;
@@ -1424,10 +1419,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       await Promise.allSettled(
         batch.map(async (lid) => {
           try {
-            const r = await fetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
+            const r = await proxyFetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
               headers: { Accept: 'application/json' },
-              cache: 'no-store' as const,
-              signal: AbortSignal.timeout(4000),
+              timeoutMs: 4_000,
             });
             if (r.ok) {
               const d = await r.json() as ESPNScoreboardResponseFull;
