@@ -62,12 +62,14 @@ export async function GET(
     // One request per sport covers all matches in that sport — quota-efficient.
     // Primary coverage for non-football sports; football is a secondary gap-filler.
     if (lines.length === 0) {
+      const leagueName = match.league?.name ?? match.league?.slug ?? '';
       const theoddsLines = await getTheOddsApiMatchLines(
         match.homeTeam.name,
         match.awayTeam.name,
         isoKickoff,
         sportSlug,
         hasDraw,
+        leagueName,
       );
       if (theoddsLines.length > 0) {
         lines = theoddsLines;
