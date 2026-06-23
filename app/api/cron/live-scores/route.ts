@@ -6,7 +6,7 @@
  *     whose outcome is now mathematically certain (e.g. Under line blown).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache, patchScoresFromSupplementary } from '@/lib/api/unified-sports-api';
+import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache, patchScoresFromSupplementary, mergeNewMatchesIntoCache } from '@/lib/api/unified-sports-api';
 import { fetchCamel1Matches } from '@/lib/api/camel1';
 import { fetchSofaScoreLiveMatches, fetchSofaScoreTodaySchedule } from '@/lib/api/sofascore';
 import { matchToSlug } from '@/lib/utils/match-url';
@@ -76,16 +76,18 @@ export async function GET(req: NextRequest) {
       .catch(() => {});
 
     // SofaScore live: currently-in-progress matches (goals, minute updates).
+    // Uses mergeNewMatchesIntoCache so small-league matches not in the initial
+    // ESPN fetch are ADDED to the cache, not just score-patched.
     fetchSofaScoreLiveMatches()
-      .then(ssLive => { if (ssLive.length > 0) patchScoresFromSupplementary(ssLive); })
+      .then(ssLive => { if (ssLive.length > 0) mergeNewMatchesIntoCache(ssLive); })
       .catch(() => {});
 
     // SofaScore today schedule: re-fetches today+yesterday bypassing the day
-    // cache so finished matches (e.g. France 3-0 Iraq) get their real final
-    // scores patched in. The live endpoint drops matches the moment they
-    // finish, so this is the only way to capture final scorelines promptly.
+    // cache. mergeNewMatchesIntoCache both patches final scores AND adds any
+    // small-league / lower-tier matches that weren't in the initial ESPN fetch.
+    // This is the primary mechanism for pulling ALL SofaScore leagues into cache.
     fetchSofaScoreTodaySchedule()
-      .then(ssToday => { if (ssToday.length > 0) patchScoresFromSupplementary(ssToday); })
+      .then(ssToday => { if (ssToday.length > 0) mergeNewMatchesIntoCache(ssToday); })
       .catch(() => {});
 
     if (matches.length === 0) {

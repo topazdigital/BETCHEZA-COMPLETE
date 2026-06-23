@@ -334,6 +334,12 @@ export function startCron(): void {
   // Delay startup cron jobs to allow Turbopack to lazy-compile API routes first.
   // Next.js 16 with Turbopack compiles routes on first request — if we hit them
   // too early we get 404. These delays give the server time to warm up.
+  // Early SofaScore warmup: fire the live-scores cron at 60 s and again at
+  // 2.5 min so all small-league SofaScore matches merge into cache quickly
+  // after a PM2 restart — without waiting 5 min for the first regular tick.
+  setTimeout(() => { void runLiveScores(); }, 60_000);         // 60 s — first SofaScore merge
+  setTimeout(() => { void runLiveScores(); }, 150_000);        // 2.5 min — second pass (catches more leagues)
+
   setTimeout(() => { void runMatchReminders(); }, 120_000);   // 2 min
   setTimeout(() => { void runJackpotSync(); }, 180_000);       // 3 min
   setTimeout(() => { void runFakeActivity(); }, 90_000);       // 90 s — seed initial feed posts

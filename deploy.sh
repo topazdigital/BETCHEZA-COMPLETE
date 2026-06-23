@@ -498,21 +498,31 @@ else
 fi
 
 # ── Step 4e: Match cache handling ─────────────────────────────────────────────
-# Clear the match cache on deploy so stale data from previous days is never
-# served after a redeploy. The app's 4-hour stale TTL guard now rejects old
-# caches in code too, but wiping on deploy is cleaner and prevents users from
-# seeing yesterday's matches on the "Today" tab immediately after a deploy.
-# The cache poisoning guard (MIN_MATCHES_TO_PERSIST=5) still protects against
-# empty-result overwrites — this only wipes the on-disk/DB files, not logic.
-echo -e "${YELLOW}[4e/5] Clearing stale match cache (file + DB)...${NC}"
-# Remove file cache
-rm -f "${APP_DIR}/.local/state/matches-cache.json" 2>/dev/null && echo "  ✓ Removed matches-cache.json" || true
-# Clear DB match cache table (non-fatal if DB not reachable)
-if command -v mysql &>/dev/null && [ -n "${DB_PASS:-}" ]; then
-  mysql -u"${DB_USER:-admin}" -p"${DB_PASS}" "${DB_NAME:-betcheza}" -e "DELETE FROM match_cache WHERE cache_key='all_matches';" 2>/dev/null \
-    && echo "  ✓ Cleared DB match_cache" || echo "  ⚠ DB clear skipped (table may not exist yet)"
+# Smart cache policy: preserve the file cache if it is < 2 hours old.
+# Wiping unconditionally caused blank homepages when ESPN timed out during the
+# post-deploy warmup — the only surviving data was 20 camel1 matches, which
+# is not enough to populate "Today's Matches". A cache that is < 2 h old is
+# still fresh enough to show immediately while the background refresh fills in.
+# Caches older than 2 h contain yesterday's schedule and should be wiped.
+echo -e "${YELLOW}[4e/5] Checking match cache age...${NC}"
+CACHE_FILE="${APP_DIR}/.local/state/matches-cache.json"
+if [ -f "$CACHE_FILE" ]; then
+  CACHE_MTIME=$(date -r "$CACHE_FILE" +%s 2>/dev/null || echo 0)
+  CACHE_AGE_MIN=$(( ( $(date +%s) - CACHE_MTIME ) / 60 ))
+  if [ "$CACHE_AGE_MIN" -lt 120 ]; then
+    echo -e "${GREEN}  ✓ Match cache is ${CACHE_AGE_MIN}min old — preserving (ESPN warmup will patch it)${NC}"
+  else
+    rm -f "$CACHE_FILE" 2>/dev/null && echo "  ✓ Removed stale matches-cache.json (${CACHE_AGE_MIN}min old)" || true
+    if command -v mysql &>/dev/null && [ -n "${DB_PASS:-}" ]; then
+      mysql -u"${DB_USER:-admin}" -p"${DB_PASS}" "${DB_NAME:-betcheza}" -e \
+        "DELETE FROM match_cache WHERE cache_key='all_matches';" 2>/dev/null \
+        && echo "  ✓ Cleared DB match_cache" || echo "  ⚠ DB clear skipped (table may not exist yet)"
+    fi
+    echo -e "${GREEN}[4e/5] Stale cache wiped — fresh fetch will run on next startup${NC}"
+  fi
+else
+  echo -e "${YELLOW}  No existing match cache — fresh fetch will run on next startup${NC}"
 fi
-echo -e "${GREEN}[4e/5] Match cache cleared — fresh fetch will run on next startup${NC}"
 
 # ── Step 5: Restart Node.js (fast path: reload if running, start if not) ──────
 echo -e "${YELLOW}[5/5] Restarting Node.js server...${NC}"

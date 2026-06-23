@@ -5176,6 +5176,94 @@ export function patchScoresFromSupplementary(supplementaryMatches: UnifiedMatch[
   }
 }
 
+
+/**
+ * Merge SofaScore matches into the main cache.
+ * Unlike patchScoresFromSupplementary() which only updates existing entries,
+ * this function ALSO adds genuinely new matches (small leagues, lower-tier
+ * competitions) that weren't in the initial ESPN/FotMob/etc. fetch.
+ *
+ * Called every 5 minutes from the live-scores cron so that all SofaScore
+ * leagues — including small/regional ones — appear in Today's matches shortly
+ * after server startup rather than waiting for the next full background refresh.
+ */
+export function mergeNewMatchesIntoCache(newMatches: UnifiedMatch[]): void {
+  if (!newMatches.length || !g_allMatchesCache.data) return;
+
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const dateOf = (m: UnifiedMatch) => new Date(m.kickoffTime).toISOString().slice(0, 10);
+
+  // Build lookup of every match already in cache (both forward and reverse key)
+  const existingKeys = new Set<string>();
+  for (const m of g_allMatchesCache.data) {
+    const d = dateOf(m);
+    const h = norm(m.homeTeam.name);
+    const a = norm(m.awayTeam.name);
+    existingKeys.add(`${h}|${a}|${d}`);
+    existingKeys.add(`${a}|${h}|${d}`);
+  }
+
+  // Build a quick score-patch index keyed by home|away|date
+  const suppIndex = new Map<string, UnifiedMatch>();
+  for (const s of newMatches) {
+    const d = dateOf(s);
+    const h = norm(s.homeTeam.name);
+    const a = norm(s.awayTeam.name);
+    suppIndex.set(`${h}|${a}|${d}`, s);
+  }
+
+  // ── Pass 1: patch scores on existing cached matches ────────────────────────
+  let scorePatched = 0;
+  g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
+    const key = `${norm(m.homeTeam.name)}|${norm(m.awayTeam.name)}|${dateOf(m)}`;
+    const supp = suppIndex.get(key);
+    if (!supp) return m;
+
+    const suppTotal = (supp.homeScore ?? 0) + (supp.awayScore ?? 0);
+    const espnTotal = (m.homeScore ?? 0) + (m.awayScore ?? 0);
+
+    // Only patch if supplementary has a real score AND it is higher than cached
+    if (suppTotal === 0) return m;
+    if (espnTotal > 0 && espnTotal >= suppTotal) return m;
+
+    scorePatched++;
+    return {
+      ...m,
+      homeScore: supp.homeScore,
+      awayScore: supp.awayScore,
+      matchMinute: supp.matchMinute ?? m.matchMinute,
+      ...(supp.status && supp.status !== 'scheduled' &&
+          (m.status === 'scheduled' || m.status === 'live' || m.status === 'halftime')
+        ? { status: supp.status }
+        : {}),
+    };
+  });
+
+  // ── Pass 2: add matches not seen in cache yet ──────────────────────────────
+  const toAdd: UnifiedMatch[] = [];
+  for (const m of newMatches) {
+    const d = dateOf(m);
+    const h = norm(m.homeTeam.name);
+    const a = norm(m.awayTeam.name);
+    const fwd = `${h}|${a}|${d}`;
+    const rev = `${a}|${h}|${d}`;
+    if (!existingKeys.has(fwd) && !existingKeys.has(rev)) {
+      toAdd.push(m);
+      existingKeys.add(fwd);
+      existingKeys.add(rev);
+    }
+  }
+
+  if (toAdd.length > 0 || scorePatched > 0) {
+    if (toAdd.length > 0) {
+      g_allMatchesCache.data = [...g_allMatchesCache.data, ...toAdd];
+    }
+    g_allMatchesCache.ts = Date.now();
+    matchesCacheVersion++;
+    console.log(`[matches] SofaScore merge: +${toAdd.length} new matches, ${scorePatched} scores patched (cache total: ${g_allMatchesCache.data.length})`);
+  }
+}
+
 export function patchLiveScoresInMainCache(liveMatches: UnifiedMatch[]): void {
   if (!g_allMatchesCache.data?.length || !liveMatches.length) return;
   const byId = new Map(liveMatches.map(m => [m.id, m]));

@@ -311,6 +311,9 @@ function mapEvent(e: SSEvent, sport: SportConfig): UnifiedMatch | null {
   };
 }
 
+// Track 403s to avoid spamming logs — log once per sport slug per process run
+const _ss403Logged = new Set<string>();
+
 /** Shared fetch helper with browser-like headers. Returns null on any error. */
 async function ssGet<T>(url: string, timeoutMs = 8000): Promise<T | null> {
   try {
@@ -326,9 +329,27 @@ async function ssGet<T>(url: string, timeoutMs = 8000): Promise<T | null> {
       cache:  'no-store',
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Deduplicate 403 logs — one per unique URL path segment so we don't
+      // spam the PM2 log with hundreds of identical "403 blocked" lines.
+      const logKey = url.replace(/\d{4}-\d{2}-\d{2}/, 'DATE').slice(0, 80);
+      if (res.status === 403) {
+        if (!_ss403Logged.has(logKey)) {
+          _ss403Logged.add(logKey);
+          console.warn(`[SofaScore] 403 Forbidden — IP may be blocked by SofaScore. URL: ${logKey}`);
+        }
+      } else {
+        console.warn(`[SofaScore] HTTP ${res.status} for ${logKey}`);
+      }
+      return null;
+    }
+    // Clear 403 flag if a request succeeds (IP unblocked / rotated)
+    const logKey = url.replace(/\d{4}-\d{2}-\d{2}/, 'DATE').slice(0, 80);
+    _ss403Logged.delete(logKey);
     return (await res.json()) as T;
-  } catch {
+  } catch (e) {
+    const short = url.slice(0, 80);
+    console.warn(`[SofaScore] Fetch error for ${short}: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
 }
