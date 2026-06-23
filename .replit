@@ -62,8 +62,9 @@ VAPID_PUBLIC_KEY = "BGuk5Un9FsDz3uAwVngkeLmMsFpjI10Y-T1RNnyoWDvsHILFGcVMFyhzZVcn
 VAPID_SUBJECT = "mailto:hello@betcheza.co.ke"
 DB_USER = "admin_betcheza"
 NODE_ENV = "development"
-DISABLE_FOTMOB = "true"
-DISABLE_SOFASCORE = "true"
+DISABLE_FOTMOB = "false"
+DISABLE_SOFASCORE = "false"
+CF_WORKER_URL = "https://betcheza-proxy.patrickndungu-pnn.workers.dev"
 
 [deployment]
 deploymentTarget = "autoscale"
