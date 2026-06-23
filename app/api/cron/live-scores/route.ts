@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache, patchScoresFromSupplementary } from '@/lib/api/unified-sports-api';
 import { fetchCamel1Matches } from '@/lib/api/camel1';
+import { fetchSofaScoreLiveMatches } from '@/lib/api/sofascore';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { listPushSubscriptions } from '@/lib/notification-store';
 import { sendPushToSubscription } from '@/lib/push-sender';
@@ -66,11 +67,18 @@ export async function GET(req: NextRequest) {
 
     const matches = await getLiveMatches();
 
-    // Even when ESPN is down (0 live matches), try camel1 as a score fallback.
-    // This patches null-score matches (fetched as 'scheduled') with real scores
-    // from camel1.tv, which works independently of the ESPN circuit breaker.
+    // Even when ESPN is down (0 live matches), try supplementary sources for scores.
+    // Both run fire-and-forget so they don't block the cron response.
+
+    // Camel1: scrapes camel1.tv RSC payload — works independently of ESPN.
     fetchCamel1Matches()
       .then(camelMatches => { if (camelMatches.length > 0) patchScoresFromSupplementary(camelMatches); })
+      .catch(() => {});
+
+    // SofaScore: official-style free JSON API — covers 35+ sports with real
+    // scores and match minute. Works from VPS; returns empty on Replit (403).
+    fetchSofaScoreLiveMatches()
+      .then(ssLive => { if (ssLive.length > 0) patchScoresFromSupplementary(ssLive); })
       .catch(() => {});
 
     if (matches.length === 0) {

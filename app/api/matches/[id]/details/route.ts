@@ -1078,18 +1078,37 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         resolvedStatus = 'finished';
       } else if (!summary) {
         // ESPN summary unavailable (timeout / circuit open).
-        // Fall back to kickoff-time inference so the page still shows live/finished
-        // even when the ESPN API can't be reached from this server.
+        // Step 1: Try SofaScore for a real score — works from VPS even when ESPN is down.
         const elapsedMin = (now - kickoffMs) / 60_000;
-        if (elapsedMin >= 1 && elapsedMin <= 130) {
-          // Within the live window (0–130 min): match is almost certainly in progress.
-          resolvedStatus = elapsedMin > 45 && elapsedMin < 55 ? 'halftime' : 'live';
-          g.__detailsCache!.delete(cacheKey);
-          console.info(`[match details] Time-based live inference: ${resolvedId} elapsed=${Math.round(elapsedMin)}min → ${resolvedStatus}`);
-        } else if (elapsedMin > 130) {
-          // Past the live window with no ESPN data — almost certainly finished.
-          resolvedStatus = 'finished';
-          g.__detailsCache!.delete(cacheKey);
+        if (elapsedMin >= 1) {
+          const sportSlug = match.sport?.slug === 'soccer' ? 'football' : (match.sport?.slug ?? 'football');
+          const ssScore = await import('@/lib/api/sofascore')
+            .then(mod => mod.findSofaScoreLiveScore(match.homeTeam.name, match.awayTeam.name, sportSlug))
+            .catch(() => null);
+
+          if (ssScore && ssScore.status !== 'scheduled') {
+            // SofaScore has real live data — use it
+            resolvedStatus    = ssScore.status;
+            resolvedHomeScore = ssScore.homeScore;
+            resolvedAwayScore = ssScore.awayScore;
+            if (ssScore.minute !== null) resolvedMinute = ssScore.minute;
+            g.__detailsCache!.delete(cacheKey);
+            console.info(
+              `[match details] SofaScore fallback: ${resolvedId} → ${resolvedStatus} ` +
+              `${ssScore.homeScore}-${ssScore.awayScore} min=${ssScore.minute}`
+            );
+          } else if (elapsedMin <= 130) {
+            // Step 2: SofaScore had no data — infer status from the clock
+            resolvedStatus = elapsedMin > 45 && elapsedMin < 55 ? 'halftime' : 'live';
+            g.__detailsCache!.delete(cacheKey);
+            console.info(
+              `[match details] Time-based inference: ${resolvedId} elapsed=${Math.round(elapsedMin)}min → ${resolvedStatus}`
+            );
+          } else {
+            // Step 3: Past 130 min with no data — almost certainly finished
+            resolvedStatus = 'finished';
+            g.__detailsCache!.delete(cacheKey);
+          }
         }
       }
     }
