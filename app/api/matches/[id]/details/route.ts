@@ -1076,6 +1076,21 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       } else if (kickoffMs < now - TWO_HOURS_MS && !espnStatus && summary) {
         // Summary exists but no recognizable status — assume finished for past matches
         resolvedStatus = 'finished';
+      } else if (!summary) {
+        // ESPN summary unavailable (timeout / circuit open).
+        // Fall back to kickoff-time inference so the page still shows live/finished
+        // even when the ESPN API can't be reached from this server.
+        const elapsedMin = (now - kickoffMs) / 60_000;
+        if (elapsedMin >= 1 && elapsedMin <= 130) {
+          // Within the live window (0–130 min): match is almost certainly in progress.
+          resolvedStatus = elapsedMin > 45 && elapsedMin < 55 ? 'halftime' : 'live';
+          g.__detailsCache!.delete(cacheKey);
+          console.info(`[match details] Time-based live inference: ${resolvedId} elapsed=${Math.round(elapsedMin)}min → ${resolvedStatus}`);
+        } else if (elapsedMin > 130) {
+          // Past the live window with no ESPN data — almost certainly finished.
+          resolvedStatus = 'finished';
+          g.__detailsCache!.delete(cacheKey);
+        }
       }
     }
     // Also treat ESPN "post" status that slipped through normalization
