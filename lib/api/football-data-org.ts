@@ -54,14 +54,15 @@ interface FDLeague {
 }
 
 const FD_LEAGUES: FDLeague[] = [
-  { code: 'PL', leagueId: 7001, leagueName: 'Premier League', country: 'England', countryCode: 'GB', tier: 1 },
-  { code: 'PD', leagueId: 7002, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES', tier: 1 },
-  { code: 'SA', leagueId: 7003, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT', tier: 1 },
+  { code: 'WC',  leagueId: 7000, leagueName: 'FIFA World Cup', country: 'World', countryCode: 'INT', tier: 1 },
+  { code: 'PL',  leagueId: 7001, leagueName: 'Premier League', country: 'England', countryCode: 'GB', tier: 1 },
+  { code: 'PD',  leagueId: 7002, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES', tier: 1 },
+  { code: 'SA',  leagueId: 7003, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT', tier: 1 },
   { code: 'BL1', leagueId: 7004, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE', tier: 1 },
   { code: 'FL1', leagueId: 7005, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR', tier: 1 },
   { code: 'DED', leagueId: 7006, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL', tier: 1 },
   { code: 'PPL', leagueId: 7007, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT', tier: 1 },
-  { code: 'CL', leagueId: 7008, leagueName: 'UEFA Champions League', country: 'Europe', countryCode: 'EU', tier: 1 },
+  { code: 'CL',  leagueId: 7008, leagueName: 'UEFA Champions League', country: 'Europe', countryCode: 'EU', tier: 1 },
   { code: 'ELC', leagueId: 7009, leagueName: 'Championship', country: 'England', countryCode: 'GB', tier: 2 },
   { code: 'BSA', leagueId: 7010, leagueName: 'Brasileirão', country: 'Brazil', countryCode: 'BR', tier: 1 },
 ];
@@ -136,9 +137,10 @@ async function fetchLeagueMatches(league: FDLeague, apiKey: string): Promise<Uni
     const r = await fetch(url, {
       headers: { 'X-Auth-Token': apiKey, Accept: 'application/json' },
       next: { revalidate: 900 },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) {
+      console.warn(`[football-data.org] HTTP ${r.status} for ${league.code} — ${r.statusText}`);
       cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });
       return [];
     }
@@ -150,7 +152,9 @@ async function fetchLeagueMatches(league: FDLeague, apiKey: string): Promise<Uni
     }
     cache.set(ck, { data: out, expires: Date.now() + CACHE_MS });
     return out;
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[football-data.org] fetch error for ${league.code}: ${msg}`);
     cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });
     return [];
   }
@@ -159,17 +163,22 @@ async function fetchLeagueMatches(league: FDLeague, apiKey: string): Promise<Uni
 /**
  * Fetch matches from football-data.org. Returns an empty array if the API
  * key is missing OR every league fails (free tier rate-limit kicks in fast).
+ * Sequential with 700ms delay between leagues to stay under 10 req/min limit.
  */
 export async function fetchFootballDataOrgMatches(): Promise<UnifiedMatch[]> {
   const apiKey = process.env.FOOTBALL_DATA_API_KEY;
-  if (!apiKey) return [];
-  // Stagger requests slightly to stay under the 10/min free-tier limit.
+  if (!apiKey) {
+    console.warn('[football-data.org] FOOTBALL_DATA_API_KEY not set — skipping');
+    return [];
+  }
   const out: UnifiedMatch[] = [];
   for (let i = 0; i < FD_LEAGUES.length; i++) {
     const league = FD_LEAGUES[i];
     const matches = await fetchLeagueMatches(league, apiKey);
     out.push(...matches);
-    if (i < FD_LEAGUES.length - 1) await new Promise((r) => setTimeout(r, 80));
+    // 700ms between requests to stay well under the 10 req/min free-tier limit.
+    if (i < FD_LEAGUES.length - 1) await new Promise((r) => setTimeout(r, 700));
   }
+  console.log(`[football-data.org] fetched ${out.length} matches from ${FD_LEAGUES.length} competitions`);
   return out;
 }

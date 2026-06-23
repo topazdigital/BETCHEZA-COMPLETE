@@ -159,6 +159,7 @@ async function fetchDay(dateStr: string): Promise<UnifiedMatch[]> {
       },
     }).finally(() => clearTimeout(timer));
     if (!r.ok) {
+      console.warn(`[FotMob] HTTP ${r.status} for date ${dateStr} — IP may be blocked`);
       cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });
       return [];
     }
@@ -176,7 +177,9 @@ async function fetchDay(dateStr: string): Promise<UnifiedMatch[]> {
     }
     cache.set(ck, { data: out, expires: Date.now() + CACHE_MS });
     return out;
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[FotMob] fetch error for date ${dateStr}: ${msg}`);
     cache.set(ck, { data: [], expires: Date.now() + CACHE_MS });
     return [];
   }
@@ -200,5 +203,10 @@ export async function fetchFotMobMatches(): Promise<UnifiedMatch[]> {
   const results = await Promise.allSettled(days.map(fetchDay));
   const out: UnifiedMatch[] = [];
   for (const r of results) if (r.status === 'fulfilled') out.push(...r.value);
+  if (out.length > 0) {
+    console.log(`[FotMob] fetched ${out.length} matches across ${days.length} days`);
+  } else {
+    console.warn('[FotMob] 0 matches returned — may be blocked or rate-limited');
+  }
   return out;
 }
