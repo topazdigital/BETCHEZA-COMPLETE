@@ -1,7 +1,7 @@
 'use client';
 
 import useSWR from 'swr';
-import { ExternalLink, TrendingUp, RefreshCw } from 'lucide-react';
+import { ExternalLink, TrendingUp, RefreshCw, Radio } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatOdds } from '@/lib/utils/odds-converter';
 import { useUserSettings } from '@/contexts/user-settings-context';
@@ -15,30 +15,60 @@ interface BookmakerLine {
   links?: { home?: string; draw?: string; away?: string };
 }
 
+interface ApiResponse {
+  lines: BookmakerLine[];
+  hasDraw: boolean;
+  status?: string;
+  isFinished?: boolean;
+  isLive?: boolean;
+}
+
 interface SgoOddsPanelProps {
   matchId: string;
   homeTeam: string;
   awayTeam: string;
   hasDraw?: boolean;
+  matchStatus?: string;
 }
+
+const FINISHED_STATUSES = new Set([
+  'finished', 'ft', 'full-time', 'final', 'ended', 'post',
+  'complete', 'completed', 'aet', 'pen',
+]);
+const LIVE_STATUSES = new Set([
+  'live', 'in-progress', 'inprogress', 'halftime',
+  'extra_time', 'extratime', 'penalties',
+]);
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 const BK_PALETTES: Record<string, { bg: string; text: string }> = {
-  pinnacle:       { bg: 'bg-yellow-500',   text: 'text-yellow-950' },
-  bet365:         { bg: 'bg-emerald-600',   text: 'text-white' },
-  '1xbet':        { bg: 'bg-blue-600',      text: 'text-white' },
-  '1xBet':        { bg: 'bg-blue-600',      text: 'text-white' },
-  draftkings:     { bg: 'bg-emerald-800',   text: 'text-white' },
-  fanduel:        { bg: 'bg-blue-800',      text: 'text-white' },
-  betway:         { bg: 'bg-green-700',     text: 'text-white' },
-  williamhill:    { bg: 'bg-blue-900',      text: 'text-white' },
-  bwin:           { bg: 'bg-rose-700',      text: 'text-white' },
-  unibet:         { bg: 'bg-green-600',     text: 'text-white' },
-  betfair:        { bg: 'bg-orange-500',    text: 'text-white' },
-  ladbrokes:      { bg: 'bg-red-700',       text: 'text-white' },
-  coral:          { bg: 'bg-blue-500',      text: 'text-white' },
-  paddy:          { bg: 'bg-emerald-500',   text: 'text-white' },
+  pinnacle:         { bg: 'bg-yellow-500',   text: 'text-yellow-950' },
+  bet365:           { bg: 'bg-emerald-600',   text: 'text-white' },
+  '1xbet':          { bg: 'bg-blue-600',      text: 'text-white' },
+  onexbet:          { bg: 'bg-blue-600',      text: 'text-white' },
+  draftkings:       { bg: 'bg-emerald-800',   text: 'text-white' },
+  fanduel:          { bg: 'bg-blue-800',      text: 'text-white' },
+  betway:           { bg: 'bg-green-700',     text: 'text-white' },
+  williamhill:      { bg: 'bg-blue-900',      text: 'text-white' },
+  bwin:             { bg: 'bg-rose-700',      text: 'text-white' },
+  'unibet_eu':      { bg: 'bg-green-600',     text: 'text-white' },
+  'unibet_uk':      { bg: 'bg-green-600',     text: 'text-white' },
+  unibet:           { bg: 'bg-green-600',     text: 'text-white' },
+  betfair_ex_eu:    { bg: 'bg-orange-500',    text: 'text-white' },
+  betfair_ex_uk:    { bg: 'bg-orange-500',    text: 'text-white' },
+  ladbrokes_uk:     { bg: 'bg-red-700',       text: 'text-white' },
+  coral:            { bg: 'bg-blue-500',      text: 'text-white' },
+  betmgm:           { bg: 'bg-purple-700',    text: 'text-white' },
+  '888sport':       { bg: 'bg-amber-500',     text: 'text-amber-950' },
+  sportybet:        { bg: 'bg-green-500',     text: 'text-white' },
+  marathonbet:      { bg: 'bg-indigo-600',    text: 'text-white' },
+  bovada:           { bg: 'bg-rose-600',      text: 'text-white' },
+  coolbet:          { bg: 'bg-cyan-600',      text: 'text-white' },
+  nordicbet:        { bg: 'bg-sky-600',       text: 'text-white' },
+  boylesports:      { bg: 'bg-teal-600',      text: 'text-white' },
+  mybookieag:       { bg: 'bg-fuchsia-600',   text: 'text-white' },
+  betonlineag:      { bg: 'bg-violet-600',    text: 'text-white' },
 };
 
 const BK_COLORS = [
@@ -46,42 +76,65 @@ const BK_COLORS = [
   'bg-rose-500', 'bg-sky-500', 'bg-teal-500', 'bg-fuchsia-500',
 ];
 
-function bkStyle(display: string): { bg: string; text: string } {
-  const key = display.toLowerCase().replace(/\s+/g, '');
+function bkStyle(bookmakerKey: string, display: string): { bg: string; text: string } {
+  const key = bookmakerKey.toLowerCase().replace(/\s+/g, '');
   if (BK_PALETTES[key]) return BK_PALETTES[key];
-  if (BK_PALETTES[display]) return BK_PALETTES[display];
+  const dispKey = display.toLowerCase().replace(/\s+/g, '');
+  if (BK_PALETTES[dispKey]) return BK_PALETTES[dispKey];
   const idx = display.charCodeAt(0) % BK_COLORS.length;
   return { bg: BK_COLORS[idx], text: 'text-white' };
 }
 
-function BookmakerBadge({ display }: { display: string }) {
-  const { bg, text } = bkStyle(display);
+function BookmakerBadge({ bookmaker, display }: { bookmaker: string; display: string }) {
+  const { bg, text } = bkStyle(bookmaker, display);
   return (
-    <div className="flex flex-col items-center gap-0.5 min-w-[52px]">
+    <div className="flex flex-col items-center gap-0.5 min-w-[56px]">
       <span className={cn(
-        'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[9px] font-black',
+        'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[9px] font-black',
         bg, text
       )}>
         {display.slice(0, 2).toUpperCase()}
       </span>
-      <span className="max-w-[60px] truncate text-[9px] text-muted-foreground leading-tight text-center">
+      <span className="max-w-[64px] truncate text-[9px] text-muted-foreground leading-tight text-center">
         {display}
       </span>
     </div>
   );
 }
 
-export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: SgoOddsPanelProps) {
+export function SgoOddsPanel({
+  matchId,
+  homeTeam,
+  awayTeam,
+  hasDraw = true,
+  matchStatus = '',
+}: SgoOddsPanelProps) {
   const { settings } = useUserSettings();
+  const isFinishedClient = FINISHED_STATUSES.has((matchStatus || '').toLowerCase());
+  const isLiveClient     = LIVE_STATUSES.has((matchStatus || '').toLowerCase());
 
-  const { data, isLoading, mutate } = useSWR<{ lines: BookmakerLine[]; hasDraw: boolean }>(
-    `/api/matches/${matchId}/bookmaker-odds`,
+  // Don't even fetch if we know the match is finished client-side
+  const shouldFetch = !isFinishedClient;
+
+  const { data, isLoading, mutate } = useSWR<ApiResponse>(
+    shouldFetch ? `/api/matches/${matchId}/bookmaker-odds` : null,
     fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 120_000 },
+    {
+      revalidateOnFocus: false,
+      // Poll live matches every 60 s; pre-match every 5 min
+      refreshInterval: isLiveClient ? 60_000 : 300_000,
+      dedupingInterval: isLiveClient ? 60_000 : 300_000,
+    },
   );
 
-  const lines = data?.lines ?? [];
+  // Gate: server also returns isFinished; respect both client and server signal
+  if (isFinishedClient || data?.isFinished) return null;
+
+  const lines    = data?.lines ?? [];
   const showDraw = data?.hasDraw ?? hasDraw;
+  const isLive   = data?.isLive ?? isLiveClient;
+
+  const panelLabel = isLive ? 'Live Bookmaker Odds' : 'Bookmaker Odds';
 
   const outcomes: Array<{ key: 'home' | 'draw' | 'away'; label: string; sublabel: string }> = [
     { key: 'home', label: '1', sublabel: homeTeam },
@@ -101,8 +154,11 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
     return (
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2.5">
-          <TrendingUp className="h-3.5 w-3.5 text-primary animate-pulse" />
-          <h3 className="text-xs font-bold uppercase tracking-wide">Live Bookmaker Odds</h3>
+          {isLiveClient
+            ? <Radio className="h-3.5 w-3.5 text-red-500 animate-pulse" />
+            : <TrendingUp className="h-3.5 w-3.5 text-primary animate-pulse" />
+          }
+          <h3 className="text-xs font-bold uppercase tracking-wide">{panelLabel}</h3>
         </div>
         <div className="p-3 space-y-2">
           {[0, 1, 2].map(i => (
@@ -122,13 +178,18 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
     return (
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2.5">
-          <TrendingUp className="h-3.5 w-3.5 text-primary" />
-          <h3 className="text-xs font-bold uppercase tracking-wide">Live Bookmaker Odds</h3>
+          {isLiveClient
+            ? <Radio className="h-3.5 w-3.5 text-red-500" />
+            : <TrendingUp className="h-3.5 w-3.5 text-primary" />
+          }
+          <h3 className="text-xs font-bold uppercase tracking-wide">{panelLabel}</h3>
         </div>
-        <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
           <TrendingUp className="h-8 w-8 opacity-20" />
-          <p className="text-sm font-medium">No live bookmaker prices yet</p>
-          <p className="text-xs opacity-60">Odds will appear once published closer to kick-off.</p>
+          <p className="text-sm font-medium">No odds available yet</p>
+          <p className="text-xs opacity-60 max-w-[240px]">
+            Odds will appear closer to kick-off or once a configured odds API key is active.
+          </p>
           <button
             onClick={() => mutate()}
             className="mt-1 flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
@@ -146,8 +207,16 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
       {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-3.5 w-3.5 text-primary" />
-          <h3 className="text-xs font-bold uppercase tracking-wide">Live Bookmaker Odds</h3>
+          {isLive
+            ? <Radio className="h-3.5 w-3.5 text-red-500 animate-pulse" />
+            : <TrendingUp className="h-3.5 w-3.5 text-primary" />
+          }
+          <h3 className="text-xs font-bold uppercase tracking-wide">{panelLabel}</h3>
+          {isLive && (
+            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[9px] font-bold text-red-500 uppercase tracking-wide">
+              Live
+            </span>
+          )}
           <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
             {lines.length} bookmaker{lines.length === 1 ? '' : 's'}
           </span>
@@ -164,7 +233,6 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full min-w-max border-collapse">
-          {/* Bookmaker header row */}
           <thead>
             <tr className="border-b border-border/50 bg-muted/20">
               <th className="sticky left-0 z-10 bg-muted/20 px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap min-w-[60px]">
@@ -172,7 +240,7 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
               </th>
               {lines.map(line => (
                 <th key={line.bookmaker} className="px-2.5 py-2 text-center">
-                  <BookmakerBadge display={line.display} />
+                  <BookmakerBadge bookmaker={line.bookmaker} display={line.display} />
                 </th>
               ))}
             </tr>
@@ -183,15 +251,13 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
               const bestVal = best[key];
               return (
                 <tr key={key} className="hover:bg-muted/20 transition-colors">
-                  {/* Outcome label */}
                   <td className="sticky left-0 z-10 bg-card px-3 py-2.5 whitespace-nowrap">
                     <div className="flex flex-col leading-tight">
                       <span className="text-sm font-black text-foreground">{label}</span>
-                      <span className="text-[9px] text-muted-foreground truncate max-w-[80px]">{sublabel}</span>
+                      <span className="text-[9px] text-muted-foreground truncate max-w-[90px]">{sublabel}</span>
                     </div>
                   </td>
 
-                  {/* Odds per bookmaker */}
                   {lines.map(line => {
                     const val = line[key];
                     const href = line.links?.[key];
@@ -207,7 +273,6 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
                     }
 
                     const formatted = formatOdds(val as number, settings.oddsFormat);
-
                     const cellClass = cn(
                       'inline-block rounded-lg px-2.5 py-1 font-mono text-sm font-black tabular-nums transition-all',
                       isBest
@@ -240,7 +305,7 @@ export function SgoOddsPanel({ matchId, homeTeam, awayTeam, hasDraw = true }: Sg
         </table>
       </div>
 
-      {/* Best odds summary row */}
+      {/* Best price footer */}
       <div className="border-t border-border/50 bg-muted/10 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Best price:</span>
         {outcomes.map(({ key, label }) => {

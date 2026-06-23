@@ -2194,12 +2194,13 @@ export default function MatchDetailPage({ params }: PageProps) {
               </Card>
             )}
 
-            {/* Live bookmaker odds comparison — fetches fresh from SGO / ESPN / SharpAPI */}
+            {/* Bookmaker odds comparison — hidden for finished matches */}
             <SgoOddsPanel
               matchId={match.id}
               homeTeam={match.homeTeam.name}
               awayTeam={match.awayTeam.name}
               hasDraw={!NO_DRAW_SPORTS.has(sport)}
+              matchStatus={match.status}
             />
 
             {/* Spreads / Totals */}
