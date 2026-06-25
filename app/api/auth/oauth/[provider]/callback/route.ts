@@ -10,6 +10,25 @@ export const runtime = 'nodejs';
 const STATE_COOKIE = 'bcz_oauth_state';
 const NEXT_COOKIE = 'bcz_oauth_next';
 
+const MULTI_PART_TLDS = new Set([
+  'co.ke', 'co.uk', 'com.au', 'co.nz', 'co.za', 'co.in', 'co.jp', 'co.id',
+  'com.br', 'com.mx', 'com.ar', 'org.uk', 'me.uk', 'net.au',
+]);
+
+function getRootDomain(host: string): string | undefined {
+  const h = host.split(':')[0];
+  if (h === 'localhost' || h === '127.0.0.1' || h.endsWith('.replit.dev') || h.endsWith('.replit.app')) {
+    return undefined;
+  }
+  const parts = h.split('.');
+  if (parts.length < 2) return undefined;
+  const twoPartTld = parts.slice(-2).join('.');
+  if (MULTI_PART_TLDS.has(twoPartTld) && parts.length >= 3) {
+    return '.' + parts.slice(-3).join('.');
+  }
+  return '.' + parts.slice(-2).join('.');
+}
+
 async function getRedirectUri(req: NextRequest, provider: OAuthProvider): Promise<string> {
   const siteUrl = await getOAuthSiteUrl();
   if (siteUrl) return `${siteUrl}/api/auth/oauth/${provider}/callback`;
@@ -152,8 +171,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     return `${proto}://${host}`;
   })();
   const res = NextResponse.redirect(new URL(next.startsWith('/') ? next : '/', baseUrl));
-  res.cookies.delete(STATE_COOKIE);
-  res.cookies.delete(NEXT_COOKIE);
+  const rawHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const cookieDomain = getRootDomain(rawHost);
+  const deleteCookieOpts = {
+    path: '/',
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
+  };
+  res.cookies.set(STATE_COOKIE, '', { ...deleteCookieOpts, maxAge: 0 });
+  res.cookies.set(NEXT_COOKIE, '', { ...deleteCookieOpts, maxAge: 0 });
   return res;
 }
 
