@@ -496,8 +496,7 @@ function EmailModal({
       body: JSON.stringify({
         userIds,
         subject,
-        html: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px">${body.replace(/\n/g, '<br/>')}</div>`,
-        text: body,
+        rawBody: body,
         batchIndex,
         batchSize,
       }),

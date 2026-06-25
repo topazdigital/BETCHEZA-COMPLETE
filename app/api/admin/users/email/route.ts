@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { hasPermission } from '@/lib/permissions';
 import { query } from '@/lib/db';
 import { sendMail, renderTemplate } from '@/lib/mailer';
+import { buildBroadcastEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,13 +17,13 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
   const userIds: number[] = Array.isArray(body.userIds) ? (body.userIds as number[]) : [];
   const subject = String(body.subject || '').trim();
-  const html = String(body.html || body.body || '').trim();
-  const text = String(body.text || body.body || '').trim();
+  const rawBody = String(body.rawBody || body.text || body.body || '').trim();
+  const text = rawBody;
   const batchIndex = typeof body.batchIndex === 'number' ? body.batchIndex : 0;
   const batchSize = typeof body.batchSize === 'number' ? Math.max(1, body.batchSize) : 50;
 
   if (!subject) return NextResponse.json({ success: false, error: 'Subject is required' }, { status: 400 });
-  if (!html && !text) return NextResponse.json({ success: false, error: 'Body is required' }, { status: 400 });
+  if (!text) return NextResponse.json({ success: false, error: 'Body is required' }, { status: 400 });
   if (userIds.length === 0) return NextResponse.json({ success: false, error: 'No users selected' }, { status: 400 });
 
   // Slice just the batch we need
@@ -53,8 +54,12 @@ export async function POST(request: NextRequest) {
     try {
       const vars: Record<string, string> = { name: u.username || 'there', email: u.email, siteUrl };
       const renderedSubject = renderTemplate(subject, vars);
-      const renderedHtml = renderTemplate(html || `<p>${text}</p>`, vars);
-      const renderedText = renderTemplate(text || subject, vars);
+      const renderedBody = renderTemplate(text, vars);
+      const { html: renderedHtml, text: renderedText } = buildBroadcastEmail({
+        subject: renderedSubject,
+        body: renderedBody,
+        recipientName: u.username || undefined,
+      });
       const res = await sendMail({ to: u.email, subject: renderedSubject, html: renderedHtml, text: renderedText });
       if (res.ok) sent++;
       else failed++;
