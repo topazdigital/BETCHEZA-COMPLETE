@@ -71,9 +71,13 @@ const nextConfig = {
   ],
   async redirects() {
     return [
-      // NOTE: www → non-www is handled at Apache/DirectAdmin VirtualHost level only.
-      // Do NOT add it here — DA may already redirect www→non-www, and a duplicate
-      // redirect in Next.js causes ERR_TOO_MANY_REDIRECTS loops.
+      // www → non-www canonical redirect (safe now that Apache/DA is no longer in the chain)
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.betcheza.co.ke' }],
+        destination: 'https://betcheza.co.ke/:path*',
+        permanent: true,
+      },
       {
         source: '/3-daily-odds-strategy',
         destination: '/strategy',

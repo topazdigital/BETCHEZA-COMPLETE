@@ -132,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.success) {
-        setUser(data.user);
+        await checkAuth();
         return { success: true };
       }
 
@@ -155,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
-        setUser(data.user);
+        await checkAuth();
         return { success: true };
       }
       return { success: false, error: data.error || 'Verification failed' };
@@ -288,7 +288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
-        setUser(data.user);
+        await checkAuth();
         return { success: true };
       }
       return { success: false, error: data.error || 'Google sign-in failed' };
