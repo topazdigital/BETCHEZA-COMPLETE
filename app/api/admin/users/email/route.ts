@@ -34,10 +34,14 @@ export async function POST(request: NextRequest) {
 
   // Fetch emails + usernames from DB for this batch of IDs
   const placeholders = batchIds.map(() => '?').join(',');
-  let users: { email: string; username: string }[] = [];
+  let users: { email: string; username: string; display_name: string | null }[] = [];
   try {
-    const r = await query<{ email: string; username: string }>(
-      `SELECT email, username FROM users WHERE id IN (${placeholders}) AND email IS NOT NULL AND email != ''`,
+    const r = await query<{ email: string; username: string; display_name: string | null }>(
+      `SELECT u.email, u.username,
+              COALESCE(up.display_name, u.display_name, u.username) AS display_name
+       FROM users u
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
       batchIds
     );
     users = r.rows.filter(u => u.email);
@@ -52,13 +56,14 @@ export async function POST(request: NextRequest) {
   let failed = 0;
   for (const u of users) {
     try {
-      const vars: Record<string, string> = { name: u.username || 'there', email: u.email, siteUrl };
+      const displayName = u.display_name || u.username || 'there';
+      const vars: Record<string, string> = { name: displayName, email: u.email, siteUrl };
       const renderedSubject = renderTemplate(subject, vars);
       const renderedBody = renderTemplate(text, vars);
       const { html: renderedHtml, text: renderedText } = buildBroadcastEmail({
         subject: renderedSubject,
         body: renderedBody,
-        recipientName: u.username || undefined,
+        recipientName: displayName,
       });
       const res = await sendMail({ to: u.email, subject: renderedSubject, html: renderedHtml, text: renderedText });
       if (res.ok) sent++;
