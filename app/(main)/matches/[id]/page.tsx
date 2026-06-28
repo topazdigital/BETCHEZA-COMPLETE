@@ -2323,8 +2323,8 @@ export default function MatchDetailPage({ params }: PageProps) {
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
                   <TrendingUp className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p className="font-semibold">No odds available</p>
-                  <p className="text-sm mt-1">Odds will appear once published by bookmakers.</p>
+                  <p className="font-semibold">{isFinished ? 'Match has ended' : 'No odds available'}</p>
+                  <p className="text-sm mt-1">{isFinished ? 'Odds are no longer available for this match.' : 'Odds will appear once published by bookmakers.'}</p>
                 </CardContent>
               </Card>
             )}
@@ -3849,11 +3849,13 @@ function TeamStatsTab({
         <CardContent className="py-14 text-center text-muted-foreground">
           <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-semibold">
-            {isLive || isFinished ? 'No statistics yet' : 'Stats appear once the match starts'}
+            {isFinished ? 'No statistics available' : isLive ? 'Stats loading…' : 'Stats appear once the match starts'}
           </p>
           <p className="text-sm mt-1">
-            {isLive || isFinished
-              ? 'The data feed has not published team stats for this fixture.'
+            {isFinished
+              ? 'Statistics were not published for this fixture.'
+              : isLive
+              ? 'Live possession, shots and more will appear shortly.'
               : 'Live possession, shots and more will show here once the whistle blows.'}
           </p>
         </CardContent>

@@ -105,8 +105,13 @@ function generateSeasons(): { label: string; year: number | null }[] {
   const month = now.getMonth();
   const year = now.getFullYear();
   const currentSeasonStart = month >= 7 ? year : year - 1;
+  const nextSeasonStart = currentSeasonStart + 1;
 
   const seasons: { label: string; year: number | null }[] = [
+    {
+      label: `${nextSeasonStart}/${String(nextSeasonStart + 1).slice(-2)} (Next)`,
+      year: nextSeasonStart,
+    },
     {
       label: `${currentSeasonStart}/${String(currentSeasonStart + 1).slice(-2)} (Current)`,
       year: null,
@@ -916,10 +921,9 @@ function MiniStandingsTable({ rows, totalRows }: { rows: StandingRow[]; totalRow
 }
 
 function StandingsSection({ standings, standingsLoading }: { standings: StandingRow[]; standingsLoading: boolean }) {
-  const hasGroups = standings.some(s => s.group)
-
   const groupedStandings = useMemo(() => {
-    if (!hasGroups) return null
+    const groups = standings.filter(s => s.group)
+    if (groups.length === 0) return null
     const map: Record<string, StandingRow[]> = {}
     for (const row of standings) {
       const g = row.group || 'General'
@@ -927,14 +931,19 @@ function StandingsSection({ standings, standingsLoading }: { standings: Standing
       map[g].push(row)
     }
     return map
-  }, [standings, hasGroups])
+  }, [standings])
+
+  // True group stage = multiple distinct groups (World Cup, AFCON, etc.)
+  // A single "group" that covers all teams is just a labelled league table
+  const groupKeys = groupedStandings ? Object.keys(groupedStandings) : []
+  const isRealGroupStage = groupKeys.length >= 2
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-1.5 text-sm">
           <Trophy className="h-3.5 w-3.5 text-warning" />
-          {hasGroups ? 'Group Stage' : 'League Table'}
+          {isRealGroupStage ? 'Group Stage' : 'League Table'}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
@@ -946,8 +955,8 @@ function StandingsSection({ standings, standingsLoading }: { standings: Standing
             title="No standings available"
             hint="Standings are not published for this competition or the season hasn't started yet."
           />
-        ) : groupedStandings ? (
-          // Group-stage format: World Cup, AFCON, Copa America, Euro etc.
+        ) : isRealGroupStage && groupedStandings ? (
+          // True group-stage format: World Cup, AFCON, Copa America, Euro etc.
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {Object.entries(groupedStandings)
               .sort(([a], [b]) => a.localeCompare(b))
