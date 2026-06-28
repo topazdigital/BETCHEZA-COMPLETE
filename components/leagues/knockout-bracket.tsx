@@ -44,6 +44,7 @@ interface RoundOut {
 
 interface BracketResponse {
   isKnockout: boolean
+  isCupCompetition?: boolean
   rounds: RoundOut[]
   season: string
 }
@@ -85,8 +86,25 @@ export function KnockoutBracket({ leagueId, silentWhenEmpty = true }: KnockoutBr
 
   // Most leagues are league-format (Premier League, La Liga, etc.) — they
   // have no knockout rounds, so we just render nothing instead of a noisy
-  // empty state.
+  // empty state. For known cup competitions show a "coming soon" banner.
   if (!data?.isKnockout || data.rounds.length === 0) {
+    if (data?.isCupCompetition) {
+      return (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-warning" />
+            <h2 className="text-base font-semibold">Knockout Bracket</h2>
+          </div>
+          <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+            <Trophy className="h-5 w-5 shrink-0 opacity-40" />
+            <div>
+              <p className="font-medium text-foreground">Knockout stage not yet available</p>
+              <p className="mt-0.5 text-xs">The bracket will appear here once the group stage is complete and knockout fixtures are confirmed.</p>
+            </div>
+          </div>
+        </div>
+      )
+    }
     if (silentWhenEmpty) return null
     return (
       <div className="rounded-lg border border-dashed border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">

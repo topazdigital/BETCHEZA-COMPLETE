@@ -102,22 +102,19 @@ function titleCase(s: string) {
 
 function generateSeasons(): { label: string; year: number | null }[] {
   const now = new Date();
-  const month = now.getMonth();
+  const month = now.getMonth(); // 0=Jan … 11=Dec
   const year = now.getFullYear();
-  const currentSeasonStart = month >= 7 ? year : year - 1;
-  const nextSeasonStart = currentSeasonStart + 1;
+  // European seasons run Aug–May. By June (month≥5) the old season has
+  // ended and ESPN starts serving the new season's data as "current".
+  const currentSeasonStart = month >= 5 ? year : year - 1;
 
   const seasons: { label: string; year: number | null }[] = [
-    {
-      label: `${nextSeasonStart}/${String(nextSeasonStart + 1).slice(-2)} (Next)`,
-      year: nextSeasonStart,
-    },
     {
       label: `${currentSeasonStart}/${String(currentSeasonStart + 1).slice(-2)} (Current)`,
       year: null,
     },
   ];
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 5; i++) {
     const y = currentSeasonStart - i;
     seasons.push({ label: `${y}/${String(y + 1).slice(-2)}`, year: y });
   }

@@ -169,10 +169,32 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     byRound.set(round.code, roundBucket);
   }
 
+  // Known cup / knockout-format competition IDs. For these we show a
+  // "knockout stage not yet published" placeholder instead of nothing.
+  const CUP_LEAGUE_IDS = new Set([
+    29,  // FIFA World Cup
+    9,   // Champions League
+    10,  // Europa League
+    26,  // Conference League
+    25,  // Copa Libertadores
+    109, // FIFA Club World Cup
+    30,  // Euro Championship
+    44,  // FA Cup
+    45,  // EFL Cup
+    47,  // Copa del Rey
+    49,  // DFB Pokal
+    51,  // Coppa Italia
+    53,  // Coupe de France
+    77,  // US Open Cup
+    110, // FIFA U20 World Cup
+    211, // FIFA U17 World Cup
+  ]);
+  const isCupCompetition = CUP_LEAGUE_IDS.has(leagueId);
+
   // Some cups (FA Cup, MLS Playoffs in single-leg years) don't expose a
   // round headline at all; in that case we can't build a meaningful bracket.
   if (knockoutEventCount === 0) {
-    return NextResponse.json({ isKnockout: false, rounds: [], season: '' });
+    return NextResponse.json({ isKnockout: false, isCupCompetition, rounds: [], season: '' });
   }
 
   const rounds: RoundOut[] = [];

@@ -31,10 +31,25 @@ async function buildJackpotFromEspn(count: number, daysAhead: number = 10): Prom
       return (m.sport.slug === 'soccer' || m.sport.slug === 'football') && t <= cutoff.getTime();
     });
 
-    // Prefer top European leagues for authentic jackpot feel
-    const topLeagues = [1, 2, 3, 4, 5, 6, 7, 9, 10, 14, 15, 41];
+    // Prefer top leagues — World Cup + major active leagues first, then
+    // European top tiers, then everything else. Micro-leagues excluded from rest.
+    const topLeagues = [
+      29,  // FIFA World Cup (active Jun–Jul 2026)
+      11,  // MLS (active all summer)
+      12,  // Brazilian Serie A (active all summer)
+      13,  // Argentine Primera (active all summer)
+      25,  // Copa Libertadores
+      28,  // Chinese Super League (active all summer)
+      18,  // J League (active all summer)
+      27,  // Liga MX
+      14,  // Saudi Pro League
+      20,  // A-League
+      1, 2, 3, 4, 5, 6, 7, 9, 10, 15, 41, // European top tiers (off-season Jun–Jul but included as fallback)
+    ];
+    // Exclude very minor/local leagues that produce poor jackpot game quality
+    const excludedLeagues = [69, 70, 67, 68, 190, 191, 192, 193, 194]; // Irish, Welsh, Finnish, Icelandic, WC qualifiers
     const top = soccer.filter(m => topLeagues.includes(m.leagueId));
-    const rest = soccer.filter(m => !topLeagues.includes(m.leagueId));
+    const rest = soccer.filter(m => !topLeagues.includes(m.leagueId) && !excludedLeagues.includes(m.leagueId));
     const pool = [...top, ...rest].slice(0, count);
 
     if (pool.length < 5) return null; // Not enough real data
