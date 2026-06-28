@@ -20,6 +20,7 @@ import { MatchCardNew } from '@/components/matches/match-card-new';
 import { SportIcon, LeagueFlag } from '@/components/ui/team-logo';
 import { Spinner } from '@/components/ui/spinner';
 import { useMatches, useMatchStats } from '@/lib/hooks/use-matches';
+import useSWR from 'swr';
 import { ALL_SPORTS, ALL_LEAGUES } from '@/lib/sports-data';
 import { resolveLeagueSlug } from '@/lib/league-aliases';
 import type { Match } from '@/lib/api/sports-api';
@@ -392,15 +393,32 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
     }
   }, [selectedSportId, dateTab, calendarDate]);
 
-  const { matches: swrMatches, isLoading } = useMatches({
+  const { matches: swrMatches, isLoading: swrLoading } = useMatches({
     sportId: selectedSportId || undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
+
+  // For the Upcoming tab: fetch the full-season fixture list across all top leagues.
+  // This covers off-season periods when the rolling 7-day window has no matches.
+  const upcomingUrl = dateTab === 'upcoming'
+    ? `/api/matches/upcoming${selectedSportId ? `?sportId=${selectedSportId}` : ''}`
+    : null;
+  const { data: upcomingData, isLoading: upcomingLoading } = useSWR<Match[]>(
+    upcomingUrl,
+    async (url: string) => { const r = await fetch(url); return r.ok ? r.json() : []; },
+    { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 },
+  );
+  const upcomingMatches: Match[] = upcomingData ?? [];
+
+  const isLoading = dateTab === 'upcoming' ? upcomingLoading : swrLoading;
+
   // Use SSR-pre-fetched initialMatches only on first render when no sport is
   // selected. When a sport filter is active and SWR returns 0 results, show
   // empty state instead of falling back to all-sports SSR data (which caused
   // the basketball tab to show football matches).
-  const matches = swrMatches.length > 0
+  const matches = dateTab === 'upcoming'
+    ? upcomingMatches
+    : swrMatches.length > 0
     ? swrMatches
     : (selectedSportId == null ? (initialMatches || []) : []);
   const { matches: swrAllMatches } = useMatches();
@@ -457,12 +475,12 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
           return k === tomorrowKey && kickoff.getHours() < 6;
         });
       } else if (dateTab === 'upcoming') {
-        // Upcoming: only future scheduled matches, never finished ones
-        result = result.filter(m => {
-          if (m.status === 'finished' || m.status === 'cancelled' || m.status === 'postponed') return false;
-          const k = toLocalISODate(new Date(m.kickoffTime));
-          return k > todayKey && m.status === 'scheduled';
-        });
+        // The /api/matches/upcoming endpoint already returns only future scheduled
+        // matches — no additional date/status filter needed here.
+        // Just remove cancelled/postponed as a safety net.
+        result = result.filter(m =>
+          m.status !== 'cancelled' && m.status !== 'postponed'
+        );
       } else if (dateTab === 'calendar' && calendarDate) {
         // Calendar: show all statuses for the selected date (past dates show results)
         result = result.filter(m =>
@@ -663,7 +681,7 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
           </div>
 
           {/* Match list */}
-          {isLoading && allMatches.length === 0 ? (
+          {(dateTab === 'upcoming' ? upcomingLoading : (swrLoading && allMatches.length === 0)) ? (
             <div className="flex h-64 items-center justify-center"><Spinner className="h-8 w-8" /></div>
           ) : filteredMatches.length > 0 ? (
             <div className="space-y-3">
