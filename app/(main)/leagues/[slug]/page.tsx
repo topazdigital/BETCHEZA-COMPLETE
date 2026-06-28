@@ -159,11 +159,13 @@ export default function LeaguePage({ params }: PageProps) {
   const { matches: allMatches, isLoading: matchesLoading } = useMatches(matchesFilter)
 
   const isPastSeason = selectedSeason !== null
+  const [showFullSchedule, setShowFullSchedule] = useState(false)
 
   // Reset round filter whenever season changes
   const handleSeasonChange = (v: string) => {
     setSelectedSeason(v === 'current' ? null : Number(v))
     setSelectedRound(null)
+    setShowFullSchedule(false)
   }
 
   // Determine the effective league ID early (before `league` is derived from allMatches)
@@ -182,30 +184,52 @@ export default function LeaguePage({ params }: PageProps) {
     { revalidateOnFocus: false, dedupingInterval: 60 * 60_000 },
   )
 
-  const historicalMatches: Match[] = historicalRes?.matches ?? []
+  // Full season schedule for the current season (all matchweeks, not just 7-day window)
+  const { data: fullScheduleRes, isLoading: fullScheduleLoading } = useSWR<{
+    success: boolean;
+    matches: Match[];
+  }>(
+    showFullSchedule && !isPastSeason && effectiveLeagueId
+      ? `/api/leagues/${effectiveLeagueId}/matches?view=full`
+      : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60 * 60_000 },
+  )
 
-  // Compute available matchweek rounds from historical matches (sorted by round number)
+  const historicalMatches: Match[] = historicalRes?.matches ?? []
+  const fullScheduleMatches: Match[] = fullScheduleRes?.matches ?? []
+
+  // Compute available matchweek rounds from historical OR full-schedule matches
+  const roundSourceMatches = isPastSeason ? historicalMatches : (showFullSchedule ? fullScheduleMatches : [])
   const availableRounds = useMemo<string[]>(() => {
-    if (!isPastSeason || historicalMatches.length === 0) return []
+    if (roundSourceMatches.length === 0) return []
     const seen = new Set<string>()
     const rounds: string[] = []
-    const sorted = [...historicalMatches].sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime())
+    const sorted = [...roundSourceMatches].sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime())
     for (const m of sorted) {
       const r = (m as { roundName?: string | null }).roundName
       if (r && !seen.has(r)) { seen.add(r); rounds.push(r) }
     }
     return rounds
-  }, [isPastSeason, historicalMatches])
+  }, [roundSourceMatches])
 
-  // Apply round filter on top of historical matches
+  // Apply round filter on top of historical / full-schedule matches
   const filteredHistoricalMatches = useMemo(() => {
     if (!isPastSeason) return historicalMatches
     if (!selectedRound) return historicalMatches
     return historicalMatches.filter(m => (m as { roundName?: string | null }).roundName === selectedRound)
   }, [isPastSeason, historicalMatches, selectedRound])
 
+  const filteredFullScheduleMatches = useMemo(() => {
+    if (!showFullSchedule || isPastSeason) return fullScheduleMatches
+    if (!selectedRound) return fullScheduleMatches
+    return fullScheduleMatches.filter(m => (m as { roundName?: string | null }).roundName === selectedRound)
+  }, [showFullSchedule, isPastSeason, fullScheduleMatches, selectedRound])
+
   const matches = isPastSeason
     ? filteredHistoricalMatches
+    : showFullSchedule
+    ? filteredFullScheduleMatches
     : knownLeague
     // Client-side safety filter: must match BOTH leagueId AND sportId so that
     // a stale SWR cache can't bleed matches from other leagues onto this page.
@@ -494,8 +518,39 @@ export default function LeaguePage({ params }: PageProps) {
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
             {/* ── Main column: matches + standings table ─────────── */}
             <div className="min-w-0 space-y-3">
-              {/* Matchweek tabs — only shown for past seasons that have round data */}
-              {isPastSeason && availableRounds.length > 0 && !historicalLoading && (
+              {/* Full Schedule toggle — only on current season for known leagues */}
+              {!isPastSeason && effectiveLeagueId && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setShowFullSchedule(false); setSelectedRound(null) }}
+                    className={cn(
+                      "shrink-0 rounded-full border px-3 py-1 text-[10px] font-semibold transition-colors",
+                      !showFullSchedule
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card hover:border-primary"
+                    )}
+                  >
+                    Recent
+                  </button>
+                  <button
+                    onClick={() => { setShowFullSchedule(true); setSelectedRound(null) }}
+                    className={cn(
+                      "shrink-0 rounded-full border px-3 py-1 text-[10px] font-semibold transition-colors",
+                      showFullSchedule
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card hover:border-primary"
+                    )}
+                  >
+                    Full Season
+                  </button>
+                  {showFullSchedule && fullScheduleLoading && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+              )}
+
+              {/* Matchweek tabs — shown for past seasons OR full-schedule view */}
+              {availableRounds.length > 0 && !historicalLoading && !fullScheduleLoading && (
                 <div className="mb-2">
                   <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
                     <button
@@ -527,7 +582,7 @@ export default function LeaguePage({ params }: PageProps) {
                 </div>
               )}
 
-              {(matchesLoading || historicalLoading) ? (
+              {(matchesLoading || historicalLoading || (showFullSchedule && fullScheduleLoading)) ? (
                 <div className="flex h-32 items-center justify-center">
                   <Spinner className="h-6 w-6" />
                 </div>

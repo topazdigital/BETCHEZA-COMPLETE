@@ -5095,6 +5095,135 @@ export async function getHistoricalLeagueMatches(
   return result;
 }
 
+/**
+ * Fetch the full fixture list for the current season of a league.
+ * Unlike getAllMatches() (rolling 7-day window), this fetches the entire
+ * season from start to end — all played, live, and upcoming matches.
+ * Results are cached for 1 hour (upcoming schedule changes rarely).
+ */
+export async function getFullSeasonFixtures(leagueId: number): Promise<UnifiedMatch[]> {
+  const cacheKey = `full-season-${leagueId}`;
+  const cached = getCached<UnifiedMatch[]>(cacheKey, 60 * 60 * 1000); // 1h cache
+  if (cached) return cached;
+
+  const config = ESPN_LEAGUES.find(l => l.leagueId === leagueId);
+  if (!config) return [];
+
+  const now = new Date();
+  const month = now.getMonth(); // 0=Jan … 11=Dec
+  const year = now.getFullYear();
+
+  // European soccer: Aug–May. By June the new season starts.
+  // Other sports: use a straight 12-month season window.
+  let seasonStart: Date;
+  let seasonEnd: Date;
+
+  if (config.sportType === 'soccer') {
+    const seasonStartYear = month >= 5 ? year : year - 1; // Jun+ → new season
+    seasonStart = new Date(`${seasonStartYear}-07-01`);
+    seasonEnd   = new Date(`${seasonStartYear + 1}-07-31`);
+  } else {
+    // Generic: look back 3 months + ahead 9 months to capture the current season
+    seasonStart = new Date(now);
+    seasonStart.setMonth(seasonStart.getMonth() - 3);
+    seasonEnd = new Date(now);
+    seasonEnd.setMonth(seasonEnd.getMonth() + 9);
+  }
+
+  const h1Start = formatYYYYMMDD(seasonStart);
+  const h1End   = formatYYYYMMDD(new Date(Math.min(
+    new Date(`${seasonStart.getFullYear()}-12-31`).getTime(),
+    seasonEnd.getTime()
+  )));
+  const h2StartDate = new Date(`${seasonStart.getFullYear() + 1}-01-01`);
+  const needsH2 = h2StartDate <= seasonEnd;
+
+  const fetches: Promise<ESPNScoreboardResponseFull | null>[] = [
+    fetchESPN(config.sport, config.league, 'scoreboard', `${h1Start}-${h1End}`),
+  ];
+  if (needsH2) {
+    const h2Start = formatYYYYMMDD(h2StartDate);
+    const h2End   = formatYYYYMMDD(seasonEnd);
+    fetches.push(fetchESPN(config.sport, config.league, 'scoreboard', `${h2Start}-${h2End}`));
+  }
+
+  const [data1, data2] = await Promise.all(fetches);
+  const allEvents = [
+    ...(data1?.events ?? []),
+    ...((data2 as ESPNScoreboardResponseFull | null | undefined)?.events ?? []),
+  ];
+
+  if (allEvents.length === 0) return [];
+
+  const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+  const hasDraw = !noDrawSports.includes(config.sportType);
+
+  const matches: UnifiedMatch[] = allEvents.map((event) => {
+    const competition = event.competitions[0];
+    const homeCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'home');
+    const awayCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'away');
+    const homeTeamName = homeCompetitor?.team?.displayName || homeCompetitor?.team?.name || 'TBD';
+    const awayTeamName = awayCompetitor?.team?.displayName || awayCompetitor?.team?.name || 'TBD';
+    const status = mapESPNStatus(event.status);
+    const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw, config.sportType, homeTeamName, awayTeamName);
+
+    return {
+      id: `espn_${config.league.replace(/[^a-z0-9]/gi, '')}_${event.id}`,
+      externalId: event.id,
+      source: 'espn' as const,
+      sportId: config.sportId,
+      sportKey: `${config.sport}_${config.league}`,
+      leagueId: config.leagueId,
+      leagueKey: config.league,
+      homeTeam: {
+        id: homeCompetitor?.team?.id || '',
+        name: homeTeamName,
+        shortName: homeCompetitor?.team?.abbreviation || homeTeamName.split(' ').pop() || 'TBD',
+        logo: homeCompetitor?.team?.logo,
+        record: homeCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total')?.summary,
+      },
+      awayTeam: {
+        id: awayCompetitor?.team?.id || '',
+        name: awayTeamName,
+        shortName: awayCompetitor?.team?.abbreviation || awayTeamName.split(' ').pop() || 'TBD',
+        logo: awayCompetitor?.team?.logo,
+        record: awayCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total')?.summary,
+      },
+      kickoffTime: new Date(event.date),
+      status,
+      homeScore: homeCompetitor?.score !== undefined && homeCompetitor?.score !== null && homeCompetitor.score !== ''
+        ? parseInt(String(homeCompetitor.score), 10) : null,
+      awayScore: awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
+        ? parseInt(String(awayCompetitor.score), 10) : null,
+      league: {
+        id: config.leagueId,
+        name: config.leagueName,
+        slug: ALL_LEAGUES.find(l => l.id === config.leagueId)?.slug || config.league.replace(/\./g, '-'),
+        country: config.country,
+        countryCode: config.countryCode,
+        tier: 1,
+      },
+      sport: {
+        id: config.sportId,
+        name: ALL_SPORTS.find(s => s.id === config.sportId)?.name || config.sport,
+        slug: ALL_SPORTS.find(s => s.id === config.sportId)?.slug || config.sport,
+        icon: ALL_SPORTS.find(s => s.id === config.sportId)?.icon || config.sport,
+      },
+      odds,
+      markets,
+      tipsCount: 0,
+      venue: competition?.venue?.fullName,
+      roundName: (event as unknown as { week?: { number?: number } }).week?.number
+        ? `Round ${(event as unknown as { week?: { number?: number } }).week!.number}`
+        : null,
+    };
+  });
+
+  const result = matches.sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
+  setCache(cacheKey, result);
+  return result;
+}
+
 export async function getLiveMatches(): Promise<UnifiedMatch[]> {
   const allMatches = await getAllMatches();
   return allMatches.filter(m =>
