@@ -66,6 +66,119 @@ async function buildJackpotFromEspn(count: number, daysAhead: number = 10): Prom
   }
 }
 
+// ─── HTML scraping from prediction aggregator sites ────────────────────────────
+// Bookmaker JSON APIs are heavily Cloudflared. As a reliable alternative, scrape
+// from known prediction aggregator sites that always publish the real jackpot fixtures.
+
+async function tryHtmlFetch(urls: string[]): Promise<string | null> {
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-KE,en;q=0.9',
+          'Cache-Control': 'no-cache',
+        },
+        signal: AbortSignal.timeout(12000),
+        next: { revalidate: 0 },
+      });
+      if (!res.ok) continue;
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('html') && !ct.includes('text')) continue;
+      return await res.text();
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+/** Parse "Team A vs Team B" patterns from raw HTML */
+function parseMatchesFromHtml(html: string, maxCount: number): RawGame[] {
+  const games: RawGame[] = [];
+
+  // Pattern 1: explicit "vs" or "v" separator with surrounding context
+  // e.g. "Arsenal vs Chelsea", "Man United v Liverpool"
+  const vsPattern = /\b([A-Z][A-Za-z0-9\s'.\-&]{2,40}?)\s+(?:vs?\.?)\s+([A-Z][A-Za-z0-9\s'.\-&]{2,40}?)\b/g;
+  let m: RegExpExecArray | null;
+  const seen = new Set<string>();
+
+  while ((m = vsPattern.exec(html)) !== null && games.length < maxCount) {
+    const home = m[1].trim().replace(/\s+/g, ' ');
+    const away = m[2].trim().replace(/\s+/g, ' ');
+    // Skip noise: very short names, pure numbers, or obvious non-team strings
+    if (home.length < 3 || away.length < 3) continue;
+    if (/^\d+$/.test(home) || /^\d+$/.test(away)) continue;
+    const key = `${home.toLowerCase()}|${away.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    games.push({ home, away });
+  }
+
+  // Pattern 2: dash-separated table rows common in prediction sites
+  // e.g. "Arsenal - Chelsea" within a <td> or table cell
+  if (games.length < 3) {
+    const dashPattern = /\b([A-Z][A-Za-z0-9\s'.\-&]{2,30}?)\s+-\s+([A-Z][A-Za-z0-9\s'.\-&]{2,30}?)\b/g;
+    while ((m = dashPattern.exec(html)) !== null && games.length < maxCount) {
+      const home = m[1].trim();
+      const away = m[2].trim();
+      if (home.length < 3 || away.length < 3) continue;
+      if (/^\d+$/.test(home) || /^\d+$/.test(away)) continue;
+      const key = `${home.toLowerCase()}|${away.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      games.push({ home, away });
+    }
+  }
+
+  return games.slice(0, maxCount);
+}
+
+async function fetchSportPesaMegaFromWeb(count: number): Promise<RawGame[] | null> {
+  const html = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/sportpesa-mega-jackpot-prediction/',
+    'https://www.megajackpotpredictions.co.ke/sportpesa-mega-jackpot-prediction/',
+    'https://jackpot.ke/sportpesa-mega-jackpot/',
+    'https://www.jackpotpredictions.co.ke/sportpesa-mega-jackpot/',
+  ]);
+  if (!html) return null;
+  const games = parseMatchesFromHtml(html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] SportPesa Mega HTML scraped ${games.length} games`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchBetikaFromWeb(count: number): Promise<RawGame[] | null> {
+  const html = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/betika-grand-jackpot-prediction/',
+    'https://www.megajackpotpredictions.co.ke/betika-jackpot-prediction/',
+    'https://jackpot.ke/betika-jackpot/',
+    'https://www.jackpotpredictions.co.ke/betika-jackpot/',
+  ]);
+  if (!html) return null;
+  const games = parseMatchesFromHtml(html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Betika HTML scraped ${games.length} games`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchOdiBetsFromWeb(count: number): Promise<RawGame[] | null> {
+  const html = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/odibets-jackpot-prediction/',
+    'https://jackpot.ke/odibets-jackpot/',
+  ]);
+  if (!html) return null;
+  const games = parseMatchesFromHtml(html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] OdiBets HTML scraped ${games.length} games`);
+    return games;
+  }
+  return null;
+}
+
 // ─── Bookmaker fetchers ────────────────────────────────────────────────────────
 
 async function tryJsonFetch(urls: string[], extraHeaders?: Record<string, string>): Promise<unknown> {
@@ -122,8 +235,7 @@ interface BookmakerResult {
 }
 
 async function fetchBetikaGames(count: number): Promise<BookmakerResult> {
-  // Betika's website is JS-rendered (Angular SPA). Try their internal API endpoints
-  // with various authentication/header patterns.
+  // Try their internal API endpoints first
   const data = await tryJsonFetch([
     'https://www.betika.com/api/v1/bet?bet_type=jackpot&per_page=50&page=1',
     'https://www.betika.com/api/v1/jackpots/active',
@@ -134,18 +246,24 @@ async function fetchBetikaGames(count: number): Promise<BookmakerResult> {
 
   const d = data as Record<string, unknown> | null;
   const meta = d?.data as Record<string, unknown> | undefined;
-  return {
-    games: extractGames(data, count),
-    jackpotTitle: (meta?.name as string) || (meta?.title as string) || undefined,
-    deadline: (meta?.closing_time as string) || (meta?.deadline as string) || (meta?.expires_at as string) || undefined,
-    amount: (meta?.prize as string) || (meta?.amount as string) || undefined,
-  };
+  const apiGames = extractGames(data, count);
+  if (apiGames && apiGames.length >= 5) {
+    return {
+      games: apiGames,
+      jackpotTitle: (meta?.name as string) || (meta?.title as string) || undefined,
+      deadline: (meta?.closing_time as string) || (meta?.deadline as string) || (meta?.expires_at as string) || undefined,
+      amount: (meta?.prize as string) || (meta?.amount as string) || undefined,
+    };
+  }
+
+  // API blocked — try scraping from prediction aggregator sites
+  console.log('[jackpot-sync] Betika API unavailable, trying HTML scrapers');
+  const webGames = await fetchBetikaFromWeb(count);
+  return { games: webGames };
 }
 
 async function fetchSportPesaGames(count: number): Promise<RawGame[] | null> {
-  // SportPesa is behind Cloudflare bot protection — their API returns an HTML
-  // challenge page, not JSON.  Try several endpoints; if all fail use the ESPN
-  // upcoming-match cache so the jackpot page always has real games.
+  // SportPesa is behind Cloudflare bot protection — try JSON API first
   const data = await tryJsonFetch([
     'https://ke.sportpesa.com/api/v2/jackpots',
     'https://ke.sportpesa.com/api/v1/jackpots/mega',
@@ -157,8 +275,13 @@ async function fetchSportPesaGames(count: number): Promise<RawGame[] | null> {
   const fromApi = extractGames(data, count);
   if (fromApi && fromApi.length >= 5) return fromApi;
 
-  // API blocked — use real upcoming matches from the ESPN cache
-  console.log('[jackpot-sync] SportPesa API unavailable, falling back to ESPN upcoming matches');
+  // Try prediction aggregator HTML scraping (most reliable source of real fixtures)
+  console.log('[jackpot-sync] SportPesa API unavailable, trying HTML scrapers');
+  const fromWeb = await fetchSportPesaMegaFromWeb(count);
+  if (fromWeb && fromWeb.length >= 5) return fromWeb;
+
+  // Last resort: use real upcoming matches from the ESPN cache
+  console.log('[jackpot-sync] HTML scrapers failed, falling back to ESPN upcoming matches');
   return buildJackpotFromEspn(count, 14);
 }
 
@@ -168,7 +291,11 @@ async function fetchOdiBetsGames(count: number): Promise<RawGame[] | null> {
     'https://www.odibets.com/api/v1/jackpots',
     'https://odibets.com/api/jackpot',
   ]);
-  return extractGames(data, count);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  // HTML fallback
+  return fetchOdiBetsFromWeb(count);
 }
 
 async function fetchBetinGames(count: number): Promise<RawGame[] | null> {

@@ -127,6 +127,7 @@ export default function LeaguePage({ params }: PageProps) {
   const { slug } = use(params)
   const searchParams = useSearchParams()
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
+  const [selectedRound, setSelectedRound] = useState<string | null>(null)
 
   const normalisedSlug = resolveLeagueSlug(slug) || slug
   const knownLeague = ALL_LEAGUES.find(l => l.slug === normalisedSlug)
@@ -159,6 +160,12 @@ export default function LeaguePage({ params }: PageProps) {
 
   const isPastSeason = selectedSeason !== null
 
+  // Reset round filter whenever season changes
+  const handleSeasonChange = (v: string) => {
+    setSelectedSeason(v === 'current' ? null : Number(v))
+    setSelectedRound(null)
+  }
+
   // Determine the effective league ID early (before `league` is derived from allMatches)
   // so we can pass it to the historical SWR key without a circular dependency.
   const effectiveLeagueId = knownLeague?.id ?? rawEspnLeagueId ?? null
@@ -177,8 +184,28 @@ export default function LeaguePage({ params }: PageProps) {
 
   const historicalMatches: Match[] = historicalRes?.matches ?? []
 
+  // Compute available matchweek rounds from historical matches (sorted by round number)
+  const availableRounds = useMemo<string[]>(() => {
+    if (!isPastSeason || historicalMatches.length === 0) return []
+    const seen = new Set<string>()
+    const rounds: string[] = []
+    const sorted = [...historicalMatches].sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime())
+    for (const m of sorted) {
+      const r = (m as { roundName?: string | null }).roundName
+      if (r && !seen.has(r)) { seen.add(r); rounds.push(r) }
+    }
+    return rounds
+  }, [isPastSeason, historicalMatches])
+
+  // Apply round filter on top of historical matches
+  const filteredHistoricalMatches = useMemo(() => {
+    if (!isPastSeason) return historicalMatches
+    if (!selectedRound) return historicalMatches
+    return historicalMatches.filter(m => (m as { roundName?: string | null }).roundName === selectedRound)
+  }, [isPastSeason, historicalMatches, selectedRound])
+
   const matches = isPastSeason
-    ? historicalMatches
+    ? filteredHistoricalMatches
     : knownLeague
     // Client-side safety filter: must match BOTH leagueId AND sportId so that
     // a stale SWR cache can't bleed matches from other leagues onto this page.
@@ -408,7 +435,7 @@ export default function LeaguePage({ params }: PageProps) {
                   {/* Season Selector */}
                   <Select
                     value={selectedSeason === null ? 'current' : String(selectedSeason)}
-                    onValueChange={(v) => setSelectedSeason(v === 'current' ? null : Number(v))}
+                    onValueChange={handleSeasonChange}
                   >
                     <SelectTrigger className="h-7 gap-1 border-border bg-card/80 text-[10px] w-auto min-w-[120px]">
                       <Calendar className="h-3 w-3 text-muted-foreground" />
@@ -467,6 +494,39 @@ export default function LeaguePage({ params }: PageProps) {
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
             {/* ── Main column: matches + standings table ─────────── */}
             <div className="min-w-0 space-y-3">
+              {/* Matchweek tabs — only shown for past seasons that have round data */}
+              {isPastSeason && availableRounds.length > 0 && !historicalLoading && (
+                <div className="mb-2">
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+                    <button
+                      onClick={() => setSelectedRound(null)}
+                      className={cn(
+                        "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors",
+                        selectedRound === null
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card hover:border-primary"
+                      )}
+                    >
+                      All
+                    </button>
+                    {availableRounds.map(r => (
+                      <button
+                        key={r}
+                        onClick={() => setSelectedRound(r)}
+                        className={cn(
+                          "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors whitespace-nowrap",
+                          selectedRound === r
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-card hover:border-primary"
+                        )}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {(matchesLoading || historicalLoading) ? (
                 <div className="flex h-32 items-center justify-center">
                   <Spinner className="h-6 w-6" />

@@ -5355,15 +5355,16 @@ export async function getLeagueStandings(leagueId: number, seasonYear?: number):
   const config = ESPN_LEAGUES.find(l => l.leagueId === leagueId);
   if (!config) return [];
 
-  // Soccer uses a slightly different host/path that exposes table directly.
-  // For past seasons, use the core API with explicit year.
+  // Use the site.web.api URL for all cases — it accepts an optional ?season= param
+  // and works across leagues without needing to know the group ID (groups/1 was wrong
+  // for many leagues). For non-soccer sports fall back to site.api.espn.com same pattern.
   let url: string;
-  if (seasonYear) {
-    url = `https://sports.core.api.espn.com/v2/sports/${config.sport}/leagues/${config.league}/seasons/${seasonYear}/types/2/groups/1/standings`;
+  if (config.sportType === 'soccer') {
+    url = `https://site.web.api.espn.com/apis/v2/sports/soccer/${config.league}/standings`;
+    if (seasonYear) url += `?season=${seasonYear}`;
   } else {
-    url = config.sportType === 'soccer'
-      ? `https://site.web.api.espn.com/apis/v2/sports/soccer/${config.league}/standings`
-      : `https://site.api.espn.com/apis/v2/sports/${config.sport}/${config.league}/standings`;
+    url = `https://site.api.espn.com/apis/v2/sports/${config.sport}/${config.league}/standings`;
+    if (seasonYear) url += `?season=${seasonYear}`;
   }
 
   let data: ESPNStandingsResponse | null = null;

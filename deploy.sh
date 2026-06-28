@@ -5,6 +5,24 @@ BOLD='\033[1m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
+# ── NVM / Node PATH bootstrap ─────────────────────────────────────────────────
+# GitHub Actions runners and cron shells don't source ~/.bashrc / ~/.bash_profile
+# so NVM and the node/npm/pm2 binaries are missing from PATH. Source NVM here
+# before any node/npm/pm2 commands so the script works in all environments.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+# shellcheck disable=SC1091
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" --no-use
+# If NVM is installed but no node is in PATH yet, use the default/current version
+command -v node &>/dev/null || { nvm use default 2>/dev/null || nvm use node 2>/dev/null || true; }
+# Fallback: common manual install paths
+for _np in /usr/local/bin /usr/bin "$HOME/.local/bin" "$HOME/bin"; do
+  [ -x "$_np/node" ] && export PATH="$_np:$PATH" && break
+done
+# Add PM2 global bin if installed locally
+[ -d "$HOME/.npm-global/bin" ] && export PATH="$HOME/.npm-global/bin:$PATH"
+[ -d "$HOME/.local/lib/node_modules/.bin" ] && export PATH="$HOME/.local/lib/node_modules/.bin:$PATH"
+echo "[deploy] node: $(node --version 2>/dev/null || echo 'NOT FOUND') | npm: $(npm --version 2>/dev/null || echo 'NOT FOUND') | pm2: $(pm2 --version 2>/dev/null || echo 'NOT FOUND')"
+
 DOMAIN="betcheza.co.ke"
 DA_CONF="/usr/local/directadmin/data/users/admin/httpd.conf"
 
