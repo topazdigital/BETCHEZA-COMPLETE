@@ -714,31 +714,64 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
     })
   }
 
-  // ── BTTS — driven by h2h scoring patterns ──
+  // ── BTTS — driven by h2h scoring patterns + market prices + form ──
   if (isSoccer) {
-    // When we have H2H data use the actual rate (>50% = Yes).
-    // Without H2H, require both teams to be in strong attacking form (≥7/15) for Yes.
-    // The old default of 0.5 ≥ 0.45 always picked Yes when no data was available.
+    const bttsYesPrice = findMarketPrice(markets, "btts", n => /yes/i.test(n))
+      || findMarketPrice(markets, "both_teams_to_score", n => /yes/i.test(n))
+    const bttsNoPrice = findMarketPrice(markets, "btts", n => /^no$/i.test(n))
+      || findMarketPrice(markets, "both_teams_to_score", n => /^no$/i.test(n))
+
     const bttsYes = h2hCount > 0
       ? bttsRate > 0.5
-      : hF >= 7 && aF >= 7
+      : (() => {
+          // 1. Market price is the strongest signal when no H2H: lower price = more likely
+          if (bttsYesPrice && bttsNoPrice) return bttsYesPrice <= bttsNoPrice
+          // 2. Combined form: both teams showing any meaningful attacking output
+          //    Max form = 15 each; combined ≥ 6 means roughly 1 win + 1 draw between them
+          const combinedForm = hF + aF
+          // 3. Match openness: competitive odds suggest both sides will try to score
+          const isCompetitive = odds
+            ? odds.home >= 1.25 && odds.away >= 1.25
+            : true
+          // Yes when: combined form shows attacking intent AND match is competitive,
+          // OR one team is in great form (≥9) and the other is at least trying (≥3)
+          return isCompetitive && (
+            combinedForm >= 6 ||
+            (Math.max(hF, aF) >= 9 && Math.min(hF, aF) >= 3)
+          )
+        })()
+
+    // Confidence from signal strength
     const bttsConfBase = h2hCount > 0
       ? (bttsYes ? bttsRate : 1 - bttsRate) * 100
-      : (bttsYes ? 62 : 58)
-    const bttsYesPrice = findMarketPrice(markets, "btts", n => /yes/i.test(n))
-    const bttsNoPrice = findMarketPrice(markets, "btts", n => /^no$/i.test(n))
+      : (() => {
+          if (bttsYesPrice && bttsNoPrice) {
+            // Map price ratio to confidence (e.g. Yes 1.70 vs No 2.00 → ~60%)
+            const ratio = bttsYes
+              ? bttsNoPrice / bttsYesPrice
+              : bttsYesPrice / bttsNoPrice
+            return 50 + Math.min(16, (ratio - 1) * 25)
+          }
+          // Form-based confidence
+          return 53 + Math.min(10, (hF + aF) * 0.4)
+        })()
+
     picks.push({
       market: "Both Teams to Score",
       pick: bttsYes ? "Yes" : "No",
       odds: bttsYes ? bttsYesPrice : bttsNoPrice,
-      confidence: Math.round(Math.min(85, Math.max(50, bttsConfBase + (h2hCount > 0 ? 10 : 5)))),
+      confidence: Math.round(Math.min(85, Math.max(50, bttsConfBase + (h2hCount > 0 ? 10 : 4)))),
       reason: bttsYes
         ? h2hCount > 0
           ? `Both attacks are firing — ${Math.round(bttsRate * 100)}% BTTS rate in recent meetings.`
-          : `Both sides are in strong attacking form — expect both to threaten the goal.`
+          : bttsYesPrice && bttsNoPrice
+            ? `Bookmakers price both teams scoring as more likely — market leans Yes.`
+            : `Both sides show enough attacking output — expect both to threaten on goal.`
         : h2hCount > 0
           ? `At least one defence has been watertight in the recent run — leaning No.`
-          : `Defensive solidity or low attacking output from one side leans No.`,
+          : bttsYesPrice && bttsNoPrice
+            ? `Market prices favour a clean sheet — one side likely kept out.`
+            : `Low combined attacking form or dominant defence from one side — leaning No.`,
       evalKey: bttsYes ? 'btts_yes' : 'btts_no',
     })
   }
@@ -746,31 +779,38 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
   // ── Goal totals — soccer/football only ──
   if (isSoccer) {
     // Determine the expected goals figure. When we have H2H data use the average.
-    // Without H2H, read the O/U 2.5 market odds directly if available — lower
-    // price on Under means a tighter game is expected and vice versa.
-    // This prevents the old 2.55 default from always picking Over 2.5.
+    // Without H2H, use market odds → form → match balance as a cascade of signals.
     const estimatedGoals = (() => {
       if (h2hCount > 0) return avgGoals
-      // Try to read market odds for direction
-      const totMkt = markets?.find(m => (m.key ?? '').toLowerCase().includes('total'))
+      // 1. Market odds for totals: clearest signal
+      const totMkt = markets?.find(m =>
+        (m.key ?? '').toLowerCase().includes('total') ||
+        m.name.toLowerCase().includes('over')
+      )
       if (totMkt) {
         const overO = totMkt.outcomes.find(o => /over/i.test(o.name))
         const underO = totMkt.outcomes.find(o => /under/i.test(o.name))
         if (overO && underO) {
-          // Map odds to implied goals: lower Over price → more goals expected
-          return underO.price < overO.price ? 2.3 : 2.7
+          // Lower Over price → more goals expected; lower Under → fewer
+          if (overO.price < underO.price) return 2.75   // market favours Over 2.5
+          if (underO.price < overO.price) return 2.25   // market favours Under 2.5
+          // Dead heat in market — use combined form as tiebreaker
+          return (hF + aF) >= 10 ? 2.6 : 2.4
         }
       }
-      // No market data — use 1X2 implied strength. A strong favourite often
-      // dominates possession and limits chances; balanced games tend toward more goals.
+      // 2. 1X2 implied strength
       if (odds) {
         const favOdds = Math.min(odds.home, odds.away)
-        if (favOdds < 1.45) return 2.3   // Strong favourite — often a tight result
-        if (favOdds > 2.2) return 2.7   // Even contest — both sides attack
+        if (favOdds < 1.45) return 2.25   // Strong favourite — often dominates, fewer goals
+        if (favOdds > 2.20) return 2.75   // Even contest — open, attacking game
       }
-      return 2.5  // perfectly neutral — let the line decide direction via odds
+      // 3. Combined form as final tiebreaker (avoids 2.5 == line deadlock)
+      const combinedForm = hF + aF
+      if (combinedForm >= 14) return 2.75   // Both teams in great attacking form
+      if (combinedForm <= 5)  return 2.25   // Both sides defensive / poor form
+      return combinedForm >= 10 ? 2.6 : 2.4   // Slight lean based on form
     })()
-    const line = estimatedGoals >= 3 ? 2.5 : estimatedGoals >= 2 ? 2.5 : 1.5
+    const line = 2.5   // always predict on the most popular line
     const over = estimatedGoals > line
     const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
     const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
