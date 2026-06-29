@@ -3,6 +3,7 @@ import { getMatchById } from '@/lib/api/unified-sports-api';
 import { getSgoBookmakerLines } from '@/lib/api/sportsgameodds';
 import { getSharpApiBookmakerLines } from '@/lib/api/sharpapi';
 import { getTheOddsApiMatchLines } from '@/lib/api/the-odds-api-match';
+import { getSofaScoreOdds, extractSofaScoreEventId } from '@/lib/api/sofascore-odds';
 
 const NO_DRAW_SPORTS = new Set([
   'basketball', 'baseball', 'tennis', 'mma', 'boxing', 'golf',
@@ -76,9 +77,24 @@ export async function GET(
       }
     }
 
-    // ── Source 3: ESPN embedded odds ─────────────────────────────────────────
+    // ── Source 3: SofaScore odds (free, no key) ──────────────────────────────
+    // SofaScore provides h2h odds for ALL sports via their internal API.
+    // Particularly useful for tennis, cricket, basketball, table-tennis, etc.
+    // where TheOddsAPI quota often runs dry. Requires no API key — routed
+    // through the existing CF Worker proxy to bypass cloud-IP blocks.
+    if (lines.length === 0) {
+      const ssEventId = extractSofaScoreEventId(match.id);
+      if (ssEventId !== null) {
+        const ssLines = await getSofaScoreOdds(ssEventId, hasDraw);
+        if (ssLines.length > 0) {
+          lines = ssLines;
+        }
+      }
+    }
+
+    // ── Source 4: ESPN embedded odds ─────────────────────────────────────────
     // ESPN's scoreboard embeds one bookmaker's line (usually DraftKings).
-    // Use it as a single guaranteed line when both SGO and TheOddsAPI are empty.
+    // Use it as a single guaranteed line when SGO, TheOddsAPI, and SofaScore are empty.
     if (lines.length === 0 && match.odds && match.odds.bookmaker &&
         typeof match.odds.home === 'number' && typeof match.odds.away === 'number') {
       lines = [{
@@ -90,8 +106,8 @@ export async function GET(
       }];
     }
 
-    // ── Source 4: SharpAPI (DraftKings + FanDuel free tier) ──────────────────
-    // Only attempted when all three sources above returned nothing.
+    // ── Source 5: SharpAPI (DraftKings + FanDuel free tier) ──────────────────
+    // Only attempted when all four sources above returned nothing.
     if (lines.length === 0) {
       const sharpLines = await getSharpApiBookmakerLines(
         match.homeTeam.name,

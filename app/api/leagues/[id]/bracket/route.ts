@@ -296,7 +296,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         }
         const round = parseRound(ev.competitions?.[0]?.notes?.[0]?.headline, ev.season?.slug);
         legObjs.push({
-          matchId: ev.id,
+          matchId: `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${ev.id}`,
           date: ev.date,
           homeScore: hScore,
           awayScore: aScore,
