@@ -7,7 +7,7 @@
 // ============================================
 
 import type { UnifiedMatch } from './unified-sports-api';
-import { proxyFetch } from './proxy-fetch';
+import { directFetch } from './proxy-fetch';
 
 const AS_KEY_HEADER = 'x-apisports-key';
 
@@ -90,7 +90,7 @@ async function fetchFootball(apiKey: string, date: string): Promise<UnifiedMatch
 
   const url = `https://v3.football.api-sports.io/fixtures?date=${date}&timezone=UTC`;
   try {
-    const r = await proxyFetch(url, {
+    const r = await directFetch(url, {
       headers: { [AS_KEY_HEADER]: apiKey, Accept: 'application/json' },
       timeoutMs: 12_000,
     });
@@ -183,7 +183,7 @@ async function fetchGameSport(apiKey: string, cfg: SportConfig, date: string): P
 
   const url = `https://v3.${cfg.apiSubdomain}.api-sports.io/games?date=${date}&timezone=UTC`;
   try {
-    const r = await proxyFetch(url, {
+    const r = await directFetch(url, {
       headers: { [AS_KEY_HEADER]: apiKey, Accept: 'application/json' },
       timeoutMs: 10_000,
     });
@@ -287,7 +287,7 @@ async function fetchTennis(apiKey: string, date: string): Promise<UnifiedMatch[]
 
   const url = `https://v3.tennis.api-sports.io/games?date=${date}`;
   try {
-    const r = await proxyFetch(url, {
+    const r = await directFetch(url, {
       headers: { [AS_KEY_HEADER]: apiKey, Accept: 'application/json' },
       timeoutMs: 10_000,
     });

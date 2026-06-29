@@ -2,8 +2,11 @@
 // Pinnacle — public guest API (no key required)
 // Used by odds comparison sites. Returns Pinnacle's own lines
 // for football, basketball, tennis, esports, and more.
+// Routes through CF Worker proxy (Pinnacle blocks cloud IPs).
 // Returns empty silently on failure (rate limits, timeouts).
 // ============================================================
+
+import { proxyFetch } from './proxy-fetch';
 
 const PINNACLE_BASE = 'https://guest.api.arcadia.pinnacle.com/0.1';
 const CACHE_MS      = 5 * 60 * 1000;   // 5 min per sport
@@ -76,7 +79,7 @@ const marketCache  = new Map<number, { data: PinnacleMarketMatchup[]; expires: n
 
 async function pinnGet<T>(path: string, timeoutMs = 8000): Promise<T | null> {
   try {
-    const res = await fetch(`${PINNACLE_BASE}${path}`, {
+    const res = await proxyFetch(`${PINNACLE_BASE}${path}`, {
       headers: {
         'User-Agent':      UA,
         Accept:            'application/json',
@@ -85,8 +88,7 @@ async function pinnGet<T>(path: string, timeoutMs = 8000): Promise<T | null> {
         Referer:           'https://www.pinnacle.com/',
         'X-Api-Key':       'CmX2KcMrXuFmNg6YFbmTxE0y9CIrOi0R',  // public key used by the website
       },
-      signal: AbortSignal.timeout(timeoutMs),
-      cache:  'no-store',
+      timeoutMs,
     });
     if (!res.ok) return null;
     return (await res.json()) as T;

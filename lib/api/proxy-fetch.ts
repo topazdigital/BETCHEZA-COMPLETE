@@ -72,3 +72,22 @@ export async function proxyFetch(
 export function isProxyConfigured(): boolean {
   return Boolean(process.env.CF_WORKER_URL);
 }
+
+/**
+ * Direct fetch — bypasses the CF Worker proxy entirely.
+ * Use this for APIs that don't block Replit IPs (ESPN, api-sports, etc.)
+ * so CF Worker quota is reserved for SofaScore and FotMob only.
+ */
+export async function directFetch(
+  url: string,
+  options: ProxyFetchOptions = {},
+): Promise<Response> {
+  const { timeoutMs = 10_000, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...fetchOptions, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
