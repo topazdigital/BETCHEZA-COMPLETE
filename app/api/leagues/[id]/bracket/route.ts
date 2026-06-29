@@ -272,10 +272,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         const c = ev.competitions?.[0]?.competitors || [];
         const h = c.find(x => x.homeAway === 'home') || c[0];
         const a = c.find(x => x.homeAway === 'away') || c[1];
-        const hScore = h?.score != null && h.score !== '' ? Number(h.score) : null;
-        const aScore = a?.score != null && a.score !== '' ? Number(a.score) : null;
         const state = ev.status?.type?.state || 'pre';
         const completed = !!ev.status?.type?.completed;
+        // Only read scores when the match has actually started — ESPN returns
+        // score "0" even for pre-game events, which causes every upcoming
+        // match to show 0-0 instead of "Upcoming".
+        const hScore = state !== 'pre' && h?.score != null && h.score !== '' ? Number(h.score) : null;
+        const aScore = state !== 'pre' && a?.score != null && a.score !== '' ? Number(a.score) : null;
         if (state === 'in') anyInProgress = true;
         else if (state === 'pre') anyScheduled = true;
         if (completed) anyFinished = true;
