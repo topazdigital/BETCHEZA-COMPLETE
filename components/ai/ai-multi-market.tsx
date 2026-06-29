@@ -1,7 +1,7 @@
 "use client"
 
-import { Brain, Sparkles, Check, X, MinusCircle, TrendingUp, Lightbulb } from "lucide-react"
-import { useMemo, useState } from "react"
+import { Brain, Sparkles, Check, X, MinusCircle, TrendingUp, Lightbulb, Archive } from "lucide-react"
+import { useMemo, useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 
 interface Market {
@@ -33,6 +33,8 @@ interface AIMultiMarketProps {
     home?: { starters?: number; injuries?: number }
     away?: { starters?: number; injuries?: number }
   } | null
+  /** Match ID — used to snapshot pre-match odds to localStorage so they survive after the match ends */
+  matchId?: string
 }
 
 interface MarketPick {
@@ -71,10 +73,48 @@ export function AIMultiMarket({
   awayScore,
   status,
   lineups,
+  matchId,
 }: AIMultiMarketProps) {
   // Default to Smart AI — pure logic on form / H2H / lineups, ignores
   // bookmaker pricing for the SELECTION (price still shown so users see value).
   const [mode, setMode] = useState<'odds' | 'smart'>('smart')
+
+  // ── Pre-match odds snapshot ──────────────────────────────────────────────
+  // Bookmakers pull odds the moment a match kicks off / finishes. We snapshot
+  // them to localStorage when they're live so they can be shown (read-only) as
+  // "Pre-match odds" after the match ends — exactly like OddsPedia does.
+  const isFinalStatus =
+    status === 'finished' || status === 'final' || status === 'ft' || status === 'ended'
+
+  const [frozenOdds, setFrozenOdds]       = useState<{ home: number; draw?: number; away: number } | null>(null)
+  const [frozenMarkets, setFrozenMarkets] = useState<Market[] | null>(null)
+  const [usingFrozen, setUsingFrozen]     = useState(false)
+
+  useEffect(() => {
+    if (!matchId) return
+    const key = `betcheza_prematch_${matchId}`
+    if (odds && !isFinalStatus) {
+      // Save live odds while the match is upcoming / live
+      try {
+        localStorage.setItem(key, JSON.stringify({ odds, markets: markets ?? null }))
+      } catch { /* localStorage unavailable (SSR / private) */ }
+    } else if (isFinalStatus && !odds) {
+      // Match finished and bookmaker removed odds — restore from snapshot
+      try {
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          const snap = JSON.parse(raw)
+          setFrozenOdds(snap.odds ?? null)
+          setFrozenMarkets(snap.markets ?? null)
+          setUsingFrozen(true)
+        }
+      } catch { /* ignore parse errors */ }
+    }
+  }, [matchId, odds, markets, isFinalStatus])
+
+  // Use frozen odds as fallback when live odds have been pulled
+  const effectiveOdds    = odds ?? frozenOdds
+  const effectiveMarkets = markets ?? frozenMarkets
 
   // Picks recompute whenever any input changes (odds, form, h2h, markets, lineups).
   // We intentionally do NOT lock picks — the algorithm is deterministic so the
@@ -83,18 +123,18 @@ export function AIMultiMarket({
   const picks = useMemo(() => {
     if (mode === 'smart') {
       // Smart AI runs on form + H2H — doesn't require odds.
-      // This means picks survive for finished matches where odds have been pulled.
-      const hasAnyData = !!(homeForm || awayForm || (h2h && h2h.length > 0) || odds)
+      // Frozen odds (pre-match snapshot) are used here for display prices.
+      const hasAnyData = !!(homeForm || awayForm || (h2h && h2h.length > 0) || effectiveOdds)
       if (!hasAnyData) return []
-      return buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds: odds ?? null, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
+      return buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds: effectiveOdds ?? null, homeForm, awayForm, h2h, markets: effectiveMarkets || null, lineups: lineups || null })
     }
-    // Odds-based mode requires live odds
+    // Odds-based mode requires live odds (not frozen — live odds only)
     if (!odds) return []
     return buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
-  }, [mode, homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets, lineups])
+  }, [mode, homeTeam, awayTeam, sportSlug, odds, effectiveOdds, effectiveMarkets, homeForm, awayForm, h2h, markets, lineups])
 
   const isFinal =
-    (status === 'finished' || status === 'final' || status === 'ft' || status === 'ended') &&
+    isFinalStatus &&
     typeof homeScore === 'number' &&
     typeof awayScore === 'number'
 
@@ -140,6 +180,12 @@ export function AIMultiMarket({
             {isFinal && summary && (
               <span className="text-[10px] font-bold uppercase tracking-wide bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 px-1.5 py-0.5 rounded">
                 Settled · {summary.won}W / {summary.lost}L{summary.void ? ` / ${summary.void}V` : ''}
+              </span>
+            )}
+            {usingFrozen && (
+              <span className="flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide bg-sky-500/10 text-sky-600 border border-sky-500/25 px-1.5 py-0.5 rounded">
+                <Archive className="h-2.5 w-2.5 shrink-0" />
+                Pre-match odds
               </span>
             )}
           </div>

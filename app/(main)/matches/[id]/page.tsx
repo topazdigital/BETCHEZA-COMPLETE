@@ -1798,6 +1798,7 @@ export default function MatchDetailPage({ params }: PageProps) {
 
             {/* AI Multi-Market Predictions */}
             <AIMultiMarket
+              matchId={id}
               homeTeam={match.homeTeam.name}
               awayTeam={match.awayTeam.name}
               sportSlug={sport}
