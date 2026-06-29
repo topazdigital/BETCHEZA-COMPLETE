@@ -14,19 +14,31 @@ function titleToSlug(title: string): string {
 }
 
 const GAME_COUNTS: Record<string, Record<string, number>> = {
-  sportpesa: { 'mega-jackpot': 17, 'midweek-jackpot': 17 },
-  betika: { 'grand-jackpot': 17, 'midweek-jackpot': 17, 'daily-jackpot': 15 },
-  odibets: { 'jackpot-bonanza': 13 },
-  betin: { 'grand-jackpot': 13, 'midweek-jackpot': 13 },
-  mozzartbet: { 'mega-jackpot': 15, 'midweek-jackpot': 15 },
+  sportpesa: { 'mega-jackpot': 17, 'midweek-jackpot': 13 },
+  betika: { 'grand-jackpot': 17, 'midweek-jackpot': 13, 'daily-jackpot': 5, 'laki-tatu': 3 },
+  odibets: { 'jackpot-bonanza': 10 },
+  betin: { 'grand-jackpot': 13, 'midweek-jackpot': 10 },
+  mozzartbet: { 'mega-jackpot': 13, 'midweek-jackpot': 10 },
+  bahatibet: { 'daily-jackpot': 10 },
+  betlion: { 'super-jackpot': 13 },
+  sportybet: { 'daily-jackpot': 10 },
+  msport: { 'jackpot': 10 },
+  bangbet: { 'jackpot': 10 },
+  shabiki: { 'pool-jackpot': 13 },
 };
 
 const PRIZE_AMOUNTS: Record<string, Record<string, string>> = {
   sportpesa: { 'mega-jackpot': 'KES 100M+', 'midweek-jackpot': 'KES 15M+' },
-  betika: { 'grand-jackpot': 'KES 12M+', 'midweek-jackpot': 'KES 5M+', 'daily-jackpot': 'KES 1M+' },
+  betika: { 'grand-jackpot': 'KES 12M+', 'midweek-jackpot': 'KES 5M+', 'daily-jackpot': 'KES 1M+', 'laki-tatu': 'KES 300K+' },
   odibets: { 'jackpot-bonanza': 'KES 10M+' },
   betin: { 'grand-jackpot': 'KES 8M+', 'midweek-jackpot': 'KES 3M+' },
   mozzartbet: { 'mega-jackpot': 'KES 10M+', 'midweek-jackpot': 'KES 3M+' },
+  bahatibet: { 'daily-jackpot': 'KES 1M+' },
+  betlion: { 'super-jackpot': 'KES 5M+' },
+  sportybet: { 'daily-jackpot': 'KES 1M+' },
+  msport: { 'jackpot': 'KES 2M+' },
+  bangbet: { 'jackpot': 'KES 1M+' },
+  shabiki: { 'pool-jackpot': 'KES 5M+' },
 };
 
 function buildKeywords(bkName: string, typeTitle: string, typeSlug: string, bkSlug: string, gameCount: number): string[] {

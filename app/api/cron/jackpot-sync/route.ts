@@ -152,6 +152,19 @@ async function fetchSportPesaMegaFromWeb(count: number): Promise<RawGame[] | nul
     'https://venas.co.ke/sportpesa-mega-jackpot/',
     'https://www.multigoal.co.ke/sportpesa-mega-jackpot/',
     'https://www.multigoal.co.ke/sportpesa-mega-jackpot-predictions/',
+    // High-traffic Kenyan prediction sites
+    'https://www.bettingpesa.com/sportpesa-mega-jackpot/',
+    'https://www.bettingpesa.com/sportpesa-mega-jackpot-prediction/',
+    'https://jackpotmania.co.ke/sportpesa-mega-jackpot/',
+    'https://jackpotmania.co.ke/sportpesa-mega-jackpot-prediction/',
+    'https://www.kenyatips.com/sportpesa-mega-jackpot/',
+    'https://www.kenyatips.com/sportpesa-mega-jackpot-predictions/',
+    'https://tips254.com/sportpesa-mega-jackpot/',
+    'https://www.betwinner360.com/sportpesa-mega-jackpot/',
+    'https://footytips.co.ke/sportpesa-mega-jackpot/',
+    'https://kenyabetting.co.ke/sportpesa-mega-jackpot/',
+    'https://www.sportpesatips.co.ke/',
+    'https://www.jackpotke.com/sportpesa-mega-jackpot/',
     // International sites covering Kenyan jackpots
     'https://www.ghanasoccernet.com/sportpesa-mega-jackpot-predictions',
     'https://www.sportpesapredictions.com/mega-jackpot/',
@@ -175,6 +188,14 @@ async function fetchSportPesaMidweekFromWeb(count: number): Promise<RawGame[] | 
     'https://betipster.co.ke/sportpesa-midweek-jackpot-predictions/',
     'https://venas.co.ke/sportpesa-midweek-jackpot-predictions/',
     'https://www.multigoal.co.ke/sportpesa-midweek-jackpot/',
+    'https://www.bettingpesa.com/sportpesa-midweek-jackpot/',
+    'https://jackpotmania.co.ke/sportpesa-midweek-jackpot/',
+    'https://www.kenyatips.com/sportpesa-midweek-jackpot/',
+    'https://tips254.com/sportpesa-midweek-jackpot/',
+    'https://www.betwinner360.com/sportpesa-midweek-jackpot/',
+    'https://footytips.co.ke/sportpesa-midweek-jackpot/',
+    'https://kenyabetting.co.ke/sportpesa-midweek-jackpot/',
+    'https://www.jackpotke.com/sportpesa-midweek-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -185,7 +206,7 @@ async function fetchSportPesaMidweekFromWeb(count: number): Promise<RawGame[] | 
   return null;
 }
 
-async function fetchBetikaFromWeb(count: number): Promise<RawGame[] | null> {
+async function fetchBetikaGrandFromWeb(count: number): Promise<RawGame[] | null> {
   const result = await tryHtmlFetch([
     'https://megajackpotpredictions.co.ke/betika-grand-jackpot-prediction/',
     'https://www.megajackpotpredictions.co.ke/betika-jackpot-prediction/',
@@ -194,11 +215,74 @@ async function fetchBetikaFromWeb(count: number): Promise<RawGame[] | null> {
     'https://betipster.co.ke/betika-grand-jackpot-predictions/',
     'https://venas.co.ke/betika-jackpot-predictions/',
     'https://www.multigoal.co.ke/betika-jackpot/',
+    'https://www.bettingpesa.com/betika-grand-jackpot/',
+    'https://www.bettingpesa.com/betika-jackpot-prediction/',
+    'https://jackpotmania.co.ke/betika-grand-jackpot/',
+    'https://jackpotmania.co.ke/betika-jackpot/',
+    'https://www.kenyatips.com/betika-grand-jackpot/',
+    'https://tips254.com/betika-grand-jackpot/',
+    'https://www.betwinner360.com/betika-grand-jackpot/',
+    'https://footytips.co.ke/betika-grand-jackpot/',
+    'https://kenyabetting.co.ke/betika-jackpot/',
+    'https://www.jackpotke.com/betika-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
   if (games.length >= 5) {
-    console.log(`[jackpot-sync] Betika: ${games.length} real games from ${result.url}`);
+    console.log(`[jackpot-sync] Betika Grand: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchBetikaMidweekFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/betika-midweek-jackpot-prediction/',
+    'https://www.megajackpotpredictions.co.ke/betika-midweek-jackpot/',
+    'https://jackpot.ke/betika-midweek-jackpot/',
+    'https://www.jackpotpredictions.co.ke/betika-midweek-jackpot/',
+    'https://betipster.co.ke/betika-midweek-jackpot-predictions/',
+    'https://venas.co.ke/betika-midweek-jackpot/',
+    'https://www.bettingpesa.com/betika-midweek-jackpot/',
+    'https://jackpotmania.co.ke/betika-midweek-jackpot/',
+    'https://www.kenyatips.com/betika-midweek-jackpot/',
+    'https://tips254.com/betika-midweek-jackpot/',
+    'https://www.betwinner360.com/betika-midweek-jackpot/',
+    'https://footytips.co.ke/betika-midweek-jackpot/',
+    'https://kenyabetting.co.ke/betika-midweek-jackpot/',
+    'https://www.jackpotke.com/betika-midweek-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Betika Midweek: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchBetikaDailyFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/betika-daily-jackpot/',
+    'https://megajackpotpredictions.co.ke/betika-laki-tatu/',
+    'https://www.megajackpotpredictions.co.ke/betika-daily-jackpot-prediction/',
+    'https://jackpot.ke/betika-daily-jackpot/',
+    'https://www.jackpotpredictions.co.ke/betika-daily-jackpot/',
+    'https://betipster.co.ke/betika-daily-jackpot-predictions/',
+    'https://venas.co.ke/betika-daily-jackpot/',
+    'https://www.bettingpesa.com/betika-daily-jackpot/',
+    'https://www.bettingpesa.com/betika-laki-tatu/',
+    'https://jackpotmania.co.ke/betika-daily-jackpot/',
+    'https://jackpotmania.co.ke/betika-laki-tatu/',
+    'https://www.kenyatips.com/betika-daily-jackpot/',
+    'https://tips254.com/betika-daily-jackpot/',
+    'https://footytips.co.ke/betika-daily-jackpot/',
+    'https://kenyabetting.co.ke/betika-daily-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 3) {
+    console.log(`[jackpot-sync] Betika Daily: ${games.length} real games from ${result.url}`);
     return games;
   }
   return null;
@@ -212,6 +296,16 @@ async function fetchOdiBetsFromWeb(count: number): Promise<RawGame[] | null> {
     'https://venas.co.ke/odibets-jackpot-predictions/',
     'https://www.multigoal.co.ke/odibets-jackpot/',
     'https://www.jackpotpredictions.co.ke/odibets-jackpot/',
+    'https://www.bettingpesa.com/odibets-jackpot/',
+    'https://www.bettingpesa.com/odibets-jackpot-bonanza/',
+    'https://jackpotmania.co.ke/odibets-jackpot/',
+    'https://jackpotmania.co.ke/odibets-jackpot-bonanza/',
+    'https://www.kenyatips.com/odibets-jackpot/',
+    'https://tips254.com/odibets-jackpot/',
+    'https://www.betwinner360.com/odibets-jackpot/',
+    'https://footytips.co.ke/odibets-jackpot/',
+    'https://kenyabetting.co.ke/odibets-jackpot/',
+    'https://www.jackpotke.com/odibets-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -229,6 +323,14 @@ async function fetchBetinFromWeb(count: number): Promise<RawGame[] | null> {
     'https://betipster.co.ke/betin-jackpot-predictions/',
     'https://venas.co.ke/betin-jackpot/',
     'https://www.jackpotpredictions.co.ke/betin-jackpot/',
+    'https://www.bettingpesa.com/betin-jackpot/',
+    'https://jackpotmania.co.ke/betin-jackpot/',
+    'https://www.kenyatips.com/betin-jackpot/',
+    'https://tips254.com/betin-jackpot/',
+    'https://www.betwinner360.com/betin-jackpot/',
+    'https://footytips.co.ke/betin-jackpot/',
+    'https://kenyabetting.co.ke/betin-jackpot/',
+    'https://www.jackpotke.com/betin-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -239,18 +341,193 @@ async function fetchBetinFromWeb(count: number): Promise<RawGame[] | null> {
   return null;
 }
 
-async function fetchMozzartFromWeb(count: number): Promise<RawGame[] | null> {
+async function fetchMozzartMegaFromWeb(count: number): Promise<RawGame[] | null> {
   const result = await tryHtmlFetch([
     'https://megajackpotpredictions.co.ke/mozzartbet-jackpot-prediction/',
     'https://jackpot.ke/mozzartbet-jackpot/',
     'https://betipster.co.ke/mozzartbet-jackpot-predictions/',
     'https://venas.co.ke/mozzartbet-jackpot/',
     'https://www.jackpotpredictions.co.ke/mozzartbet-jackpot/',
+    'https://www.bettingpesa.com/mozzartbet-jackpot/',
+    'https://www.bettingpesa.com/mozzartbet-mega-jackpot/',
+    'https://jackpotmania.co.ke/mozzartbet-jackpot/',
+    'https://jackpotmania.co.ke/mozzartbet-mega-jackpot/',
+    'https://www.kenyatips.com/mozzartbet-jackpot/',
+    'https://tips254.com/mozzartbet-jackpot/',
+    'https://www.betwinner360.com/mozzartbet-jackpot/',
+    'https://footytips.co.ke/mozzartbet-jackpot/',
+    'https://kenyabetting.co.ke/mozzartbet-jackpot/',
+    'https://www.jackpotke.com/mozzartbet-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
   if (games.length >= 5) {
-    console.log(`[jackpot-sync] Mozzartbet: ${games.length} real games from ${result.url}`);
+    console.log(`[jackpot-sync] Mozzartbet Mega: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchMozzartMidweekFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/mozzartbet-midweek-jackpot/',
+    'https://jackpot.ke/mozzartbet-midweek-jackpot/',
+    'https://betipster.co.ke/mozzartbet-midweek-jackpot-predictions/',
+    'https://venas.co.ke/mozzartbet-midweek-jackpot/',
+    'https://www.jackpotpredictions.co.ke/mozzartbet-midweek-jackpot/',
+    'https://www.bettingpesa.com/mozzartbet-midweek-jackpot/',
+    'https://jackpotmania.co.ke/mozzartbet-midweek-jackpot/',
+    'https://www.kenyatips.com/mozzartbet-midweek-jackpot/',
+    'https://tips254.com/mozzartbet-midweek-jackpot/',
+    'https://footytips.co.ke/mozzartbet-midweek-jackpot/',
+    'https://kenyabetting.co.ke/mozzartbet-midweek-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Mozzartbet Midweek: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchBahatibetFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/bahatibet-jackpot/',
+    'https://megajackpotpredictions.co.ke/bahatibet-daily-jackpot/',
+    'https://jackpot.ke/bahatibet-jackpot/',
+    'https://www.jackpotpredictions.co.ke/bahatibet-jackpot/',
+    'https://betipster.co.ke/bahatibet-jackpot-predictions/',
+    'https://venas.co.ke/bahatibet-jackpot/',
+    'https://www.bettingpesa.com/bahatibet-jackpot/',
+    'https://jackpotmania.co.ke/bahatibet-jackpot/',
+    'https://www.kenyatips.com/bahatibet-jackpot/',
+    'https://tips254.com/bahatibet-jackpot/',
+    'https://footytips.co.ke/bahatibet-jackpot/',
+    'https://kenyabetting.co.ke/bahatibet-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Bahatibet: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchBetlionFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/betlion-jackpot/',
+    'https://megajackpotpredictions.co.ke/betlion-super-jackpot/',
+    'https://jackpot.ke/betlion-jackpot/',
+    'https://www.jackpotpredictions.co.ke/betlion-jackpot/',
+    'https://betipster.co.ke/betlion-jackpot-predictions/',
+    'https://venas.co.ke/betlion-jackpot/',
+    'https://www.bettingpesa.com/betlion-jackpot/',
+    'https://jackpotmania.co.ke/betlion-jackpot/',
+    'https://www.kenyatips.com/betlion-jackpot/',
+    'https://tips254.com/betlion-jackpot/',
+    'https://footytips.co.ke/betlion-jackpot/',
+    'https://kenyabetting.co.ke/betlion-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Betlion: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchSportybetFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/sportybet-jackpot/',
+    'https://megajackpotpredictions.co.ke/sportybet-daily-jackpot/',
+    'https://jackpot.ke/sportybet-jackpot/',
+    'https://www.jackpotpredictions.co.ke/sportybet-jackpot/',
+    'https://betipster.co.ke/sportybet-jackpot-predictions/',
+    'https://venas.co.ke/sportybet-jackpot/',
+    'https://www.bettingpesa.com/sportybet-jackpot/',
+    'https://jackpotmania.co.ke/sportybet-jackpot/',
+    'https://www.kenyatips.com/sportybet-jackpot/',
+    'https://tips254.com/sportybet-jackpot/',
+    'https://footytips.co.ke/sportybet-jackpot/',
+    'https://kenyabetting.co.ke/sportybet-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Sportybet: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchMSportFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/msport-jackpot/',
+    'https://jackpot.ke/msport-jackpot/',
+    'https://www.jackpotpredictions.co.ke/msport-jackpot/',
+    'https://betipster.co.ke/msport-jackpot-predictions/',
+    'https://venas.co.ke/msport-jackpot/',
+    'https://www.bettingpesa.com/msport-jackpot/',
+    'https://jackpotmania.co.ke/msport-jackpot/',
+    'https://www.kenyatips.com/msport-jackpot/',
+    'https://tips254.com/msport-jackpot/',
+    'https://footytips.co.ke/msport-jackpot/',
+    'https://kenyabetting.co.ke/msport-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] MSport: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchBangbetFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/bangbet-jackpot/',
+    'https://jackpot.ke/bangbet-jackpot/',
+    'https://www.jackpotpredictions.co.ke/bangbet-jackpot/',
+    'https://betipster.co.ke/bangbet-jackpot-predictions/',
+    'https://venas.co.ke/bangbet-jackpot/',
+    'https://www.bettingpesa.com/bangbet-jackpot/',
+    'https://jackpotmania.co.ke/bangbet-jackpot/',
+    'https://www.kenyatips.com/bangbet-jackpot/',
+    'https://tips254.com/bangbet-jackpot/',
+    'https://footytips.co.ke/bangbet-jackpot/',
+    'https://kenyabetting.co.ke/bangbet-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Bangbet: ${games.length} real games from ${result.url}`);
+    return games;
+  }
+  return null;
+}
+
+async function fetchShabikyFromWeb(count: number): Promise<RawGame[] | null> {
+  const result = await tryHtmlFetch([
+    'https://megajackpotpredictions.co.ke/shabiki-jackpot/',
+    'https://megajackpotpredictions.co.ke/shabiki-pool-jackpot/',
+    'https://jackpot.ke/shabiki-jackpot/',
+    'https://www.jackpotpredictions.co.ke/shabiki-jackpot/',
+    'https://betipster.co.ke/shabiki-jackpot-predictions/',
+    'https://venas.co.ke/shabiki-jackpot/',
+    'https://www.bettingpesa.com/shabiki-jackpot/',
+    'https://jackpotmania.co.ke/shabiki-jackpot/',
+    'https://www.kenyatips.com/shabiki-jackpot/',
+    'https://tips254.com/shabiki-jackpot/',
+    'https://footytips.co.ke/shabiki-jackpot/',
+    'https://kenyabetting.co.ke/shabiki-jackpot/',
+  ]);
+  if (!result) return null;
+  const games = parseMatchesFromHtml(result.html, count);
+  if (games.length >= 5) {
+    console.log(`[jackpot-sync] Shabiki: ${games.length} real games from ${result.url}`);
     return games;
   }
   return null;
@@ -290,7 +567,7 @@ interface BookmakerResult {
   amount?: string;
 }
 
-async function fetchBetikaGames(count: number): Promise<BookmakerResult> {
+async function fetchBetikaGrandGames(count: number): Promise<BookmakerResult> {
   const data = await tryJsonFetch([
     'https://www.betika.com/api/v1/bet?bet_type=jackpot&per_page=50&page=1',
     'https://www.betika.com/api/v1/jackpots/active',
@@ -305,15 +582,51 @@ async function fetchBetikaGames(count: number): Promise<BookmakerResult> {
   if (apiGames && apiGames.length >= 5) {
     return {
       games: apiGames,
-      jackpotTitle: (meta?.name as string) || (meta?.title as string) || undefined,
+      jackpotTitle: (meta?.name as string) || (meta?.title as string) || 'Betika Grand Jackpot',
       deadline: (meta?.closing_time as string) || (meta?.deadline as string) || undefined,
       amount: (meta?.prize as string) || (meta?.amount as string) || undefined,
     };
   }
 
-  console.log('[jackpot-sync] Betika API unavailable, trying HTML scrapers');
-  const webGames = await fetchBetikaFromWeb(count);
+  console.log('[jackpot-sync] Betika Grand API unavailable, trying HTML scrapers');
+  const webGames = await fetchBetikaGrandFromWeb(count);
   return { games: webGames };
+}
+
+async function fetchBetikaMidweekGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://www.betika.com/api/v1/bet?bet_type=midweek_jackpot&per_page=30&page=1',
+    'https://www.betika.com/api/v1/jackpots/midweek',
+    'https://api.betika.com/v1/jackpots/midweek',
+    'https://www.betika.com/api/v2/jackpots?type=midweek',
+  ], { 'X-Requested-With': 'XMLHttpRequest', 'Origin': 'https://www.betika.com' });
+
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) {
+    console.log(`[jackpot-sync] Betika Midweek: ${fromApi.length} games from API`);
+    return fromApi;
+  }
+
+  console.log('[jackpot-sync] Betika Midweek API unavailable, trying HTML scrapers');
+  return fetchBetikaMidweekFromWeb(count);
+}
+
+async function fetchBetikaDailyGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://www.betika.com/api/v1/bet?bet_type=daily_jackpot&per_page=10&page=1',
+    'https://www.betika.com/api/v1/jackpots/daily',
+    'https://api.betika.com/v1/jackpots/daily',
+    'https://www.betika.com/api/v2/jackpots?type=daily',
+  ], { 'X-Requested-With': 'XMLHttpRequest', 'Origin': 'https://www.betika.com' });
+
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 3) {
+    console.log(`[jackpot-sync] Betika Daily: ${fromApi.length} games from API`);
+    return fromApi;
+  }
+
+  console.log('[jackpot-sync] Betika Daily API unavailable, trying HTML scrapers');
+  return fetchBetikaDailyFromWeb(count);
 }
 
 /** SportPesa Mega and Midweek are scraped separately to get the right fixture lists */
@@ -391,16 +704,97 @@ async function fetchBetinGames(count: number): Promise<RawGame[] | null> {
   return fetchBetinFromWeb(count);
 }
 
-async function fetchMozzartGames(count: number): Promise<RawGame[] | null> {
+async function fetchMozzartMegaGames(count: number): Promise<RawGame[] | null> {
   const data = await tryJsonFetch([
     'https://ke.mozzartbet.com/api/v1/jackpots',
+    'https://ke.mozzartbet.com/api/v1/jackpots/mega',
     'https://www.mozzartbet.co.ke/api/jackpots',
     'https://ke.mozzartbet.com/betshop/jackpot',
   ]);
   const fromApi = extractGames(data, count);
   if (fromApi && fromApi.length >= 5) return fromApi;
 
-  return fetchMozzartFromWeb(count);
+  return fetchMozzartMegaFromWeb(count);
+}
+
+async function fetchMozzartMidweekGamesFunc(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://ke.mozzartbet.com/api/v1/jackpots/midweek',
+    'https://ke.mozzartbet.com/api/v2/jackpots?type=midweek',
+    'https://www.mozzartbet.co.ke/api/jackpots/midweek',
+  ]);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  return fetchMozzartMidweekFromWeb(count);
+}
+
+async function fetchBahatibetGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://bahatibet.co.ke/api/v1/jackpots',
+    'https://api.bahatibet.co.ke/v1/jackpots/active',
+  ]);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  return fetchBahatibetFromWeb(count);
+}
+
+async function fetchBetlionGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://betlion.co.ke/api/v1/jackpots',
+    'https://api.betlion.co.ke/v1/jackpots/active',
+    'https://www.betlion.co.ke/api/jackpot',
+  ]);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  return fetchBetlionFromWeb(count);
+}
+
+async function fetchSportybetGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://www.sportybet.com/api/ke/factsCenter/queryFootballMatchesByTournamentId',
+    'https://www.sportybet.com/api/ke/jackpot',
+  ]);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  return fetchSportybetFromWeb(count);
+}
+
+async function fetchMSportGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://www.msport.co.ke/api/v1/jackpots',
+    'https://api.msport.co.ke/v1/jackpots/active',
+  ]);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  return fetchMSportFromWeb(count);
+}
+
+async function fetchBangbetGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://www.bangbet.co.ke/api/v1/jackpots',
+    'https://api.bangbet.co.ke/v1/jackpots/active',
+  ]);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  return fetchBangbetFromWeb(count);
+}
+
+async function fetchShabikyGames(count: number): Promise<RawGame[] | null> {
+  const data = await tryJsonFetch([
+    'https://www.shabiki.com/api/v1/jackpots',
+    'https://api.shabiki.com/v1/jackpots/active',
+    'https://www.shabiki.com/api/jackpot',
+  ]);
+  const fromApi = extractGames(data, count);
+  if (fromApi && fromApi.length >= 5) return fromApi;
+
+  return fetchShabikyFromWeb(count);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -469,34 +863,60 @@ export async function GET(req: NextRequest) {
   try {
     const { getJackpots, createJackpot, deleteJackpot } = await import('@/lib/jackpot-store');
 
-    // Fetch all bookmaker sources in parallel
-    // NOTE: SportPesa Mega and Midweek are fetched separately for accuracy
+    // Fetch all bookmaker sources in parallel — each jackpot type has its own dedicated scraper
     const [
-      betikaResult,
+      betikaGrandResult,
+      betikaMidweekGames,
+      betikaDailyGames,
       spMegaGames,
       spMidweekGames,
       odibetsGames,
       betinGames,
-      mozzartGames,
+      mozzartMegaGames,
+      mozzartMidweekGames,
+      bahatibetGames,
+      betlionGames,
+      sportybetGames,
+      msportGames,
+      bangbetGames,
+      shabikyGames,
     ] = await Promise.all([
-      fetchBetikaGames(15),
+      fetchBetikaGrandGames(17),
+      fetchBetikaMidweekGames(13),
+      fetchBetikaDailyGames(5),
       fetchSportPesaMegaGames(17),
       fetchSportPesaMidweekGames(13),
       fetchOdiBetsGames(10),
       fetchBetinGames(13),
-      fetchMozzartGames(15),
+      fetchMozzartMegaGames(13),
+      fetchMozzartMidweekGamesFunc(10),
+      fetchBahatibetGames(10),
+      fetchBetlionGames(13),
+      fetchSportybetGames(10),
+      fetchMSportGames(10),
+      fetchBangbetGames(10),
+      fetchShabikyGames(13),
     ]);
 
-    const betikaGames = betikaResult.games;
+    const betikaGrandGames = betikaGrandResult.games;
 
     // Log which sources returned real data
     const liveSources: string[] = [];
-    if (spMegaGames)   liveSources.push('SportPesa Mega');
-    if (spMidweekGames) liveSources.push('SportPesa Midweek');
-    if (betikaGames)   liveSources.push('Betika');
-    if (odibetsGames)  liveSources.push('OdiBets');
-    if (betinGames)    liveSources.push('Betin');
-    if (mozzartGames)  liveSources.push('Mozzartbet');
+    if (spMegaGames)       liveSources.push('SportPesa Mega');
+    if (spMidweekGames)    liveSources.push('SportPesa Midweek');
+    if (betikaGrandGames)  liveSources.push('Betika Grand');
+    if (betikaMidweekGames) liveSources.push('Betika Midweek');
+    if (betikaDailyGames)  liveSources.push('Betika Daily');
+    if (odibetsGames)      liveSources.push('OdiBets');
+    if (betinGames)        liveSources.push('Betin');
+    if (mozzartMegaGames)  liveSources.push('Mozzartbet Mega');
+    if (mozzartMidweekGames) liveSources.push('Mozzartbet Midweek');
+    if (bahatibetGames)    liveSources.push('Bahatibet');
+    if (betlionGames)      liveSources.push('Betlion');
+    if (sportybetGames)    liveSources.push('Sportybet');
+    if (msportGames)       liveSources.push('MSport');
+    if (bangbetGames)      liveSources.push('Bangbet');
+    if (shabikyGames)      liveSources.push('Shabiki');
     console.log(`[jackpot-sync] real data found: ${liveSources.join(', ') || 'none — no jackpots created'}`);
 
     const desired = [
@@ -512,13 +932,19 @@ export async function GET(req: NextRequest) {
       },
       {
         bookmakerSlug: 'betika', bookmakerName: 'Betika',
-        title: betikaResult.jackpotTitle || 'Betika Grand Jackpot', jackpotAmount: betikaResult.amount || '30000000', currency: 'KES',
-        games: betikaGames, deadline: betikaResult.deadline || daysFromNow(4),
+        title: betikaGrandResult.jackpotTitle || 'Betika Grand Jackpot',
+        jackpotAmount: betikaGrandResult.amount || '30000000', currency: 'KES',
+        games: betikaGrandGames, deadline: betikaGrandResult.deadline || daysFromNow(4),
       },
       {
         bookmakerSlug: 'betika', bookmakerName: 'Betika',
         title: 'Betika Midweek Jackpot', jackpotAmount: '15000000', currency: 'KES',
-        games: betikaGames ? betikaGames.slice(0, 13) : null, deadline: daysFromNow(2),
+        games: betikaMidweekGames, deadline: daysFromNow(2),
+      },
+      {
+        bookmakerSlug: 'betika', bookmakerName: 'Betika',
+        title: 'Betika Daily Jackpot', jackpotAmount: '1000000', currency: 'KES',
+        games: betikaDailyGames, deadline: daysFromNow(1), minGames: 3,
       },
       {
         bookmakerSlug: 'odibets', bookmakerName: 'OdiBets',
@@ -533,7 +959,42 @@ export async function GET(req: NextRequest) {
       {
         bookmakerSlug: 'mozzartbet', bookmakerName: 'Mozzartbet',
         title: 'Mozzartbet Mega Jackpot', jackpotAmount: '25000000', currency: 'KES',
-        games: mozzartGames, deadline: daysFromNow(5),
+        games: mozzartMegaGames, deadline: daysFromNow(5),
+      },
+      {
+        bookmakerSlug: 'mozzartbet', bookmakerName: 'Mozzartbet',
+        title: 'Mozzartbet Midweek Jackpot', jackpotAmount: '5000000', currency: 'KES',
+        games: mozzartMidweekGames, deadline: daysFromNow(2),
+      },
+      {
+        bookmakerSlug: 'bahatibet', bookmakerName: 'Bahatibet',
+        title: 'Bahatibet Daily Jackpot', jackpotAmount: '1000000', currency: 'KES',
+        games: bahatibetGames, deadline: daysFromNow(1), minGames: 5,
+      },
+      {
+        bookmakerSlug: 'betlion', bookmakerName: 'Betlion',
+        title: 'Betlion Super Jackpot', jackpotAmount: '5000000', currency: 'KES',
+        games: betlionGames, deadline: daysFromNow(4),
+      },
+      {
+        bookmakerSlug: 'sportybet', bookmakerName: 'Sportybet',
+        title: 'Sportybet Daily Jackpot', jackpotAmount: '1000000', currency: 'KES',
+        games: sportybetGames, deadline: daysFromNow(1),
+      },
+      {
+        bookmakerSlug: 'msport', bookmakerName: 'MSport',
+        title: 'MSport Jackpot', jackpotAmount: '2000000', currency: 'KES',
+        games: msportGames, deadline: daysFromNow(3),
+      },
+      {
+        bookmakerSlug: 'bangbet', bookmakerName: 'Bangbet',
+        title: 'Bangbet Jackpot', jackpotAmount: '1000000', currency: 'KES',
+        games: bangbetGames, deadline: daysFromNow(3),
+      },
+      {
+        bookmakerSlug: 'shabiki', bookmakerName: 'Shabiki',
+        title: 'Shabiki Pool Jackpot', jackpotAmount: '5000000', currency: 'KES',
+        games: shabikyGames, deadline: daysFromNow(4),
       },
     ];
 
@@ -560,7 +1021,8 @@ export async function GET(req: NextRequest) {
 
     for (const def of desired) {
       // CRITICAL: skip if no real data — never create fake jackpots
-      if (!def.games || def.games.length < 5) {
+      const minRequired = (def as { minGames?: number }).minGames ?? 5;
+      if (!def.games || def.games.length < minRequired) {
         noData++;
         continue;
       }
