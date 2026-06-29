@@ -321,7 +321,7 @@ export default function AdvertisePage() {
 
       {/* ── MAIN CONTENT ─────────────────────────────────── */}
       <div className="flex-1 min-w-0 overflow-hidden">
-        <div className="px-3 py-4 sm:px-5 sm:py-5 space-y-7 max-w-3xl">
+        <div className="px-3 py-3 sm:px-5 sm:py-4 space-y-4 max-w-3xl">
 
           {/* HERO */}
           <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
@@ -359,7 +359,7 @@ export default function AdvertisePage() {
               <span className="text-xs font-bold uppercase tracking-widest text-green-600">Live Platform Statistics</span>
             </div>
             <h2 className="text-base font-bold text-foreground mb-0.5">Real numbers, no inflated claims</h2>
-            <p className="text-xs text-muted-foreground mb-4">Figures pulled directly from our platform database in real time.</p>
+            <p className="text-xs text-muted-foreground mb-3">Figures pulled directly from our platform database in real time.</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {statCards.map(c => (
                 <StatCard key={c.label} icon={c.icon} value={c.value} label={c.label} sub={c.sub} color={c.color} bg={c.bg} border={c.border} />
