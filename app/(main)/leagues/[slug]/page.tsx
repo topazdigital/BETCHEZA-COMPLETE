@@ -17,7 +17,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MatchCardNew } from "@/components/matches/match-card-new"
-import { KnockoutBracket } from "@/components/leagues/knockout-bracket"
+import nextDynamic from "next/dynamic"
+const KnockoutBracket = nextDynamic(
+  () => import("@/components/leagues/knockout-bracket").then(m => m.KnockoutBracket),
+  { ssr: false, loading: () => <div className="h-20 animate-pulse rounded-xl bg-muted/40" /> }
+)
 import { Spinner } from "@/components/ui/spinner"
 import { TeamLogo } from "@/components/ui/team-logo"
 import { FlagIcon } from "@/components/ui/flag-icon"
