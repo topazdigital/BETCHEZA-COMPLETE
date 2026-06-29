@@ -124,6 +124,17 @@ export async function register() {
       const { query, execute, getPool } = await import('./lib/db');
       if (!getPool()) return; // no DB configured — skip silently
 
+      // 0. Site pageview counter (for real advertising stats)
+      await query(`
+        CREATE TABLE IF NOT EXISTS site_pageviews (
+          id         INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          date       DATE NOT NULL,
+          path       VARCHAR(255) NOT NULL DEFAULT '/',
+          count      INT NOT NULL DEFAULT 0,
+          UNIQUE KEY uq_date_path (date, path)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
       // 1. community_rooms table
       await query(`
         CREATE TABLE IF NOT EXISTS community_rooms (
