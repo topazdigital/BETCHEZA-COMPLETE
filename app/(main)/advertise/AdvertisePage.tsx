@@ -422,7 +422,7 @@ export default function AdvertisePage() {
     <div className="flex min-h-screen w-full">
 
       {/* ── LEFT SIDEBAR — demographics & deals (lg+) ─────── */}
-      <aside className="hidden lg:block w-56 xl:w-60 shrink-0 border-r border-border">
+      <aside className="hidden lg:block w-64 shrink-0 border-r border-border">
         <div className="sticky top-14 p-3 overflow-y-auto max-h-[calc(100vh-3.5rem)]">
           <AdvertiseLeftSidebar />
         </div>
@@ -445,7 +445,15 @@ export default function AdvertisePage() {
             <p className="text-sm text-muted-foreground leading-relaxed">
               Betcheza is Kenya's leading sports predictions community. Place your brand in front of a highly engaged, mobile-first audience actively searching for bookmakers, odds, and betting insights.
             </p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Link
+                href="/advertise/media-kit"
+                target="_blank"
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <ArrowUpRight className="h-3.5 w-3.5" />
+                Download Media Kit (PDF)
+              </Link>
               {[
                 { label: 'Live Stats', href: '#stats' },
                 { label: 'Ad Placements', href: '#placements' },
@@ -617,6 +625,17 @@ export default function AdvertisePage() {
               ))}
             </div>
           </section>
+
+          {/* CAMPAIGN REPORTING PROMISE */}
+          <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 px-4 py-3 flex items-start gap-3">
+            <BarChart3 className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-foreground mb-0.5">Campaign Reporting — Included with every partnership</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                All partners receive monthly performance reports covering impressions, clicks, CTR and conversions — so you always know exactly what your budget is delivering.
+              </p>
+            </div>
+          </div>
 
           {/* CONTACT / ENQUIRY FORM */}
           <section id="contact" className="scroll-mt-16">
