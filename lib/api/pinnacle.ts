@@ -73,9 +73,12 @@ interface PinnacleMarketMatchup {
   prices: PinnaclePrice[];
 }
 
-// In-memory cache for matchups per sport
-const matchupCache = new Map<number, { data: PinnacleMatchup[]; expires: number }>();
-const marketCache  = new Map<number, { data: PinnacleMarketMatchup[]; expires: number }>();
+// In-memory cache: pre-match and live matchups cached separately
+const matchupCache     = new Map<number, { data: PinnacleMatchup[]; expires: number }>();
+const liveMatchupCache = new Map<number, { data: PinnacleMatchup[]; expires: number }>();
+const marketCache      = new Map<number, { data: PinnacleMarketMatchup[]; expires: number }>();
+
+const LIVE_CACHE_MS = 60 * 1000; // live odds refresh every 60s
 
 async function pinnGet<T>(path: string, timeoutMs = 8000): Promise<T | null> {
   try {
@@ -104,7 +107,7 @@ function mlToDecimal(ml: number): number {
   return Math.round(dec * 100) / 100;
 }
 
-/** Fetch all open matchups for a given Pinnacle sport ID (full card). Cached 5 min. */
+/** Fetch all open pre-match matchups for a given Pinnacle sport ID. Cached 5 min. */
 async function fetchMatchupsForSport(sportId: number): Promise<PinnacleMatchup[]> {
   const hit = matchupCache.get(sportId);
   if (hit && hit.expires > Date.now()) return hit.data;
@@ -113,6 +116,18 @@ async function fetchMatchupsForSport(sportId: number): Promise<PinnacleMatchup[]
   const out  = (Array.isArray(data) ? data : []).filter(m => m.type === 'matchup' && m.status === 'open');
 
   matchupCache.set(sportId, { data: out, expires: Date.now() + CACHE_MS });
+  return out;
+}
+
+/** Fetch all open live (in-play) matchups for a given Pinnacle sport ID. Cached 60s. */
+async function fetchLiveMatchupsForSport(sportId: number): Promise<PinnacleMatchup[]> {
+  const hit = liveMatchupCache.get(sportId);
+  if (hit && hit.expires > Date.now()) return hit.data;
+
+  const data = await pinnGet<PinnacleMatchup[]>(`/matchups?sportId=${sportId}&brandId=0&isLive=true`, 6000);
+  const out  = (Array.isArray(data) ? data : []).filter(m => m.type === 'matchup' && m.status === 'open');
+
+  liveMatchupCache.set(sportId, { data: out, expires: Date.now() + LIVE_CACHE_MS });
   return out;
 }
 
@@ -239,6 +254,73 @@ export async function getPinnacleOdds(
   // Sanity check: all main odds must be valid
   if (!result.home || !result.away || result.home < 1.01 || result.away < 1.01) return null;
 
+  return result;
+}
+
+/**
+ * Look up Pinnacle live in-play odds by team names and sport.
+ * Uses isLive=true endpoint — refreshed every 60s.
+ * Returns null if the match isn't live on Pinnacle or API is unavailable.
+ */
+export async function getPinnacleLiveOdds(
+  homeTeam: string,
+  awayTeam: string,
+  sportSlug: string,
+): Promise<PinnacleBookmakerOdds | null> {
+  const sportId = SPORT_ID_MAP[sportSlug.toLowerCase().replace(/[-\s]/g, '')] ?? 29;
+
+  let matchups: PinnacleMatchup[];
+  try {
+    matchups = await fetchLiveMatchupsForSport(sportId);
+  } catch {
+    return null;
+  }
+  if (!matchups.length) return null;
+
+  const norm  = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hNorm = norm(homeTeam);
+  const aNorm = norm(awayTeam);
+
+  const found = matchups.find(m => {
+    const parts    = m.participants || [];
+    const homePart = parts.find(p => p.alignment === 'home');
+    const awayPart = parts.find(p => p.alignment === 'away');
+    if (!homePart || !awayPart) return false;
+    const mh = norm(homePart.name);
+    const ma = norm(awayPart.name);
+    return (
+      (mh === hNorm || hNorm.includes(mh) || mh.includes(hNorm)) &&
+      (ma === aNorm || aNorm.includes(ma) || ma.includes(aNorm))
+    );
+  });
+
+  if (!found) return null;
+
+  let markets: PinnacleMarketMatchup[];
+  try {
+    // Bypass market cache for live matches (60s is already short enough)
+    const data = await pinnGet<PinnacleMarketMatchup[]>(`/matchups/${found.id}/markets/related/straight`, 6000);
+    markets = Array.isArray(data) ? data : [];
+  } catch {
+    return null;
+  }
+
+  const ml = markets.find(m => m.type === 'moneyline' && m.period === 0);
+  if (!ml?.prices?.length) return null;
+
+  const homePrice = ml.prices.find(p => p.designation === 'home' || p.designation === '1');
+  const awayPrice = ml.prices.find(p => p.designation === 'away' || p.designation === '2');
+  const drawPrice = ml.prices.find(p => p.designation === 'draw' || p.designation === 'X');
+  if (!homePrice || !awayPrice) return null;
+
+  const result: PinnacleBookmakerOdds = {
+    bookmaker: 'Pinnacle',
+    home:  mlToDecimal(homePrice.price),
+    away:  mlToDecimal(awayPrice.price),
+    draw:  drawPrice ? mlToDecimal(drawPrice.price) : undefined,
+    source: 'pinnacle',
+  };
+  if (!result.home || !result.away || result.home < 1.01 || result.away < 1.01) return null;
   return result;
 }
 
