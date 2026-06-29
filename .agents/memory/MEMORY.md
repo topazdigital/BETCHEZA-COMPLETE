@@ -1,3 +1,4 @@
+- [Knockout bracket ESPN season slug](knockout-bracket-espn-slug.md) — FIFA tournaments use ev.season.slug not notes headline; parseRound() must check slug as fallback
 - [Stack & run config](stack-run.md) — Next.js 16 App Router, Tailwind v4, MySQL2, custom JWT; must `rm -rf .next` before rebuild
 - [DB & fallback stores](db-fallback.md) — remote MySQL at 157.250.205.180; DB_PASSWORD + JWT_SECRET set as Replit secrets; app runs on file/memory fallback when secrets missing
 - [tipster_profiles schema gaps](tipster-profiles-schema.md) — base dump missing bio/created_at/is_verified columns; instrumentation adds them + backfills profile rows for all role=tipster users on every start

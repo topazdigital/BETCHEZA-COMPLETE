@@ -21,25 +21,68 @@ export const runtime = 'nodejs';
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
 // Round name → code + sort order. Lowest order = earliest round in the bracket.
-const ROUND_ORDER: Array<{ rx: RegExp; code: string; label: string; order: number }> = [
-  { rx: /round of 64|r64/i,        code: 'R64', label: 'Round of 64',     order: 1 },
-  { rx: /round of 32|r32/i,        code: 'R32', label: 'Round of 32',     order: 2 },
-  { rx: /round of 16|r16|last 16/i, code: 'R16', label: 'Round of 16',     order: 3 },
-  { rx: /quarter[- ]?final|qf/i,   code: 'QF',  label: 'Quarter-finals',  order: 4 },
-  { rx: /semi[- ]?final|sf/i,      code: 'SF',  label: 'Semi-finals',     order: 5 },
-  { rx: /third[- ]place|3rd[- ]place/i, code: '3P', label: '3rd Place',  order: 6 },
-  { rx: /\bfinal\b/i,              code: 'F',   label: 'Final',           order: 7 },
+// `slugs` lists ESPN season.slug values that map to this round
+// (used when competitions[0].notes[0].headline is absent — e.g. FIFA World Cup).
+const ROUND_ORDER: Array<{ rx: RegExp; code: string; label: string; order: number; slugs: string[] }> = [
+  { rx: /round of 64|r64/i,            code: 'R64', label: 'Round of 64',    order: 1, slugs: ['round-of-64'] },
+  { rx: /round of 32|r32/i,            code: 'R32', label: 'Round of 32',    order: 2, slugs: ['round-of-32'] },
+  { rx: /round of 16|r16|last 16/i,    code: 'R16', label: 'Round of 16',    order: 3, slugs: ['round-of-16'] },
+  { rx: /quarter[- ]?final|qf/i,       code: 'QF',  label: 'Quarter-finals', order: 4, slugs: ['quarterfinals', 'quarter-finals', 'quarterfinal'] },
+  { rx: /semi[- ]?final|sf/i,          code: 'SF',  label: 'Semi-finals',    order: 5, slugs: ['semifinals', 'semi-finals', 'semifinal'] },
+  { rx: /third[- ]place|3rd[- ]place/i, code: '3P', label: '3rd Place',      order: 6, slugs: ['3rd-place-match', '3rd-place', 'third-place', 'third-place-match'] },
+  { rx: /\bfinal\b/i,                  code: 'F',   label: 'Final',          order: 7, slugs: ['final', 'championship', 'championship-match'] },
 ];
 
-function parseRound(headline: string | undefined | null): { code: string; label: string; order: number; leg: 1 | 2 | 0 } | null {
-  if (!headline) return null;
-  const text = headline.toString();
-  const round = ROUND_ORDER.find(r => r.rx.test(text));
+/**
+ * Determine the knockout round from an ESPN event.
+ *
+ * ESPN delivers round information via two separate fields depending on the
+ * competition:
+ *   • competitions[0].notes[0].headline  — used by UEFA CL, EFL Cup, Copa, etc.
+ *     (may also carry "1st Leg" / "2nd Leg" for two-legged ties)
+ *   • ev.season.slug                     — used by FIFA World Cup 2026 and other
+ *     FIFA tournaments where notes are absent
+ *
+ * We check the headline first (richer, includes leg info), then fall back to
+ * the season slug.
+ */
+function parseRound(
+  headline: string | undefined | null,
+  seasonSlug?: string | null,
+): { code: string; label: string; order: number; leg: 1 | 2 | 0 } | null {
+  const text = (headline || '').toString();
+
+  // 1. Try headline regex (works for UEFA competitions and FA Cup).
+  let round = ROUND_ORDER.find(r => r.rx.test(text));
+
+  // 2. Fall back to season.slug (works for FIFA World Cup, FIFA U20/U17, etc.).
+  // Normalize the slug: lowercase, strip hyphens/underscores, so variants like
+  // 'quarter-finals', 'quarterfinals', 'quarter_finals' all match.
+  if (!round && seasonSlug) {
+    const rawSlug = seasonSlug.toLowerCase();
+    // First try exact match in known slug list.
+    round = ROUND_ORDER.find(r => r.slugs.includes(rawSlug));
+    // If still no match, try normalized (no separators) comparison.
+    if (!round) {
+      const normSlug = rawSlug.replace(/[-_\s]+/g, '');
+      round = ROUND_ORDER.find(r =>
+        r.slugs.some(s => s.replace(/[-_\s]+/g, '') === normSlug)
+      );
+    }
+    // Last-resort: try slug against the headline regex patterns.
+    if (!round) {
+      const slugAsText = rawSlug.replace(/-/g, ' ');
+      round = ROUND_ORDER.find(r => r.rx.test(slugAsText));
+    }
+  }
+
   if (!round) return null;
-  // Leg detection — "1st Leg", "2nd Leg", "Leg 1", or no leg (single-match round).
+
+  // Leg detection — only meaningful when headline carries "1st Leg" / "2nd Leg".
   let leg: 1 | 2 | 0 = 0;
   if (/\b1st leg|leg 1|first leg\b/i.test(text)) leg = 1;
   else if (/\b2nd leg|leg 2|second leg\b/i.test(text)) leg = 2;
+
   return { code: round.code, label: round.label, order: round.order, leg };
 }
 
@@ -58,7 +101,8 @@ interface ESPNEvent {
     notes?: Array<{ type?: string; headline?: string }>;
     competitors?: ESPNCompetitor[];
   }>;
-  season?: { year?: number; type?: { name?: string } };
+  /** ESPN season metadata — `slug` carries the round name for FIFA tournaments */
+  season?: { year?: number; type?: number; slug?: string; name?: string };
 }
 
 interface Leg {
@@ -149,7 +193,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   for (const ev of events) {
     const headline = ev.competitions?.[0]?.notes?.[0]?.headline;
-    const round = parseRound(headline);
+    const seasonSlug = ev.season?.slug;
+    const round = parseRound(headline, seasonSlug);
     if (!round) continue;
     knockoutEventCount += 1;
 
@@ -246,7 +291,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
             aggAway += hScore;
           }
         }
-        const round = parseRound(ev.competitions?.[0]?.notes?.[0]?.headline);
+        const round = parseRound(ev.competitions?.[0]?.notes?.[0]?.headline, ev.season?.slug);
         legObjs.push({
           matchId: ev.id,
           date: ev.date,
