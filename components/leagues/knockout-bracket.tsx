@@ -308,7 +308,17 @@ function TieCard({ tie }: { tie: Tie }) {
     ? (isLive ? '●' : formatMatchDate(firstLeg.date, true))
     : ''
 
-  const matchHref = firstLeg
+  // Only clickable when both teams are real decided teams, not placeholders
+  const isPlaceholder = (team: { id: string; name: string }) => {
+    const n = team.name.toLowerCase()
+    return !team.id ||
+      n.includes('winner') || n.includes('loser') ||
+      n.includes('tbd') || n.includes('round of') ||
+      n.includes('group ') || n.startsWith('winner') || n.startsWith('loser')
+  }
+  const bothTeamsDecided = !isPlaceholder(tie.homeTeam) && !isPlaceholder(tie.awayTeam)
+
+  const matchHref = bothTeamsDecided && firstLeg
     ? `/matches/${matchToSlug(firstLeg.matchId, tie.homeTeam.name, tie.awayTeam.name)}`
     : null
 
