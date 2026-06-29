@@ -81,11 +81,16 @@ export function AIMultiMarket({
   // same inputs always produce the same output, and locking was preventing picks
   // from updating when async data (h2h, form) arrived after the initial render.
   const picks = useMemo(() => {
-    // Require odds before computing — without them predictions are meaningless
+    if (mode === 'smart') {
+      // Smart AI runs on form + H2H — doesn't require odds.
+      // This means picks survive for finished matches where odds have been pulled.
+      const hasAnyData = !!(homeForm || awayForm || (h2h && h2h.length > 0) || odds)
+      if (!hasAnyData) return []
+      return buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds: odds ?? null, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
+    }
+    // Odds-based mode requires live odds
     if (!odds) return []
-    return mode === 'smart'
-      ? buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
-      : buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
+    return buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
   }, [mode, homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets, lineups])
 
   const isFinal =
