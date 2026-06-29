@@ -562,274 +562,379 @@ function buildMultiMarketPicks(input: EngineInput): MarketPick[] {
 }
 
 // ───────────────────────────────────────────────
-// Smart AI engine — pure logical reasoning, ignores odds for the SELECTION
-// (odds are still shown so the user knows the price). This is the engine
-// that lets a 5.0 underdog beat a 1.x favourite when form / h2h say so.
+// Smart AI engine — Tony Bloom-inspired multi-signal analysis.
+// Logic first, odds second. Underdogs can and do win. Every market
+// (BTTS Yes/No, Over/Under, draw, away win) is equally on the table.
 // ───────────────────────────────────────────────
+
+/** Rich form breakdown from a "WWDLW" string */
+function parseForm(raw?: string) {
+  const chars = (raw || '').toUpperCase().replace(/[^WDL]/g, '').split('').slice(0, 5)
+  const wins   = chars.filter(c => c === 'W').length
+  const draws  = chars.filter(c => c === 'D').length
+  const losses = chars.filter(c => c === 'L').length
+  const games  = chars.length
+  const pts    = wins * 3 + draws
+  // Momentum: last 2 games weighted more — recent form matters most
+  const recent = chars.slice(-2)
+  const momentum = recent.reduce((s, c) => s + (c === 'W' ? 3 : c === 'D' ? 1 : 0), 0) // 0-6
+  // Draw tendency (≥2 draws in 5 = team that ties a lot)
+  const drawTendency = draws >= 2
+  // Losing streak signal (≥3 losses = bad form, may be defensive / demoralised)
+  const losingStreak = losses >= 3
+  // Winning streak (≥3 wins = in-form, dangerous)
+  const winStreak = wins >= 3
+  // Clean-sheet proxy: high win rate with some draws suggests defensive solidity
+  const solidProxy = wins / Math.max(games, 1)   // 0-1
+  return { wins, draws, losses, games, pts, momentum, drawTendency, losingStreak, winStreak, solidProxy }
+}
+
+/** Analyse H2H array for richer signals */
+function parseH2H(
+  h2h: Array<{ home: { name: string; score?: number }; away: { name: string; score?: number } }> | null | undefined,
+  homeTeam: string,
+) {
+  if (!h2h || h2h.length === 0) return null
+  let homeWins = 0, awayWins = 0, draws = 0
+  let totalGoals = 0, bothScored = 0
+  let homeGoals = 0, awayGoals = 0
+  const games = Math.min(h2h.length, 6)
+  for (const g of h2h.slice(0, games)) {
+    const hs = g.home.score ?? 0
+    const as = g.away.score ?? 0
+    totalGoals += hs + as
+    if (hs > 0 && as > 0) bothScored++
+    const isOurHome = g.home.name?.toLowerCase().includes(homeTeam.toLowerCase().split(' ')[0])
+    if (isOurHome) { homeGoals += hs; awayGoals += as }
+    else            { homeGoals += as; awayGoals += hs }  // swap perspective
+    if (hs === as) draws++
+    else if ((hs > as && isOurHome) || (as > hs && !isOurHome)) homeWins++
+    else awayWins++
+  }
+  const avgGoals   = totalGoals / games
+  const bttsRate   = bothScored / games
+  const avgHomG    = homeGoals  / games
+  const avgAwayG   = awayGoals  / games
+  // Dominant side
+  const dominant = homeWins > awayWins ? 'home' : awayWins > homeWins ? 'away' : 'even'
+  // Recent trend: last 2 H2H vs overall
+  const recentGames = h2h.slice(0, 2)
+  let recentHomeW = 0, recentAwayW = 0
+  for (const g of recentGames) {
+    const hs = g.home.score ?? 0, as = g.away.score ?? 0
+    const isOurHome = g.home.name?.toLowerCase().includes(homeTeam.toLowerCase().split(' ')[0])
+    if (hs > as && isOurHome) recentHomeW++
+    else if (as > hs && !isOurHome) recentHomeW++
+    else if (hs > as && !isOurHome) recentAwayW++
+    else if (as > hs && isOurHome) recentAwayW++
+  }
+  const recentTrend: 'home' | 'away' | 'even' =
+    recentHomeW > recentAwayW ? 'home' : recentAwayW > recentHomeW ? 'away' : 'even'
+  return { homeWins, awayWins, draws, games, avgGoals, bttsRate, avgHomG, avgAwayG, dominant, recentTrend }
+}
+
 function buildSmartPicks(input: EngineInput): MarketPick[] {
   const { homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets, lineups } = input
   const picks: MarketPick[] = []
 
-  // ── Score each side from form (last 5) and recent h2h ──
-  const hF = formScore(homeForm)              // 0-15
-  const aF = formScore(awayForm)              // 0-15
-  let homeWinsH2h = 0
-  let awayWinsH2h = 0
-  let drawsH2h = 0
-  let h2hGoals = 0
-  let h2hCount = 0
-  let bothScoredCount = 0
-  if (h2h && h2h.length > 0) {
-    for (const g of h2h.slice(0, 6)) {
-      const hs = g.home.score ?? 0
-      const as = g.away.score ?? 0
-      h2hGoals += hs + as
-      h2hCount++
-      if (hs > 0 && as > 0) bothScoredCount++
-      const homeName = g.home.name?.toLowerCase()
-      const isHomeOurHome = homeName?.includes(homeTeam.toLowerCase().split(' ')[0])
-      if (hs === as) drawsH2h++
-      else if ((hs > as && isHomeOurHome) || (as > hs && !isHomeOurHome)) homeWinsH2h++
-      else awayWinsH2h++
-    }
-  }
-
-  // Composite "logic score" 0-100. Heavy on form, then h2h, with a small
-  // home-advantage nudge for football.
   const isSoccer = sportSlug === "soccer" || sportSlug === "football"
-  const homeAdv = isSoccer ? 6 : 3
-  const formWeight = 4         // up to 60 pts from form
-  const h2hWeight = h2hCount > 0 ? (30 / h2hCount) : 0  // up to ~30 pts
 
-  // Lineup signal: each available starter scores ~0.3, each known injury
-  // costs ~1.2. Standard starting XI for soccer = 11. We only apply this
-  // when the lineup is actually published (not pre-match speculation).
-  const lineupSignal = (side: { starters?: number; injuries?: number } | undefined) => {
+  // ── Rich form analysis ──
+  const hForm = parseForm(homeForm)
+  const aForm = parseForm(awayForm)
+  const hasFormData = hForm.games > 0 || aForm.games > 0
+
+  // ── Rich H2H analysis ──
+  const hx = parseH2H(h2h, homeTeam)
+  const hasH2H = hx !== null
+
+  // ── Lineup injury signal ──
+  const injuryHit = (side: { starters?: number; injuries?: number } | undefined) => {
     if (!side) return 0
-    const starters = side.starters ?? 0
     const injuries = side.injuries ?? 0
+    const starters = side.starters ?? 0
     if (starters === 0 && injuries === 0) return 0
-    return starters * 0.3 - injuries * 1.2
+    return injuries * 1.5 - starters * 0.2  // positive = hurt, negative = strong squad
   }
-  const homeLineupBonus = lineupSignal(lineups?.home)
-  const awayLineupBonus = lineupSignal(lineups?.away)
+  const homeInjuryHit = injuryHit(lineups?.home)
+  const awayInjuryHit = injuryHit(lineups?.away)
 
-  const hasRealData = hF > 0 || aF > 0 || h2hCount > 0
+  // ── Bookmaker implied probs (used only as confirmation, never primary driver) ──
+  let oddsHomeP = 0.40, oddsDrawP = 0.25, oddsAwayP = 0.35
+  if (odds) {
+    const rH = 1 / Math.max(odds.home, 1.01)
+    const rA = 1 / Math.max(odds.away, 1.01)
+    const rD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0
+    const t  = rH + rA + rD || 1
+    oddsHomeP = rH / t; oddsDrawP = rD / t; oddsAwayP = rA / t
+  }
+  // Detect match profile from odds: big favourite vs even contest
+  const favOdds = odds ? Math.min(odds.home, odds.away) : 2.0
+  const isBigFavourite = favOdds < 1.45          // e.g. 1-1.44 = heavy favourite
+  const isOpenContest  = favOdds >= 2.00          // close, both teams price > 2.0
 
-  const homeRaw = hF * formWeight + homeWinsH2h * h2hWeight + homeAdv + homeLineupBonus
-  const awayRaw = aF * formWeight + awayWinsH2h * h2hWeight + awayLineupBonus
-  // Draw bias only when we have real data (form or H2H) showing the teams are closely matched.
-  // The previous unconditional +12 always made "Draw" win when form data was absent.
-  const drawBias = hasRealData && Math.abs(hF - aF) <= 2 ? 8 : 0
-  const drawRaw = drawsH2h * h2hWeight + drawBias
+  // ── Logic score — form + H2H + home advantage + lineups ──
+  // Home advantage in football is real: ~0.4 expected goal boost
+  const homeAdv  = isSoccer ? 7 : 3
+  // Form: momentum (last 2 games) carries twice the weight of older results
+  const hFormPts = hForm.pts + hForm.momentum * 1.5 - homeInjuryHit * 2
+  const aFormPts = aForm.pts + aForm.momentum * 1.5 - awayInjuryHit * 2
+
+  // H2H scores: recent trend overrides overall if they diverge
+  let hH2hScore = 0, aH2hScore = 0, dH2hScore = 0
+  if (hx) {
+    const trendBoost = 1.4  // recent 2 games matter more than history
+    hH2hScore = hx.homeWins * 3 + (hx.recentTrend === 'home' ? hx.homeWins * trendBoost : 0)
+    aH2hScore = hx.awayWins * 3 + (hx.recentTrend === 'away' ? hx.awayWins * trendBoost : 0)
+    dH2hScore = hx.draws * 2
+  }
+
+  // Draw bias: only apply when form is genuinely close AND both teams show draw tendency
+  const formGap     = Math.abs(hFormPts - aFormPts)
+  const bothDrawers = hForm.drawTendency && aForm.drawTendency
+  const drawBias    = (hasFormData && formGap <= 3 && isSoccer) ? (bothDrawers ? 12 : 6) : 0
+
+  const homeRaw = hFormPts * 2.5 + hH2hScore + homeAdv
+  const awayRaw = aFormPts * 2.5 + aH2hScore
+  const drawRaw = dH2hScore + drawBias
 
   const rawTotal = homeRaw + awayRaw + drawRaw || 1
   let homeP = homeRaw / rawTotal
   let awayP = awayRaw / rawTotal
   let drawP = drawRaw / rawTotal
 
-  // When there's no meaningful form or H2H data, fall back to bookmaker odds
-  // for all probability estimates rather than using arbitrary defaults that
-  // always resolve to the same predictions.
-  if (!hasRealData && odds) {
-    const rawH = 1 / Math.max(odds.home, 1.01)
-    const rawA = 1 / Math.max(odds.away, 1.01)
-    const rawD = odds.draw ? 1 / Math.max(odds.draw, 1.01) : 0
-    const t = rawH + rawA + rawD || 1
-    homeP = rawH / t
-    awayP = rawA / t
-    drawP = rawD / t
+  // No form/H2H at all → fall back to odds, but flag low confidence
+  if (!hasFormData && !hasH2H && odds) {
+    homeP = oddsHomeP; awayP = oddsAwayP; drawP = oddsDrawP
   }
 
-  const avgGoals = h2hCount > 0 ? h2hGoals / h2hCount : 2.55
-  const bttsRate = h2hCount > 0 ? bothScoredCount / h2hCount : 0.5
-
-  // ── 1X2 — pure logic ──
+  // ── 1X2 / Moneyline — logic decides, odds used only to detect upsets ──
   let pickSide: 'home' | 'away' | 'draw' = homeP >= awayP ? 'home' : 'away'
   let pickP = Math.max(homeP, awayP)
-  if (isSoccer && drawP > pickP) {
-    pickSide = 'draw'
-    pickP = drawP
-  }
-  const pickName = pickSide === 'home' ? homeTeam : pickSide === 'away' ? awayTeam : 'Draw'
-  const pickOdds = pickSide === 'home' ? odds?.home : pickSide === 'away' ? odds?.away : odds?.draw
+  if (isSoccer && drawP > pickP) { pickSide = 'draw'; pickP = drawP }
 
-  // Detect "underdog" — Smart AI overrides the favourite.
+  const pickName  = pickSide === 'home' ? homeTeam : pickSide === 'away' ? awayTeam : 'Draw'
+  const pickOdds  = pickSide === 'home' ? odds?.home : pickSide === 'away' ? odds?.away : odds?.draw
   const isUnderdog =
-    !!odds &&
-    pickSide !== 'draw' &&
-    pickOdds !== undefined &&
-    ((pickSide === 'home' && odds.home > odds.away) ||
-      (pickSide === 'away' && odds.away > odds.home))
+    !!odds && pickSide !== 'draw' && pickOdds !== undefined &&
+    ((pickSide === 'home' && odds.home > odds.away * 1.1) ||
+     (pickSide === 'away' && odds.away > odds.home * 1.1))
 
-  // Sport-specific context phrases for the moneyline reason text
-  const sportFormLabel = (() => {
-    const sn = (sportSlug || 'soccer').toLowerCase().replace(/[\s_-]/g, '')
-    if (sn === 'baseball' || sn === 'mlb') return 'pitching rotation and bullpen depth'
-    if (sn === 'basketball' || sn === 'nba') return 'pace-adjusted efficiency and 3-point rate'
-    if (sn === 'tennis') return 'surface form and serve percentage'
-    if (sn === 'hockey' || sn === 'icehockey' || sn === 'nhl') return 'goaltender save% and Corsi numbers'
-    if (sn === 'americanfootball' || sn === 'nfl') return 'yards-per-play differential and red zone efficiency'
-    if (sn === 'mma' || sn === 'boxing') return 'striking accuracy and grappling stats'
-    if (sn === 'cricket') return 'pitch conditions and batting/bowling form'
-    if (sn === 'rugby') return 'scrum dominance and lineout success'
-    return 'recent form and H2H record'  // soccer default
+  // Build vivid match-result reasoning from available signals
+  const resultReason = (() => {
+    const parts: string[] = []
+    // Form narrative
+    if (hasFormData) {
+      if (pickSide === 'home') {
+        if (hForm.winStreak)  parts.push(`${homeTeam} are on a strong run (${homeForm}) heading into this`)
+        else if (hForm.momentum >= 4) parts.push(`${homeTeam} come in with good recent momentum (${homeForm})`)
+        else parts.push(`${homeTeam} show the stronger form (${homeForm} vs ${awayForm})`)
+        if (aForm.losingStreak) parts.push(`${awayTeam} have struggled badly in recent outings`)
+      } else if (pickSide === 'away') {
+        if (aForm.winStreak)  parts.push(`${awayTeam} arrive in outstanding form (${awayForm})`)
+        else if (aForm.momentum >= 4) parts.push(`${awayTeam} carry strong recent momentum (${awayForm})`)
+        else parts.push(`${awayTeam} are the better-performing side on current form (${awayForm} vs ${homeForm})`)
+        if (hForm.losingStreak) parts.push(`${homeTeam} look fragile — struggling to win lately`)
+      } else {
+        parts.push(`Form is evenly balanced (${homeForm} vs ${awayForm}) — a draw is the logical outcome`)
+        if (bothDrawers) parts.push(`both sides tend to draw rather than win, reinforcing the stalemate`)
+      }
+    }
+    // H2H narrative
+    if (hx) {
+      if (pickSide === 'home' && hx.homeWins >= 3)
+        parts.push(`dominant in ${hx.homeWins}/${hx.games} H2H meetings`)
+      else if (pickSide === 'away' && hx.awayWins >= 3)
+        parts.push(`has won ${hx.awayWins}/${hx.games} of recent encounters`)
+      else if (pickSide === 'draw' && hx.draws >= 2)
+        parts.push(`${hx.draws} of the last ${hx.games} H2H meetings ended level`)
+      else if (hx.recentTrend !== 'even' && hx.recentTrend === pickSide)
+        parts.push(`recent H2H trend also tilts ${pickSide === 'home' ? homeTeam : awayTeam}'s way`)
+    }
+    // Injury / lineup
+    if (homeInjuryHit > 2 && pickSide !== 'home') parts.push(`${homeTeam} hit by injuries to key players`)
+    if (awayInjuryHit > 2 && pickSide !== 'away') parts.push(`${awayTeam} missing important starters`)
+    // Underdog flag
+    if (isUnderdog)
+      parts.push(`bookmakers have them as underdogs at ${pickOdds?.toFixed(2)} — this is a genuine value pick`)
+    if (parts.length === 0) parts.push(`logic model rates ${pickName} the more likely outcome`)
+    return parts.slice(0, 3).join('; ') + '.'
   })()
-
-  const formText =
-    pickSide === 'home'
-      ? `${homeTeam} hold the edge on ${sportFormLabel} (form: ${homeForm || '—'} vs ${awayForm || '—'})`
-      : pickSide === 'away'
-        ? `${awayTeam} hold the edge on ${sportFormLabel} (form: ${awayForm || '—'} vs ${homeForm || '—'})`
-        : `Both sides are level on ${sportFormLabel} — form and H2H support a close contest`
 
   const smartPrimaryMarket = isSoccer ? "Match Result" : "Moneyline"
   picks.push({
     market: smartPrimaryMarket,
     pick: pickSide === 'draw' ? 'Draw' : `${pickName} to win`,
     odds: pickOdds,
-    confidence: Math.round(Math.min(90, Math.max(45, pickP * 100))),
-    reason: isUnderdog
-      ? `Smart pick: ${formText}. Bookmakers have them as underdogs at ${pickOdds?.toFixed(2)} — value bet.`
-      : `${formText}${h2hCount > 0 ? `, with ${pickSide === 'home' ? homeWinsH2h : pickSide === 'away' ? awayWinsH2h : drawsH2h}/${h2hCount} of recent meetings going their way` : ''}.`,
+    confidence: Math.round(Math.min(88, Math.max(44, pickP * 100 + (isUnderdog ? -5 : 0)))),
+    reason: resultReason,
     evalKey: '1x2',
     side: pickSide,
   })
 
-  // ── Double Chance — based on logic probabilities ──
+  // ── Double Chance — based on logic probabilities, with smart narrative ──
   if (isSoccer) {
-    const dcOptions: Array<{ name: string; p: number; side: 'home_or_draw' | 'away_or_draw' | 'home_or_away' }> = [
-      { name: `${homeTeam} or Draw (1X)`, p: homeP + drawP, side: 'home_or_draw' },
-      { name: `${awayTeam} or Draw (X2)`, p: drawP + awayP, side: 'away_or_draw' },
-      { name: `${homeTeam} or ${awayTeam} (12)`, p: homeP + awayP, side: 'home_or_away' },
+    const dcOptions: Array<{ name: string; p: number; side: 'home_or_draw' | 'away_or_draw' | 'home_or_away'; reason: string }> = [
+      {
+        name: `${homeTeam} or Draw (1X)`,
+        p: homeP + drawP,
+        side: 'home_or_draw',
+        reason: pickSide === 'home'
+          ? `Safer hedge on ${homeTeam}'s form edge — a draw still returns.`
+          : `${homeTeam} aren't convincing enough to back outright; 1X covers both likely outcomes.`,
+      },
+      {
+        name: `${awayTeam} or Draw (X2)`,
+        p: drawP + awayP,
+        side: 'away_or_draw',
+        reason: pickSide === 'away'
+          ? `Logical hedge behind ${awayTeam}'s advantage — keeps the draw in play.`
+          : `${awayTeam} are capable of at least a point here; X2 covers both rational outcomes.`,
+      },
+      {
+        name: `${homeTeam} or ${awayTeam} (12)`,
+        p: homeP + awayP,
+        side: 'home_or_away',
+        reason: `Both teams are attacking — a draw looks unlikely; 12 backs a decisive result.`,
+      },
     ]
     const dcBest = dcOptions.sort((a, b) => b.p - a.p)[0]
     picks.push({
       market: "Double Chance",
       pick: dcBest.name,
-      confidence: Math.round(Math.min(94, dcBest.p * 100)),
-      reason: "Hedges the logical pick — covers two outcomes the model rates highest.",
+      confidence: Math.round(Math.min(93, dcBest.p * 100)),
+      reason: dcBest.reason,
       evalKey: 'dc',
       side: dcBest.side,
     })
   }
 
-  // ── BTTS — driven by h2h scoring patterns + market prices + form ──
+  // ── BTTS — multi-signal qualitative analysis ──
   if (isSoccer) {
     const bttsYesPrice = findMarketPrice(markets, "btts", n => /yes/i.test(n))
       || findMarketPrice(markets, "both_teams_to_score", n => /yes/i.test(n))
-    const bttsNoPrice = findMarketPrice(markets, "btts", n => /^no$/i.test(n))
+    const bttsNoPrice  = findMarketPrice(markets, "btts", n => /^no$/i.test(n))
       || findMarketPrice(markets, "both_teams_to_score", n => /^no$/i.test(n))
 
-    const bttsYes = h2hCount > 0
-      ? bttsRate > 0.5
-      : (() => {
-          // 1. Market price is the strongest signal when no H2H: lower price = more likely
-          if (bttsYesPrice && bttsNoPrice) return bttsYesPrice <= bttsNoPrice
-          // 2. Combined form: both teams showing any meaningful attacking output
-          //    Max form = 15 each; combined ≥ 6 means roughly 1 win + 1 draw between them
-          const combinedForm = hF + aF
-          // 3. Match openness: competitive odds suggest both sides will try to score
-          const isCompetitive = odds
-            ? odds.home >= 1.25 && odds.away >= 1.25
-            : true
-          // Yes when: combined form shows attacking intent AND match is competitive,
-          // OR one team is in great form (≥9) and the other is at least trying (≥3)
-          return isCompetitive && (
-            combinedForm >= 6 ||
-            (Math.max(hF, aF) >= 9 && Math.min(hF, aF) >= 3)
-          )
-        })()
+    // Signals for Yes
+    let yesScore = 0, noScore = 0
+    const bttsCues: string[] = []
 
-    // Confidence from signal strength
-    const bttsConfBase = h2hCount > 0
-      ? (bttsYes ? bttsRate : 1 - bttsRate) * 100
-      : (() => {
-          if (bttsYesPrice && bttsNoPrice) {
-            // Map price ratio to confidence (e.g. Yes 1.70 vs No 2.00 → ~60%)
-            const ratio = bttsYes
-              ? bttsNoPrice / bttsYesPrice
-              : bttsYesPrice / bttsNoPrice
-            return 50 + Math.min(16, (ratio - 1) * 25)
-          }
-          // Form-based confidence
-          return 53 + Math.min(10, (hF + aF) * 0.4)
-        })()
+    // 1. H2H BTTS rate — strongest signal
+    if (hx) {
+      if (hx.bttsRate >= 0.67)      { yesScore += 3; bttsCues.push(`both scored in ${Math.round(hx.bttsRate * 100)}% of recent meetings`) }
+      else if (hx.bttsRate >= 0.50) { yesScore += 1; bttsCues.push(`slightly more meetings had both teams scoring`) }
+      else if (hx.bttsRate <= 0.33) { noScore  += 3; bttsCues.push(`only ${Math.round(hx.bttsRate * 100)}% of recent H2H meetings saw both score`) }
+      else                          { noScore  += 1; bttsCues.push(`fewer than half of H2H meetings went BTTS`) }
+      // Average goals per team — if either averages <0.5, hard to score
+      if (hx.avgHomG < 0.5 || hx.avgAwayG < 0.5) { noScore += 2; bttsCues.push(`one side rarely scores in this fixture`) }
+    }
+
+    // 2. Big favourite = likely clean sheet for the strong side → No
+    if (isBigFavourite) { noScore += 2; bttsCues.push(`heavy favourite likely keeps a clean sheet`) }
+    else if (isOpenContest) { yesScore += 1; bttsCues.push(`open, competitive odds — both sides will attack`) }
+
+    // 3. Both teams in winning form = both attack, both may concede
+    if (hForm.wins >= 2 && aForm.wins >= 2) { yesScore += 2; bttsCues.push(`both sides are scoring and winning regularly`) }
+
+    // 4. Losing teams often fail to score
+    if (hForm.losingStreak) { noScore += 2; bttsCues.push(`${homeTeam} have struggled to find the net recently`) }
+    if (aForm.losingStreak) { noScore += 2; bttsCues.push(`${awayTeam} have looked toothless going forward`) }
+
+    // 5. Draw-heavy teams tend to involve goals on both sides (1-1, 2-2)
+    if (hForm.drawTendency && aForm.drawTendency) { yesScore += 1; bttsCues.push(`both sides often draw, which usually means goals at both ends`) }
+
+    // 6. Market odds as tiebreaker
+    if (bttsYesPrice && bttsNoPrice) {
+      if (bttsYesPrice < bttsNoPrice) { yesScore += 1 }
+      else if (bttsNoPrice < bttsYesPrice) { noScore += 1 }
+    }
+
+    const bttsYes = yesScore >= noScore
+    const bttsMargin = Math.abs(yesScore - noScore)
+    const bttsConf = Math.round(Math.min(84, Math.max(51, 55 + bttsMargin * 5)))
+    const bttsTopCue = bttsCues[0] || (bttsYes ? 'attacking profiles suggest both teams will score' : 'defensive solidity from at least one side expected')
 
     picks.push({
       market: "Both Teams to Score",
       pick: bttsYes ? "Yes" : "No",
       odds: bttsYes ? bttsYesPrice : bttsNoPrice,
-      confidence: Math.round(Math.min(85, Math.max(50, bttsConfBase + (h2hCount > 0 ? 10 : 4)))),
+      confidence: bttsConf,
       reason: bttsYes
-        ? h2hCount > 0
-          ? `Both attacks are firing — ${Math.round(bttsRate * 100)}% BTTS rate in recent meetings.`
-          : bttsYesPrice && bttsNoPrice
-            ? `Bookmakers price both teams scoring as more likely — market leans Yes.`
-            : `Both sides show enough attacking output — expect both to threaten on goal.`
-        : h2hCount > 0
-          ? `At least one defence has been watertight in the recent run — leaning No.`
-          : bttsYesPrice && bttsNoPrice
-            ? `Market prices favour a clean sheet — one side likely kept out.`
-            : `Low combined attacking form or dominant defence from one side — leaning No.`,
+        ? `Yes — ${bttsTopCue}${bttsCues[1] ? `; ${bttsCues[1]}` : ''}.`
+        : `No — ${bttsTopCue}${bttsCues[1] ? `; ${bttsCues[1]}` : ''}.`,
       evalKey: bttsYes ? 'btts_yes' : 'btts_no',
     })
   }
 
-  // ── Goal totals — soccer/football only ──
+  // ── Over / Under 2.5 Goals — qualitative goal expectation ──
   if (isSoccer) {
-    // Determine the expected goals figure. When we have H2H data use the average.
-    // Without H2H, use market odds → form → match balance as a cascade of signals.
-    const estimatedGoals = (() => {
-      if (h2hCount > 0) return avgGoals
-      // 1. Market odds for totals: clearest signal
-      const totMkt = markets?.find(m =>
-        (m.key ?? '').toLowerCase().includes('total') ||
-        m.name.toLowerCase().includes('over')
-      )
-      if (totMkt) {
-        const overO = totMkt.outcomes.find(o => /over/i.test(o.name))
-        const underO = totMkt.outcomes.find(o => /under/i.test(o.name))
-        if (overO && underO) {
-          // Lower Over price → more goals expected; lower Under → fewer
-          if (overO.price < underO.price) return 2.75   // market favours Over 2.5
-          if (underO.price < overO.price) return 2.25   // market favours Under 2.5
-          // Dead heat in market — use combined form as tiebreaker
-          return (hF + aF) >= 10 ? 2.6 : 2.4
-        }
+    let overScore = 0, underScore = 0
+    const goalCues: string[] = []
+
+    // 1. H2H average goals — definitive when available
+    if (hx) {
+      if (hx.avgGoals >= 3.2)      { overScore += 4; goalCues.push(`meetings average ${hx.avgGoals.toFixed(1)} goals — prolific fixture`) }
+      else if (hx.avgGoals >= 2.6) { overScore += 2; goalCues.push(`H2H averages ${hx.avgGoals.toFixed(1)} goals — tends to be open`) }
+      else if (hx.avgGoals <= 1.8) { underScore += 4; goalCues.push(`tight historically — only ${hx.avgGoals.toFixed(1)} goals per meeting`) }
+      else if (hx.avgGoals <= 2.4) { underScore += 2; goalCues.push(`H2H typically cautious — ${hx.avgGoals.toFixed(1)} goals per game`) }
+    }
+
+    // 2. Big favourite often controls and wins low (1-0 type scorelines)
+    if (isBigFavourite) { underScore += 2; goalCues.push(`heavy favourite tends to control and close out tightly`) }
+    else if (isOpenContest) { overScore += 1; goalCues.push(`evenly matched sides — both must go for it`) }
+
+    // 3. Both teams in attacking form
+    if (hForm.wins >= 3 && aForm.wins >= 2) { overScore += 2; goalCues.push(`both sides are prolific and clinical lately`) }
+    else if (hForm.wins >= 2 && aForm.wins >= 2) { overScore += 1; goalCues.push(`both teams scoring regularly`) }
+
+    // 4. Losing teams struggle to score, making games lower-scoring
+    if (hForm.losingStreak && aForm.losingStreak) { underScore += 3; goalCues.push(`both sides in poor form — expect a scrappy, low-scoring affair`) }
+    else if (hForm.losingStreak || aForm.losingStreak) { underScore += 1; goalCues.push(`at least one side has been poor going forward`) }
+
+    // 5. High draw tendency from both sides suggests 0-0 or 1-1 type games
+    if (hForm.drawTendency && aForm.drawTendency && !hx) {
+      underScore += 1; goalCues.push(`both teams draw a lot — hints at cagey, low-scoring style`)
+    }
+
+    // 6. Tactical/momentum signal: if one side in winning streak they may grind, not attack
+    if (hForm.winStreak && !aForm.winStreak) { underScore += 1; goalCues.push(`${homeTeam} will protect their lead mentality`) }
+
+    // 7. Market odds tiebreaker
+    const totMkt = markets?.find(m =>
+      (m.key ?? '').toLowerCase().includes('total') ||
+      m.name.toLowerCase().includes('over')
+    )
+    if (totMkt) {
+      const mOver = totMkt.outcomes.find(o => /over/i.test(o.name))
+      const mUnder = totMkt.outcomes.find(o => /under/i.test(o.name))
+      if (mOver && mUnder) {
+        if (mOver.price < mUnder.price)        overScore += 1
+        else if (mUnder.price < mOver.price)   underScore += 1
       }
-      // 2. 1X2 implied strength
-      if (odds) {
-        const favOdds = Math.min(odds.home, odds.away)
-        if (favOdds < 1.45) return 2.25   // Strong favourite — often dominates, fewer goals
-        if (favOdds > 2.20) return 2.75   // Even contest — open, attacking game
-      }
-      // 3. Combined form as final tiebreaker (avoids 2.5 == line deadlock)
-      const combinedForm = hF + aF
-      if (combinedForm >= 14) return 2.75   // Both teams in great attacking form
-      if (combinedForm <= 5)  return 2.25   // Both sides defensive / poor form
-      return combinedForm >= 10 ? 2.6 : 2.4   // Slight lean based on form
-    })()
-    const line = 2.5   // always predict on the most popular line
-    const over = estimatedGoals > line
-    const overPrice = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n) && p === line)
+    } else if (odds && !hx) {
+      // No market data: open contest (balanced odds) → lean over; lopsided → lean under
+      if (isOpenContest)  overScore += 1
+      if (isBigFavourite) underScore += 1
+    }
+
+    const line = 2.5
+    const pickOver = overScore >= underScore
+    const goalMargin = Math.abs(overScore - underScore)
+    const goalConf = Math.round(Math.min(85, Math.max(51, 54 + goalMargin * 6)))
+    const overPrice  = findMarketPrice(markets, "totals", (n, p) => /over/i.test(n)  && p === line)
     const underPrice = findMarketPrice(markets, "totals", (n, p) => /under/i.test(n) && p === line)
-    const goalConf = h2hCount > 0
-      ? Math.round(Math.min(86, 55 + Math.abs(estimatedGoals - line) * 20))
-      : 56
+    const topGoalCue = goalCues[0] || (pickOver ? 'open, attacking contest expected' : 'tight, low-scoring affair expected')
+
     picks.push({
       market: `Over / Under ${line} Goals`,
-      pick: over ? `Over ${line} Goals` : `Under ${line} Goals`,
-      odds: over ? overPrice : underPrice,
+      pick: pickOver ? `Over ${line} Goals` : `Under ${line} Goals`,
+      odds: pickOver ? overPrice : underPrice,
       confidence: goalConf,
-      reason: over
-        ? h2hCount > 0
-          ? `Recent meetings average ${estimatedGoals.toFixed(1)} goals — game projects to be open.`
-          : `Market and team profiles suggest an open, attacking contest above ${line}.`
-        : h2hCount > 0
-          ? `Recent meetings average ${estimatedGoals.toFixed(1)} goals — leaning to a tight, low-scoring affair.`
-          : `Defensive shape and odds imply a tight affair — leaning under ${line} goals.`,
-      evalKey: over ? 'over' : 'under',
+      reason: pickOver
+        ? `Over — ${topGoalCue}${goalCues[1] ? `; ${goalCues[1]}` : ''}.`
+        : `Under — ${topGoalCue}${goalCues[1] ? `; ${goalCues[1]}` : ''}.`,
+      evalKey: pickOver ? 'over' : 'under',
       line,
     })
   }
