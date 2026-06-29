@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import dynamicImport from 'next/dynamic';
@@ -12,7 +12,7 @@ import {
   Star, Shield, DollarSign, Eye, MousePointer,
   Radio, Calendar, Award, MapPin, Clock, Megaphone,
   ChevronRight, Handshake, LayoutDashboard, PieChart,
-  BadgeCheck, Flame, ArrowUpRight,
+  BadgeCheck, Flame, ArrowUpRight, Send, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -325,10 +325,52 @@ function AdvertiseRightSidebar({ stats, loading }: { stats: AdvertiseStats | nul
 
 /* ══════════════════════════════════════════════════════════════ */
 
+interface FormState {
+  company: string; name: string; email: string; phone: string;
+  website: string; budget: string; model: string; message: string;
+}
+const EMPTY_FORM: FormState = { company: '', name: '', email: '', phone: '', website: '', budget: '', model: '', message: '' };
+
 export default function AdvertisePage() {
   const [stats, setStats] = useState<AdvertiseStats | null>(null);
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
+
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  function setField(k: keyof FormState, v: string) {
+    setForm(f => ({ ...f, [k]: v }));
+    setSubmitResult(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.company || !form.name || !form.email) return;
+    setSubmitting(true);
+    setSubmitResult(null);
+    try {
+      const res = await fetch('/api/advertise/enquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSubmitResult({ ok: true, msg: "We got your enquiry! We'll be in touch within 24 hours." });
+        setForm(EMPTY_FORM);
+      } else if (data.skipped) {
+        setSubmitResult({ ok: false, msg: 'Email not configured on the server yet. Please email us at partnerships@betcheza.co.ke directly.' });
+      } else {
+        setSubmitResult({ ok: false, msg: data.error || 'Something went wrong. Please try again.' });
+      }
+    } catch {
+      setSubmitResult({ ok: false, msg: 'Network error. Please try again or email us directly.' });
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     fetch('/api/advertise/stats')
@@ -388,7 +430,7 @@ export default function AdvertisePage() {
 
       {/* ── MAIN CONTENT ─────────────────────────────────── */}
       <div className="flex-1 min-w-0 overflow-hidden">
-        <div className="px-3 py-3 sm:px-4 sm:py-4 space-y-4 max-w-2xl">
+        <div className="px-3 py-3 sm:px-4 sm:py-4 space-y-4 w-full">
 
           {/* HERO */}
           <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-4 sm:p-5">
@@ -576,60 +618,152 @@ export default function AdvertisePage() {
             </div>
           </section>
 
-          {/* CONTACT */}
+          {/* CONTACT / ENQUIRY FORM */}
           <section id="contact" className="scroll-mt-16">
             <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card to-card p-4 sm:p-5">
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-2 mb-1">
                 <Handshake className="h-4 w-4 text-primary" />
                 <span className="text-xs font-bold uppercase tracking-widest text-primary">Get in Touch</span>
               </div>
-              <h2 className="text-base font-bold text-foreground mb-1">Ready to partner with us?</h2>
-              <p className="text-xs text-muted-foreground mb-4 max-w-lg">
-                Contact our partnerships team for a media kit, audience data pack, or to discuss a tailored deal. We respond within 24 hours.
+              <h2 className="text-base font-bold text-foreground mb-0.5">Ready to partner with us?</h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Fill in the form and we'll send you a media kit and custom proposal within 24 hours.
               </p>
 
-              <div className="grid sm:grid-cols-2 gap-2.5">
-                <a
-                  href="mailto:partnerships@betcheza.co.ke?subject=Advertising%20Enquiry%20-%20Betcheza&body=Hi%20Betcheza%20Partnerships%20Team%2C%0A%0AI%20am%20interested%20in%20advertising%20on%20Betcheza.%20Please%20send%20me%20your%20media%20kit.%0A%0ACompany%3A%20%0AWebsite%3A%20%0AMonthly%20budget%3A%20%0AModel%20preferred%20(CPA%2FRevShare%2FFixed)%3A%20%0A%0AThanks"
-                  className="flex items-start gap-3 rounded-xl border border-border bg-card p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20">
-                    <Mail className="h-3.5 w-3.5 text-primary" />
+              <form onSubmit={handleSubmit} className="space-y-3">
+                {/* Row 1: Company + Contact name */}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Company / Brand <span className="text-red-500">*</span></label>
+                    <input
+                      type="text" required value={form.company}
+                      onChange={e => setField('company', e.target.value)}
+                      placeholder="SportPesa, Betika, etc."
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
                   </div>
                   <div>
-                    <p className="text-[11px] text-muted-foreground">Email us</p>
-                    <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">partnerships@betcheza.co.ke</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Response within 24 hours</p>
+                    <label className="block text-xs font-medium text-foreground mb-1">Your Name <span className="text-red-500">*</span></label>
+                    <input
+                      type="text" required value={form.name}
+                      onChange={e => setField('name', e.target.value)}
+                      placeholder="John Doe"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
                   </div>
-                </a>
-
-                <a
-                  href="https://wa.me/254113226240?text=Hi%20Betcheza%2C%20I'm%20interested%20in%20advertising%20on%20your%20platform.%20Please%20send%20me%20your%20media%20kit."
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-green-500/30 bg-card p-3 hover:border-green-500/60 hover:bg-green-500/5 transition-colors group"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-green-500/10 border border-green-500/20">
-                    <MessageCircle className="h-3.5 w-3.5 text-green-500" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">WhatsApp only (no calls)</p>
-                    <p className="text-xs font-semibold text-foreground group-hover:text-green-600 transition-colors">+254 113 226 240</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Message us — no phone calls</p>
-                  </div>
-                </a>
-              </div>
-
-              <div className="mt-3 border-t border-border pt-3">
-                <p className="text-[11px] text-muted-foreground mb-2">When you reach out, please include:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {['Your company name & website', 'Preferred partnership model', 'Monthly budget range', 'Target market / offer'].map(item => (
-                    <span key={item} className="flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
-                      <ChevronRight className="h-3 w-3 text-primary" />
-                      {item}
-                    </span>
-                  ))}
                 </div>
-              </div>
+
+                {/* Row 2: Email + Phone */}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Email Address <span className="text-red-500">*</span></label>
+                    <input
+                      type="email" required value={form.email}
+                      onChange={e => setField('email', e.target.value)}
+                      placeholder="you@company.com"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Phone / WhatsApp</label>
+                    <input
+                      type="tel" value={form.phone}
+                      onChange={e => setField('phone', e.target.value)}
+                      placeholder="+254 7XX XXX XXX"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 3: Website + Budget */}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Website</label>
+                    <input
+                      type="url" value={form.website}
+                      onChange={e => setField('website', e.target.value)}
+                      placeholder="https://yoursite.com"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Monthly Budget</label>
+                    <select
+                      value={form.budget} onChange={e => setField('budget', e.target.value)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="">Select a range</option>
+                      <option>Under KES 25,000</option>
+                      <option>KES 25,000 – 60,000</option>
+                      <option>KES 60,000 – 150,000</option>
+                      <option>Over KES 150,000</option>
+                      <option>Custom / discuss</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Preferred model */}
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Preferred Partnership Model</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Fixed Monthly', 'CPA', 'Rev Share', 'Hybrid', 'Not sure yet'].map(m => (
+                      <button
+                        key={m} type="button"
+                        onClick={() => setField('model', form.model === m ? '' : m)}
+                        className={cn(
+                          'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                          form.model === m
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                        )}
+                      >{m}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Message */}
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Additional Message</label>
+                  <textarea
+                    rows={3} value={form.message}
+                    onChange={e => setField('message', e.target.value)}
+                    placeholder="Tell us about your brand, target audience, or any specific requirements..."
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                  />
+                </div>
+
+                {/* Result banner */}
+                {submitResult && (
+                  <div className={cn(
+                    'rounded-lg border px-4 py-3 text-sm',
+                    submitResult.ok
+                      ? 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400'
+                      : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400'
+                  )}>
+                    {submitResult.msg}
+                  </div>
+                )}
+
+                {/* Submit + direct links */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-1">
+                  <button
+                    type="submit" disabled={submitting || !form.company || !form.name || !form.email}
+                    className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {submitting ? 'Sending…' : 'Send Enquiry'}
+                  </button>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>or contact us directly:</span>
+                    <a href="mailto:partnerships@betcheza.co.ke" className="flex items-center gap-1 text-primary hover:underline font-medium">
+                      <Mail className="h-3 w-3" /> Email
+                    </a>
+                    <a href="https://wa.me/254113226240" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-green-600 hover:underline font-medium">
+                      <MessageCircle className="h-3 w-3" /> WhatsApp
+                    </a>
+                  </div>
+                </div>
+              </form>
             </div>
           </section>
 
