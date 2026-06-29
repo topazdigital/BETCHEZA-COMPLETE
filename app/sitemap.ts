@@ -29,6 +29,14 @@ const JACKPOT_BOOKMAKERS = [
   'elitebet',
 ];
 
+const JACKPOT_TYPES_BY_BOOKMAKER: Record<string, string[]> = {
+  sportpesa: ['mega-jackpot', 'midweek-jackpot'],
+  betika: ['grand-jackpot', 'midweek-jackpot', 'daily-jackpot'],
+  odibets: ['jackpot-bonanza'],
+  betin: ['grand-jackpot', 'midweek-jackpot'],
+  mozzartbet: ['mega-jackpot', 'midweek-jackpot'],
+};
+
 const TIPS_BOOKMAKERS = [
   'sportpesa', 'betika', 'odibets', 'betway', 'mozzartbet', '1xbet',
   'premiertabet', 'shabiki', 'elitebet', 'helabet', 'bangbet', '22bet',
@@ -79,8 +87,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     url: `${base}/jackpots/${slug}`,
     lastModified: now,
     changeFrequency: 'daily' as const,
-    priority: ['sportpesa', 'betika', 'odibets'].includes(slug) ? 0.88 : 0.75,
+    priority: ['sportpesa', 'betika', 'odibets'].includes(slug) ? 0.92 : 0.78,
   }));
+
+  // Individual jackpot-type pages — highest priority for target keywords
+  // e.g. /jackpots/sportpesa/mega-jackpot → "SportPesa Mega Jackpot Prediction Today 17 Games"
+  const jackpotTypeEntries: MetadataRoute.Sitemap = Object.entries(JACKPOT_TYPES_BY_BOOKMAKER).flatMap(
+    ([bkSlug, types]) => types.map(typeSlug => ({
+      url: `${base}/jackpots/${bkSlug}/${typeSlug}`,
+      lastModified: now,
+      changeFrequency: 'daily' as const,
+      priority: bkSlug === 'sportpesa' ? 0.97 : bkSlug === 'betika' || bkSlug === 'odibets' ? 0.93 : 0.88,
+    }))
+  );
 
   const sportEntries: MetadataRoute.Sitemap = ALL_SPORTS.map(s => ({
     url: `${base}/sports/${s.slug}`,
@@ -255,6 +274,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     ...staticEntries,
+    ...jackpotTypeEntries,
     ...jackpotEntries,
     ...bookmakerTipEntries,
     ...sportEntries,
