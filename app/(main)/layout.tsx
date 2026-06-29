@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen,
+  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen, Megaphone,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -157,6 +157,7 @@ const mainNavItems: NavItem[] = [
   { href: "/results", label: "Results", icon: BarChart3, color: "text-slate-400", activeColor: "bg-slate-500" },
   { href: "/become-tipster", label: "Become a Tipster", icon: UserPlus, color: "text-indigo-500", activeColor: "bg-indigo-500" },
   { href: "/how-it-works", label: "How It Works", icon: BookOpen, color: "text-cyan-500", activeColor: "bg-cyan-500" },
+  { href: "/advertise", label: "Advertise", icon: Megaphone, color: "text-rose-500", activeColor: "bg-rose-500" },
 ]
 
 // Popular bookmakers for the sidebar — colours only, no external logo requests

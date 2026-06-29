@@ -139,6 +139,7 @@ export function Footer() {
               <Link href="/leaderboard" className={linkCls}>Leaderboard</Link>
               <Link href="/competitions" className={linkCls}>Competitions</Link>
               <Link href="/about" className={linkCls}>About Us</Link>
+              <Link href="/advertise" className="text-xs font-medium text-primary hover:text-primary/80">Advertise with Us</Link>
             </nav>
           </div>
 
