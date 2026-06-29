@@ -17,12 +17,19 @@ const SPORT_ID_MAP: Record<string, number> = {
   baseball:         3,
   americanfootball: 15,
   hockey:           19,
+  icehockey:        19,
   tennis:           33,
-  mma:              23,
-  boxing:           23,
-  esports:          12,
+  tabletennis:      35,
+  badminton:        31,
   volleyball:       23,
-  cricket:          29, // fallback to soccer to avoid miss
+  mma:              23,
+  boxing:           10,
+  esports:          12,
+  darts:            28,
+  rugby:            16,
+  rugbyleague:      16,
+  snooker:          18,
+  // Cricket is NOT on Pinnacle — skip to avoid wrong sport fetch
 };
 
 interface PinnacleMatchup {

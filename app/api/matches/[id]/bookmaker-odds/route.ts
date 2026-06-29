@@ -4,16 +4,27 @@ import { getSgoBookmakerLines } from '@/lib/api/sportsgameodds';
 import { getSharpApiBookmakerLines } from '@/lib/api/sharpapi';
 import { getTheOddsApiMatchLines } from '@/lib/api/the-odds-api-match';
 import { getSofaScoreOdds, extractSofaScoreEventId } from '@/lib/api/sofascore-odds';
+import { getPinnacleOdds } from '@/lib/api/pinnacle';
+import { findSofaScoreEventId } from '@/lib/api/sofascore';
 
 const NO_DRAW_SPORTS = new Set([
   'basketball', 'baseball', 'tennis', 'mma', 'boxing', 'golf',
   'formula-1', 'racing', 'horse-racing', 'darts', 'snooker',
   'american-football', 'ice-hockey', 'table-tennis', 'cricket',
+  'badminton', 'volleyball', 'table-tennis',
 ]);
 
 const FINISHED_STATUSES = new Set([
   'finished', 'ft', 'full-time', 'final', 'ended', 'post',
   'complete', 'completed', 'aet', 'pen',
+]);
+
+// Sports that Pinnacle covers well (no key required, free guest API)
+const PINNACLE_SUPPORTED_SPORTS = new Set([
+  'tennis', 'basketball', 'baseball', 'ice-hockey', 'hockey',
+  'american-football', 'mma', 'boxing', 'esports', 'volleyball',
+  'table-tennis', 'badminton', 'darts', 'rugby', 'rugby-league', 'snooker',
+  'football', 'soccer',
 ]);
 
 export async function GET(
@@ -47,6 +58,7 @@ export async function GET(
         : match.kickoffTime instanceof Date
         ? match.kickoffTime.toISOString()
         : new Date().toISOString();
+    const kickoffMs = new Date(isoKickoff).getTime();
 
     // ── Source 1: SGO (SportsGameOdds) ──────────────────────────────────────
     // Best multi-book coverage when SPORTSGAMEODDS_API_KEY is configured.
@@ -77,13 +89,51 @@ export async function GET(
       }
     }
 
-    // ── Source 3: SofaScore odds (free, no key) ──────────────────────────────
-    // SofaScore provides h2h odds for ALL sports via their internal API.
-    // Particularly useful for tennis, cricket, basketball, table-tennis, etc.
-    // where TheOddsAPI quota often runs dry. Requires no API key — routed
-    // through the existing CF Worker proxy to bypass cloud-IP blocks.
+    // ── Source 3: Pinnacle (free guest API, no key required) ─────────────────
+    // Pinnacle covers tennis, basketball, baseball, hockey, MMA, esports,
+    // darts, badminton, table-tennis, volleyball, rugby, snooker, and more.
+    // Works from cloud IPs — no proxy needed. Matches by team name.
+    if (lines.length === 0 && PINNACLE_SUPPORTED_SPORTS.has(sportSlug)) {
+      try {
+        const pinnLine = await getPinnacleOdds(
+          match.homeTeam.name,
+          match.awayTeam.name,
+          sportSlug,
+          kickoffMs,
+        );
+        if (pinnLine && pinnLine.home > 1 && pinnLine.away > 1) {
+          lines = [{
+            bookmaker: 'pinnacle',
+            display: 'Pinnacle',
+            home: pinnLine.home,
+            draw: hasDraw && pinnLine.draw ? pinnLine.draw : undefined,
+            away: pinnLine.away,
+          }];
+        }
+      } catch { /* silent */ }
+    }
+
+    // ── Source 4: SofaScore odds (free, no key) ──────────────────────────────
+    // SofaScore has odds for ALL sports: tennis, cricket, basketball, etc.
+    // Case A: Direct — match already comes from SofaScore (id starts with ss_).
+    // Case B: Cross-ref — ESPN/other match; look up the SofaScore event by
+    //         team names + kickoff time, then fetch odds. Useful for tennis
+    //         and cricket where ESPN doesn't embed odds.
     if (lines.length === 0) {
-      const ssEventId = extractSofaScoreEventId(match.id);
+      let ssEventId = extractSofaScoreEventId(match.id);
+
+      // Case B: cross-reference for non-SofaScore matches
+      if (ssEventId === null && kickoffMs) {
+        try {
+          ssEventId = await findSofaScoreEventId(
+            match.homeTeam.name,
+            match.awayTeam.name,
+            kickoffMs,
+            sportSlug,
+          );
+        } catch { /* silent */ }
+      }
+
       if (ssEventId !== null) {
         const ssLines = await getSofaScoreOdds(ssEventId, hasDraw);
         if (ssLines.length > 0) {
@@ -92,9 +142,9 @@ export async function GET(
       }
     }
 
-    // ── Source 4: ESPN embedded odds ─────────────────────────────────────────
+    // ── Source 5: ESPN embedded odds ─────────────────────────────────────────
     // ESPN's scoreboard embeds one bookmaker's line (usually DraftKings).
-    // Use it as a single guaranteed line when SGO, TheOddsAPI, and SofaScore are empty.
+    // Use it as a single guaranteed line when all sources above are empty.
     if (lines.length === 0 && match.odds && match.odds.bookmaker &&
         typeof match.odds.home === 'number' && typeof match.odds.away === 'number') {
       lines = [{
@@ -106,8 +156,8 @@ export async function GET(
       }];
     }
 
-    // ── Source 5: SharpAPI (DraftKings + FanDuel free tier) ──────────────────
-    // Only attempted when all four sources above returned nothing.
+    // ── Source 6: SharpAPI (DraftKings + FanDuel free tier) ──────────────────
+    // Only attempted when all five sources above returned nothing.
     if (lines.length === 0) {
       const sharpLines = await getSharpApiBookmakerLines(
         match.homeTeam.name,
