@@ -169,6 +169,16 @@ async function fetchSportPesaMegaFromWeb(count: number): Promise<RawGame[] | nul
     'https://www.ghanasoccernet.com/sportpesa-mega-jackpot-predictions',
     'https://www.sportpesapredictions.com/mega-jackpot/',
     'https://www.sportpesapredictions.co.ke/',
+    // Additional Kenyan sources
+    'https://www.254tips.co.ke/sportpesa-mega-jackpot/',
+    'https://www.kenyapredictions.co.ke/sportpesa-mega-jackpot/',
+    'https://www.footballpredictions.co.ke/sportpesa-mega-jackpot/',
+    'https://www.tipspesa.co.ke/sportpesa-mega-jackpot/',
+    'https://www.jackpottipper.com/sportpesa-mega-jackpot/',
+    'https://www.betspredict.co.ke/sportpesa-mega-jackpot/',
+    'https://www.soccerpredictions.co.ke/sportpesa-mega-jackpot/',
+    'https://www.betanalyst.co.ke/sportpesa-mega-jackpot/',
+    'https://predictionstoday.co.ke/sportpesa-mega-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -196,6 +206,11 @@ async function fetchSportPesaMidweekFromWeb(count: number): Promise<RawGame[] | 
     'https://footytips.co.ke/sportpesa-midweek-jackpot/',
     'https://kenyabetting.co.ke/sportpesa-midweek-jackpot/',
     'https://www.jackpotke.com/sportpesa-midweek-jackpot/',
+    'https://www.254tips.co.ke/sportpesa-midweek-jackpot/',
+    'https://www.kenyapredictions.co.ke/sportpesa-midweek-jackpot/',
+    'https://www.tipspesa.co.ke/sportpesa-midweek-jackpot/',
+    'https://predictionstoday.co.ke/sportpesa-midweek-jackpot/',
+    'https://www.betanalyst.co.ke/sportpesa-midweek-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -225,6 +240,14 @@ async function fetchBetikaGrandFromWeb(count: number): Promise<RawGame[] | null>
     'https://footytips.co.ke/betika-grand-jackpot/',
     'https://kenyabetting.co.ke/betika-jackpot/',
     'https://www.jackpotke.com/betika-jackpot/',
+    'https://www.254tips.co.ke/betika-grand-jackpot/',
+    'https://www.kenyapredictions.co.ke/betika-grand-jackpot/',
+    'https://www.footballpredictions.co.ke/betika-grand-jackpot/',
+    'https://www.tipspesa.co.ke/betika-grand-jackpot/',
+    'https://www.jackpottipper.com/betika-grand-jackpot/',
+    'https://www.betspredict.co.ke/betika-jackpot/',
+    'https://predictionstoday.co.ke/betika-grand-jackpot/',
+    'https://www.betanalyst.co.ke/betika-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -306,6 +329,13 @@ async function fetchOdiBetsFromWeb(count: number): Promise<RawGame[] | null> {
     'https://footytips.co.ke/odibets-jackpot/',
     'https://kenyabetting.co.ke/odibets-jackpot/',
     'https://www.jackpotke.com/odibets-jackpot/',
+    'https://www.254tips.co.ke/odibets-jackpot/',
+    'https://www.kenyapredictions.co.ke/odibets-jackpot/',
+    'https://www.tipspesa.co.ke/odibets-jackpot/',
+    'https://predictionstoday.co.ke/odibets-jackpot/',
+    'https://www.betanalyst.co.ke/odibets-jackpot/',
+    'https://www.footballpredictions.co.ke/odibets-jackpot/',
+    'https://www.jackpottipper.com/odibets-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -331,6 +361,11 @@ async function fetchBetinFromWeb(count: number): Promise<RawGame[] | null> {
     'https://footytips.co.ke/betin-jackpot/',
     'https://kenyabetting.co.ke/betin-jackpot/',
     'https://www.jackpotke.com/betin-jackpot/',
+    'https://www.254tips.co.ke/betin-jackpot/',
+    'https://www.kenyapredictions.co.ke/betin-jackpot/',
+    'https://www.tipspesa.co.ke/betin-jackpot/',
+    'https://predictionstoday.co.ke/betin-jackpot/',
+    'https://www.jackpottipper.com/betin-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -358,6 +393,12 @@ async function fetchMozzartMegaFromWeb(count: number): Promise<RawGame[] | null>
     'https://footytips.co.ke/mozzartbet-jackpot/',
     'https://kenyabetting.co.ke/mozzartbet-jackpot/',
     'https://www.jackpotke.com/mozzartbet-jackpot/',
+    'https://www.254tips.co.ke/mozzartbet-jackpot/',
+    'https://www.kenyapredictions.co.ke/mozzartbet-jackpot/',
+    'https://www.tipspesa.co.ke/mozzartbet-jackpot/',
+    'https://predictionstoday.co.ke/mozzartbet-jackpot/',
+    'https://www.jackpottipper.com/mozzartbet-jackpot/',
+    'https://www.betanalyst.co.ke/mozzartbet-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -405,6 +446,12 @@ async function fetchBahatibetFromWeb(count: number): Promise<RawGame[] | null> {
     'https://tips254.com/bahatibet-jackpot/',
     'https://footytips.co.ke/bahatibet-jackpot/',
     'https://kenyabetting.co.ke/bahatibet-jackpot/',
+    'https://www.254tips.co.ke/bahatibet-jackpot/',
+    'https://www.kenyapredictions.co.ke/bahatibet-jackpot/',
+    'https://www.tipspesa.co.ke/bahatibet-jackpot/',
+    'https://predictionstoday.co.ke/bahatibet-jackpot/',
+    'https://www.jackpottipper.com/bahatibet-jackpot/',
+    'https://www.betwinner360.com/bahatibet-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -429,6 +476,12 @@ async function fetchBetlionFromWeb(count: number): Promise<RawGame[] | null> {
     'https://tips254.com/betlion-jackpot/',
     'https://footytips.co.ke/betlion-jackpot/',
     'https://kenyabetting.co.ke/betlion-jackpot/',
+    'https://www.254tips.co.ke/betlion-jackpot/',
+    'https://www.kenyapredictions.co.ke/betlion-jackpot/',
+    'https://www.tipspesa.co.ke/betlion-jackpot/',
+    'https://predictionstoday.co.ke/betlion-jackpot/',
+    'https://www.jackpottipper.com/betlion-super-jackpot/',
+    'https://www.betwinner360.com/betlion-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -453,6 +506,12 @@ async function fetchSportybetFromWeb(count: number): Promise<RawGame[] | null> {
     'https://tips254.com/sportybet-jackpot/',
     'https://footytips.co.ke/sportybet-jackpot/',
     'https://kenyabetting.co.ke/sportybet-jackpot/',
+    'https://www.254tips.co.ke/sportybet-jackpot/',
+    'https://www.kenyapredictions.co.ke/sportybet-jackpot/',
+    'https://www.tipspesa.co.ke/sportybet-jackpot/',
+    'https://predictionstoday.co.ke/sportybet-jackpot/',
+    'https://www.jackpottipper.com/sportybet-jackpot/',
+    'https://www.betwinner360.com/sportybet-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -476,6 +535,12 @@ async function fetchMSportFromWeb(count: number): Promise<RawGame[] | null> {
     'https://tips254.com/msport-jackpot/',
     'https://footytips.co.ke/msport-jackpot/',
     'https://kenyabetting.co.ke/msport-jackpot/',
+    'https://www.254tips.co.ke/msport-jackpot/',
+    'https://www.kenyapredictions.co.ke/msport-jackpot/',
+    'https://www.tipspesa.co.ke/msport-jackpot/',
+    'https://predictionstoday.co.ke/msport-jackpot/',
+    'https://www.jackpottipper.com/msport-jackpot/',
+    'https://www.betwinner360.com/msport-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -499,6 +564,12 @@ async function fetchBangbetFromWeb(count: number): Promise<RawGame[] | null> {
     'https://tips254.com/bangbet-jackpot/',
     'https://footytips.co.ke/bangbet-jackpot/',
     'https://kenyabetting.co.ke/bangbet-jackpot/',
+    'https://www.254tips.co.ke/bangbet-jackpot/',
+    'https://www.kenyapredictions.co.ke/bangbet-jackpot/',
+    'https://www.tipspesa.co.ke/bangbet-jackpot/',
+    'https://predictionstoday.co.ke/bangbet-jackpot/',
+    'https://www.jackpottipper.com/bangbet-jackpot/',
+    'https://www.betwinner360.com/bangbet-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);
@@ -523,6 +594,12 @@ async function fetchShabikyFromWeb(count: number): Promise<RawGame[] | null> {
     'https://tips254.com/shabiki-jackpot/',
     'https://footytips.co.ke/shabiki-jackpot/',
     'https://kenyabetting.co.ke/shabiki-jackpot/',
+    'https://www.254tips.co.ke/shabiki-jackpot/',
+    'https://www.kenyapredictions.co.ke/shabiki-jackpot/',
+    'https://www.tipspesa.co.ke/shabiki-jackpot/',
+    'https://predictionstoday.co.ke/shabiki-jackpot/',
+    'https://www.jackpottipper.com/shabiki-pool-jackpot/',
+    'https://www.betwinner360.com/shabiki-jackpot/',
   ]);
   if (!result) return null;
   const games = parseMatchesFromHtml(result.html, count);

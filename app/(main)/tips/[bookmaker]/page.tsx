@@ -573,12 +573,40 @@ export default async function BookmakerTipsPage({ params }: Props) {
               {
                 '@type': 'Question',
                 name: `Are ${bm.name} tips on Betcheza free?`,
-                acceptedAnswer: { '@type': 'Answer', text: `Yes. All ${bm.name} predictions on Betcheza are completely free.` },
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: `Yes. All ${bm.name} predictions on Betcheza are completely free. We cover daily match tips, jackpot banker picks, and accumulator suggestions at no cost.`,
+                },
               },
               {
                 '@type': 'Question',
                 name: `How accurate are ${bm.name} predictions?`,
-                acceptedAnswer: { '@type': 'Answer', text: 'Our top tipsters maintain win rates of 60–73%. Always bet responsibly.' },
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: `Our top tipsters maintain win rates of 60–73%. Accuracy varies by market — 1X2 tips on heavy favourites tend to be more consistent; correct score and BTTS tips carry higher odds with slightly lower hit rates. Always bet responsibly.`,
+                },
+              },
+              {
+                '@type': 'Question',
+                name: bm.jackpot
+                  ? `How do I use the ${bm.name} ${bm.jackpot} predictions?`
+                  : `Which markets do ${bm.name} tips cover?`,
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: bm.jackpot
+                    ? `Visit the Jackpots page on Betcheza and select ${bm.name}. You will see the full ${bm.jackpotGames ?? ''}-game lineup with AI confidence ratings, banker picks, and community consensus from 50,000+ tipsters.`
+                    : `Our ${bm.name} tips cover all major markets: 1X2, Over/Under goals, Both Teams to Score, Double Chance, Correct Score, Asian Handicap, and accumulator combinations.`,
+                },
+              },
+              {
+                '@type': 'Question',
+                name: `Can I bet on ${bm.name} via M-Pesa?`,
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: bm.mpesa
+                    ? `Yes — ${bm.name} Kenya supports M-Pesa deposits and withdrawals. Minimum bet is ${bm.minBet}. Betcheza also supports M-Pesa for community wallet top-ups and cash-outs.`
+                    : `Check ${bm.name} Kenya directly for payment methods. Betcheza supports M-Pesa for community wallet top-ups.`,
+                },
               },
             ],
           }),

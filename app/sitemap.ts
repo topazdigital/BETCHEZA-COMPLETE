@@ -37,10 +37,16 @@ const JACKPOT_BOOKMAKERS = [
 
 const JACKPOT_TYPES_BY_BOOKMAKER: Record<string, string[]> = {
   sportpesa: ['mega-jackpot', 'midweek-jackpot'],
-  betika: ['grand-jackpot', 'midweek-jackpot', 'daily-jackpot'],
+  betika: ['grand-jackpot', 'midweek-jackpot', 'daily-jackpot', 'laki-tatu'],
   odibets: ['jackpot-bonanza'],
   betin: ['grand-jackpot', 'midweek-jackpot'],
   mozzartbet: ['mega-jackpot', 'midweek-jackpot'],
+  bahatibet: ['daily-jackpot'],
+  betlion: ['super-jackpot'],
+  sportybet: ['daily-jackpot'],
+  msport: ['jackpot'],
+  bangbet: ['jackpot'],
+  shabiki: ['pool-jackpot'],
 };
 
 const TIPS_BOOKMAKERS = [
