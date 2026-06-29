@@ -15,6 +15,7 @@ import { Toaster } from 'sonner'
 import { NavigationProgress } from '@/components/layout/navigation-progress'
 import { ServiceWorkerRegister } from '@/components/layout/service-worker-register'
 import { ClarityAnalytics } from '@/components/layout/clarity-analytics'
+import { PageviewTracker } from '@/components/layout/pageview-tracker'
 import './globals.css'
 
 const geist = Geist({ 
@@ -920,6 +921,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
         />
         <ClarityAnalytics />
+        <PageviewTracker />
         <NavigationProgress />
         <ServiceWorkerRegister />
         <ThemeProvider
