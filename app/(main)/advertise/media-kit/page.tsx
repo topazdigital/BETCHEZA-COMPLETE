@@ -1,14 +1,42 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+interface AdvertiseStats {
+  totalTips: number | null;
+  overallWinRate: number | null;
+  monthlyPageviews: number | null;
+  avgSessionMinutes: number | null;
+}
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1_000) return Math.round(n / 1_000) + 'K+';
+  return String(n);
+}
+
 export default function MediaKitPage() {
+  const [stats, setStats] = useState<AdvertiseStats | null>(null);
+
   useEffect(() => {
-    // Small delay so styles load before print dialog opens
-    const t = setTimeout(() => window.print(), 800);
-    return () => clearTimeout(t);
+    fetch('/api/advertise/stats')
+      .then(r => r.json())
+      .then(data => setStats(data))
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!stats) return;
+    const t = setTimeout(() => window.print(), 600);
+    return () => clearTimeout(t);
+  }, [stats]);
+
+  const pageviews   = stats?.monthlyPageviews != null ? fmt(stats.monthlyPageviews)       : '…';
+  const tips        = stats?.totalTips        != null ? fmt(stats.totalTips)               : '…';
+  const sessionMin  = stats?.avgSessionMinutes != null ? `${stats.avgSessionMinutes}m`     : '…';
+  const winRate     = stats?.overallWinRate   != null ? `${stats.overallWinRate}%`         : '…';
+  const winRateNote = stats?.overallWinRate   != null ? 'Settled tips win rate'            : 'No settled tips yet';
 
   return (
     <>
@@ -16,21 +44,29 @@ export default function MediaKitPage() {
         @media print {
           body { margin: 0; background: white; }
           .no-print { display: none !important; }
-          .page { box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; }
+          .page { box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; width: 100% !important; }
         }
         @page { size: A4; margin: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f3f4f6; }
       `}</style>
 
-      {/* Print / back controls — hidden when printing */}
+      {/* Controls bar — hidden when printing */}
       <div className="no-print flex items-center justify-between px-6 py-3 bg-white border-b text-sm">
-        <Link href="/advertise" className="text-primary hover:underline">← Back to Advertise</Link>
-        <button
-          onClick={() => window.print()}
-          className="rounded-lg bg-green-600 px-4 py-2 text-white text-sm font-semibold hover:bg-green-700 transition-colors"
-        >
-          Save as PDF / Print
-        </button>
+        <Link href="/advertise" className="text-green-600 hover:underline font-medium">← Back to Advertise</Link>
+        <div className="flex items-center gap-3">
+          {!stats && (
+            <span className="text-xs text-gray-400 animate-pulse">Loading live stats…</span>
+          )}
+          {stats && (
+            <span className="text-xs text-gray-400">✓ Live data loaded</span>
+          )}
+          <button
+            onClick={() => window.print()}
+            className="rounded-lg bg-green-600 px-4 py-2 text-white text-sm font-semibold hover:bg-green-700 transition-colors"
+          >
+            Save as PDF / Print
+          </button>
+        </div>
       </div>
 
       {/* ── A4 PAGE ───────────────────────────────────────────── */}
@@ -61,14 +97,14 @@ export default function MediaKitPage() {
 
         <div style={{ padding: '32px 48px' }}>
 
-          {/* Platform Stats */}
+          {/* Platform Stats — live from DB */}
           <SectionTitle>Platform at a Glance</SectionTitle>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 28 }}>
             {[
-              { value: '7K+', label: 'Monthly Pageviews', sub: 'Rolling 30 days' },
-              { value: '16K+', label: 'Tips on Platform', sub: 'All-time predictions' },
-              { value: '2.5m', label: 'Avg. Session Time', sub: 'High intent audience' },
-              { value: '50K+', label: 'Registered Users', sub: 'Verified bettors' },
+              { value: pageviews,  label: 'Monthly Pageviews', sub: 'Rolling 30 days' },
+              { value: tips,       label: 'Tips on Platform',   sub: 'All-time predictions' },
+              { value: sessionMin, label: 'Avg. Session Time',  sub: 'High intent audience' },
+              { value: winRate,    label: 'Platform Win Rate',  sub: winRateNote },
             ].map(({ value, label, sub }) => (
               <div key={label} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '14px 12px', textAlign: 'center' }}>
                 <div style={{ fontSize: 22, fontWeight: 800, color: '#16a34a' }}>{value}</div>
@@ -199,7 +235,7 @@ export default function MediaKitPage() {
           </div>
 
           <div style={{ marginTop: 16, textAlign: 'center', fontSize: 9, color: '#9ca3af' }}>
-            © 2026 Betcheza. All rights reserved. Prices VAT exclusive. Subject to change without notice.
+            © 2026 Betcheza. All rights reserved. Stats are live figures pulled from the platform. Prices VAT exclusive. Subject to change without notice.
           </div>
         </div>
       </div>
