@@ -21,12 +21,18 @@ const JACKPOT_BOOKMAKERS = [
   'sportpesa',
   'betika',
   'odibets',
-  'betway',
+  'betin',
   'mozzartbet',
+  'betway',
   '1xbet',
   'premiertabet',
   'shabiki',
   'elitebet',
+  'bangbet',
+  'msport',
+  'bahatibet',
+  'betlion',
+  'sportybet',
 ];
 
 const JACKPOT_TYPES_BY_BOOKMAKER: Record<string, string[]> = {
@@ -40,7 +46,8 @@ const JACKPOT_TYPES_BY_BOOKMAKER: Record<string, string[]> = {
 const TIPS_BOOKMAKERS = [
   'sportpesa', 'betika', 'odibets', 'betway', 'mozzartbet', '1xbet',
   'premiertabet', 'shabiki', 'elitebet', 'helabet', 'bangbet', '22bet',
-  'msport', 'betin',
+  'msport', 'betin', 'bahatibet', 'betlion', 'wazabet', 'sportybet',
+  'betika24', 'dafabet',
 ];
 
 function slugify(str: string): string {

@@ -24,10 +24,10 @@ interface BookmakerInfo {
 const BOOKMAKERS: Record<string, BookmakerInfo> = {
   sportpesa: {
     slug: 'sportpesa', name: 'SportPesa', fullName: 'SportPesa Kenya',
-    country: 'Kenya', jackpot: 'Mega Jackpot', jackpotGames: 13, jackpotPrize: 'KES 100M+',
-    description: 'Kenya\'s largest sports betting platform with 13-game Mega Jackpot and midweek jackpot. Get daily free predictions, jackpot bankers, and accumulator tips.',
+    country: 'Kenya', jackpot: 'Mega Jackpot', jackpotGames: 17, jackpotPrize: 'KES 100M+',
+    description: 'Kenya\'s largest sports betting platform with 17-game Mega Jackpot and midweek jackpot. Get daily free predictions, jackpot bankers, and accumulator tips.',
     markets: ['1X2', 'Over/Under', 'BTTS', 'Correct Score', 'Asian Handicap', 'Outrights'],
-    features: ['Mega Jackpot (13 games)', 'Midweek Jackpot', 'Live Betting', 'Virtual Sports'],
+    features: ['Mega Jackpot (17 games)', 'Midweek Jackpot', 'Live Betting', 'Virtual Sports'],
     minBet: 'KES 10', bonuses: 'Welcome bonus up to KES 1,000', mpesa: true,
   },
   betika: {

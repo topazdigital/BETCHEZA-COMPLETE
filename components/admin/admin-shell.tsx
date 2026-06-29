@@ -90,12 +90,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin/analytics", label: "Traffic Analytics", icon: BarChart3 },
       { href: "/admin/bookmakers", label: "Bookmakers", icon: Globe },
-      { href: "/admin/advertising", label: "Advertising", icon: Megaphone },
+      { href: "/admin/advertising", label: "Partner Outreach", icon: Mail },
+      { href: "/admin/ads", label: "Ad Slots", icon: Globe },
       { href: "/admin/affiliate-clicks", label: "Affiliates", icon: MousePointerClick },
-      { href: "/admin/subscribers", label: "Subscribers", icon: Mail },
+      { href: "/admin/subscribers", label: "Subscribers", icon: Bell },
       { href: "/admin/notifications", label: "Notifications", icon: Bell },
       { href: "/admin/banners", label: "Banners", icon: Newspaper },
-      { href: "/admin/ads", label: "Ads", icon: Megaphone },
     ],
   },
   {

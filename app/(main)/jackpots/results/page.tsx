@@ -11,18 +11,33 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: 'Jackpot Results & History | Winning Combinations — Betcheza Kenya',
-  description: 'View past jackpot results, winning combinations and payouts for SportPesa, Betika, OdiBets, Betin and Mozzartbet. Check if our AI predictions matched the settled outcomes.',
-  keywords: ['jackpot results Kenya', 'SportPesa jackpot results', 'Betika jackpot results', 'winning jackpot combinations', 'jackpot history Kenya', 'settled jackpot outcomes'],
+  title: 'Jackpot Results & History | SportPesa Betika Odibets Betin Mozzartbet — Betcheza Kenya',
+  description: 'View past jackpot results, winning combinations and payouts for SportPesa Mega Jackpot, Betika Grand Jackpot, Odibets Jackpot Bonanza, Betin and Mozzartbet. Check if our AI predictions matched the settled outcomes.',
+  keywords: [
+    'jackpot results Kenya', 'SportPesa jackpot results', 'Betika jackpot results',
+    'SportPesa mega jackpot results today', 'Betika grand jackpot results today',
+    'Odibets jackpot results', 'Odibets jackpot bonanza results', 'Betin jackpot results',
+    'Mozzartbet jackpot results', 'jackpot winning combinations Kenya',
+    'jackpot history Kenya', 'settled jackpot outcomes', 'jackpot prediction accuracy Kenya',
+    'did I win jackpot Kenya', 'jackpot results checker Kenya', 'previous jackpot results Kenya',
+    'SportPesa midweek jackpot results', 'Betika midweek jackpot results',
+    'jackpot payout Kenya', 'jackpot winner Kenya today',
+  ],
   openGraph: {
     title: 'Jackpot Results & History | Betcheza Kenya',
-    description: 'Past jackpot results and winning combinations for all major Kenyan bookmakers.',
+    description: 'Past jackpot results and winning combinations for SportPesa, Betika, Odibets, Betin and Mozzartbet Kenya.',
     url: 'https://betcheza.co.ke/jackpots/results',
     type: 'website',
     siteName: 'Betcheza',
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Jackpot Results & History | Betcheza Kenya',
+    description: 'Past jackpot results for SportPesa, Betika, Odibets, Betin and Mozzartbet Kenya.',
+    site: '@betcheza',
+  },
   alternates: { canonical: 'https://betcheza.co.ke/jackpots/results' },
-  robots: { index: true, follow: true },
+  robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-snippet': -1, 'max-image-preview': 'large' } },
 };
 
 function formatKES(str: string): string {
