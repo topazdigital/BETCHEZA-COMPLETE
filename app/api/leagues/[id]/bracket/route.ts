@@ -325,10 +325,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       });
     }
 
-    // Tie ordering within a round: finished first (chronological), then in-play, then upcoming.
+    // Sort ties chronologically by their first leg date.
+    // Do NOT sort by status (finished-first) — that destroys bracket pairing order
+    // (e.g. all finished R32 matches would cluster together even if they're in
+    //  different halves of the bracket).
     ties.sort((a, b) => {
-      const order = { finished: 0, 'in-progress': 1, scheduled: 2 } as const;
-      return order[a.status] - order[b.status];
+      const da = a.legs[0]?.date ?? '';
+      const db = b.legs[0]?.date ?? '';
+      return da.localeCompare(db);
     });
 
     rounds.push({ code, label: meta.label, order: meta.order, ties });
@@ -336,9 +340,90 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   rounds.sort((a, b) => a.order - b.order);
 
+  // ── Bracket-slot reordering ──────────────────────────────────────────────
+  // The bracket component groups consecutive tie pairs ([0,1], [2,3], …)
+  // and draws connector lines between each pair and the corresponding next-
+  // round slot. For the pairs to be correct we must ensure the two R32 ties
+  // that feed into the same R16 slot are truly adjacent in the tie array.
+  //
+  // ESPN doesn't expose a bracketSequence field, but later-round events DO
+  // include the real team IDs of the winners. We use those IDs to trace back
+  // to the correct earlier-round ties and reorder them.
+  //
+  // We apply the reorder from the deepest round pair inward so that each
+  // pass can benefit from an already-corrected later round.
+  for (let i = 0; i < rounds.length - 1; i++) {
+    reorderByNextRound(rounds[i], rounds[i + 1]);
+  }
+
   return NextResponse.json({
     isKnockout: rounds.length > 0,
     rounds,
     season: events[0]?.season?.year ? String(events[0].season.year) : '',
   });
+}
+
+/**
+ * Re-orders `earlyRound.ties` so that the two ties that feed into each
+ * `laterRound` slot are adjacent (as consecutive pairs).
+ *
+ * Strategy:
+ *   1. Build a map  teamId → earlyRound tie  for all real (non-placeholder)
+ *      teams. ESPN uses large synthetic IDs (≥ 100 000) for unresolved
+ *      bracket slots; we skip those.
+ *   2. Walk laterRound.ties in their current (date-sorted) order. For each
+ *      later-round tie, look up both team IDs in the map. If found and not
+ *      yet assigned, those are the two early-round feeders for this slot.
+ *   3. Any early-round ties not resolved via team-ID lookup are appended in
+ *      chronological order after all resolved pairs, filling null slots.
+ */
+function reorderByNextRound(earlyRound: RoundOut, laterRound: RoundOut): void {
+  const PLACEHOLDER_THRESHOLD = 100_000;
+
+  const teamIdToTie = new Map<string, Tie>();
+  for (const tie of earlyRound.ties) {
+    const hNum = parseInt(tie.homeTeam.id, 10);
+    const aNum = parseInt(tie.awayTeam.id, 10);
+    if (!isNaN(hNum) && hNum < PLACEHOLDER_THRESHOLD) teamIdToTie.set(tie.homeTeam.id, tie);
+    if (!isNaN(aNum) && aNum < PLACEHOLDER_THRESHOLD) teamIdToTie.set(tie.awayTeam.id, tie);
+  }
+
+  const assigned = new Set<string>(); // tie.id values already placed
+  const pairs: Array<[Tie | null, Tie | null]> = [];
+
+  for (const laterTie of laterRound.ties) {
+    let slotA: Tie | null = null;
+    let slotB: Tie | null = null;
+
+    for (const teamId of [laterTie.homeTeam.id, laterTie.awayTeam.id]) {
+      if (!teamIdToTie.has(teamId)) continue;
+      const candidate = teamIdToTie.get(teamId)!;
+      if (assigned.has(candidate.id)) continue;
+      assigned.add(candidate.id);
+      if (slotA === null) slotA = candidate;
+      else slotB = candidate;
+    }
+
+    pairs.push([slotA, slotB]);
+  }
+
+  // Remaining ties not resolved via team-ID — sorted chronologically.
+  const remaining = earlyRound.ties
+    .filter(t => !assigned.has(t.id))
+    .sort((a, b) => (a.legs[0]?.date ?? '').localeCompare(b.legs[0]?.date ?? ''));
+
+  let remIdx = 0;
+  for (const pair of pairs) {
+    if (pair[0] === null) pair[0] = remaining[remIdx++] ?? null;
+    if (pair[1] === null) pair[1] = remaining[remIdx++] ?? null;
+  }
+
+  const result: Tie[] = [];
+  for (const [a, b] of pairs) {
+    if (a) result.push(a);
+    if (b) result.push(b);
+  }
+  while (remIdx < remaining.length) result.push(remaining[remIdx++]);
+
+  if (result.length > 0) earlyRound.ties = result;
 }
