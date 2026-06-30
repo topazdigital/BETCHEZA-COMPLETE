@@ -224,14 +224,14 @@ export default function AdminMatchesPage() {
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full min-w-[520px] text-xs">
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-[11px] uppercase text-muted-foreground">
                   <th className="p-2">Match</th>
-                  <th className="p-2">Sport</th>
+                  <th className="p-2 hidden sm:table-cell">Sport</th>
                   <th className="p-2">Status</th>
                   <th className="p-2">Score</th>
-                  <th className="p-2">Kickoff</th>
+                  <th className="p-2 hidden sm:table-cell">Kickoff</th>
                   <th className="p-2"></th>
                 </tr>
               </thead>
@@ -244,7 +244,7 @@ export default function AdminMatchesPage() {
                         <p className="text-[10px] text-muted-foreground">{match.league_name}</p>
                       </Link>
                     </td>
-                    <td className="p-2">
+                    <td className="p-2 hidden sm:table-cell">
                       <span className="text-base mr-1">{match.sport_icon}</span>
                       <span className="text-[11px]">{match.sport_name}</span>
                     </td>
@@ -256,7 +256,7 @@ export default function AdminMatchesPage() {
                     <td className="p-2 font-bold tabular-nums">
                       {match.home_score !== null ? `${match.home_score}–${match.away_score}` : '—'}
                     </td>
-                    <td className="p-2 text-[10px] text-muted-foreground whitespace-nowrap">
+                    <td className="p-2 text-[10px] text-muted-foreground whitespace-nowrap hidden sm:table-cell">
                       {format(new Date(match.kickoff_time), 'MMM d, HH:mm')}
                     </td>
                     <td className="p-2">

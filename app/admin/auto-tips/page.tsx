@@ -255,11 +255,11 @@ export default function AdminAutoTipsPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-80 overflow-y-auto">
+            <div className="max-h-80 overflow-y-auto overflow-x-auto">
               {filteredMatches.length === 0 ? (
                 <p className="px-3 py-6 text-center text-xs text-muted-foreground">No upcoming matches.</p>
               ) : (
-                <table className="w-full text-xs">
+                <table className="w-full min-w-[400px] text-xs">
                   <thead className="sticky top-0 bg-muted/60 text-[10px] uppercase tracking-wide text-muted-foreground">
                     <tr>
                       <th className="w-7 px-2 py-1"></th>

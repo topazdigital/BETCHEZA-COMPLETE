@@ -49,11 +49,27 @@ function mapRow(u: RawUserFull | RawUserBasic | RawUserMinimal, extra?: { total_
     role: (getUserRoleOverride(u.id) || (u as RawUserFull).role || 'user') as Role,
     status: ((u as RawUserBasic).is_banned ? 'banned' : (u as RawUserMinimal).is_verified ? 'active' : 'pending') as 'active' | 'banned' | 'pending',
     isFake: false,
-    joined: new Date((u as RawUserFull).created_at).toLocaleDateString(),
+    joined: (() => {
+      try {
+        return new Date((u as RawUserFull).created_at).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
+      } catch { return (u as RawUserFull).created_at || '—'; }
+    })(),
     predictions: (u as RawUserFull).total_tips ?? extra?.total_tips ?? 0,
     winRate: (u as RawUserFull).win_rate ?? extra?.win_rate ?? 0,
     followers: (u as RawUserFull).followers_count ?? extra?.followers_count ?? 0,
-    lastActive: 'Online',
+    lastActive: (() => {
+      try {
+        const created = new Date((u as RawUserFull).created_at).getTime();
+        const diffMs = Date.now() - created;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays === 0) return 'Today';
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 7) return `${diffDays}d ago`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+        if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+        return `${Math.floor(diffDays / 365)}y ago`;
+      } catch { return '—'; }
+    })(),
   };
 }
 

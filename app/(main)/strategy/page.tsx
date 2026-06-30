@@ -563,7 +563,7 @@ function SubscribeModal({
   const pendingMpesaAmount = topUpAmount ?? COST;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pb-16 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* flex flex-col so header + content + footer stack correctly; max-h prevents overflow */}

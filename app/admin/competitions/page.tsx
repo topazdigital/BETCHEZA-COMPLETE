@@ -729,8 +729,8 @@ export default function AdminCompetitionsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="rounded-lg border border-border bg-card overflow-hidden overflow-x-auto">
+          <table className="w-full min-w-[540px] text-xs">
             <thead className="bg-muted/30">
               <tr className="border-b border-border">
                 <th className="px-2.5 py-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Name</th>

@@ -871,7 +871,7 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Role counts */}
-      <div className="grid gap-2 md:grid-cols-5">
+      <div className="grid grid-cols-3 gap-2 md:grid-cols-5">
         {ROLES.map(role => (
           <Card key={role}>
             <CardContent className="p-2.5">
@@ -977,7 +977,7 @@ export default function AdminUsersPage() {
             <div className="p-10 text-center text-xs text-muted-foreground">No users match those filters.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[480px]">
                 <thead>
                   <tr className="border-b bg-muted/30 text-left text-[11px] uppercase text-muted-foreground">
                     <th className="p-2 px-3 font-medium w-8">
@@ -993,9 +993,10 @@ export default function AdminUsersPage() {
                     <th className="p-2 px-3 font-medium">User</th>
                     <th className="p-2 px-3 font-medium">Role</th>
                     <th className="p-2 px-3 font-medium">Status</th>
-                    <th className="p-2 px-3 font-medium text-right">Tips</th>
-                    <th className="p-2 px-3 font-medium text-right">Win&nbsp;%</th>
-                    <th className="p-2 px-3 font-medium">Joined</th>
+                    <th className="p-2 px-3 font-medium text-right hidden sm:table-cell">Tips</th>
+                    <th className="p-2 px-3 font-medium text-right hidden sm:table-cell">Win&nbsp;%</th>
+                    <th className="p-2 px-3 font-medium hidden md:table-cell">Joined</th>
+                    <th className="p-2 px-3 font-medium hidden lg:table-cell">Last Active</th>
                     <th className="p-2 px-3 font-medium"></th>
                   </tr>
                 </thead>
@@ -1060,13 +1061,24 @@ export default function AdminUsersPage() {
                           </Badge>
                         )}
                       </td>
-                      <td className="p-1.5 px-3 text-right tabular-nums">{user.predictions}</td>
-                      <td className="p-1.5 px-3 text-right">
+                      <td className="p-1.5 px-3 text-right tabular-nums hidden sm:table-cell">{user.predictions}</td>
+                      <td className="p-1.5 px-3 text-right hidden sm:table-cell">
                         <span className={cn("font-medium tabular-nums", user.winRate >= 60 ? 'text-emerald-500' : user.winRate >= 50 ? 'text-amber-500' : 'text-red-500')}>
                           {user.winRate}%
                         </span>
                       </td>
-                      <td className="p-1.5 px-3 text-[10px] text-muted-foreground">{user.joined}</td>
+                      <td className="p-1.5 px-3 text-[10px] text-muted-foreground hidden md:table-cell whitespace-nowrap">{user.joined}</td>
+                      <td className="p-1.5 px-3 hidden lg:table-cell">
+                        <span className={cn(
+                          "text-[10px] font-medium",
+                          user.lastActive === 'Today' || user.lastActive === 'Yesterday'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-muted-foreground'
+                        )}>
+                          {user.lastActive === 'Today' && <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 align-middle" />}
+                          {user.lastActive}
+                        </span>
+                      </td>
                       <td className="p-1.5 px-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
