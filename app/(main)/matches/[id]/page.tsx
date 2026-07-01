@@ -1097,7 +1097,7 @@ export default function MatchDetailPage({ params }: PageProps) {
   const tipsUrl = match0
     ? `/api/matches/${encodeURIComponent(id)}/tips?home=${encodeURIComponent(match0.homeTeam.name)}&away=${encodeURIComponent(match0.awayTeam.name)}`
     : null
-  const { data: tipsData } = useSWR<TipsData>(tipsUrl, fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 })
+  const { data: tipsData } = useSWR<TipsData>(tipsUrl, fetcher, { revalidateOnFocus: true, revalidateOnMount: true, dedupingInterval: 10000 })
   const tips = tipsData?.tips || []
 
   const match = data?.match

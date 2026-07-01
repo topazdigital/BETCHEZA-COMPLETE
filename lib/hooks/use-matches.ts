@@ -321,10 +321,10 @@ export function useMatches(filters?: MatchFilters) {
     matchesFetcher,
     {
       refreshInterval: 30000,      // Refresh every 30 seconds
-      revalidateOnFocus: false,
-      dedupingInterval: 15000,     // Deduplicate requests within 15s window
+      revalidateOnFocus: true,     // Always refresh when user returns to tab/page
+      revalidateOnMount: true,     // Always fetch fresh data on mount
+      dedupingInterval: 5000,      // Short dedup window so navigation feels fresh
       keepPreviousData: true,      // Never flash empty state during background refresh
-      revalidateIfStale: false,    // Don't refetch on mount if we already have data
     }
   );
 
@@ -377,8 +377,9 @@ export function useTodayMatches() {
     matchesFetcher,
     {
       refreshInterval: 30000,
-      revalidateOnFocus: false,
-      dedupingInterval: 15000,
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 5000,
     }
   );
 
@@ -399,8 +400,9 @@ export function useUpcomingMatches(limit?: number) {
     matchesFetcher,
     {
       refreshInterval: 60000,
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 10000,
     }
   );
 
@@ -430,8 +432,9 @@ export function useFinishedMatches(date?: Date) {
     resultsFetcher,
     {
       refreshInterval: 120000,
-      revalidateOnFocus: false,
-      dedupingInterval: 60000,
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 30000,
     }
   );
 
@@ -456,8 +459,9 @@ export function useMatch(matchId: string) {
     matchesFetcher,
     {
       refreshInterval: 30000,
-      revalidateOnFocus: false,
-      dedupingInterval: 15000,
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 5000,
     }
   );
 
@@ -523,8 +527,9 @@ export function useMatchesByLeague(sportId?: number) {
     matchesFetcher,
     {
       refreshInterval: 60000,
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 10000,
     }
   );
 
@@ -542,8 +547,9 @@ export function useMatchesBySport() {
     matchesFetcher,
     {
       refreshInterval: 60000,
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 10000,
     }
   );
 
@@ -561,8 +567,9 @@ export function useMatchStats() {
     matchesFetcher,
     {
       refreshInterval: 60000,
-      revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 10000,
     }
   );
 

@@ -31,35 +31,16 @@ function useLiveCardMinute(
   period?: string,
 ): number {
   const [minute, setMinute] = useState(storedMinute ?? 0);
-  // Track when we last received a fresh minute from the API
-  const baseRef = useRef<{ minute: number; receivedAt: number } | null>(null);
 
-  // When storedMinute changes (fresh API data), record it with the current timestamp
+  // Always sync to the API minute — no local interpolation.
+  // The live hook refreshes every 10s so the API minute is authoritative.
   useEffect(() => {
-    const m = storedMinute ?? 0;
-    setMinute(m);
-    baseRef.current = { minute: m, receivedAt: Date.now() };
-  }, [storedMinute]);
-
-  useEffect(() => {
-    const isLive = status === 'live' || status === 'extra_time' || status === 'penalties';
-    const isHalftime = status === 'halftime';
-
-    if (isHalftime) { setMinute(45); return; }
-    if (!isLive || !isMinuteTickingSport(sportSlug)) return;
-
-    // Tick every 10 s: advance display by elapsed real seconds ÷ 60
-    const tick = () => {
-      if (baseRef.current) {
-        const elapsedMs = Date.now() - baseRef.current.receivedAt;
-        const advance = Math.floor(elapsedMs / 60000);
-        setMinute(Math.min(baseRef.current.minute + advance, 120));
-      }
-    };
-    tick();
-    const id = setInterval(tick, 10_000);
-    return () => clearInterval(id);
-  }, [status, sportSlug, kickoffTime, period, storedMinute]);
+    if (status === 'halftime' || status === 'ht') {
+      setMinute(45);
+    } else {
+      setMinute(storedMinute ?? 0);
+    }
+  }, [storedMinute, status]);
 
   return minute;
 }

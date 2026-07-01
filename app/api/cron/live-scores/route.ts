@@ -506,7 +506,14 @@ async function updateStrategyPickLiveScores(
     const hs = lm.homeScore ?? 0;
     const as_ = lm.awayScore ?? 0;
     const scoreStr = `${hs}-${as_}`;
-    const liveStatus: 'live' | 'finished' = lm.status === 'live' || lm.status === 'inprogress' ? 'live' : 'finished';
+    // Treat in-progress states as 'live' so picks are not settled prematurely.
+    // 'aet' (after extra time) and 'pen' (won on penalties) are TERMINAL codes —
+    // they belong in the finished bucket so final-score settlement runs correctly.
+    const LIVE_STATUSES = new Set([
+      'live', 'inprogress', 'in_progress', 'halftime', 'ht',
+      'extra_time', 'et', 'penalties', 'break', 'pause',
+    ]);
+    const liveStatus: 'live' | 'finished' = LIVE_STATUSES.has((lm.status || '').toLowerCase()) ? 'live' : 'finished';
 
     // Only process pending picks for real-time settlement
     if (pick.result === 'pending') {

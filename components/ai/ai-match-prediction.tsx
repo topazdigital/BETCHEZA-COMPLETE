@@ -70,12 +70,10 @@ export function AIMatchPrediction({
       }
       // For finished matches: always snapshot so all subsequent visits (this
       // browser) see the same stable prediction. liveAnalysis has odds stripped.
+      // Always save regardless of signal availability so the prediction persists.
       if (isFinished) {
-        const hasAnySignal = !!(homeForm) || !!(awayForm) || (Array.isArray(h2h) && h2h.length > 0)
-        if (hasAnySignal) {
-          localStorage.setItem(key, JSON.stringify(liveAnalysis))
-          setLockedAnalysis(liveAnalysis)
-        }
+        localStorage.setItem(key, JSON.stringify(liveAnalysis))
+        setLockedAnalysis(liveAnalysis)
         return
       }
       // Pre-match: only persist once we have at least one meaningful signal
