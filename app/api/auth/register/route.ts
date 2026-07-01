@@ -8,6 +8,7 @@ import { issueVerification } from '@/lib/email-verification-store';
 import { buildVerificationEmail } from '@/lib/email-templates/verification-email';
 import { recordSignup } from '@/lib/affiliate-clicks-store';
 import { cookies } from 'next/headers';
+import { logAdminEvent } from '@/lib/admin-events-store';
 import { getReferrerByCode, recordReferral } from '@/lib/referral-store';
 
 export const dynamic = 'force-dynamic';
@@ -243,6 +244,11 @@ export async function POST(request: Request) {
     } catch (e) {
       console.warn('[auth/register] referral attribution failed:', e);
     }
+
+    // Log registration event for admin alerts
+    try {
+      logAdminEvent('user_register', `New user: ${newUser.username}`, newUser.email, { userId: newUser.id, username: newUser.username });
+    } catch { /* non-critical */ }
 
     // Set auth cookie — user is logged in immediately, but flagged as
     // unverified until they confirm via the email code/link.

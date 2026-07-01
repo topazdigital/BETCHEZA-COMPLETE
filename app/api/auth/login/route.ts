@@ -202,6 +202,10 @@ export async function POST(request: Request) {
       },
       { rememberMe: !!rememberMe },
     );
+    try {
+      const { logAdminEvent } = await import('@/lib/admin-events-store');
+      logAdminEvent('user_login', `Login: ${user.username}`, user.email, { userId: user.id, role: user.role });
+    } catch { /* non-critical */ }
 
     return NextResponse.json({
       success: true,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { subscribeEmail, getExistingSubscriber } from '@/lib/notification-store';
+import { logAdminEvent } from '@/lib/admin-events-store';
 import { sendMail, renderTemplate } from '@/lib/mailer';
 import { getTemplate } from '@/lib/email-templates-store';
 
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
   }
   const row = await subscribeEmail({ email, topics, countryCode });
   const unsubscribeUrl = `/api/email/unsubscribe?token=${row.unsubscribeToken}`;
+  try { logAdminEvent('newsletter_subscribe', `Newsletter: ${email}`, topics.join(', '), { email, topics: topics.length, country: countryCode }); } catch { /* non-critical */ }
 
   // Fire the welcome email — don't fail the subscription if SMTP isn't
   // configured (the mailer logs and returns { skipped: true } in that case).

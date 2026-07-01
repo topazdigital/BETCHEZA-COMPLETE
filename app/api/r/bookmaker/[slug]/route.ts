@@ -71,6 +71,10 @@ export async function GET(
 
   let recordedClickId: number | undefined;
   try {
+    const { logAdminEvent } = await import('@/lib/admin-events-store');
+    logAdminEvent('affiliate_click', `Affiliate click: ${book.name}`, `From ${placement}${sport ? ` · ${sport}` : ''}`, { bookmaker: book.name, placement, country: country || null });
+  } catch { /* non-critical */ }
+  try {
     const click = recordClick({
       bookmakerId: book.id,
       bookmakerSlug: book.slug,

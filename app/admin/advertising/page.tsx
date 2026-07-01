@@ -10,10 +10,6 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Copy, Check, Mail, Eye, Download, Megaphone } from "lucide-react"
-import { canAccessAdmin } from "@/lib/permissions"
-import { useAuth } from "@/lib/hooks/use-auth"
-import { useRouter } from "next/navigation"
-import { useEffect } from "react"
 
 const TIERS = [
   {
@@ -60,12 +56,7 @@ const TARGET_BOOKMAKERS = [
 ]
 
 export default function AdvertisingAdminPage() {
-  const { user } = useAuth()
-  const router = useRouter()
-
-  useEffect(() => {
-    if (user && !canAccessAdmin(user)) router.push("/")
-  }, [user, router])
+  // Auth is already handled server-side by the admin layout — no client redirect needed
 
   const [activeTier, setActiveTier] = useState<TierId>("package")
   const [bookmakerName, setBookmakerName] = useState("SportPesa")

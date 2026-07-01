@@ -87,6 +87,10 @@ export async function POST(req: NextRequest) {
       // Trigger referral deposit check (friend's KES 50 + referrer unlock progress)
       onReferralDeposit(pending.userId, depositAmount).catch(() => {});
       console.log(`[payhero/callback] Credited KES ${depositAmount} to user ${pending.userId}`);
+      try {
+        const { logAdminEvent } = await import('@/lib/admin-events-store');
+        logAdminEvent('payment_received', `Payment: KES ${depositAmount}`, `User ${pending.userId} deposited via M-Pesa · ${pending.phone}`, { userId: pending.userId, amount: depositAmount, ref: reference });
+      } catch { /* non-critical */ }
     } else {
       // Withdrawal was already debited from wallet; just mark complete
       console.log(`[payhero/callback] Withdrawal confirmed for user ${pending.userId}`);
