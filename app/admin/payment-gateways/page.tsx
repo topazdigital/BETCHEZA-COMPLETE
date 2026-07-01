@@ -196,7 +196,7 @@ function GatewayCard({
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 border-t border-border/50 pt-4 space-y-4">
+        <div className="px-3 pb-3 border-t border-border/50 pt-3 space-y-3">
           {/* Countries */}
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">Supported Countries</Label>
@@ -471,7 +471,7 @@ export default function PaymentGatewaysPage() {
   ]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-lg font-bold">Payment Gateways</h1>
@@ -514,7 +514,7 @@ export default function PaymentGatewaysPage() {
           <TabsTrigger value="payouts" className="h-6 text-xs px-3">Tipster Payouts</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="gateways" className="space-y-4 mt-2">
+        <TabsContent value="gateways" className="space-y-3 mt-2">
           {loading ? (
             <div className="flex items-center justify-center py-12 text-xs text-muted-foreground">
               <RefreshCw className="h-4 w-4 animate-spin mr-2" /> Loading gateways...
@@ -553,7 +553,7 @@ export default function PaymentGatewaysPage() {
                 Configure how and when tipsters receive their earnings from subscriptions.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 p-3 pt-1">
+            <CardContent className="space-y-3 p-3 pt-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Minimum Payout Amount (USD)</Label>

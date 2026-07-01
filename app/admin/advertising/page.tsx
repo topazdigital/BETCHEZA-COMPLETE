@@ -112,23 +112,23 @@ export default function AdvertisingAdminPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Megaphone className="h-6 w-6 text-primary" />
+          <h1 className="text-lg font-bold flex items-center gap-2">
+            <Megaphone className="h-4 w-4 text-primary" />
             Bookmaker Advertising
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground">
             Generate and send partnership emails to bookmakers
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Left: Configuration */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 space-y-3">
           {/* Tier selection */}
           <Card>
             <CardHeader className="pb-2">
@@ -223,7 +223,7 @@ export default function AdvertisingAdminPage() {
         </div>
 
         {/* Right: Preview + Actions */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-3">
           {/* Actions */}
           <Card>
             <CardContent className="pt-4">

@@ -212,8 +212,8 @@ export default function AdminBannersPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="h-8 w-48 rounded bg-muted animate-pulse mb-6" />
+      <div className="p-3">
+        <div className="h-8 w-48 rounded bg-muted animate-pulse mb-3" />
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
@@ -224,12 +224,12 @@ export default function AdminBannersPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl space-y-6">
+    <div className="max-w-4xl space-y-3">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">Site Banners</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-lg font-bold">Site Banners</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
             Manage promotional banners shown on the homepage sidebar and mobile strip.
           </p>
         </div>

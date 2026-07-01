@@ -112,7 +112,7 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -139,7 +139,7 @@ export default function AnalyticsPage() {
                 </div>
                 {compare !== null && <DeltaBadge current={value} previous={compare} />}
               </div>
-              <p className="text-2xl font-bold mt-1">{fmt(value)}</p>
+              <p className="text-lg font-bold mt-0.5">{fmt(value)}</p>
               <p className="text-[11px] font-medium text-foreground">{label}</p>
               <p className="text-[10px] text-muted-foreground">{sub}</p>
             </CardContent>

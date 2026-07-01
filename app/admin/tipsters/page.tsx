@@ -306,14 +306,14 @@ function StatCard({ icon: Icon, label, value, colour }: {
   };
   return (
     <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', tone[colour])}>
-            <Icon className="h-5 w-5" />
+      <CardContent className="p-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', tone[colour])}>
+            <Icon className="h-4 w-4" />
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-lg font-bold">{value}</p>
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="text-base font-bold">{value}</p>
           </div>
         </div>
       </CardContent>

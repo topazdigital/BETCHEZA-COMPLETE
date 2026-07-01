@@ -345,12 +345,12 @@ export default function AdminJackpotsPage() {
   const validGameCount = gameRows.filter(r => r.home.trim()).length;
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Trophy className="h-6 w-6 text-amber-500" /> Jackpot Manager
+          <h1 className="text-lg font-bold flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-amber-500" /> Jackpot Manager
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {active.length} active · {settled.length} settled · {SUPPORTED_BOOKMAKERS.length} bookmakers

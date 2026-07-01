@@ -153,7 +153,7 @@ export default function AffiliateClicksPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] uppercase text-muted-foreground">All time clicks</p>
-                <p className="text-2xl font-bold">{data.total.toLocaleString()}</p>
+                <p className="text-base font-bold">{data.total.toLocaleString()}</p>
               </div>
               <MousePointerClick className="h-6 w-6 text-primary" />
             </div>
@@ -162,13 +162,13 @@ export default function AffiliateClicksPage() {
         <Card>
           <CardContent className="p-3">
             <p className="text-[10px] uppercase text-muted-foreground">Last 24 hours</p>
-            <p className="text-2xl font-bold">{data.last24h.toLocaleString()}</p>
+            <p className="text-base font-bold">{data.last24h.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3">
             <p className="text-[10px] uppercase text-muted-foreground">Last 7 days</p>
-            <p className="text-2xl font-bold">{data.last7d.toLocaleString()}</p>
+            <p className="text-base font-bold">{data.last7d.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card>
@@ -265,7 +265,7 @@ export default function AffiliateClicksPage() {
                 <p className="text-[10px] uppercase text-muted-foreground">Sign-ups</p>
                 <UserPlus className="h-3.5 w-3.5 text-primary" />
               </div>
-              <p className="text-xl font-bold">{data.funnelTotals.signups.toLocaleString()}</p>
+              <p className="text-base font-bold">{data.funnelTotals.signups.toLocaleString()}</p>
               <p className="text-[10px] text-muted-foreground">
                 CR {data.funnelTotals.conversionRate.toFixed(2)}%
               </p>
@@ -275,7 +275,7 @@ export default function AffiliateClicksPage() {
                 <p className="text-[10px] uppercase text-muted-foreground">Deposits</p>
                 <DollarSign className="h-3.5 w-3.5 text-primary" />
               </div>
-              <p className="text-xl font-bold">{data.funnelTotals.deposits.toLocaleString()}</p>
+              <p className="text-base font-bold">{data.funnelTotals.deposits.toLocaleString()}</p>
               <p className="text-[10px] text-muted-foreground">
                 {data.funnelTotals.uniqueDepositors.toLocaleString()} unique
               </p>
@@ -285,7 +285,7 @@ export default function AffiliateClicksPage() {
                 <p className="text-[10px] uppercase text-muted-foreground">Revenue</p>
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
               </div>
-              <p className="text-xl font-bold">{formatMoney(data.funnelTotals.revenue)}</p>
+              <p className="text-base font-bold">{formatMoney(data.funnelTotals.revenue)}</p>
               <p className="text-[10px] text-muted-foreground">across all books</p>
             </div>
             <div className="rounded-md border border-border bg-muted/30 p-2.5">
@@ -293,7 +293,7 @@ export default function AffiliateClicksPage() {
                 <p className="text-[10px] uppercase text-muted-foreground">Revenue / Click</p>
                 <MousePointerClick className="h-3.5 w-3.5 text-primary" />
               </div>
-              <p className="text-xl font-bold">{formatMoney(data.funnelTotals.revenuePerClick)}</p>
+              <p className="text-base font-bold">{formatMoney(data.funnelTotals.revenuePerClick)}</p>
               <p className="text-[10px] text-muted-foreground">RPC blended</p>
             </div>
           </div>

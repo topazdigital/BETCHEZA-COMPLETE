@@ -233,13 +233,13 @@ export default function AdminChallengesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Swords className="h-6 w-6 text-primary" /> Challenges Admin
+          <h1 className="text-lg font-bold flex items-center gap-2">
+            <Swords className="h-4 w-4 text-primary" /> Challenges Admin
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage tipster challenges, settle results, configure rules and fees.</p>
+          <p className="text-xs text-muted-foreground">Manage tipster challenges, settle results, configure rules and fees.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => refresh()} className="gap-1.5">
@@ -258,16 +258,16 @@ export default function AdminChallengesPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {[
           { icon: <Swords className="h-4 w-4 text-primary" />, label: 'Total', value: stats.total || 0 },
           { icon: <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse inline-block" />, label: 'Active', value: stats.active || 0 },
           { icon: <DollarSign className="h-4 w-4 text-amber-500" />, label: 'Total Staked', value: `KES ${(stats.totalStakedKes || 0).toLocaleString()}` },
           { icon: <Crown className="h-4 w-4 text-emerald-500" />, label: 'Fees Collected', value: `KES ${(stats.totalFeesCollectedKes || 0).toLocaleString()}` },
         ].map((s, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card p-4">
+          <div key={i} className="rounded-lg border border-border bg-card p-2.5">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">{s.icon}{s.label}</div>
-            <div className="text-xl font-bold">{isLoading ? '–' : s.value}</div>
+            <div className="text-base font-bold">{isLoading ? '–' : s.value}</div>
           </div>
         ))}
       </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -13,6 +13,38 @@ import {
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
 import { cn } from "@/lib/utils"
+
+function AdminNotificationBell() {
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    let mounted = true
+    async function poll() {
+      try {
+        const r = await fetch('/api/admin/events?limit=1')
+        if (!r.ok || !mounted) return
+        const d = await r.json()
+        if (mounted) setUnread(d.unread ?? 0)
+      } catch {}
+    }
+    poll()
+    const id = setInterval(poll, 30_000)
+    return () => { mounted = false; clearInterval(id) }
+  }, [])
+  return (
+    <Link
+      href="/admin/alerts"
+      className="relative flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      title="Alerts"
+    >
+      <Bell className="h-4 w-4" />
+      {unread > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-white leading-none">
+          {unread > 99 ? '99+' : unread}
+        </span>
+      )}
+    </Link>
+  )
+}
 
 type NavItem = { href: string; label: string; icon: React.ElementType }
 type NavGroup = {
@@ -282,7 +314,8 @@ export function AdminShell({ children, user }: AdminShellProps) {
             <HeaderSearch inline placeholder="Search the site…" />
           </div>
 
-          <div className="flex flex-1 md:flex-none items-center justify-end gap-1">
+          <div className="flex flex-1 md:flex-none items-center justify-end gap-1.5">
+            <AdminNotificationBell />
             <div className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5">
               <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
                 {user.displayName.charAt(0).toUpperCase()}

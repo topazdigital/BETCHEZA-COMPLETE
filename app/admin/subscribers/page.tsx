@@ -406,7 +406,7 @@ export default function AdminSubscribersPage() {
   const activeEmails = active.map(s => s.email);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {emailTarget && (
         <EmailModal
           recipientEmails={emailTarget.emails}
@@ -593,7 +593,7 @@ function StatItem({ label, value, color }: { label: string; value: number; color
     <Card>
       <CardContent className="p-3">
         <p className="text-[11px] uppercase text-muted-foreground leading-none">{label}</p>
-        <p className={cn('text-xl font-bold mt-1', color)}>{value}</p>
+        <p className={cn('text-base font-bold mt-1', color)}>{value}</p>
       </CardContent>
     </Card>
   );

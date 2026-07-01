@@ -57,7 +57,7 @@ export default function AdminFeedPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold">Community Feed</h1>
@@ -125,14 +125,14 @@ export default function AdminFeedPage() {
 function StatCard({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ className?: string }>; label: string; value: number; color: string }) {
   return (
     <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${color}`}>
-            <Icon className="h-5 w-5" />
+      <CardContent className="p-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color}`}>
+            <Icon className="h-4 w-4" />
           </div>
           <div>
             <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold">{value.toLocaleString()}</p>
+            <p className="text-lg font-bold">{value.toLocaleString()}</p>
           </div>
         </div>
       </CardContent>

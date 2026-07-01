@@ -97,7 +97,7 @@ function IntegrationCard({ item }: { item: IntegrationItem }) {
 function SummaryCard({ label, count, colorClass }: { label: string; count: number; colorClass: string }) {
   return (
     <div className="rounded-lg bg-card border p-3 text-center">
-      <div className={cn('text-2xl font-black', colorClass)}>{count}</div>
+      <div className={cn('text-lg font-bold', colorClass)}>{count}</div>
       <div className="text-[10px] uppercase text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
@@ -132,7 +132,7 @@ export default function ApiStatusPage() {
   const categories = Object.keys(grouped);
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-5xl">
+    <div className="space-y-3 max-w-5xl">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>

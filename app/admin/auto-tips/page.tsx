@@ -216,7 +216,7 @@ export default function AdminAutoTipsPage() {
           <Card key={s.label}>
             <CardContent className="p-2.5">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{s.label}</p>
-              <p className={cn("text-xl font-bold leading-tight", s.color)}>{s.value}</p>
+              <p className={cn("text-base font-bold leading-tight", s.color)}>{s.value}</p>
             </CardContent>
           </Card>
         ))}

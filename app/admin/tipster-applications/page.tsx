@@ -432,7 +432,7 @@ function StatTile({ label, value, tone = 'muted' }: {
     <Card>
       <CardContent className="p-2.5">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className={cn('text-xl font-bold tabular-nums mt-0.5', valueClass)}>{value}</div>
+        <div className={cn('text-base font-bold tabular-nums mt-0.5', valueClass)}>{value}</div>
       </CardContent>
     </Card>
   );

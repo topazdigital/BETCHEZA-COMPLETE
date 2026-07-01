@@ -131,7 +131,7 @@ export default function EmailTemplatesAdminPage() {
   };
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Mail className="h-5 w-5 text-primary" />
         <div>

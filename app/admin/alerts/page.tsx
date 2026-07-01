@@ -77,12 +77,12 @@ export default function AdminAlertsPage() {
   }, {});
 
   return (
-    <div className="space-y-3 p-3 md:p-5">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black tracking-tight">Alerts</h1>
+            <h1 className="text-lg font-bold tracking-tight">Alerts</h1>
             {unread > 0 && (
               <Badge className="h-5 min-w-5 bg-destructive px-1.5 text-[10px] font-bold text-white">
                 {unread > 99 ? '99+' : unread}
@@ -128,7 +128,7 @@ export default function AdminAlertsPage() {
             >
               <Icon className={cn('h-4 w-4 shrink-0', meta.color)} />
               <div>
-                <div className="text-lg font-bold tabular-nums leading-none">{countByType[type] ?? 0}</div>
+                <div className="text-base font-bold tabular-nums leading-none">{countByType[type] ?? 0}</div>
                 <div className="text-[10px] text-muted-foreground">{label}</div>
               </div>
             </button>

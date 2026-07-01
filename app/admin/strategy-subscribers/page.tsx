@@ -63,12 +63,12 @@ function StatCard({ label, value, icon: Icon, color }: {
   label: string; value: number; icon: React.ElementType; color: string;
 }) {
   return (
-    <div className="rounded-lg border bg-card p-4 flex items-center gap-3">
-      <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", color)}>
-        <Icon className="h-5 w-5" />
+    <div className="rounded-lg border bg-card p-2.5 flex items-center gap-2.5">
+      <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg", color)}>
+        <Icon className="h-4 w-4" />
       </div>
       <div>
-        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-lg font-bold">{value}</p>
         <p className="text-xs text-muted-foreground">{label}</p>
       </div>
     </div>
@@ -110,15 +110,15 @@ export default function StrategySubscribersPage() {
   ];
 
   return (
-    <div className="p-4 max-w-4xl">
-      <div className="mb-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <TrendingUp className="h-5 w-5" />
+    <div className="max-w-4xl">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <TrendingUp className="h-4 w-4" />
           </div>
           <div>
             <h1 className="text-lg font-bold">Strategy Subscribers</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Manage 3 Daily Odds Strategy payments and access
             </p>
           </div>
@@ -136,7 +136,7 @@ export default function StrategySubscribersPage() {
       </div>
 
       {/* Stats */}
-      <div className="mb-5 grid grid-cols-3 gap-3">
+      <div className="mb-3 grid grid-cols-3 gap-2">
         <StatCard
           label="Pending Payments"
           value={pending.length}
@@ -160,7 +160,7 @@ export default function StrategySubscribersPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-4 flex gap-2">
+      <div className="mb-3 flex gap-2">
         {tabs.map(t => (
           <button
             key={t.id}
