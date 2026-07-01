@@ -4,14 +4,15 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import {
-  ArrowUpDown, EyeOff, ExternalLink, Loader2, Plus, Save, Trash2,
+  ArrowUpDown, EyeOff, ExternalLink, Loader2, Plus, Save, Star, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface BookmakerRow {
   id: number;
@@ -37,21 +38,9 @@ interface BookmakerRow {
 }
 
 const EMPTY: BookmakerRow = {
-  id: 0,
-  name: '',
-  slug: '',
-  logo: '',
-  affiliateUrl: '',
-  bonus: '',
-  rating: 4.0,
-  regions: [],
-  features: [],
-  minDeposit: 10,
-  paymentMethods: [],
-  pros: [],
-  cons: [],
-  featured: true,
-  updatedAt: '',
+  id: 0, name: '', slug: '', logo: '', affiliateUrl: '', bonus: '',
+  rating: 4.0, regions: [], features: [], minDeposit: 10,
+  paymentMethods: [], pros: [], cons: [], featured: true, updatedAt: '',
 };
 
 export default function AdminBookmakersPage() {
@@ -67,9 +56,7 @@ export default function AdminBookmakersPage() {
       const r = await fetch('/api/admin/bookmakers', { cache: 'no-store' });
       const j = await r.json();
       setRows(j.bookmakers || []);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
 
@@ -78,186 +65,218 @@ export default function AdminBookmakersPage() {
 
   async function save() {
     if (!editing) return;
-    setSaving(true);
-    setError(null);
+    setSaving(true); setError(null);
     try {
       const isNew = !editing.id;
       const url = isNew ? '/api/admin/bookmakers' : `/api/admin/bookmakers/${editing.id}`;
-      const method = isNew ? 'POST' : 'PATCH';
       const r = await fetch(url, {
-        method,
+        method: isNew ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editing),
       });
       const j = await r.json();
-      if (!r.ok) {
-        setError(j?.error || 'Save failed');
-      } else {
-        setEditing(null);
-        await load();
-      }
-    } finally {
-      setSaving(false);
-    }
+      if (!r.ok) { setError(j?.error || 'Save failed'); }
+      else { setEditing(null); await load(); }
+    } finally { setSaving(false); }
   }
 
   async function remove(id: number) {
-    if (!confirm('Delete this bookmaker? It will be removed from the public list and all affiliate links.')) return;
+    if (!confirm('Delete this bookmaker?')) return;
     await fetch(`/api/admin/bookmakers/${id}`, { method: 'DELETE' });
     await load();
   }
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-3 p-3 md:p-5">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">Bookmakers & affiliate links</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage the bookmakers shown on /bookmakers and the affiliate URLs used in match-detail
-            "Bet Now" buttons. The URL field is the link earnings flow through — paste your affiliate tracker.
+          <h1 className="text-xl font-black tracking-tight">Bookmakers & affiliate links</h1>
+          <p className="text-xs text-muted-foreground mt-0.5 max-w-lg">
+            The affiliate URL you paste here powers every "Bet Now" / "Sign Up" button across the whole site — odds strips, tips, jackpots, and the public bookmakers page.
           </p>
         </div>
-        <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" /> Add bookmaker</Button>
+        <Button size="sm" onClick={startNew}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add bookmaker
+        </Button>
       </div>
 
+      {/* Compact grid */}
       {loading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
         </div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map(r => (
-            <Card key={r.id} className={r.archived ? 'opacity-60' : ''}>
-              <CardContent className="flex flex-wrap items-center gap-4 p-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
-                  {r.logo}
+            <div
+              key={r.id}
+              className={cn(
+                'flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-all hover:border-primary/30',
+                r.archived && 'opacity-50'
+              )}
+            >
+              {/* Logo */}
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
+                {r.logoUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={r.logoUrl} alt={r.name} className="h-8 w-8 object-contain rounded" />
+                  : r.logo}
+              </div>
+
+              {/* Info */}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-sm font-semibold">{r.name}</span>
+                  {r.featured && (
+                    <Badge className="h-3.5 px-1 text-[8px] bg-primary/15 text-primary hover:bg-primary/15">
+                      Featured
+                    </Badge>
+                  )}
+                  {r.archived && (
+                    <Badge variant="secondary" className="h-3.5 px-1 text-[8px]">
+                      <EyeOff className="mr-0.5 h-2.5 w-2.5" />Hidden
+                    </Badge>
+                  )}
+                  <span className="flex items-center text-[10px] text-muted-foreground ml-auto">
+                    <Star className="h-2.5 w-2.5 fill-warning text-warning mr-0.5" />
+                    {r.rating.toFixed(1)}
+                  </span>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">{r.name}</span>
-                    <span className="text-xs text-muted-foreground">@{r.slug}</span>
-                    {r.featured && (
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">Featured</span>
-                    )}
-                    {r.archived && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
-                        <EyeOff className="h-3 w-3" /> Archived
-                      </span>
-                    )}
-                    <span className="ml-2 text-xs text-muted-foreground">⭐ {r.rating.toFixed(1)}</span>
-                  </div>
-                  <a
-                    href={r.affiliateUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
-                    {r.affiliateUrl} <ExternalLink className="h-3 w-3" />
-                  </a>
-                  <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
-                    {r.bonus} {r.bonusCode && <span>· code <strong>{r.bonusCode}</strong></span>}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => startEdit(r)}>Edit</Button>
-                  <Button size="sm" variant="ghost" onClick={() => remove(r.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                <a
+                  href={r.affiliateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-0.5 flex items-center gap-0.5 text-[10px] text-primary hover:underline truncate max-w-full"
+                >
+                  <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                  <span className="truncate">{r.affiliateUrl || <em className="text-muted-foreground">No affiliate URL set</em>}</span>
+                </a>
+                {r.bonus && (
+                  <p className="mt-0.5 text-[10px] text-muted-foreground truncate">{r.bonus}</p>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex shrink-0 items-center gap-1">
+                <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => startEdit(r)}>Edit</Button>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => remove(r.id)}>
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </div>
+            </div>
           ))}
         </div>
       )}
 
-      {/* Edit drawer (inline modal) */}
+      {/* Edit modal */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-xl bg-background p-5 shadow-2xl sm:rounded-xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}>
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-2xl bg-background p-4 shadow-2xl sm:rounded-xl sm:p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold">{editing.id ? `Edit ${editing.name}` : 'New bookmaker'}</h2>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Close</Button>
+              <h2 className="text-base font-bold">{editing.id ? `Edit ${editing.name}` : 'New bookmaker'}</h2>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>✕</Button>
             </div>
 
-            <div className="grid gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Name *">
-                  <Input value={editing.name} onChange={(e) => setEditing(s => s && { ...s, name: e.target.value })} />
-                </Field>
-                <Field label="Slug *">
-                  <Input value={editing.slug} onChange={(e) => setEditing(s => s && { ...s, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} />
-                </Field>
+            <div className="grid gap-2.5">
+              <div className="grid grid-cols-2 gap-2.5">
+                <F label="Name *">
+                  <Input className="h-8 text-xs" value={editing.name} onChange={e => setEditing(s => s && { ...s, name: e.target.value })} />
+                </F>
+                <F label="Slug *">
+                  <Input className="h-8 text-xs" value={editing.slug} onChange={e => setEditing(s => s && { ...s, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} />
+                </F>
               </div>
 
-              <Field label="Affiliate URL *">
+              <F label="Affiliate URL *">
                 <Input
+                  className="h-8 text-xs font-mono"
                   placeholder="https://affiliate-network.com/clk/12345"
                   value={editing.affiliateUrl}
-                  onChange={(e) => setEditing(s => s && { ...s, affiliateUrl: e.target.value })}
+                  onChange={e => setEditing(s => s && { ...s, affiliateUrl: e.target.value })}
                 />
-                <p className="text-xs text-muted-foreground">All "Bet Now" buttons across Betcheza will route through this URL.</p>
-              </Field>
+                <p className="text-[10px] text-muted-foreground mt-0.5">All "Bet Now" / "Sign Up" buttons site-wide route through this URL.</p>
+              </F>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Logo initials"><Input maxLength={4} value={editing.logo} onChange={(e) => setEditing(s => s && { ...s, logo: e.target.value.toUpperCase() })} /></Field>
-                <Field label="Rating (0–5)"><Input type="number" step="0.1" min="0" max="5" value={editing.rating} onChange={(e) => setEditing(s => s && { ...s, rating: Number(e.target.value) })} /></Field>
-                <Field label="Min deposit"><Input type="number" min="0" value={editing.minDeposit} onChange={(e) => setEditing(s => s && { ...s, minDeposit: Number(e.target.value) })} /></Field>
+              <div className="grid grid-cols-3 gap-2.5">
+                <F label="Logo text">
+                  <Input className="h-8 text-xs" maxLength={4} value={editing.logo} onChange={e => setEditing(s => s && { ...s, logo: e.target.value.toUpperCase() })} />
+                </F>
+                <F label="Rating (0–5)">
+                  <Input className="h-8 text-xs" type="number" step="0.1" min="0" max="5" value={editing.rating} onChange={e => setEditing(s => s && { ...s, rating: Number(e.target.value) })} />
+                </F>
+                <F label="Min deposit">
+                  <Input className="h-8 text-xs" type="number" min="0" value={editing.minDeposit} onChange={e => setEditing(s => s && { ...s, minDeposit: Number(e.target.value) })} />
+                </F>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Bonus"><Input value={editing.bonus} onChange={(e) => setEditing(s => s && { ...s, bonus: e.target.value })} /></Field>
-                <Field label="Bonus code"><Input value={editing.bonusCode || ''} onChange={(e) => setEditing(s => s && { ...s, bonusCode: e.target.value })} /></Field>
+              <div className="grid grid-cols-2 gap-2.5">
+                <F label="Bonus text">
+                  <Input className="h-8 text-xs" value={editing.bonus} onChange={e => setEditing(s => s && { ...s, bonus: e.target.value })} />
+                </F>
+                <F label="Bonus code">
+                  <Input className="h-8 text-xs" value={editing.bonusCode || ''} onChange={e => setEditing(s => s && { ...s, bonusCode: e.target.value })} />
+                </F>
               </div>
 
-              <Field label="Logo image URL (optional)">
-                <Input value={editing.logoUrl || ''} onChange={(e) => setEditing(s => s && { ...s, logoUrl: e.target.value })} />
-              </Field>
+              <F label="Logo image URL (optional)">
+                <Input className="h-8 text-xs" value={editing.logoUrl || ''} onChange={e => setEditing(s => s && { ...s, logoUrl: e.target.value })} />
+              </F>
 
-              <Field label="Regions (comma-separated, e.g. KE, NG, UK)">
-                <Input value={editing.regions.join(', ')} onChange={(e) => setEditing(s => s && { ...s, regions: e.target.value.split(',').map(x => x.trim().toUpperCase()).filter(Boolean) })} />
-              </Field>
-              <Field label="Features (comma-separated)">
-                <Input value={editing.features.join(', ')} onChange={(e) => setEditing(s => s && { ...s, features: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} />
-              </Field>
-              <Field label="Payment methods (comma-separated)">
-                <Input value={editing.paymentMethods.join(', ')} onChange={(e) => setEditing(s => s && { ...s, paymentMethods: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} />
-              </Field>
-              <Field label="Pros (one per line)">
-                <Textarea rows={2} value={editing.pros.join('\n')} onChange={(e) => setEditing(s => s && { ...s, pros: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) })} />
-              </Field>
-              <Field label="Cons (one per line)">
-                <Textarea rows={2} value={editing.cons.join('\n')} onChange={(e) => setEditing(s => s && { ...s, cons: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) })} />
-              </Field>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Established (year)"><Input type="number" value={editing.established || ''} onChange={(e) => setEditing(s => s && { ...s, established: Number(e.target.value) || undefined })} /></Field>
-                <Field label={<>Sort order <ArrowUpDown className="ml-1 inline h-3 w-3" /></>}>
-                  <Input type="number" value={editing.sortOrder ?? 100} onChange={(e) => setEditing(s => s && { ...s, sortOrder: Number(e.target.value) })} />
-                </Field>
-                <div />
+              <div className="grid grid-cols-2 gap-2.5">
+                <F label="Regions (e.g. KE, NG, UK)">
+                  <Input className="h-8 text-xs" value={editing.regions.join(', ')} onChange={e => setEditing(s => s && { ...s, regions: e.target.value.split(',').map(x => x.trim().toUpperCase()).filter(Boolean) })} />
+                </F>
+                <F label="Established year">
+                  <Input className="h-8 text-xs" type="number" value={editing.established || ''} onChange={e => setEditing(s => s && { ...s, established: Number(e.target.value) || undefined })} />
+                </F>
               </div>
 
-              <label className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3">
-                <div>
-                  <div className="text-sm font-semibold">Featured</div>
-                  <p className="text-xs text-muted-foreground">Pinned to the top of the public list and shown in match-detail Bet Now buttons.</p>
-                </div>
-                <Switch checked={editing.featured} onCheckedChange={(v) => setEditing(s => s && { ...s, featured: !!v })} />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3">
-                <div>
-                  <div className="text-sm font-semibold">Archived</div>
-                  <p className="text-xs text-muted-foreground">Hidden from the public list but kept in the admin store.</p>
-                </div>
-                <Switch checked={!!editing.archived} onCheckedChange={(v) => setEditing(s => s && { ...s, archived: !!v })} />
-              </label>
+              <F label="Features (comma-separated)">
+                <Input className="h-8 text-xs" value={editing.features.join(', ')} onChange={e => setEditing(s => s && { ...s, features: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} />
+              </F>
+              <F label="Payment methods (comma-separated)">
+                <Input className="h-8 text-xs" value={editing.paymentMethods.join(', ')} onChange={e => setEditing(s => s && { ...s, paymentMethods: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} />
+              </F>
 
-              {error && <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+              <div className="grid grid-cols-2 gap-2.5">
+                <F label="Pros (one per line)">
+                  <Textarea className="text-xs" rows={2} value={editing.pros.join('\n')} onChange={e => setEditing(s => s && { ...s, pros: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) })} />
+                </F>
+                <F label="Cons (one per line)">
+                  <Textarea className="text-xs" rows={2} value={editing.cons.join('\n')} onChange={e => setEditing(s => s && { ...s, cons: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) })} />
+                </F>
+              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-                <Button onClick={save} disabled={saving}>
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              <div className="grid grid-cols-2 gap-2.5">
+                <F label={<>Sort order <ArrowUpDown className="ml-1 inline h-3 w-3" /></>}>
+                  <Input className="h-8 text-xs" type="number" value={editing.sortOrder ?? 100} onChange={e => setEditing(s => s && { ...s, sortOrder: Number(e.target.value) })} />
+                </F>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Toggle
+                  label="Featured"
+                  desc="Shown in match Bet Now buttons"
+                  checked={editing.featured}
+                  onChange={v => setEditing(s => s && { ...s, featured: v })}
+                />
+                <Toggle
+                  label="Archived"
+                  desc="Hidden from public list"
+                  checked={!!editing.archived}
+                  onChange={v => setEditing(s => s && { ...s, archived: v })}
+                />
+              </div>
+
+              {error && (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-destructive">{error}</div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+                <Button size="sm" onClick={save} disabled={saving}>
+                  {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
                   Save
                 </Button>
               </div>
@@ -269,11 +288,23 @@ export default function AdminBookmakersPage() {
   );
 }
 
-function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+function F({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
+      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
       {children}
     </div>
+  );
+}
+
+function Toggle({ label, desc, checked, onChange }: { label: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border bg-muted/20 p-2.5 gap-2">
+      <div>
+        <div className="text-xs font-semibold">{label}</div>
+        <p className="text-[10px] text-muted-foreground">{desc}</p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </label>
   );
 }
