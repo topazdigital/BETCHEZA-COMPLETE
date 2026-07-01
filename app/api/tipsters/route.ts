@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
   else if (filter === 'free') fakeTipsters = fakeTipsters.filter(t => !t.isPro);
   else if (filter === 'verified') fakeTipsters = fakeTipsters.filter(t => t.verified);
 
-  // ── 3. Merge: real tipsters first (they earned it), then fake ────────
+  // ── 3. Merge real and fake tipsters into one pool — ranked purely by performance ──
   let combined: PublicTipster[] = [...realShaped, ...fakeTipsters];
 
   // ── 4. Sort the combined pool ─────────────────────────────────────────
@@ -172,12 +172,7 @@ export async function GET(request: NextRequest) {
     const bFollowed = followedIds.includes(b.id) ? 0 : 1;
     if (aFollowed !== bFollowed) return aFollowed - bFollowed;
 
-    // Real tipsters always appear before fake ones
-    const aFake = a.isFake ? 1 : 0;
-    const bFake = b.isFake ? 1 : 0;
-    if (aFake !== bFake) return aFake - bFake;
-
-    // Tipsters with zero tips always sink to the bottom within their group
+    // Tipsters with zero tips always sink to the bottom regardless of real/fake status
     const aNoTips = a.totalTips === 0 ? 1 : 0;
     const bNoTips = b.totalTips === 0 ? 1 : 0;
     if (aNoTips !== bNoTips) return aNoTips - bNoTips;
