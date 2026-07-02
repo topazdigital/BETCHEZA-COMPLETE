@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Copy, Check, Mail, Eye, Download, Megaphone } from "lucide-react"
+import { Copy, Check, Mail, Eye, Megaphone, Code2, Wand2, Info } from "lucide-react"
 
 const TIERS = [
   {
@@ -55,21 +55,70 @@ const TARGET_BOOKMAKERS = [
   { name: "MelBet Kenya", contact: "Affiliate Team" },
 ]
 
-export default function AdvertisingAdminPage() {
-  // Auth is already handled server-side by the admin layout — no client redirect needed
+const TOKENS = [
+  { token: "{{company_name}}", label: "Company name" },
+  { token: "{{contact_name}}", label: "Contact name" },
+  { token: "{{custom_note}}", label: "Custom note" },
+]
 
+const PLACEHOLDER_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+    .card { background: #fff; border-radius: 8px; max-width: 600px; margin: 0 auto; padding: 40px; }
+    h1 { color: #1a1a1a; }
+    p { color: #555; line-height: 1.6; }
+    .cta { display: inline-block; background: #6d28d9; color: #fff; padding: 14px 28px;
+           border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Partnership Proposal for {{company_name}}</h1>
+    <p>Hi {{contact_name}},</p>
+    <p>We'd love to partner with {{company_name}} to reach Kenya's most engaged bettors on Betcheza.</p>
+    <p>{{custom_note}}</p>
+    <a class="cta" href="https://betcheza.co.ke/partner">View Partnership Info</a>
+  </div>
+</body>
+</html>`
+
+function applyTokens(html: string, bookmakerName: string, contactName: string, customNote: string): string {
+  return html
+    .replaceAll("{{company_name}}", bookmakerName || "")
+    .replaceAll("{{contact_name}}", contactName || "")
+    .replaceAll("{{custom_note}}", customNote || "")
+}
+
+export default function AdvertisingAdminPage() {
+  const [mode, setMode] = useState<"template" | "custom">("template")
+
+  // Template mode state
   const [activeTier, setActiveTier] = useState<TierId>("package")
   const [bookmakerName, setBookmakerName] = useState("SportPesa")
   const [contactName, setContactName] = useState("Marketing Team")
   const [customNote, setCustomNote] = useState("")
   const [previewHtml, setPreviewHtml] = useState("")
   const [loadingPreview, setLoadingPreview] = useState(false)
+
+  // Custom HTML state
+  const [customHtml, setCustomHtml] = useState(PLACEHOLDER_HTML)
+  const [customSubject, setCustomSubject] = useState("Partnership Proposal for {{company_name}} — Betcheza.co.ke")
+
+  // Shared
   const [copied, setCopied] = useState(false)
   const [sending, setSending] = useState(false)
   const [sentTo, setSentTo] = useState("")
   const [recipientEmail, setRecipientEmail] = useState("")
 
-  async function generatePreview() {
+  // Derive what's currently shown in the preview iframe
+  const activePreviewHtml = mode === "custom"
+    ? applyTokens(customHtml, bookmakerName, contactName, customNote)
+    : previewHtml
+
+  async function generateTemplatePreview() {
     setLoadingPreview(true)
     try {
       const res = await fetch("/api/admin/advertising/preview", {
@@ -85,24 +134,38 @@ export default function AdvertisingAdminPage() {
   }
 
   async function copyHtml() {
-    if (!previewHtml) await generatePreview()
+    const html = activePreviewHtml || (mode === "template" ? "" : applyTokens(customHtml, bookmakerName, contactName, customNote))
+    if (!html && mode === "template") {
+      await generateTemplatePreview()
+      return
+    }
     try {
-      await navigator.clipboard.writeText(previewHtml)
+      await navigator.clipboard.writeText(html)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // fallback: select text
-    }
+    } catch {}
   }
 
   async function sendEmail() {
     if (!recipientEmail) return
     setSending(true)
+    setSentTo("")
     try {
+      const body = mode === "custom"
+        ? {
+            email: recipientEmail,
+            bookmakerName,
+            contactName,
+            customNote,
+            customHtml: applyTokens(customHtml, bookmakerName, contactName, customNote),
+            customSubject: applyTokens(customSubject, bookmakerName, contactName, customNote),
+          }
+        : { tier: activeTier, bookmakerName, contactName, customNote, email: recipientEmail }
+
       const res = await fetch("/api/admin/advertising/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: activeTier, bookmakerName, contactName, customNote, email: recipientEmail }),
+        body: JSON.stringify(body),
       })
       const d = await res.json()
       if (d.success) setSentTo(recipientEmail)
@@ -111,9 +174,18 @@ export default function AdvertisingAdminPage() {
     }
   }
 
+  function insertToken(token: string) {
+    const ta = document.getElementById("custom-html-area") as HTMLTextAreaElement | null
+    if (!ta) { setCustomHtml(h => h + token); return }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const next = customHtml.slice(0, start) + token + customHtml.slice(end)
+    setCustomHtml(next)
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + token.length; ta.focus() }, 0)
+  }
+
   return (
     <div className="space-y-3">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold flex items-center gap-2">
@@ -127,44 +199,111 @@ export default function AdvertisingAdminPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* Left: Configuration */}
+        {/* Left column */}
         <div className="lg:col-span-1 space-y-3">
-          {/* Tier selection */}
+
+          {/* Mode toggle */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Package Tier</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {TIERS.map(t => (
+            <CardContent className="pt-4 pb-3">
+              <div className="flex rounded-lg border border-border overflow-hidden">
                 <button
-                  key={t.id}
-                  onClick={() => setActiveTier(t.id)}
-                  className={`w-full text-left rounded-lg border p-3 transition-all ${
-                    activeTier === t.id
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-border hover:bg-muted/50"
+                  onClick={() => setMode("template")}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${
+                    mode === "template" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-sm">{t.label}</span>
-                    <Badge variant="outline" className={`text-[10px] ${t.color}`}>
-                      {t.price}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{t.description}</p>
+                  <Wand2 className="h-3 w-3" />
+                  Template
                 </button>
-              ))}
+                <button
+                  onClick={() => setMode("custom")}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${
+                    mode === "custom" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Code2 className="h-3 w-3" />
+                  Custom HTML
+                </button>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Customise */}
+          {/* Template mode: tier selection */}
+          {mode === "template" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Package Tier</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {TIERS.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTier(t.id)}
+                    className={`w-full text-left rounded-lg border p-3 transition-all ${
+                      activeTier === t.id
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-sm">{t.label}</span>
+                      <Badge variant="outline" className={`text-[10px] ${t.color}`}>
+                        {t.price}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{t.description}</p>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Custom HTML mode: subject + token help */}
+          {mode === "custom" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Email Subject</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input
+                  value={customSubject}
+                  onChange={e => setCustomSubject(e.target.value)}
+                  placeholder="Partnership Proposal for {{company_name}}"
+                  className="h-8 text-sm"
+                />
+                <div className="rounded-lg bg-muted/40 border border-border p-3 space-y-2">
+                  <p className="text-[11px] font-semibold text-foreground flex items-center gap-1">
+                    <Info className="h-3 w-3 text-primary" />
+                    Available tokens
+                  </p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    These are replaced automatically when you send or preview. Click to insert at cursor.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {TOKENS.map(({ token, label }) => (
+                      <button
+                        key={token}
+                        onClick={() => insertToken(token)}
+                        className="rounded border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/15 transition-colors"
+                        title={`Insert ${label}`}
+                      >
+                        {token}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Customise — shown in both modes */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Customise</CardTitle>
+              <CardTitle className="text-sm">Recipient Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label className="text-xs">Bookmaker Name</Label>
+                <Label className="text-xs">Bookmaker / Company Name</Label>
                 <Input
                   value={bookmakerName}
                   onChange={e => setBookmakerName(e.target.value)}
@@ -187,17 +326,19 @@ export default function AdvertisingAdminPage() {
                   value={customNote}
                   onChange={e => setCustomNote(e.target.value)}
                   placeholder="e.g. We're offering a 3-month bundle at a 20% discount…"
-                  className="mt-1 w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="mt-1 w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
-              <Button onClick={generatePreview} disabled={loadingPreview} className="w-full" size="sm">
-                <Eye className="h-3.5 w-3.5 mr-2" />
-                {loadingPreview ? "Generating…" : "Preview Email"}
-              </Button>
+              {mode === "template" && (
+                <Button onClick={generateTemplatePreview} disabled={loadingPreview} className="w-full" size="sm">
+                  <Eye className="h-3.5 w-3.5 mr-2" />
+                  {loadingPreview ? "Generating…" : "Preview Email"}
+                </Button>
+              )}
             </CardContent>
           </Card>
 
-          {/* Quick select bookmakers */}
+          {/* Quick-select bookmakers */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Target Bookmakers</CardTitle>
@@ -222,9 +363,10 @@ export default function AdvertisingAdminPage() {
           </Card>
         </div>
 
-        {/* Right: Preview + Actions */}
+        {/* Right column */}
         <div className="lg:col-span-2 space-y-3">
-          {/* Actions */}
+
+          {/* Send bar */}
           <Card>
             <CardContent className="pt-4">
               <div className="flex flex-wrap gap-2 items-end">
@@ -258,19 +400,45 @@ export default function AdvertisingAdminPage() {
             </CardContent>
           </Card>
 
-          {/* Email preview */}
+          {/* Custom HTML editor (only in custom mode) */}
+          {mode === "custom" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Code2 className="h-3.5 w-3.5" />
+                  HTML Editor
+                  <span className="text-[10px] font-normal text-muted-foreground ml-1">— preview updates live as you type</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <textarea
+                  id="custom-html-area"
+                  value={customHtml}
+                  onChange={e => setCustomHtml(e.target.value)}
+                  spellCheck={false}
+                  className="w-full h-56 px-3 py-3 font-mono text-[11px] leading-relaxed bg-muted/30 border-0 border-t border-border resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-b-lg"
+                  placeholder="Paste your full HTML email here…"
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Preview iframe */}
           <Card className="overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Eye className="h-3.5 w-3.5" />
                 Email Preview
+                {mode === "custom" && (
+                  <span className="text-[10px] font-normal text-muted-foreground">— tokens replaced with current recipient details</span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {previewHtml ? (
+              {activePreviewHtml ? (
                 <div className="border-t">
                   <iframe
-                    srcDoc={previewHtml}
+                    srcDoc={activePreviewHtml}
                     className="w-full h-[600px] border-0"
                     title="Email preview"
                     sandbox="allow-same-origin"
@@ -280,38 +448,37 @@ export default function AdvertisingAdminPage() {
                 <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                   <Megaphone className="h-10 w-10 mb-3 opacity-30" />
                   <p className="text-sm font-medium">No preview yet</p>
-                  <p className="text-xs mt-1">Click "Preview Email" to generate</p>
+                  <p className="text-xs mt-1">
+                    {mode === "template" ? 'Click "Preview Email" to generate' : "Start typing HTML above — preview appears here"}
+                  </p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Sample subjects */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Sample Subject Lines</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-1.5 text-sm text-muted-foreground">
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold shrink-0">→</span>
-                  Partnership Opportunity — Advertise on Betcheza · {bookmakerName || "Bookmaker"}
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold shrink-0">→</span>
-                  Reach 50,000+ Kenyan Bettors Monthly — Betcheza.co.ke
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold shrink-0">→</span>
-                  Display Your Odds on Kenya's #1 Tipster Platform
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold shrink-0">→</span>
-                  Exclusive Advertising Slots Now Available — Betcheza 2026
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
+          {/* Subject line suggestions (template mode only) */}
+          {mode === "template" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Sample Subject Lines</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  {[
+                    `Partnership Proposal for ${bookmakerName || "Bookmaker"} — Betcheza.co.ke`,
+                    "Reach 50,000+ Kenyan Bettors Monthly — Betcheza.co.ke",
+                    "Display Your Odds on Kenya's #1 Tipster Platform",
+                    "Exclusive Advertising Slots Now Available — Betcheza 2026",
+                  ].map(s => (
+                    <li key={s} className="flex items-start gap-2">
+                      <span className="text-primary font-bold shrink-0">→</span>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

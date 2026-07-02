@@ -10,25 +10,42 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { tier, bookmakerName, contactName, customNote, email } = body;
+  const { tier, bookmakerName, contactName, customNote, email, customHtml, customSubject } = body;
 
-  if (!tier || !bookmakerName || !email) {
+  if (!bookmakerName || !email) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  const tpl = bookmakerPartnershipEmail({
-    bookmakerName,
-    contactName: contactName || undefined,
-    tier,
-    customNote: customNote || undefined,
-  });
+  let subject: string;
+  let html: string;
+  let text: string;
+
+  if (customHtml) {
+    // Custom HTML mode — use exactly what the client sent (tokens already replaced)
+    subject = customSubject || `Partnership Proposal for ${bookmakerName} — Betcheza.co.ke`;
+    html = customHtml;
+    text = `Partnership proposal for ${bookmakerName}. View this email in an HTML-capable client.`;
+  } else {
+    if (!tier) {
+      return NextResponse.json({ error: 'Missing tier for template mode' }, { status: 400 });
+    }
+    const tpl = bookmakerPartnershipEmail({
+      bookmakerName,
+      contactName: contactName || undefined,
+      tier,
+      customNote: customNote || undefined,
+    });
+    subject = tpl.subject;
+    html = tpl.html;
+    text = tpl.text;
+  }
 
   try {
     await sendMail({
       to: email,
-      subject: tpl.subject,
-      html: tpl.html,
-      text: tpl.text,
+      subject,
+      html,
+      text,
       replyTo: 'partnerships@betcheza.co.ke',
     });
     return NextResponse.json({ success: true });
