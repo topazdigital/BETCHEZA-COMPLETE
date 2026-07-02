@@ -236,8 +236,13 @@ export function CompetitionLiveStandings({
                           <Badge variant="outline" className="h-3.5 text-[8px] px-1 border-primary text-primary leading-none">You</Badge>
                         )}
                         {p.isVerified && <Star className="h-2.5 w-2.5 fill-primary text-primary shrink-0" />}
-                        {p.prizeEligible === false && minimumTips > 1 && (
-                          <span className="inline-flex items-center rounded-full bg-muted px-1 py-0.5 text-[8px] font-medium text-muted-foreground border border-border/60 whitespace-nowrap shrink-0">
+                        {minimumTips > 1 && (
+                          <span className={cn(
+                            "inline-flex items-center rounded-full px-1 py-0.5 text-[8px] font-medium border whitespace-nowrap shrink-0",
+                            p.prizeEligible === false
+                              ? "bg-muted text-muted-foreground border-border/60"
+                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                          )}>
                             {p.tips}/{minimumTips} tips
                           </span>
                         )}
