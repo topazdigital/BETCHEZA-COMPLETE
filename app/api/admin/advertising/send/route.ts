@@ -24,7 +24,13 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+    await sendMail({
+      to: email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      replyTo: 'partnerships@betcheza.co.ke',
+    });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[Advertising] Failed to send email:', err);

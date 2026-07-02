@@ -182,64 +182,71 @@ function PartnerRightSidebar({
   return (
     <div className="space-y-3">
 
-      {/* Live stats — all from real API */}
-      <div className="rounded-xl border border-green-500/25 bg-green-500/5 p-4">
+      {/* Advertising Packages */}
+      <div className="rounded-xl border border-primary/20 bg-card p-3">
         <div className="flex items-center gap-2 mb-3">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-green-600">
-            Platform Stats
+          <Megaphone className="h-3.5 w-3.5 text-primary" />
+          <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+            Advertising Packages
           </span>
         </div>
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {[
             {
-              label: 'Monthly Pageviews',
-              value: fmtStat(loading, s?.monthlyPageviews ?? null),
-              sub:   'Rolling 30 days · Clarity',
-              icon: Eye,
-              color: 'text-purple-500',
+              tag: 'Starter',
+              title: 'Banner Ads',
+              price: 'KES 25K/mo',
+              desc: '728×90 + 300×250 on all match & league pages',
+              color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+              dot: 'bg-blue-500',
             },
             {
-              label: 'Registered Users',
-              value: fmtStat(loading, s?.totalUsers ?? null),
-              sub:   'All-time signups',
-              icon: Users,
-              color: 'text-blue-500',
+              tag: 'Popular',
+              title: 'Odds Integration',
+              price: 'KES 40K/mo',
+              desc: 'Live odds on every match page with deeplinks',
+              color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+              dot: 'bg-emerald-500',
             },
             {
-              label: 'Tips on Platform',
-              value: fmtStat(loading, s?.totalTips ?? null),
-              sub:   'AI + community picks',
-              icon: Target,
-              color: 'text-pink-500',
+              tag: 'Premium',
+              title: 'Homepage Feature',
+              price: 'KES 35K/mo',
+              desc: 'Above-the-fold featured slot with promo banner',
+              color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+              dot: 'bg-amber-500',
             },
             {
-              label: 'Avg. Session Time',
-              value: fmtStat(loading, s?.avgSessionMinutes ?? null, 'm'),
-              sub:   'Active time · Clarity',
-              icon: Clock,
-              color: 'text-orange-500',
+              tag: 'Best Value',
+              title: 'Full Package',
+              price: 'KES 80K/mo',
+              desc: 'Banners + odds + homepage + email campaigns',
+              color: 'bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/20',
+              dot: 'bg-violet-500',
             },
-            {
-              label: 'Platform Win Rate',
-              value: fmtStat(loading, s?.overallWinRate ?? null, '%'),
-              sub:   'Settled tips only',
-              icon: Star,
-              color: 'text-green-500',
-            },
-          ].map(({ label, value, sub, icon: Icon, color }) => (
-            <div key={label}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Icon className={cn('h-3.5 w-3.5 shrink-0', color)} />
-                  <span className="text-xs text-muted-foreground">{label}</span>
+          ].map(({ tag, title, price, desc, color, dot }) => (
+            <div key={tag} className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-muted/20 p-2.5">
+              <div className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', dot)} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1 mb-0.5">
+                  <span className="text-xs font-semibold text-foreground truncate">{title}</span>
+                  <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-bold', color)}>{tag}</span>
                 </div>
-                <span className="text-sm font-bold text-foreground tabular-nums">{value}</span>
+                <div className="flex items-center justify-between gap-1">
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+                <p className="text-[11px] font-bold text-primary mt-1">{price}</p>
               </div>
-              {sub && <p className="text-[10px] text-muted-foreground pl-5.5 mt-0.5 ml-5">{sub}</p>}
             </div>
           ))}
         </div>
+        <a
+          href="#contact"
+          className="mt-3 flex items-center justify-center gap-1.5 w-full rounded-lg bg-primary/10 border border-primary/20 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/20 transition-colors"
+        >
+          <ArrowUpRight className="h-3 w-3" />
+          Enquire about a package
+        </a>
       </div>
 
       {/* Why partner */}
@@ -361,8 +368,6 @@ export default function PartnerPage() {
   }, [pathname]);
 
   /* derived display values */
-  const dUsers    = fmtStat(loading, stats?.totalUsers       ?? null);
-  const dViews    = fmtStat(loading, stats?.monthlyPageviews ?? null);
   const dTips     = fmtStat(loading, stats?.totalTips        ?? null);
   const dWinRate  = fmtStat(loading, stats?.overallWinRate   ?? null, '%');
   const dSession  = fmtStat(loading, stats?.avgSessionMinutes ?? null, ' min');
@@ -392,11 +397,10 @@ export default function PartnerPage() {
               <span className="text-primary">Kenya&apos;s most engaged bettors</span>
             </h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Betcheza is Kenya&apos;s leading sports predictions platform —
-              {!loading && stats?.totalUsers ? ` ${fmt(stats.totalUsers)} registered users,` : ''}{' '}
-              {!loading && stats?.monthlyPageviews ? `${fmt(stats.monthlyPageviews)} monthly pageviews,` : ''}{' '}
-              87% mobile-first audience. Our partnership programme is built around transparency,
-              real attribution, and deals that grow with your business.
+              Betcheza is Kenya&apos;s leading sports predictions platform — 87% mobile-first audience,
+              93% East Africa reach, and 2.5-minute average sessions verified by Microsoft Clarity.
+              Our partnership programme is built around transparency, real attribution, and deals
+              that grow with your business.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {[
@@ -431,12 +435,12 @@ export default function PartnerPage() {
             <div className="grid sm:grid-cols-2 gap-3 mb-3">
               {[
                 {
-                  icon: Users,      color: 'text-blue-500',   bg: 'bg-blue-500/10',
-                  val: dUsers,      label: 'Registered users',   sub: 'All-time signups',
+                  icon: Eye,        color: 'text-purple-500', bg: 'bg-purple-500/10',
+                  val: '50K+',      label: 'Monthly Visitors',   sub: 'Rolling 30 days · Clarity',
                 },
                 {
-                  icon: Eye,        color: 'text-purple-500', bg: 'bg-purple-500/10',
-                  val: dViews,      label: 'Monthly pageviews',  sub: 'Rolling 30 days',
+                  icon: Globe,      color: 'text-blue-500',   bg: 'bg-blue-500/10',
+                  val: '93%',       label: 'East Africa Reach',  sub: 'Kenya · Uganda · Tanzania',
                 },
                 {
                   icon: Target,     color: 'text-pink-500',   bg: 'bg-pink-500/10',

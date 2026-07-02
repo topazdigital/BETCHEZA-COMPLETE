@@ -649,13 +649,6 @@ function checkItem(text: string): string {
   </tr>`;
 }
 
-function partnerStatCard(label: string, value: string, color = '#10b981'): string {
-  return `<td style="text-align:center;padding:18px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);">
-    <div style="color:${color};font-size:24px;font-weight:800;line-height:1;">${value}</div>
-    <div style="color:rgba(255,255,255,0.5);font-size:10px;margin-top:5px;text-transform:uppercase;letter-spacing:0.7px;font-weight:600;">${label}</div>
-  </td>`;
-}
-
 export function bookmakerPartnershipEmail(opts: {
   bookmakerName: string;
   contactName?: string;
@@ -663,164 +656,265 @@ export function bookmakerPartnershipEmail(opts: {
   customNote?: string;
 }): { subject: string; html: string; text: string } {
   const tier = TIER_DETAILS[opts.tier];
-  const greeting = opts.contactName ? `Hi ${opts.contactName},` : `Hi ${opts.bookmakerName} Team,`;
+  const greeting = opts.contactName
+    ? `Hi ${opts.contactName},`
+    : `Hi ${opts.bookmakerName} Team,`;
+  const year = new Date().getFullYear();
+  const month = new Date().toLocaleString('en-KE', { month: 'long', year: 'numeric' });
+  const logoUrl = `${BASE_URL}/betcheza-logo.png`;
+
+  const statPill = (val: string, label: string, accent: string) => `
+    <td style="text-align:center;padding:0 6px;">
+      <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 12px;">
+        <div style="color:${accent};font-size:22px;font-weight:900;letter-spacing:-0.5px;line-height:1;">${val}</div>
+        <div style="color:rgba(255,255,255,0.45);font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin-top:6px;">${label}</div>
+      </div>
+    </td>`;
+
+  const whyRow = (emoji: string, title: string, desc: string) => `
+    <tr>
+      <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">
+        <table cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td style="width:36px;vertical-align:top;padding-top:2px;">
+              <div style="width:30px;height:30px;background:#f0fdf4;border-radius:8px;text-align:center;line-height:30px;font-size:15px;">${emoji}</div>
+            </td>
+            <td style="padding-left:12px;vertical-align:top;">
+              <div style="color:#0f172a;font-size:13px;font-weight:700;margin-bottom:2px;">${title}</div>
+              <div style="color:#64748b;font-size:12px;line-height:1.55;">${desc}</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`;
+
+  const featureRow = (text: string) => `
+    <tr>
+      <td style="padding:7px 0;">
+        <table cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:26px;vertical-align:middle;">
+              <div style="width:20px;height:20px;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:50%;text-align:center;line-height:20px;font-size:11px;color:#fff;font-weight:800;">✓</div>
+            </td>
+            <td style="padding-left:10px;color:#334155;font-size:13px;line-height:1.6;">${text}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Betcheza Partnership Proposal</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Partnership Proposal — Betcheza × ${opts.bookmakerName}</title>
 </head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Partnership proposal for ${opts.bookmakerName} — Betcheza advertising opportunity</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+<body style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+  <!-- Preheader -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Exclusive advertising partnership proposal for ${opts.bookmakerName} from Betcheza — Kenya's leading sports predictions platform.</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:40px 16px;">
     <tr><td align="center">
-      <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.12);">
+    <table role="presentation" width="620" cellpadding="0" cellspacing="0" style="max-width:620px;width:100%;">
 
-        <!-- Header -->
-        <tr>
-          <td style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#312e81 100%);padding:36px 40px;text-align:center;">
-            <table cellpadding="0" cellspacing="0" style="margin:0 auto 16px;">
+      <!-- ═══ HEADER ═══ -->
+      <tr>
+        <td style="background:linear-gradient(145deg,#0b1120 0%,#0f172a 45%,#1a1040 100%);border-radius:18px 18px 0 0;padding:36px 40px 28px;text-align:center;">
+
+          <!-- Logo -->
+          <table cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">
+            <tr>
+              <td style="text-align:center;">
+                <img src="${logoUrl}" alt="Betcheza" width="160" height="auto"
+                  style="display:block;max-width:160px;height:auto;margin:0 auto;"
+                  onerror="this.style.display='none'" />
+                <div style="margin-top:4px;color:rgba(255,255,255,0.35);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Kenya's #1 Tipster Community</div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Badge -->
+          <div style="display:inline-block;background:rgba(124,58,237,0.25);border:1px solid rgba(167,139,250,0.35);border-radius:30px;padding:7px 22px;margin-bottom:22px;">
+            <span style="color:rgba(255,255,255,0.9);font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">🤝 Partnership Proposal · ${year}</span>
+          </div>
+
+          <!-- Headline -->
+          <h1 style="margin:0 0 8px;color:#ffffff;font-size:26px;font-weight:900;line-height:1.2;letter-spacing:-0.5px;">
+            Grow <span style="color:#a78bfa;">${opts.bookmakerName}</span><br/>with Kenya's Most Engaged Bettors
+          </h1>
+          <p style="margin:0;color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;">
+            An exclusive advertising opportunity tailored for ${opts.bookmakerName}
+          </p>
+        </td>
+      </tr>
+
+      <!-- Rainbow accent -->
+      <tr><td style="height:4px;background:linear-gradient(90deg,#7c3aed 0%,#10b981 40%,#f59e0b 75%,#ef4444 100%);"></td></tr>
+
+      <!-- ═══ AUDIENCE STATS ═══ -->
+      <tr>
+        <td style="background:#0f172a;padding:24px 40px 28px;">
+          <p style="margin:0 0 16px;color:rgba(255,255,255,0.35);font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;text-align:center;">Our Audience — ${month}</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              ${statPill('50K+', 'Monthly Visitors', '#10b981')}
+              ${statPill('87%', 'Mobile Audience', '#a78bfa')}
+              ${statPill('2.5m', 'Avg. Session', '#f59e0b')}
+              ${statPill('93%', 'East Africa Reach', '#38bdf8')}
+            </tr>
+          </table>
+          <p style="margin:14px 0 0;color:rgba(255,255,255,0.25);font-size:10px;text-align:center;">Source: Microsoft Clarity · rolling 30-day average</p>
+        </td>
+      </tr>
+
+      <!-- ═══ BODY ═══ -->
+      <tr>
+        <td style="background:#ffffff;padding:36px 40px 32px;">
+
+          <!-- Greeting -->
+          <p style="margin:0 0 20px;color:#475569;font-size:14px;line-height:1.75;">
+            ${greeting}<br/><br/>
+            We are reaching out to offer <strong style="color:#0f172a;">${opts.bookmakerName}</strong> an exclusive spot on
+            <a href="${BASE_URL}" style="color:#7c3aed;font-weight:700;text-decoration:none;">Betcheza.co.ke</a> —
+            where Kenya's most committed sports bettors discover tips, analyse odds, and decide where to place their bets every single day.
+          </p>
+
+          <!-- Why Betcheza -->
+          <h2 style="margin:0 0 16px;color:#0f172a;font-size:16px;font-weight:800;border-left:3px solid #7c3aed;padding-left:12px;">
+            Why ${opts.bookmakerName} Should Partner with Betcheza
+          </h2>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+            ${whyRow('🎯', 'Pure Betting Intent', `Every visitor comes specifically for sports predictions and odds. ${opts.bookmakerName}'s brand appears exactly when they're ready to bet.`)}
+            ${whyRow('📍', 'Kenya-First Reach', `78% Kenya, 93% East Africa. ${opts.bookmakerName} reaches the precise local market that matters, verified by Clarity.`)}
+            ${whyRow('📈', 'Match-Day Traffic Spikes', `Traffic surges 3–5× on major match days — EPL, KPL, Champions League. Peak exposure for ${opts.bookmakerName} exactly when intent is highest.`)}
+            ${whyRow('🤖', 'AI-Powered Engagement', 'Betcheza AI generates daily predictions that keep bettors returning. Subscribers engage for 2.5 minutes per session on average.')}
+            ${whyRow('✅', 'Verified Real Bettors', 'Every account is registered and verified. Zero incentive traffic, zero bot farms — pure, high-quality betting audience.')}
+          </table>
+
+          <!-- Proposed package -->
+          <div style="background:linear-gradient(135deg,#faf5ff 0%,#f5f3ff 100%);border:2px solid #7c3aed;border-radius:16px;padding:28px;margin-bottom:28px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
               <tr>
-                <td style="vertical-align:middle;padding-right:12px;">
-                  <div style="width:46px;height:46px;background:rgba(255,255,255,0.12);border-radius:12px;text-align:center;line-height:46px;font-size:24px;">⚽</div>
+                <td style="vertical-align:middle;">
+                  <div style="color:#7c3aed;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">Proposed for ${opts.bookmakerName}</div>
+                  <h3 style="margin:0;color:#4c1d95;font-size:20px;font-weight:900;letter-spacing:-0.3px;">${tier.title}</h3>
                 </td>
-                <td style="vertical-align:middle;text-align:left;">
-                  <div style="color:#ffffff;font-size:22px;font-weight:900;letter-spacing:-0.4px;line-height:1;">Betcheza</div>
-                  <div style="color:rgba(255,255,255,0.55);font-size:10px;letter-spacing:1.2px;text-transform:uppercase;margin-top:2px;">Kenya's #1 Tipster Community</div>
+                <td style="text-align:right;vertical-align:middle;">
+                  <div style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:14px;font-weight:800;padding:10px 20px;border-radius:30px;white-space:nowrap;box-shadow:0 4px 14px rgba(124,58,237,0.35);">${tier.price}</div>
                 </td>
               </tr>
             </table>
-            <div style="display:inline-block;background:rgba(124,58,237,0.3);border:1px solid rgba(167,139,250,0.4);border-radius:20px;padding:6px 18px;">
-              <span style="color:rgba(255,255,255,0.85);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Partnership Proposal · ${new Date().getFullYear()}</span>
-            </div>
-          </td>
-        </tr>
-
-        <!-- Accent line -->
-        <tr>
-          <td style="height:3px;background:linear-gradient(90deg,#7c3aed 0%,#10b981 50%,#f59e0b 100%);"></td>
-        </tr>
-
-        <!-- Body -->
-        <tr>
-          <td style="background:#ffffff;padding:40px 40px 36px;">
-
-            <p style="margin:0 0 6px;color:#64748b;font-size:14px;">${greeting}</p>
-            <h2 style="margin:0 0 12px;color:#0f172a;font-size:24px;font-weight:800;line-height:1.25;letter-spacing:-0.4px;">Partner with Betcheza — Kenya's Fastest-Growing Betting Community</h2>
-            <p style="margin:0 0 32px;color:#475569;font-size:14px;line-height:1.7;">
-              We're reaching out to offer <strong style="color:#0f172a;">${opts.bookmakerName}</strong> an exclusive advertising opportunity on
-              <strong style="color:#7c3aed;">Betcheza.co.ke</strong> — where thousands of active sports bettors discover tips, compare odds, and place bets every single day.
-            </p>
-
-            <!-- Audience stats (dark block) -->
-            <div style="background:#0f172a;border-radius:14px;padding:24px;margin-bottom:32px;">
-              <p style="margin:0 0 16px;color:rgba(255,255,255,0.45);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-align:center;">Our Audience — ${new Date().toLocaleString('en-KE', { month: 'long', year: 'numeric' })}</p>
-              <table role="presentation" width="100%" cellpadding="6" cellspacing="6">
-                <tr>
-                  ${partnerStatCard('Monthly Visitors', '50,000+', '#10b981')}
-                  <td style="width:8px;"></td>
-                  ${partnerStatCard('Registered Users', '5,000+', '#7c3aed')}
-                  <td style="width:8px;"></td>
-                  ${partnerStatCard('Daily Active', '2,500+', '#f59e0b')}
-                  <td style="width:8px;"></td>
-                  ${partnerStatCard('Email Subscribers', '1,200+', '#3b82f6')}
-                </tr>
-              </table>
-            </div>
-
-            <!-- Why Betcheza -->
-            <h3 style="margin:0 0 14px;color:#0f172a;font-size:16px;font-weight:700;">Why Advertise on Betcheza?</h3>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
-              ${[
-                '100% sports-betting audience — every visitor is actively betting or researching bets',
-                'Kenya-first platform with dominant local reach including KPL fans',
-                'AI-powered match predictions and tips drive daily return visits',
-                'Integrated odds comparison — your odds appear directly in match listings',
-                'Premium tipster community with subscription tiers and active engagement',
-              ].map(checkItem).join('')}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              ${tier.features.map(featureRow).join('')}
             </table>
+          </div>
 
-            <!-- Proposed package -->
-            <div style="background:#faf5ff;border:2px solid #7c3aed;border-radius:14px;padding:24px;margin-bottom:32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
-                <tr>
-                  <td>
-                    <h3 style="margin:0;color:#5b21b6;font-size:18px;font-weight:800;">${tier.title}</h3>
-                  </td>
-                  <td style="text-align:right;vertical-align:middle;">
-                    <div style="background:#7c3aed;color:#fff;font-size:13px;font-weight:700;padding:7px 16px;border-radius:20px;white-space:nowrap;">${tier.price}</div>
-                  </td>
-                </tr>
-              </table>
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                ${tier.features.map(checkItem).join('')}
-              </table>
-            </div>
+          ${opts.customNote ? `
+          <!-- Custom note -->
+          <div style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 12px 12px 0;padding:16px 20px;margin-bottom:28px;">
+            <div style="color:#92400e;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">📌 Special Note for ${opts.bookmakerName}</div>
+            <p style="margin:0;color:#78350f;font-size:13px;line-height:1.7;">${opts.customNote}</p>
+          </div>` : ''}
 
-            ${opts.customNote ? `
-            <div style="background:#fff8e6;border-left:4px solid #f59e0b;border-radius:0 12px 12px 0;padding:16px 20px;margin-bottom:32px;">
-              <p style="margin:0;color:#78350f;font-size:13px;line-height:1.65;">${opts.customNote}</p>
-            </div>` : ''}
-
-            <!-- CTA -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:28px;text-align:center;">
-              <p style="margin:0 0 20px;color:#334155;font-size:15px;line-height:1.65;font-weight:500;">
-                Interested? Reply to this email or book a quick 15-minute call to discuss a custom package.
-              </p>
-              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
-                <tr>
-                  <td style="padding-right:10px;">
-                    <a href="mailto:ads@betcheza.co.ke" style="display:inline-block;background:#7c3aed;color:#fff;font-weight:700;font-size:14px;padding:13px 24px;border-radius:10px;text-decoration:none;">Reply to Discuss →</a>
-                  </td>
-                  <td>
-                    <a href="${BASE_URL}/advertise" style="display:inline-block;background:#0f172a;color:#fff;font-weight:600;font-size:14px;padding:13px 24px;border-radius:10px;text-decoration:none;">View Media Kit</a>
-                  </td>
-                </tr>
-              </table>
-            </div>
-
-            <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;line-height:1.7;text-align:center;">
-              This is a personalised proposal for <strong>${opts.bookmakerName}</strong>.<br/>
-              Rates are negotiable for long-term or exclusive partnerships.
+          <!-- CTA block -->
+          <div style="background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);border-radius:16px;padding:32px;text-align:center;">
+            <div style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">Ready to grow with Kenya's #1 betting community?</div>
+            <h3 style="margin:0 0 8px;color:#ffffff;font-size:18px;font-weight:800;">Let's talk, ${opts.bookmakerName}</h3>
+            <p style="margin:0 0 24px;color:rgba(255,255,255,0.55);font-size:13px;line-height:1.65;">
+              Reply to this email and we'll send you our full media kit and a tailored proposal within 24 hours. No commitment required.
             </p>
-
-          </td>
-        </tr>
-
-        <!-- Footer -->
-        <tr>
-          <td style="background:#0f172a;padding:24px 40px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
               <tr>
+                <td style="padding-right:12px;">
+                  <a href="mailto:partnerships@betcheza.co.ke?subject=Re%3A%20Partnership%20Proposal%20%E2%80%94%20${encodeURIComponent(opts.bookmakerName)}"
+                    style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-weight:700;font-size:14px;padding:14px 26px;border-radius:10px;text-decoration:none;box-shadow:0 4px 14px rgba(124,58,237,0.4);">
+                    Reply to Discuss →
+                  </a>
+                </td>
                 <td>
-                  <p style="margin:0;color:rgba(255,255,255,0.5);font-size:12px;line-height:1.7;">
-                    <strong style="color:rgba(255,255,255,0.8);">Betcheza</strong> · Kenya's #1 Sports Betting Tipster Community<br/>
-                    📧 <a href="mailto:ads@betcheza.co.ke" style="color:#10b981;text-decoration:none;">ads@betcheza.co.ke</a>
-                    &nbsp;·&nbsp;
-                    🌐 <a href="${BASE_URL}" style="color:#10b981;text-decoration:none;">betcheza.co.ke</a>
-                  </p>
-                </td>
-                <td style="text-align:right;vertical-align:top;">
-                  <p style="margin:0;color:rgba(255,255,255,0.25);font-size:11px;">Confidential</p>
+                  <a href="${BASE_URL}/partner"
+                    style="display:inline-block;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;font-weight:600;font-size:14px;padding:14px 26px;border-radius:10px;text-decoration:none;">
+                    View Partnership Page
+                  </a>
                 </td>
               </tr>
             </table>
-          </td>
-        </tr>
+            <p style="margin:20px 0 0;color:rgba(255,255,255,0.3);font-size:11px;">
+              Or WhatsApp us: <a href="https://wa.me/254113226240" style="color:#10b981;text-decoration:none;">+254 113 226 240</a>
+            </p>
+          </div>
 
-      </table>
+          <p style="margin:24px 0 0;color:#94a3b8;font-size:11px;line-height:1.8;text-align:center;">
+            This proposal was prepared exclusively for <strong style="color:#64748b;">${opts.bookmakerName}</strong>.<br/>
+            Rates are fully negotiable for long-term or exclusive partnerships.
+          </p>
+        </td>
+      </tr>
+
+      <!-- ═══ FOOTER ═══ -->
+      <tr>
+        <td style="background:#0b1120;border-radius:0 0 18px 18px;padding:28px 40px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="vertical-align:middle;">
+                <img src="${logoUrl}" alt="Betcheza" width="100" height="auto"
+                  style="display:block;max-width:100px;height:auto;margin-bottom:10px;opacity:0.7;"
+                  onerror="this.style.display='none'" />
+                <p style="margin:0;color:rgba(255,255,255,0.35);font-size:11px;line-height:1.8;">
+                  Kenya's #1 Sports Betting Tipster Community<br/>
+                  <a href="mailto:partnerships@betcheza.co.ke" style="color:#10b981;text-decoration:none;">partnerships@betcheza.co.ke</a>
+                  &nbsp;·&nbsp;
+                  <a href="${BASE_URL}" style="color:#10b981;text-decoration:none;">betcheza.co.ke</a>
+                </p>
+              </td>
+              <td style="text-align:right;vertical-align:top;">
+                <p style="margin:0;color:rgba(255,255,255,0.2);font-size:10px;line-height:1.8;">
+                  Confidential<br/>
+                  Prepared for ${opts.bookmakerName}
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+    </table>
     </td></tr>
   </table>
 </body>
 </html>`;
 
-  const featureText = tier.features.map(f => `  • ${f}`).join('\n');
-  const text = `${greeting}\n\nPartner with Betcheza — Kenya's Fastest-Growing Betting Community\n\nWe'd like to offer ${opts.bookmakerName} an advertising opportunity on Betcheza.co.ke.\n\nOur audience:\n  • 50,000+ monthly visitors\n  • 5,000+ registered users\n  • 100% sports betting audience\n\n${tier.title} — ${tier.price}\n${featureText}\n\nReply to discuss: ads@betcheza.co.ke\nView more: ${BASE_URL}/advertise\n\nBest regards,\nThe Betcheza Team`;
+  const featureText = tier.features.map(f => `  ✓ ${f}`).join('\n');
+  const text = `${greeting}
+
+Partnership Proposal — Betcheza × ${opts.bookmakerName}
+
+We're reaching out to offer ${opts.bookmakerName} an exclusive advertising opportunity on Betcheza.co.ke — Kenya's #1 sports predictions platform, where thousands of active bettors discover tips, compare odds, and place bets every day.
+
+WHY ${opts.bookmakerName.toUpperCase()} SHOULD PARTNER WITH BETCHEZA
+• Pure betting intent — every visitor is in betting mode
+• Kenya-first: 78% Kenya, 93% East Africa (Clarity verified)
+• Match-day traffic spikes 3–5× on major fixtures
+• 2.5-minute average session — highly engaged audience
+• Verified real bettors — zero bot traffic
+
+PROPOSED PACKAGE FOR ${opts.bookmakerName.toUpperCase()}
+${tier.title} — ${tier.price}
+${featureText}
+${opts.customNote ? `\nSPECIAL NOTE FOR ${opts.bookmakerName.toUpperCase()}\n${opts.customNote}\n` : ''}
+READY TO GET STARTED?
+Reply to this email and we'll send our full media kit and a tailored proposal within 24 hours.
+
+partnerships@betcheza.co.ke
+${BASE_URL}/partner
+
+Best regards,
+The Betcheza Partnerships Team
+Kenya's #1 Sports Betting Tipster Community`;
 
   return {
-    subject: `Partnership Opportunity — Advertise on Betcheza · ${opts.bookmakerName}`,
+    subject: `Partnership Proposal for ${opts.bookmakerName} — Advertise on Betcheza.co.ke`,
     html,
     text,
   };
