@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
-const LOG_FILE = path.join(process.cwd(), 'data', 'advertising-history.json');
+// Use .local/data/ so history survives code deployments (never wiped by git)
+const LOG_FILE = path.join(process.cwd(), '.local', 'data', 'advertising-history.json');
 
 export interface AdSentEntry {
   id: string;
@@ -40,8 +41,8 @@ export function appendEntry(entry: Omit<AdSentEntry, 'id' | 'sentAt'>): AdSentEn
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     sentAt: new Date().toISOString(),
   };
-  entries.unshift(newEntry); // newest first
-  if (entries.length > 500) entries.splice(500); // cap at 500
+  entries.unshift(newEntry);
+  if (entries.length > 500) entries.splice(500);
   writeLog(entries);
   return newEntry;
 }

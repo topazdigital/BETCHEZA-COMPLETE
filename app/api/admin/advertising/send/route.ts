@@ -4,6 +4,17 @@ import { bookmakerPartnershipEmail } from '@/lib/email-templates';
 import { sendMail } from '@/lib/mailer';
 import { appendEntry } from '@/lib/advertising-log';
 
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+
+function injectTrackingPixel(html: string, entryId: string): string {
+  const pixel = `<img src="${SITE_URL}/api/ad-track?id=${entryId}&t=open" width="1" height="1" style="display:none;border:0;outline:0" alt="" />`;
+  // Inject before </body> if present, otherwise append
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${pixel}\n</body>`);
+  }
+  return html + pixel;
+}
+
 export async function POST(request: NextRequest) {
   const me = await getCurrentUser();
   if (!me || !isAdmin(me.role)) {
@@ -44,21 +55,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await sendMail({
-      to: email,
-      subject,
-      html,
-      text,
-      replyTo: 'partnerships@betcheza.co.ke',
-    });
-
-    appendEntry({
+    // Log the entry first so we have the ID for the tracking pixel
+    const entry = appendEntry({
       company: bookmakerName,
       contactName: contactName || undefined,
       email,
       subject,
       tier: tier || undefined,
       mode,
+    });
+
+    // Inject open-tracking pixel into the outgoing HTML
+    const trackedHtml = injectTrackingPixel(html, entry.id);
+
+    await sendMail({
+      to: email,
+      subject,
+      html: trackedHtml,
+      text,
+      replyTo: 'partnerships@betcheza.co.ke',
     });
 
     return NextResponse.json({ success: true });
