@@ -16,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { SportsFilter } from '@/components/sports/sports-filter';
 import { BestBetsPanel } from '@/components/home/best-bets-panel';
+import { BetWinnersInFeed } from '@/components/ads/affiliate-banner';
 import { MatchCardNew } from '@/components/matches/match-card-new';
 import { SportIcon, LeagueFlag } from '@/components/ui/team-logo';
 import { Spinner } from '@/components/ui/spinner';
@@ -747,8 +748,9 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
 
       {/* Right sidebar — best bets on xl+ */}
       <aside className="hidden xl:block w-72 shrink-0 border-l border-border">
-        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
+        <div className="sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto p-3 space-y-3">
           <BestBetsPanel matches={filteredMatches.slice(0, 20)} />
+          <BetWinnersInFeed />
         </div>
       </aside>
     </div>

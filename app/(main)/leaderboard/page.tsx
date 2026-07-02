@@ -19,6 +19,10 @@ const SidebarBanners = dynamicImport(
   () => import('@/components/home/sidebar-banners').then(m => ({ default: m.SidebarBanners })),
   { ssr: false, loading: () => null },
 );
+const BetWinnersInFeed = dynamicImport(
+  () => import('@/components/ads/affiliate-banner').then(m => ({ default: m.BetWinnersInFeed })),
+  { ssr: false, loading: () => null },
+);
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -503,8 +507,9 @@ export default function LeaderboardPage() {
       </div>
       {/* Right sidebar banners — desktop only */}
       <aside className="hidden xl:block w-64 shrink-0 border-l border-border">
-        <div className="sticky top-14 p-3">
+        <div className="sticky top-14 p-3 space-y-3">
           <SidebarBanners />
+          <BetWinnersInFeed />
         </div>
       </aside>
     </div>

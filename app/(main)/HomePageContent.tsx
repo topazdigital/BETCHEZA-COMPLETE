@@ -89,6 +89,14 @@ const MobileBannerStrip = dynamic(
   () => import('@/components/home/sidebar-banners').then(m => ({ default: m.MobileBannerStrip })),
   { ssr: false }
 );
+const BetWinnersInFeed = dynamic(
+  () => import('@/components/ads/affiliate-banner').then(m => ({ default: m.BetWinnersInFeed })),
+  { ssr: false }
+);
+const BetWinnersLeaderboard = dynamic(
+  () => import('@/components/ads/affiliate-banner').then(m => ({ default: m.BetWinnersLeaderboard })),
+  { ssr: false }
+);
 
 interface ApiTipster {
   id: number;
@@ -511,6 +519,11 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                 </div>
               )}
 
+              {/* BetWinners affiliate banner — in-feed */}
+              <div className="mb-4">
+                <BetWinnersInFeed />
+              </div>
+
               {/* My Tips + Favorited Tips — mobile only; on lg+ they live in the left sidebar */}
               <div className="mb-4 lg:hidden space-y-3">
                 <MyTipsPanel />
@@ -621,6 +634,11 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
 
               {/* World Cup 2026 Featured Odds */}
               <WorldCupOddsCard />
+
+              {/* BetWinners affiliate leaderboard banner */}
+              <div className="mb-4">
+                <BetWinnersLeaderboard />
+              </div>
 
               {/* Top Tipsters */}
               <section className="mb-4">
