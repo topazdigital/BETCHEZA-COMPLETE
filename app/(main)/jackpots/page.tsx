@@ -95,7 +95,15 @@ export default function JackpotsPage() {
         name: 'How many games are in the SportPesa Mega Jackpot?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'The SportPesa Mega Jackpot has 17 games. You must correctly predict the outcome of all 17 matches to win the jackpot prize of KES 100M+. Betcheza provides free AI predictions for all 17 games with confidence ratings.',
+          text: 'The SportPesa Mega Jackpot has 17 games. You must correctly predict the outcome of all 17 matches to win the jackpot prize of KES 100M+. Betcheza provides free AI predictions for all 17 games with confidence ratings. Visit betcheza.co.ke/jackpots/sportpesa/mega-jackpot for today\'s free picks.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'What is the SportPesa Mega Jackpot prediction today?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Betcheza publishes free AI predictions for the SportPesa Mega Jackpot every weekend. The Mega Jackpot has 17 games with a prize pool of KES 100M+. Visit betcheza.co.ke/jackpots/sportpesa/mega-jackpot for today\'s 17-game tips with confidence ratings and banker picks.',
         },
       },
       {
@@ -103,7 +111,7 @@ export default function JackpotsPage() {
         name: 'What is the SportPesa Midweek Jackpot prediction today?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Betcheza publishes free AI predictions for the SportPesa Midweek Jackpot every week. The Midweek Jackpot has 17 games. Visit betcheza.co.ke/jackpots/sportpesa/midweek-jackpot for today\'s tips.',
+          text: 'Betcheza publishes free AI predictions for the SportPesa Midweek Jackpot every week. The Midweek Jackpot has 13 games. Visit betcheza.co.ke/jackpots/sportpesa/midweek-jackpot for today\'s tips.',
         },
       },
       {
@@ -170,7 +178,39 @@ export default function JackpotsPage() {
           </div>
         </div>
 
-        {/* Quick nav to individual jackpot type pages — SEO-rich server-rendered links */}
+        {/* Featured jackpots — server-rendered strong internal links for crawlers */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* SportPesa Mega Jackpot spotlight */}
+          <Link
+            href="/jackpots/sportpesa/mega-jackpot"
+            className="group flex items-center gap-3 rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/30 px-4 py-3 hover:border-green-400 hover:bg-green-100 dark:hover:bg-green-950/50 transition-all"
+          >
+            <div className="h-10 w-10 rounded-lg bg-green-600 flex items-center justify-center shrink-0">
+              <Trophy className="h-5 w-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-sm text-green-800 dark:text-green-300 leading-tight">SportPesa Mega Jackpot Prediction Today</p>
+              <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">17 games · KES 100M+ prize · Free AI picks</p>
+            </div>
+            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 ml-auto" />
+          </Link>
+          {/* SportPesa Midweek Jackpot spotlight */}
+          <Link
+            href="/jackpots/sportpesa/midweek-jackpot"
+            className="group flex items-center gap-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 hover:border-blue-400 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-all"
+          >
+            <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+              <Trophy className="h-5 w-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-sm text-blue-800 dark:text-blue-300 leading-tight">SportPesa Midweek Jackpot Prediction Today</p>
+              <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">13 games · KES 15M+ prize · Free AI picks</p>
+            </div>
+            <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0 ml-auto" />
+          </Link>
+        </div>
+
+        {/* Quick nav to all jackpot type pages — SEO-rich server-rendered links */}
         <div className="flex flex-wrap gap-2">
           {SUPPORTED_BOOKMAKERS.map(bk =>
             bk.jackpotTypes.map(type => {

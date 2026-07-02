@@ -249,6 +249,92 @@ export default async function JackpotTypePage({ params }: Props) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
+
+      {/* ── Server-rendered SEO block — visible to Google on first crawl ── */}
+      <div className="max-w-5xl mx-auto px-4 pt-6 pb-0 space-y-4">
+
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap" aria-label="Breadcrumb">
+          <a href="/" className="hover:text-foreground transition-colors">Home</a>
+          <span>/</span>
+          <a href="/jackpots" className="hover:text-foreground transition-colors">Jackpots</a>
+          <span>/</span>
+          <a href={`/jackpots/${bkSlug}`} className="hover:text-foreground transition-colors">{bk.name}</a>
+          <span>/</span>
+          <span className="text-foreground font-medium">{typeTitle}</span>
+        </nav>
+
+        {/* H1 + hero stats */}
+        <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+          <h1 className="text-2xl font-extrabold tracking-tight leading-tight">
+            {base} Prediction Today
+            <span className="block text-sm font-normal text-muted-foreground mt-1">
+              Free AI-powered {gameCount}-game jackpot tips — updated daily on Betcheza
+            </span>
+          </h1>
+
+          <div className="flex flex-wrap gap-3">
+            <div className="rounded-lg bg-muted/50 border border-border px-4 py-2 text-center min-w-[90px]">
+              <p className="text-xl font-extrabold text-foreground">{gameCount}</p>
+              <p className="text-[11px] text-muted-foreground">Games</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 border border-border px-4 py-2 text-center min-w-[90px]">
+              <p className="text-xl font-extrabold text-green-600">{prize}</p>
+              <p className="text-[11px] text-muted-foreground">Prize Pool</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 border border-border px-4 py-2 text-center min-w-[90px]">
+              <p className="text-xl font-extrabold text-primary">Free</p>
+              <p className="text-[11px] text-muted-foreground">All Picks</p>
+            </div>
+          </div>
+
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Betcheza publishes <strong>free {base} predictions</strong> for every round. Our AI analyses team form,
+            head-to-head records, home/away statistics, and current odds to generate picks with confidence ratings for
+            all <strong>{gameCount} games</strong>. Use the <strong>banker picks</strong> (high-confidence selections)
+            to anchor your {base} slip and the double-chance tips for trickier fixtures.
+          </p>
+        </div>
+
+        {/* SEO FAQ — crawlable text answering common queries */}
+        <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+          <h2 className="text-base font-bold">{base} — Frequently Asked Questions</h2>
+          <div className="space-y-3 text-sm">
+            <div>
+              <p className="font-semibold text-foreground">How many games are in the {base}?</p>
+              <p className="text-muted-foreground mt-0.5">
+                The {base} has <strong>{gameCount} games</strong>. You must correctly predict the outcome of all {gameCount} matches to win the jackpot.
+                Betcheza provides free AI predictions with confidence percentages for every single game.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">What is the {base} prize this week?</p>
+              <p className="text-muted-foreground mt-0.5">
+                The {base} prize pool is <strong>{prize}</strong>. The exact amount grows each week the jackpot is not won.
+                Visit <a href={canonical} className="text-primary hover:underline">betcheza.co.ke/jackpots/{bkSlug}/{typeSlug}</a> for the current prize displayed live on the jackpot card.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Are the {base} predictions free?</p>
+              <p className="text-muted-foreground mt-0.5">
+                Yes — 100% free. All {gameCount} game picks, confidence ratings, banker selections, and AI reasoning are visible
+                on this page with no subscription or sign-up required.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">How do I win the {base}?</p>
+              <p className="text-muted-foreground mt-0.5">
+                Correctly predict all {gameCount} game outcomes on your {bk.name} slip. Focus your banker picks on the
+                highest-confidence games shown above (80%+), and use double-chance options (1X, X2, 12) on the
+                trickier fixtures. Betcheza&apos;s AI highlights which games are safest each round.
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      {/* ── End SEO block ── */}
+
       <JackpotTypeClient
         bookmaker={bk}
         jackpotTypeSlug={typeSlug}
