@@ -65,7 +65,7 @@ export default function AdminPaymentsPage() {
                 </thead>
                 <tbody>
                   {gateways.length === 0 && (
-                    <tr><td colSpan={6} className="p-6 text-center text-xs text-muted-foreground">
+                    <tr><td colSpan={6} className="p-3 text-center text-xs text-muted-foreground">
                       <Wallet className="mx-auto h-8 w-8 mb-2 opacity-30" />
                       No payment gateways configured. <Link href="/admin/payment-gateways" className="text-primary hover:underline">Set one up</Link>.
                     </td></tr>

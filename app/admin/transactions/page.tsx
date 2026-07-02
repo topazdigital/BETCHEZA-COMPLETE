@@ -132,7 +132,7 @@ export default function AdminTransactionsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-bold">Transactions</h1>

@@ -882,7 +882,7 @@ export default function AdminUsersPage() {
                   {counts.byRole[role] ?? 0}
                 </Badge>
               </div>
-              <div className="mt-1 text-xl font-bold leading-none">{counts.byRole[role] ?? 0}</div>
+              <div className="mt-1 text-base font-bold leading-none">{counts.byRole[role] ?? 0}</div>
             </CardContent>
           </Card>
         ))}

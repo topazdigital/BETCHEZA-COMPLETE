@@ -167,15 +167,15 @@ export default function AdminSocialLoginPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
+      <div className="p-3">
         <div className="h-8 w-56 animate-pulse rounded bg-muted" />
-        <div className="mt-4 h-72 animate-pulse rounded bg-muted" />
+        <div className="mt-3 h-72 animate-pulse rounded bg-muted" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-3 p-3 md:p-4">
+    <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-lg font-bold">

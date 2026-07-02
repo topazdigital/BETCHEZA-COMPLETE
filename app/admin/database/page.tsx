@@ -102,7 +102,7 @@ export default function DatabaseSettingsPage() {
   const hasEnvVar = apiState?.hasEnvVar ?? false;
 
   return (
-    <div className="max-w-2xl mx-auto py-4 px-4 space-y-4">
+    <div className="max-w-2xl mx-auto space-y-3">
 
         {/* Header */}
         <div>
@@ -158,7 +158,7 @@ export default function DatabaseSettingsPage() {
         </div>
 
         {/* Form */}
-        <div className="rounded-xl border bg-card p-4 space-y-4">
+        <div className="rounded-xl border bg-card p-3 space-y-3">
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-0.5">Connection Details</h2>
 
           {hasEnvVar && (

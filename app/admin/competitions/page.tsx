@@ -723,7 +723,7 @@ export default function AdminCompetitionsPage() {
         <div className="flex justify-center py-12"><Spinner /></div>
       ) : comps.length === 0 ? (
         <Card>
-          <CardContent className="p-6 text-center">
+          <CardContent className="p-3 text-center">
             <Trophy className="mx-auto h-8 w-8 text-amber-500/60" />
             <p className="mt-2 text-xs text-muted-foreground">No competitions yet.</p>
           </CardContent>

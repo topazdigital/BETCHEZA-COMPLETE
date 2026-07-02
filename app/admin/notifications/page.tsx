@@ -44,7 +44,7 @@ export default function AdminNotificationsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <h1 className="text-lg font-bold">Broadcast Notifications</h1>
         <p className="text-xs text-muted-foreground">

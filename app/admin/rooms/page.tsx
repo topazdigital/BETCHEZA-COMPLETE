@@ -134,7 +134,7 @@ export default function AdminRoomsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold">Community Rooms</h1>
@@ -153,10 +153,10 @@ export default function AdminRoomsPage() {
       {/* Edit / Create form */}
       {editing && (
         <Card className="border-primary/40">
-          <CardHeader className="pb-3 pt-4 px-4">
+          <CardHeader className="py-2 pb-1.5 px-3">
             <CardTitle className="text-sm font-semibold">{isNew ? 'Create New Room' : `Edit: ${editing.name}`}</CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
+          <CardContent className="p-3 pt-0 space-y-3">
             {error && <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">{error}</p>}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

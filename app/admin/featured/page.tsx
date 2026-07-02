@@ -220,7 +220,7 @@ export default function AdminFeaturedPage() {
   const hiddenCount = todayItems.filter(i => i.hidden).length
 
   return (
-    <div className="space-y-4 p-3 md:p-4 max-w-5xl">
+    <div className="space-y-3 max-w-5xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-bold flex items-center gap-2">

@@ -16,6 +16,20 @@ import { cn } from "@/lib/utils"
 
 function AdminNotificationBell() {
   const [unread, setUnread] = useState(0)
+  const pathname = usePathname()
+
+  // Auto-mark-read and reset badge when user opens the alerts page
+  useEffect(() => {
+    if (pathname === '/admin/alerts') {
+      setUnread(0)
+      fetch('/api/admin/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_read' }),
+      }).catch(() => {})
+    }
+  }, [pathname])
+
   useEffect(() => {
     let mounted = true
     async function poll() {

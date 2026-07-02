@@ -157,10 +157,10 @@ export default function AdminEmailConfigPage() {
     }
   }
 
-  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+  if (loading) return <div className="p-3 text-sm text-muted-foreground">Loading…</div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <h1 className="text-lg font-bold">Email Configuration</h1>
         <p className="text-xs text-muted-foreground">
