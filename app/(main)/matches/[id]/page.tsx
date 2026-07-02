@@ -44,6 +44,7 @@ import { useBetSlip } from "@/contexts/bet-slip-context"
 import { isMinuteTickingSport, isLiveMatchStatus } from "@/lib/utils/live-status"
 import { useMatchNotify } from "@/lib/hooks/use-match-notify"
 import { SgoOddsPanel } from "@/components/matches/sgo-odds-panel"
+import { BetWinnersLeaderboard, BetWinnersSidebar } from "@/components/ads/affiliate-banner"
 
 // Sports where a draw is not a possible outcome (so the vote widget hides it).
 const NO_DRAW_SPORTS = new Set([
@@ -1816,6 +1817,9 @@ export default function MatchDetailPage({ params }: PageProps) {
               } : null}
             />
 
+            {/* Affiliate banner — shown between AI picks and Tips */}
+            <BetWinnersLeaderboard />
+
             {/* Tips Preview */}
             {tips.length > 0 && (
               <Card className="overflow-hidden border-amber-500/20">
@@ -2588,6 +2592,7 @@ export default function MatchDetailPage({ params }: PageProps) {
           {/* ─── RIGHT RAIL (xl+) ─── */}
           <aside className="hidden xl:block">
             <div className="sticky top-4 space-y-4">
+              <BetWinnersSidebar />
               <MatchInfoRail
                 match={match!}
                 bookmakerOdds={bookmakerOdds}

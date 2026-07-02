@@ -3,7 +3,8 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from "react"
-import { Save, Loader2, CheckCircle2, AlertCircle, ToggleLeft, Globe, Code, Plus, Trash2, Eye, EyeOff, Megaphone } from "lucide-react"
+import { Save, Loader2, CheckCircle2, AlertCircle, ToggleLeft, Globe, Code, Plus, Trash2, Eye, EyeOff, Megaphone, ExternalLink } from "lucide-react"
+import { BETWINNERS_BANNERS, AFFILIATE_LINK } from "@/components/ads/affiliate-banner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -308,6 +309,57 @@ export default function AdminAdsPage() {
             onChange={handleSlotChange}
           />
         ))}
+      </div>
+
+      {/* BetWinners Affiliate Banners */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Affiliate Banners — BetWinners</h2>
+          <a
+            href={AFFILIATE_LINK}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" /> View affiliate link
+          </a>
+        </div>
+        <Card>
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="text-sm">BetWinners Partner Banners</CardTitle>
+            <CardDescription className="text-xs">
+              These banners are live across the site — home feed, matches, leaderboard, and tipsters pages. Link: <code className="text-[10px] bg-muted px-1 rounded">referralCode=5241DF</code>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {BETWINNERS_BANNERS.map((b) => (
+                <div key={b.id} className="rounded-lg border border-border overflow-hidden bg-muted/20">
+                  <div className="relative bg-black/5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={b.src}
+                      alt={b.label}
+                      className="w-full h-auto object-contain max-h-28"
+                    />
+                  </div>
+                  <div className="px-3 py-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{b.label}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{b.placement}</p>
+                    </div>
+                    <Badge variant="secondary" className="text-[9px] shrink-0">
+                      {b.width}×{b.height}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Banners rotate automatically between variants. To update the affiliate link or swap images, edit <code className="text-[10px] bg-muted px-1 rounded">components/ads/affiliate-banner.tsx</code> and replace the image files in <code className="text-[10px] bg-muted px-1 rounded">public/banners/betwinners/</code>.
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* How It Works */}

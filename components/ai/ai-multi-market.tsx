@@ -147,7 +147,40 @@ export function AIMultiMarket({
     [picks, isFinal, homeScore, awayScore],
   )
 
-  if (picks.length === 0) return null
+  // For finished matches: never hide the block — show a "no pre-match data" notice
+  // so users can see the match ended but analysis wasn't available (vs. nothing at all).
+  if (picks.length === 0) {
+    if (!isFinal) return null   // upcoming/live with no data → hide silently
+    return (
+      <div className="rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-violet-500/5 to-transparent overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-fuchsia-500/20 bg-fuchsia-500/5">
+          <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-500 shadow-lg">
+            <Brain className="h-4 w-4 text-white" />
+            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-[8px] font-black text-black ring-2 ring-background">AI</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-foreground">AI Picks — All Markets</h3>
+              <span className="text-[9px] font-bold uppercase tracking-wide bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white px-1.5 py-0.5 rounded">Beta</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide bg-muted text-muted-foreground border border-border px-1.5 py-0.5 rounded">Match Ended</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {homeScore} – {awayScore} · Final
+            </p>
+          </div>
+        </div>
+        <div className="px-4 py-5 flex items-start gap-3">
+          <Archive className="h-5 w-5 text-muted-foreground/50 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Pre-match analysis not available</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              No pre-match odds or form data was captured for this game. AI picks are generated before kick-off — visit upcoming matches to see picks in action.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const summary = isFinal
     ? pickWithOutcomes.reduce(
