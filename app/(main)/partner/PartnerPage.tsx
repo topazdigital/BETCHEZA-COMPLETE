@@ -182,71 +182,58 @@ function PartnerRightSidebar({
   return (
     <div className="space-y-3">
 
-      {/* Advertising Packages */}
-      <div className="rounded-xl border border-primary/20 bg-card p-3">
-        <div className="flex items-center gap-2 mb-3">
-          <Megaphone className="h-3.5 w-3.5 text-primary" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
-            Advertising Packages
-          </span>
+      {/* Audience at a Glance */}
+      <div className="rounded-xl border border-border bg-card p-3">
+        <p className="text-xs font-bold text-foreground mb-2.5 flex items-center gap-1.5">
+          <BarChart3 className="h-3.5 w-3.5 text-primary" />
+          Audience at a Glance
+        </p>
+        <p className="text-[10px] text-muted-foreground mb-3 italic">
+          Source: Microsoft Clarity — rolling 30-day average
+        </p>
+
+        {/* Geo */}
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <MapPin className="h-3 w-3 text-green-500" />
+            <span className="text-[11px] font-semibold text-foreground">Geography</span>
+          </div>
+          <div className="space-y-1.5">
+            <DemographicBar label="Kenya"       percent={78} color="bg-green-500"  />
+            <DemographicBar label="East Africa" percent={93} color="bg-emerald-400"/>
+            <DemographicBar label="Uganda"      percent={6}  color="bg-blue-400"   />
+            <DemographicBar label="Tanzania"    percent={5}  color="bg-cyan-400"   />
+          </div>
         </div>
-        <div className="space-y-2">
+
+        {/* Device */}
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Smartphone className="h-3 w-3 text-orange-500" />
+            <span className="text-[11px] font-semibold text-foreground">Device Split</span>
+          </div>
+          <div className="space-y-1.5">
+            <DemographicBar label="Mobile"          percent={87} color="bg-orange-500" />
+            <DemographicBar label="Desktop / Tablet" percent={13} color="bg-orange-300" />
+          </div>
+        </div>
+
+        {/* Key signals */}
+        <div className="space-y-2 pt-1 border-t border-border">
           {[
-            {
-              tag: 'Starter',
-              title: 'Banner Ads',
-              price: 'KES 25K/mo',
-              desc: '728×90 + 300×250 on all match & league pages',
-              color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-              dot: 'bg-blue-500',
-            },
-            {
-              tag: 'Popular',
-              title: 'Odds Integration',
-              price: 'KES 40K/mo',
-              desc: 'Live odds on every match page with deeplinks',
-              color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
-              dot: 'bg-emerald-500',
-            },
-            {
-              tag: 'Premium',
-              title: 'Homepage Feature',
-              price: 'KES 35K/mo',
-              desc: 'Above-the-fold featured slot with promo banner',
-              color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
-              dot: 'bg-amber-500',
-            },
-            {
-              tag: 'Best Value',
-              title: 'Full Package',
-              price: 'KES 80K/mo',
-              desc: 'Banners + odds + homepage + email campaigns',
-              color: 'bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/20',
-              dot: 'bg-violet-500',
-            },
-          ].map(({ tag, title, price, desc, color, dot }) => (
-            <div key={tag} className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-muted/20 p-2.5">
-              <div className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', dot)} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1 mb-0.5">
-                  <span className="text-xs font-semibold text-foreground truncate">{title}</span>
-                  <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-bold', color)}>{tag}</span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">{desc}</p>
-                </div>
-                <p className="text-[11px] font-bold text-primary mt-1">{price}</p>
+            { icon: Clock,      color: 'text-amber-500',   label: 'Avg. session time',  val: '2.5 min'   },
+            { icon: Radio,      color: 'text-red-500',      label: 'Match-day spike',    val: '3–5×'      },
+            { icon: TrendingUp, color: 'text-emerald-500',  label: 'Traffic trend',      val: 'Growing'   },
+          ].map(({ icon: Icon, color, label, val }) => (
+            <div key={label} className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Icon className={cn('h-3 w-3 shrink-0', color)} />
+                <span className="text-[11px] text-muted-foreground">{label}</span>
               </div>
+              <span className="text-[11px] font-bold text-foreground">{val}</span>
             </div>
           ))}
         </div>
-        <a
-          href="#contact"
-          className="mt-3 flex items-center justify-center gap-1.5 w-full rounded-lg bg-primary/10 border border-primary/20 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/20 transition-colors"
-        >
-          <ArrowUpRight className="h-3 w-3" />
-          Enquire about a package
-        </a>
       </div>
 
       {/* Why partner */}
