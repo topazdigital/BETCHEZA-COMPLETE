@@ -441,7 +441,6 @@ export async function countLeaderboardParticipants(params: {
 
   const conditions: string[] = [
     'at.status IN (\'won\', \'lost\', \'pending\')',
-    'at.tipster_id >= 1000', // fake tipsters always included
   ];
   const sqlParams: (string | number)[] = [];
 

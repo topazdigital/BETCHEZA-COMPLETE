@@ -1346,10 +1346,10 @@ export default function ChallengesPage() {
     history: myHistory.length,
   };
 
-  // Auto-switch to pending tab if no active challenges
+  // Auto-switch to pending tab only if there are truly NO active challenges at all
   useEffect(() => {
-    if (!isLoading && counts.active === 0 && counts.pending > 0 && tab === 'active') setTab('pending');
-  }, [isLoading, counts.active, counts.pending, tab]);
+    if (!isLoading && activeChallenges.length === 0 && counts.pending > 0 && tab === 'active') setTab('pending');
+  }, [isLoading, activeChallenges.length, counts.pending, tab]);
 
   const filtered = all.filter(c => {
     if (tab === 'history') return false; // history has its own computed list
@@ -1411,6 +1411,15 @@ export default function ChallengesPage() {
             <div className="rounded-lg border border-border bg-card p-3">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Arena</div>
               <div className="grid grid-cols-2 sm:grid-cols-1 gap-x-4 gap-y-1">
+                {activeChallenges.length > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className={`w-1.5 h-1.5 rounded-full inline-block ${activeChallenges.length > 0 ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+                      Active
+                    </span>
+                    <span className="font-bold text-sm text-foreground">{activeChallenges.length}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <span className={`w-1.5 h-1.5 rounded-full inline-block ${counts.live > 0 ? 'bg-red-500 animate-pulse' : 'bg-muted-foreground'}`} />

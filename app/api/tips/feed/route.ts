@@ -438,58 +438,38 @@ export async function GET(request: NextRequest) {
   // Best tip: prefer pending future match
   const bestTip = tips.find(t => t!.status === 'pending') ?? tips[0] ?? null;
 
-  // Top tipsters — real DB tipsters take priority; fallback to fake (never admin)
-  let topTipsters: {
-    id: number; displayName: string; username: string; avatar: string | null;
-    countryCode: string | null; winRate: number; totalTips: number; roi: number;
-    profit: string; isPro: boolean; isVerified: boolean; rank: number; isReal: boolean;
-  }[] = [];
+  // Top tipsters — merge real (with tips) + fake, rank all together
+  const mapTipster = (t: NormalisedTipster) => {
+    const s = computeRealTipsterStats(t.id);
+    return {
+      id: t.id,
+      displayName: t.displayName,
+      username: t.username,
+      avatar: t.avatar,
+      countryCode: t.countryCode,
+      winRate: s?.winRate ?? t.winRate,
+      totalTips: s?.total ?? t.totalTips,
+      roi: s?.roi ?? t.roi,
+      profit: s ? ((s.won * 0.9 - s.lost) * 10).toFixed(0) : (t.roi * 100).toFixed(0),
+      isPro: t.isPro,
+      isVerified: t.isVerified,
+      isReal: t.isReal,
+    };
+  };
 
-  if (realTipsters.length > 0) {
-    topTipsters = realTipsters
-      .map(t => {
-        const s = computeRealTipsterStats(t.id);
-        return {
-          id: t.id,
-          displayName: t.displayName,
-          username: t.username,
-          avatar: t.avatar,
-          countryCode: t.countryCode,
-          winRate: s?.winRate ?? t.winRate,
-          totalTips: s?.total ?? t.totalTips,
-          roi: s?.roi ?? t.roi,
-          profit: s ? ((s.won * 0.9 - s.lost) * 10).toFixed(0) : (t.roi * 100).toFixed(0),
-          isPro: t.isPro,
-          isVerified: t.isVerified,
-          isReal: true,
-        };
-      })
-      .sort((a, b) => b.winRate - a.winRate)
-      .slice(0, 5)
-      .map((t, i) => ({ ...t, rank: i + 1 }));
-  } else {
-    topTipsters = getFakeTipsters()
-      .map(t => {
-        const s = computeRealTipsterStats(t.id);
-        return {
-          id: t.id,
-          displayName: t.displayName,
-          username: t.username,
-          avatar: t.avatar,
-          countryCode: t.countryCode,
-          winRate: s?.winRate ?? t.winRate,
-          totalTips: s?.total ?? t.totalTips,
-          roi: s?.roi ?? t.roi,
-          profit: s ? ((s.won * 0.9 - s.lost) * 10).toFixed(0) : (t.roi * 100).toFixed(0),
-          isPro: t.isPro,
-          isVerified: t.isVerified,
-          isReal: false,
-        };
-      })
-      .sort((a, b) => b.winRate - a.winRate)
-      .slice(0, 5)
-      .map((t, i) => ({ ...t, rank: i + 1 }));
-  }
+  // Real tipsters that actually have tips posted
+  const realWithTips = realTipsters.filter(t => {
+    const s = computeRealTipsterStats(t.id);
+    return (s?.total ?? t.totalTips) > 0;
+  });
+
+  const fakeTipsterList = getFakeTipsters();
+  const allCandidates = [...realWithTips, ...fakeTipsterList].map(mapTipster);
+
+  const topTipsters = allCandidates
+    .sort((a, b) => b.winRate - a.winRate)
+    .slice(0, 5)
+    .map((t, i) => ({ ...t, rank: i + 1 }));
 
   // Build sports list + per-sport tip counts from ALL non-past auto-tips
   const sportCountMap: Record<string, number> = {};
