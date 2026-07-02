@@ -438,29 +438,34 @@ export async function GET(request: NextRequest) {
   // Best tip: prefer pending future match
   const bestTip = tips.find(t => t!.status === 'pending') ?? tips[0] ?? null;
 
-  // Top tipsters — merge real (with tips) + fake, rank all together
+  // Top tipsters — merge real (with tips) + fake, rank all together by performance
   const mapTipster = (t: NormalisedTipster) => {
     const s = computeRealTipsterStats(t.id);
+    // s counts only tips in the in-memory auto-tips store (used for fake tipsters).
+    // Real tipsters post tips differently — their stats live in DB (t.winRate, t.totalTips).
+    // Use in-memory stats only when there's actual in-memory data; otherwise fall back to DB.
+    const inMemoryTotal = s.totalSettled + s.pending;
+    const hasInMemory = inMemoryTotal > 0;
     return {
       id: t.id,
       displayName: t.displayName,
       username: t.username,
       avatar: t.avatar,
       countryCode: t.countryCode,
-      winRate: s?.winRate ?? t.winRate,
-      totalTips: s?.total ?? t.totalTips,
-      roi: s?.roi ?? t.roi,
-      profit: s ? ((s.won * 0.9 - s.lost) * 10).toFixed(0) : (t.roi * 100).toFixed(0),
+      winRate: hasInMemory ? s.winRate : t.winRate,
+      totalTips: hasInMemory ? inMemoryTotal : t.totalTips,
+      roi: t.roi,
+      profit: hasInMemory ? ((s.won * 0.9 - s.lost) * 10).toFixed(0) : (t.roi * 100).toFixed(0),
       isPro: t.isPro,
       isVerified: t.isVerified,
       isReal: t.isReal,
     };
   };
 
-  // Real tipsters that actually have tips posted
+  // Only include real tipsters that actually have tips (in-memory or DB)
   const realWithTips = realTipsters.filter(t => {
     const s = computeRealTipsterStats(t.id);
-    return (s?.total ?? t.totalTips) > 0;
+    return (s.totalSettled + s.pending) > 0 || t.totalTips > 0;
   });
 
   const fakeTipsterList = getFakeTipsters();

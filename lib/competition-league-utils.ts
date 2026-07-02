@@ -455,9 +455,27 @@ export async function countLeaderboardParticipants(params: {
     sqlParams.push(startDate, endDate);
   }
 
-  if (leagueName) {
-    conditions.push('at.league LIKE ?');
-    sqlParams.push(`%${leagueName}%`);
+  if (leagueName || leagueId) {
+    // Mirror computeLeaderboard's KNOWN_LEAGUES alias resolution so that
+    // e.g. "FIFA World Cup 2026" maps to the canonical stored name "World Cup"
+    const ref = leagueId
+      ? KNOWN_LEAGUES.find(l => l.leagueId === leagueId)
+      : KNOWN_LEAGUES.find(l =>
+          l.leagueName.toLowerCase() === (leagueName ?? '').toLowerCase() ||
+          l.aliases.some(a => a.toLowerCase() === (leagueName ?? '').toLowerCase())
+        );
+
+    if (ref) {
+      const exactTerms = [ref.leagueName, ...ref.aliases].filter((t, i, arr) => arr.indexOf(t) === i);
+      const clauses: string[] = exactTerms.map(() => 'at.league = ?');
+      clauses.push('at.league LIKE ?');
+      conditions.push(`(${clauses.join(' OR ')})`);
+      for (const t of exactTerms) sqlParams.push(t);
+      sqlParams.push(`%${ref.leagueName}%`);
+    } else if (leagueName) {
+      conditions.push('at.league LIKE ?');
+      sqlParams.push(`%${leagueName}%`);
+    }
   } else if (sportFocus && sportFocus !== 'multi-sport') {
     const sportMap: Record<string, string> = {
       football: 'Football', basketball: 'Basketball', tennis: 'Tennis',
