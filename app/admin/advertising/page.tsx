@@ -2,63 +2,38 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Copy, Check, Mail, Eye, Megaphone, Code2, Wand2, Info } from "lucide-react"
+import { Copy, Check, Mail, Eye, Megaphone, Code2, Wand2, Info, Clock, Trash2, RefreshCw, Building2 } from "lucide-react"
 
 const TIERS = [
-  {
-    id: "banner",
-    label: "Banner Ads",
-    price: "KES 25,000/mo",
-    description: "728×90 leaderboard + 300×250 sidebar on all match & league pages",
-    color: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  },
-  {
-    id: "odds",
-    label: "Odds Integration",
-    price: "KES 40,000/mo",
-    description: "Live odds shown on every match page with Bet Now deeplinks",
-    color: "bg-green-500/10 text-green-500 border-green-500/20",
-  },
-  {
-    id: "homepage",
-    label: "Homepage Feature",
-    price: "KES 35,000/mo",
-    description: "Above-the-fold featured bookmaker slot with promo banner",
-    color: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-  },
-  {
-    id: "package",
-    label: "Full Package",
-    price: "KES 80,000/mo",
-    description: "Everything — banners, odds, homepage + email campaigns",
-    color: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  },
+  { id: "banner",   label: "Banner Ads",       price: "KES 25,000/mo", description: "728×90 leaderboard + 300×250 sidebar on all match & league pages", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
+  { id: "odds",     label: "Odds Integration",  price: "KES 40,000/mo", description: "Live odds shown on every match page with Bet Now deeplinks",         color: "bg-green-500/10 text-green-500 border-green-500/20" },
+  { id: "homepage", label: "Homepage Feature",  price: "KES 35,000/mo", description: "Above-the-fold featured bookmaker slot with promo banner",            color: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  { id: "package",  label: "Full Package",      price: "KES 80,000/mo", description: "Everything — banners, odds, homepage + email campaigns",              color: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
 ] as const
 
 type TierId = typeof TIERS[number]["id"]
 
 const TARGET_BOOKMAKERS = [
-  { name: "SportPesa", contact: "Marketing Team" },
-  { name: "Betika", contact: "Partnerships Team" },
-  { name: "Odibets", contact: "Advertising Team" },
-  { name: "Betin Kenya", contact: "Marketing Team" },
-  { name: "22Bet Kenya", contact: "Affiliate Team" },
-  { name: "Mozzart Bet", contact: "Marketing Team" },
+  { name: "SportPesa",     contact: "Marketing Team" },
+  { name: "Betika",        contact: "Partnerships Team" },
+  { name: "Odibets",       contact: "Advertising Team" },
+  { name: "Betin Kenya",   contact: "Marketing Team" },
+  { name: "22Bet Kenya",   contact: "Affiliate Team" },
+  { name: "Mozzart Bet",   contact: "Marketing Team" },
   { name: "Dafabet Kenya", contact: "Partnerships Team" },
-  { name: "MelBet Kenya", contact: "Affiliate Team" },
+  { name: "MelBet Kenya",  contact: "Affiliate Team" },
 ]
 
 const TOKENS = [
   { token: "{{company_name}}", label: "Company name" },
   { token: "{{contact_name}}", label: "Contact name" },
-  { token: "{{custom_note}}", label: "Custom note" },
+  { token: "{{custom_note}}",  label: "Custom note" },
 ]
 
 const PLACEHOLDER_HTML = `<!DOCTYPE html>
@@ -85,6 +60,32 @@ const PLACEHOLDER_HTML = `<!DOCTYPE html>
 </body>
 </html>`
 
+interface HistoryEntry {
+  id: string
+  sentAt: string
+  company: string
+  contactName?: string
+  email: string
+  subject: string
+  tier?: string
+  mode: "template" | "custom"
+}
+
+const TIER_LABELS: Record<string, string> = {
+  banner: "Banner Ads", odds: "Odds", homepage: "Homepage", package: "Full Pkg",
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return "just now"
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ago`
+}
+
 function applyTokens(html: string, bookmakerName: string, contactName: string, customNote: string): string {
   return html
     .replaceAll("{{company_name}}", bookmakerName || "")
@@ -95,7 +96,7 @@ function applyTokens(html: string, bookmakerName: string, contactName: string, c
 export default function AdvertisingAdminPage() {
   const [mode, setMode] = useState<"template" | "custom">("template")
 
-  // Template mode state
+  // Template mode
   const [activeTier, setActiveTier] = useState<TierId>("package")
   const [bookmakerName, setBookmakerName] = useState("SportPesa")
   const [contactName, setContactName] = useState("Marketing Team")
@@ -103,20 +104,36 @@ export default function AdvertisingAdminPage() {
   const [previewHtml, setPreviewHtml] = useState("")
   const [loadingPreview, setLoadingPreview] = useState(false)
 
-  // Custom HTML state
+  // Custom HTML mode
   const [customHtml, setCustomHtml] = useState(PLACEHOLDER_HTML)
   const [customSubject, setCustomSubject] = useState("Partnership Proposal for {{company_name}} — Betcheza.co.ke")
 
-  // Shared
+  // Shared send
   const [copied, setCopied] = useState(false)
   const [sending, setSending] = useState(false)
   const [sentTo, setSentTo] = useState("")
   const [recipientEmail, setRecipientEmail] = useState("")
 
-  // Derive what's currently shown in the preview iframe
+  // Sent history
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
   const activePreviewHtml = mode === "custom"
     ? applyTokens(customHtml, bookmakerName, contactName, customNote)
     : previewHtml
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    try {
+      const res = await fetch("/api/admin/advertising/history")
+      const d = await res.json()
+      if (d.history) setHistory(d.history)
+    } catch {}
+    setHistoryLoading(false)
+  }, [])
+
+  useEffect(() => { loadHistory() }, [loadHistory])
 
   async function generateTemplatePreview() {
     setLoadingPreview(true)
@@ -134,11 +151,8 @@ export default function AdvertisingAdminPage() {
   }
 
   async function copyHtml() {
-    const html = activePreviewHtml || (mode === "template" ? "" : applyTokens(customHtml, bookmakerName, contactName, customNote))
-    if (!html && mode === "template") {
-      await generateTemplatePreview()
-      return
-    }
+    const html = activePreviewHtml
+    if (!html && mode === "template") { await generateTemplatePreview(); return }
     try {
       await navigator.clipboard.writeText(html)
       setCopied(true)
@@ -153,10 +167,7 @@ export default function AdvertisingAdminPage() {
     try {
       const body = mode === "custom"
         ? {
-            email: recipientEmail,
-            bookmakerName,
-            contactName,
-            customNote,
+            email: recipientEmail, bookmakerName, contactName, customNote,
             customHtml: applyTokens(customHtml, bookmakerName, contactName, customNote),
             customSubject: applyTokens(customSubject, bookmakerName, contactName, customNote),
           }
@@ -168,9 +179,26 @@ export default function AdvertisingAdminPage() {
         body: JSON.stringify(body),
       })
       const d = await res.json()
-      if (d.success) setSentTo(recipientEmail)
+      if (d.success) {
+        setSentTo(recipientEmail)
+        await loadHistory()
+      }
     } finally {
       setSending(false)
+    }
+  }
+
+  async function deleteEntry(id: string) {
+    setDeletingId(id)
+    try {
+      await fetch("/api/admin/advertising/history", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      setHistory(h => h.filter(e => e.id !== id))
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -185,71 +213,46 @@ export default function AdvertisingAdminPage() {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold flex items-center gap-2">
-            <Megaphone className="h-4 w-4 text-primary" />
-            Bookmaker Advertising
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            Generate and send partnership emails to bookmakers
-          </p>
-        </div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h1 className="text-lg font-bold flex items-center gap-2">
+          <Megaphone className="h-4 w-4 text-primary" />
+          Bookmaker Advertising
+        </h1>
+        <p className="text-xs text-muted-foreground">Generate and send partnership emails to bookmakers</p>
       </div>
 
+      {/* Composer grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* Left column */}
+
+        {/* ── Left column ── */}
         <div className="lg:col-span-1 space-y-3">
 
           {/* Mode toggle */}
           <Card>
             <CardContent className="pt-4 pb-3">
               <div className="flex rounded-lg border border-border overflow-hidden">
-                <button
-                  onClick={() => setMode("template")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${
-                    mode === "template" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  <Wand2 className="h-3 w-3" />
-                  Template
+                <button onClick={() => setMode("template")} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${mode === "template" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}>
+                  <Wand2 className="h-3 w-3" /> Template
                 </button>
-                <button
-                  onClick={() => setMode("custom")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${
-                    mode === "custom" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  <Code2 className="h-3 w-3" />
-                  Custom HTML
+                <button onClick={() => setMode("custom")} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${mode === "custom" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}>
+                  <Code2 className="h-3 w-3" /> Custom HTML
                 </button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Template mode: tier selection */}
+          {/* Tier picker (template only) */}
           {mode === "template" && (
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Package Tier</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Package Tier</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {TIERS.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveTier(t.id)}
-                    className={`w-full text-left rounded-lg border p-3 transition-all ${
-                      activeTier === t.id
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-border hover:bg-muted/50"
-                    }`}
-                  >
+                  <button key={t.id} onClick={() => setActiveTier(t.id)} className={`w-full text-left rounded-lg border p-3 transition-all ${activeTier === t.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted/50"}`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-semibold text-sm">{t.label}</span>
-                      <Badge variant="outline" className={`text-[10px] ${t.color}`}>
-                        {t.price}
-                      </Badge>
+                      <Badge variant="outline" className={`text-[10px] ${t.color}`}>{t.price}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">{t.description}</p>
                   </button>
@@ -258,37 +261,18 @@ export default function AdvertisingAdminPage() {
             </Card>
           )}
 
-          {/* Custom HTML mode: subject + token help */}
+          {/* Subject + tokens (custom only) */}
           {mode === "custom" && (
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Email Subject</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Email Subject</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <Input
-                  value={customSubject}
-                  onChange={e => setCustomSubject(e.target.value)}
-                  placeholder="Partnership Proposal for {{company_name}}"
-                  className="h-8 text-sm"
-                />
+                <Input value={customSubject} onChange={e => setCustomSubject(e.target.value)} placeholder="Partnership Proposal for {{company_name}}" className="h-8 text-sm" />
                 <div className="rounded-lg bg-muted/40 border border-border p-3 space-y-2">
-                  <p className="text-[11px] font-semibold text-foreground flex items-center gap-1">
-                    <Info className="h-3 w-3 text-primary" />
-                    Available tokens
-                  </p>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    These are replaced automatically when you send or preview. Click to insert at cursor.
-                  </p>
+                  <p className="text-[11px] font-semibold text-foreground flex items-center gap-1"><Info className="h-3 w-3 text-primary" /> Available tokens</p>
+                  <p className="text-[10px] text-muted-foreground">Click to insert at cursor position in the editor below.</p>
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
                     {TOKENS.map(({ token, label }) => (
-                      <button
-                        key={token}
-                        onClick={() => insertToken(token)}
-                        className="rounded border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/15 transition-colors"
-                        title={`Insert ${label}`}
-                      >
-                        {token}
-                      </button>
+                      <button key={token} onClick={() => insertToken(token)} className="rounded border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/15 transition-colors" title={`Insert ${label}`}>{token}</button>
                     ))}
                   </div>
                 </div>
@@ -296,38 +280,21 @@ export default function AdvertisingAdminPage() {
             </Card>
           )}
 
-          {/* Customise — shown in both modes */}
+          {/* Recipient details */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Recipient Details</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">Recipient Details</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <div>
                 <Label className="text-xs">Bookmaker / Company Name</Label>
-                <Input
-                  value={bookmakerName}
-                  onChange={e => setBookmakerName(e.target.value)}
-                  placeholder="e.g. SportPesa"
-                  className="mt-1 h-8 text-sm"
-                />
+                <Input value={bookmakerName} onChange={e => setBookmakerName(e.target.value)} placeholder="e.g. SportPesa" className="mt-1 h-8 text-sm" />
               </div>
               <div>
                 <Label className="text-xs">Contact Name (optional)</Label>
-                <Input
-                  value={contactName}
-                  onChange={e => setContactName(e.target.value)}
-                  placeholder="e.g. John Doe"
-                  className="mt-1 h-8 text-sm"
-                />
+                <Input value={contactName} onChange={e => setContactName(e.target.value)} placeholder="e.g. John Doe" className="mt-1 h-8 text-sm" />
               </div>
               <div>
                 <Label className="text-xs">Custom Note (optional)</Label>
-                <textarea
-                  value={customNote}
-                  onChange={e => setCustomNote(e.target.value)}
-                  placeholder="e.g. We're offering a 3-month bundle at a 20% discount…"
-                  className="mt-1 w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
+                <textarea value={customNote} onChange={e => setCustomNote(e.target.value)} placeholder="e.g. We're offering a 3-month bundle at a 20% discount…" className="mt-1 w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
               </div>
               {mode === "template" && (
                 <Button onClick={generateTemplatePreview} disabled={loadingPreview} className="w-full" size="sm">
@@ -338,23 +305,13 @@ export default function AdvertisingAdminPage() {
             </CardContent>
           </Card>
 
-          {/* Quick-select bookmakers */}
+          {/* Quick-select */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Target Bookmakers</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">Target Bookmakers</CardTitle></CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-1.5">
                 {TARGET_BOOKMAKERS.map(b => (
-                  <button
-                    key={b.name}
-                    onClick={() => { setBookmakerName(b.name); setContactName(b.contact) }}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      bookmakerName === b.name
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-muted text-muted-foreground border-border hover:bg-muted/70"
-                    }`}
-                  >
+                  <button key={b.name} onClick={() => { setBookmakerName(b.name); setContactName(b.contact) }} className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${bookmakerName === b.name ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border hover:bg-muted/70"}`}>
                     {b.name}
                   </button>
                 ))}
@@ -363,7 +320,7 @@ export default function AdvertisingAdminPage() {
           </Card>
         </div>
 
-        {/* Right column */}
+        {/* ── Right column ── */}
         <div className="lg:col-span-2 space-y-3">
 
           {/* Send bar */}
@@ -372,20 +329,9 @@ export default function AdvertisingAdminPage() {
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="flex-1 min-w-40">
                   <Label className="text-xs">Send to Email Address</Label>
-                  <Input
-                    value={recipientEmail}
-                    onChange={e => setRecipientEmail(e.target.value)}
-                    placeholder="marketing@bookmaker.com"
-                    type="email"
-                    className="mt-1 h-8 text-sm"
-                  />
+                  <Input value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)} placeholder="marketing@bookmaker.com" type="email" className="mt-1 h-8 text-sm" />
                 </div>
-                <Button
-                  onClick={sendEmail}
-                  disabled={!recipientEmail || sending}
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
+                <Button onClick={sendEmail} disabled={!recipientEmail || sending} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
                   <Mail className="h-3.5 w-3.5 mr-2" />
                   {sending ? "Sending…" : "Send Email"}
                 </Button>
@@ -394,31 +340,21 @@ export default function AdvertisingAdminPage() {
                   {copied ? "Copied!" : "Copy HTML"}
                 </Button>
               </div>
-              {sentTo && (
-                <p className="text-xs text-green-500 mt-2">✅ Email sent to {sentTo}</p>
-              )}
+              {sentTo && <p className="text-xs text-green-500 mt-2">✅ Email sent to {sentTo} — logged in Sent History below</p>}
             </CardContent>
           </Card>
 
-          {/* Custom HTML editor (only in custom mode) */}
+          {/* HTML editor (custom mode only) */}
           {mode === "custom" && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Code2 className="h-3.5 w-3.5" />
-                  HTML Editor
+                  <Code2 className="h-3.5 w-3.5" /> HTML Editor
                   <span className="text-[10px] font-normal text-muted-foreground ml-1">— preview updates live as you type</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <textarea
-                  id="custom-html-area"
-                  value={customHtml}
-                  onChange={e => setCustomHtml(e.target.value)}
-                  spellCheck={false}
-                  className="w-full h-56 px-3 py-3 font-mono text-[11px] leading-relaxed bg-muted/30 border-0 border-t border-border resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-b-lg"
-                  placeholder="Paste your full HTML email here…"
-                />
+                <textarea id="custom-html-area" value={customHtml} onChange={e => setCustomHtml(e.target.value)} spellCheck={false} className="w-full h-56 px-3 py-3 font-mono text-[11px] leading-relaxed bg-muted/30 border-0 border-t border-border resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-b-lg" placeholder="Paste your full HTML email here…" />
               </CardContent>
             </Card>
           )}
@@ -427,41 +363,29 @@ export default function AdvertisingAdminPage() {
           <Card className="overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Eye className="h-3.5 w-3.5" />
-                Email Preview
-                {mode === "custom" && (
-                  <span className="text-[10px] font-normal text-muted-foreground">— tokens replaced with current recipient details</span>
-                )}
+                <Eye className="h-3.5 w-3.5" /> Email Preview
+                {mode === "custom" && <span className="text-[10px] font-normal text-muted-foreground">— tokens replaced with current recipient details</span>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {activePreviewHtml ? (
                 <div className="border-t">
-                  <iframe
-                    srcDoc={activePreviewHtml}
-                    className="w-full h-[600px] border-0"
-                    title="Email preview"
-                    sandbox="allow-same-origin"
-                  />
+                  <iframe srcDoc={activePreviewHtml} className="w-full h-[560px] border-0" title="Email preview" sandbox="allow-same-origin" />
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                <div className="flex flex-col items-center justify-center h-56 text-muted-foreground">
                   <Megaphone className="h-10 w-10 mb-3 opacity-30" />
                   <p className="text-sm font-medium">No preview yet</p>
-                  <p className="text-xs mt-1">
-                    {mode === "template" ? 'Click "Preview Email" to generate' : "Start typing HTML above — preview appears here"}
-                  </p>
+                  <p className="text-xs mt-1">{mode === "template" ? 'Click "Preview Email" to generate' : "Start typing HTML above"}</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Subject line suggestions (template mode only) */}
+          {/* Subject line suggestions (template only) */}
           {mode === "template" && (
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Sample Subject Lines</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Sample Subject Lines</CardTitle></CardHeader>
               <CardContent>
                 <ul className="space-y-1.5 text-sm text-muted-foreground">
                   {[
@@ -470,10 +394,7 @@ export default function AdvertisingAdminPage() {
                     "Display Your Odds on Kenya's #1 Tipster Platform",
                     "Exclusive Advertising Slots Now Available — Betcheza 2026",
                   ].map(s => (
-                    <li key={s} className="flex items-start gap-2">
-                      <span className="text-primary font-bold shrink-0">→</span>
-                      {s}
-                    </li>
+                    <li key={s} className="flex items-start gap-2"><span className="text-primary font-bold shrink-0">→</span>{s}</li>
                   ))}
                 </ul>
               </CardContent>
@@ -481,6 +402,82 @@ export default function AdvertisingAdminPage() {
           )}
         </div>
       </div>
+
+      {/* ── Sent History ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Clock className="h-3.5 w-3.5 text-primary" />
+              Sent History
+              {history.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{history.length}</Badge>
+              )}
+            </CardTitle>
+            <Button variant="ghost" size="sm" onClick={loadHistory} disabled={historyLoading} className="h-7 px-2 text-xs gap-1.5 text-muted-foreground">
+              <RefreshCw className={`h-3 w-3 ${historyLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {historyLoading ? (
+            <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">Loading history…</div>
+          ) : history.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-28 text-muted-foreground">
+              <Building2 className="h-8 w-8 mb-2 opacity-20" />
+              <p className="text-sm font-medium">No emails sent yet</p>
+              <p className="text-xs mt-0.5">Every email you send will appear here</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {history.map(entry => (
+                <div key={entry.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group">
+                  {/* Avatar */}
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-[11px] font-bold text-primary">{entry.company.slice(0, 2).toUpperCase()}</span>
+                  </div>
+
+                  {/* Main info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm text-foreground">{entry.company}</span>
+                      {entry.contactName && (
+                        <span className="text-[11px] text-muted-foreground">· {entry.contactName}</span>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className={`text-[9px] px-1.5 py-0 h-4 ${entry.mode === "custom" ? "border-violet-400/40 text-violet-500 bg-violet-500/5" : "border-border text-muted-foreground"}`}
+                      >
+                        {entry.mode === "custom" ? "Custom HTML" : entry.tier ? TIER_LABELS[entry.tier] ?? entry.tier : "Template"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{entry.subject}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] text-muted-foreground font-mono">{entry.email}</span>
+                      <span className="text-[10px] text-muted-foreground/50">·</span>
+                      <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                        <Clock className="h-2.5 w-2.5" />
+                        {timeAgo(entry.sentAt)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => deleteEntry(entry.id)}
+                    disabled={deletingId === entry.id}
+                    className="opacity-0 group-hover:opacity-100 h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all shrink-0"
+                    title="Remove from history"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

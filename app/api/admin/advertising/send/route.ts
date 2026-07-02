@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, isAdmin } from '@/lib/auth';
 import { bookmakerPartnershipEmail } from '@/lib/email-templates';
 import { sendMail } from '@/lib/mailer';
+import { appendEntry } from '@/lib/advertising-log';
 
 export async function POST(request: NextRequest) {
   const me = await getCurrentUser();
@@ -19,12 +20,13 @@ export async function POST(request: NextRequest) {
   let subject: string;
   let html: string;
   let text: string;
+  let mode: 'template' | 'custom';
 
   if (customHtml) {
-    // Custom HTML mode — use exactly what the client sent (tokens already replaced)
     subject = customSubject || `Partnership Proposal for ${bookmakerName} — Betcheza.co.ke`;
     html = customHtml;
     text = `Partnership proposal for ${bookmakerName}. View this email in an HTML-capable client.`;
+    mode = 'custom';
   } else {
     if (!tier) {
       return NextResponse.json({ error: 'Missing tier for template mode' }, { status: 400 });
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
     subject = tpl.subject;
     html = tpl.html;
     text = tpl.text;
+    mode = 'template';
   }
 
   try {
@@ -48,6 +51,16 @@ export async function POST(request: NextRequest) {
       text,
       replyTo: 'partnerships@betcheza.co.ke',
     });
+
+    appendEntry({
+      company: bookmakerName,
+      contactName: contactName || undefined,
+      email,
+      subject,
+      tier: tier || undefined,
+      mode,
+    });
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[Advertising] Failed to send email:', err);
