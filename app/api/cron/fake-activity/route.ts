@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { createPost, addComment, listPosts } from '@/lib/feed-store';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
 import {
@@ -11,6 +13,82 @@ import { getCompetitionsAsync } from '@/lib/competitions-store';
 export const dynamic = 'force-dynamic';
 
 const CRON_SECRET = process.env.CRON_SECRET || 'betcheza-cron-2024';
+
+// ── Content de-duplication ──────────────────────────────────────────────────
+// Fake tipster posts/comments come from finite template pools. Without a
+// dedupe guard the same exact sentence eventually resurfaces (even long-form
+// posts), which is the giveaway that the content is generated rather than
+// real. We persist a rolling history of recently-used text (survives
+// restarts) and never emit an exact repeat — if every candidate in a pool has
+// already been used recently we append a small natural closing flourish so
+// the final text is still unique.
+const CONTENT_HISTORY_PATH = path.join(process.cwd(), '.local', 'data', 'fake-activity-content-history.json');
+const HISTORY_LIMIT = 400;
+
+interface ContentHistory {
+  genericPosts: string[];
+  matchPosts: string[];
+  comments: string[];
+}
+
+function loadContentHistory(): ContentHistory {
+  if (!g.__fakeActivityContentHistory) {
+    try {
+      const raw = fs.readFileSync(CONTENT_HISTORY_PATH, 'utf-8');
+      const parsed = JSON.parse(raw) as Partial<ContentHistory>;
+      g.__fakeActivityContentHistory = {
+        genericPosts: Array.isArray(parsed.genericPosts) ? parsed.genericPosts : [],
+        matchPosts: Array.isArray(parsed.matchPosts) ? parsed.matchPosts : [],
+        comments: Array.isArray(parsed.comments) ? parsed.comments : [],
+      };
+    } catch {
+      g.__fakeActivityContentHistory = { genericPosts: [], matchPosts: [], comments: [] };
+    }
+  }
+  return g.__fakeActivityContentHistory;
+}
+
+function saveContentHistory(history: ContentHistory) {
+  g.__fakeActivityContentHistory = history;
+  try {
+    fs.mkdirSync(path.dirname(CONTENT_HISTORY_PATH), { recursive: true });
+    fs.writeFileSync(CONTENT_HISTORY_PATH, JSON.stringify(history));
+  } catch { /* best-effort persistence — in-memory cache still prevents repeats this run */ }
+}
+
+const normaliseContent = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+// Neutral closing flourishes used only to break an exact-duplicate tie when
+// every candidate in a template pool has already been posted recently.
+const UNIQUENESS_SUFFIXES = [
+  'Sticking with the process on this one.',
+  'Confidence is high here.',
+  'Numbers keep pointing the same way.',
+  'Already locked that one in.',
+  'Watching how the market reacts next.',
+  'Will update if anything changes before it starts.',
+  'Feeling good about the read on this.',
+  'Small edge but an edge nonetheless.',
+];
+
+/** Picks a candidate from `pool` that hasn't appeared in recent history for `kind`, recording it so it isn't repeated again soon. */
+function pickUniqueContent(pool: string[], kind: keyof ContentHistory, maxAttempts = 15): string {
+  const history = loadContentHistory();
+  const seen = new Set(history[kind].map(normaliseContent));
+  let candidate = pool[Math.floor(Math.random() * pool.length)];
+  for (let i = 0; i < maxAttempts && seen.has(normaliseContent(candidate)); i++) {
+    candidate = pool[Math.floor(Math.random() * pool.length)];
+  }
+  if (seen.has(normaliseContent(candidate))) {
+    // Whole pool already used recently — append a small unique flourish so
+    // the exact same sentence never repeats verbatim.
+    candidate = `${candidate} ${UNIQUENESS_SUFFIXES[Math.floor(Math.random() * UNIQUENESS_SUFFIXES.length)]}`;
+  }
+  history[kind].push(candidate);
+  if (history[kind].length > HISTORY_LIMIT) history[kind] = history[kind].slice(-HISTORY_LIMIT);
+  saveContentHistory(history);
+  return candidate;
+}
 
 // ── Real odds resolver ────────────────────────────────────────────────────────
 // Use actual bookmaker odds from the match when available, fall back to
@@ -111,8 +189,18 @@ function resolveOddsForPick(
 }
 
 // ── Tip pick logic ────────────────────────────────────────────────────────────
+// Individual-athlete sports — no "team", no "home venue"/"home form" advantage,
+// no manager/squad language. Content for these must talk about the player(s)
+// directly (e.g. "Alcaraz is the heavy favourite") never "the home side".
+const INDIVIDUAL_SPORTS = new Set([
+  'tennis', 'golf', 'boxing', 'mma', 'snooker', 'darts', 'table-tennis',
+  'badminton', 'squash', 'cycling', 'athletics', 'swimming', 'formula-1',
+]);
 // Sports that never end in a draw (no draw market available)
-const NO_DRAW_SPORTS = new Set(['basketball', 'tennis', 'baseball', 'hockey', 'mma', 'boxing', 'american-football']);
+const NO_DRAW_SPORTS = new Set([
+  'basketball', 'baseball', 'hockey', 'american-football',
+  ...INDIVIDUAL_SPORTS,
+]);
 
 interface MatchPick {
   pick: string;
@@ -160,7 +248,10 @@ function smartPick(matchId: string, homeTeam: string, awayTeam: string, sport?: 
     totalsRationale = `Both sides are strong attackers — high-scoring rally play expected.`;
   }
 
-  // Weighted pick table
+  // Weighted pick table — individual-athlete sports get player-focused
+  // rationale (no "home form"/"home turf"/"side" language, since there is
+  // no team or home venue advantage in a 1-on-1 matchup).
+  const isIndividual = INDIVIDUAL_SPORTS.has(sportSlug) || INDIVIDUAL_SPORTS.has((sport || '').toLowerCase());
   type WPick = { pick: string; weight: number; rationale: string };
   const table: WPick[] = allowDraw
     ? [
@@ -169,6 +260,12 @@ function smartPick(matchId: string, homeTeam: string, awayTeam: string, sport?: 
         { pick: 'Away Win',          weight: 22, rationale: `${awayTeam} travel well and their recent form is excellent.` },
         { pick: 'Both Teams Score',  weight:  7, rationale: bttsRationale },
         { pick: totalsLine,          weight:  5, rationale: totalsRationale },
+      ]
+    : isIndividual
+    ? [
+        { pick: 'Home Win',          weight: 52, rationale: `${homeTeam} is the clear favourite here on current form.` },
+        { pick: 'Away Win',          weight: 38, rationale: `${awayTeam} has been in excellent form recently and can cause an upset.` },
+        { pick: totalsLine,          weight: 10, rationale: totalsRationale },
       ]
     : [
         { pick: 'Home Win',          weight: 52, rationale: `${homeTeam} are heavy favourites on home turf.` },
@@ -241,7 +338,9 @@ const MATCH_POSTS = [
     `${pick} in the ${home} vs ${away} fixture is the right call at ${odds.toFixed(2)}. ${rationale}`,
 ];
 
-const COMMENTS = [
+// Comments safe to post under ANY sport — no team/venue/manager/squad
+// language, so they never sound wrong under a tennis, golf or MMA post.
+const GENERIC_COMMENTS = [
   'Agreed — I was thinking the same thing.',
   'Good analysis, thanks for sharing.',
   'I see your reasoning but I am going the other way on this one.',
@@ -251,64 +350,77 @@ const COMMENTS = [
   'Did you factor in the head-to-head though?',
   'Bold pick but I like the value there.',
   'Following this one closely, thanks.',
-  'Clean analysis. What about injuries?',
   'Value looks right to me too.',
   'This is why I follow you — solid research every time.',
   'Added to my accumulator, let us go.',
-  'Interesting angle, had not considered the away form.',
   'Those odds look too good to pass up.',
   'I am on the same side, let us cash together.',
   'Not sure about this one but respect the process.',
   'The stats really do support this pick.',
-  'Draw is always overlooked at these prices.',
-  'H2H record strongly favours this outcome.',
-  'Been watching this team all season, this is the right call.',
-  'Good spot. The home side has been conceding early lately.',
   'Risky but the market is mispriced here, I agree.',
   'Followed. Your tips have been sharp lately.',
   'Nice one. What is your stake on this?',
   'Patience pays — this pick makes total sense at these odds.',
-  'The xG data is telling the same story, back it.',
   'Finally someone saying what everyone is thinking.',
   'Strong reasoning. I would adjust the stake slightly higher though.',
   'Bookies are slow to react here, grab it before the line moves.',
   'Posted the same pick earlier, glad others see it too.',
-  'Injuries in the squad change everything on this one.',
-  'Referee profile for this game also leans that way.',
-  'Big game mentality counts for a lot here, good pick.',
   'Watch the weather forecast — could affect this one.',
   'I backed the same angle last week and cashed easily.',
   'Going with you on this. Cheers for posting early.',
   'Saw this line move earlier — had a feeling someone sharp was on it.',
-  'Under-rated pick. Most people tunnel vision the match result only.',
-  'Travel schedule for the away side is brutal this week. Good spot.',
+  'Under-rated pick. Most people tunnel vision the result only.',
   'I had the opposite at first but you changed my mind, fair point.',
-  'Team news was the key info here. Well done for catching that.',
   'Line is drifting now. Either smart money disagrees or the public is piling in.',
   'What unit size are you going with on this one?',
   'Doubled my usual stake based on your reasoning. Makes total sense.',
+  'Took the same selection at better odds an hour ago. Good value still.',
+  'Market is moving fast on this. Grab it while you can.',
+  'Perfect bankroll approach. Singles stack up way more consistently.',
+  'Your last five tips have been class. Sticking with you this week.',
+  'Interesting angle, had not considered that.',
+  'Great read on the recent form here.',
+];
+
+// Team-sport-only comments (referee, squad, manager, home venue, cup ties,
+// clean sheets, etc.) — only surfaced for team sports (football, basketball,
+// rugby...), never for individual-athlete sports like tennis/golf/MMA.
+const TEAM_SPORT_COMMENTS = [
+  'Clean analysis. What about injuries?',
+  'Draw is always overlooked at these prices.',
+  'H2H record strongly favours this outcome.',
+  'Been watching this team all season, this is the right call.',
+  'Good spot. The home side has been conceding early lately.',
+  'The xG data is telling the same story, back it.',
+  'Injuries in the squad change everything on this one.',
+  'Referee profile for this game also leans that way.',
+  'Big game mentality counts for a lot here, good pick.',
+  'Travel schedule for the away side is brutal this week. Good spot.',
+  'Team news was the key info here. Well done for catching that.',
   'This league is so hard to call but that logic is sound.',
   'Both managers have something to play for. Hard to see it being open.',
   'Momentum is with the home side after last weekend. Good timing.',
   'The rotation risk for the cup game mid-week is real. Factor that in.',
-  'Took the same selection at better odds an hour ago. Good value still.',
-  'Market is moving fast on this. Grab it while you can.',
   'Keeper is in excellent form lately. Might go under and clean sheet combo.',
-  'Perfect bankroll approach. Singles stack up way more consistently.',
-  'Your last five tips have been class. Sticking with you this week.',
   'Do you like the first goal scorer market at all on this one?',
 ];
 
-function smartComment(post: { content: string; pick?: string | null; matchTitle?: string | null }): string {
-  const base = randPick(COMMENTS);
+function smartComment(post: { content: string; pick?: string | null; matchTitle?: string | null }, sport?: string): string {
+  const sportSlug = (sport || '').toLowerCase();
+  const isIndividual = INDIVIDUAL_SPORTS.has(sportSlug);
+  const pool = isIndividual ? GENERIC_COMMENTS : [...GENERIC_COMMENTS, ...TEAM_SPORT_COMMENTS];
+  const base = pickUniqueContent(pool, 'comments');
   if (!post.pick && !post.matchTitle) return base;
+  const matchupLabel = post.matchTitle
+    ? (isIndividual ? `Big matchup between ${post.matchTitle.replace(' vs ', ' and ')}.` : `Big game in ${post.matchTitle.split(' vs ')[0] || 'this fixture'}.`)
+    : '';
   const extras = [
     post.pick ? `That ${post.pick} call is interesting.` : '',
-    post.matchTitle ? `Big game in ${post.matchTitle.split(' vs ')[0] || 'this fixture'}.` : '',
+    matchupLabel,
     'The odds reflect the market consensus too.',
     'Have you looked at the recent form run?',
     'Solid value at those odds for sure.',
-    'Combining this with an Over in the same game.',
+    !isIndividual ? 'Combining this with an Over in the same game.' : '',
     'Makes sense given the context going into this one.',
   ].filter(Boolean);
   return Math.random() > 0.5 && extras.length > 0
@@ -336,6 +448,7 @@ const g = globalThis as {
   __fakeActivityTipsterLastPost?: Map<number, number>;
   __fakeActivityTipsterLastComment?: Map<number, number>;
   __fakeActivityRoomIds?: Map<string, number>;
+  __fakeActivityContentHistory?: ContentHistory;
 };
 
 // ── Room assignment ───────────────────────────────────────────────────────────
@@ -444,8 +557,8 @@ async function runActivity() {
 
     if (hasRealOdds) {
       const odds = resolveOddsForPick(pick, match.odds, marketsForOdds);
-      const template = randPick(MATCH_POSTS);
-      content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
+      const templates = MATCH_POSTS.map(t => t(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds));
+      content = pickUniqueContent(templates, 'matchPosts');
       postPick = pick;
       postOdds = odds;
       recordActivityTip(tipster.id, match.id, pick, odds);
@@ -456,7 +569,7 @@ async function runActivity() {
         `Watching ${match.homeTeam.name} vs ${match.awayTeam.name} closely. ${rationale}`,
         `${match.homeTeam.name} vs ${match.awayTeam.name}: ${rationale} Will post my tip once the lines open.`,
       ];
-      content = randPick(genericAnalysis);
+      content = pickUniqueContent(genericAnalysis, 'matchPosts');
     }
 
     await createPost({
@@ -476,9 +589,10 @@ async function runActivity() {
   for (const post of posts.filter(p => !!p.matchTitle && Math.random() > 0.6).slice(0, 2)) {
     const commenter = randPick(availableCommenters.filter(t => t.id !== post.userId));
     if (!commenter) continue;
+    const commentSport = allMatches.find(m => m.id === post.matchId)?.sport?.slug;
     await addComment({
       postId: post.id, userId: commenter.id, authorName: commenter.displayName,
-      authorAvatar: commenter.avatar, content: smartComment(post),
+      authorAvatar: commenter.avatar, content: smartComment(post, commentSport),
     }).catch(() => {});
     g.__fakeActivityTipsterLastComment!.set(commenter.id, now);
   }
@@ -567,8 +681,8 @@ export async function GET(req: NextRequest) {
 
       if (hasLiveOdds(pick, match.odds, mkts)) {
         const odds = resolveOddsForPick(pick, match.odds, mkts);
-        const template = randPick(MATCH_POSTS);
-        content = template(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds);
+        const templates = MATCH_POSTS.map(t => t(match.homeTeam.name, match.awayTeam.name, pick, rationale, odds));
+        content = pickUniqueContent(templates, 'matchPosts');
         postPick = pick;
         postOdds = odds;
       } else {
@@ -577,7 +691,7 @@ export async function GET(req: NextRequest) {
           `Watching ${match.homeTeam.name} vs ${match.awayTeam.name} closely. ${rationale}`,
           `${match.homeTeam.name} vs ${match.awayTeam.name}: ${rationale} Will post my tip once odds are confirmed.`,
         ];
-        content = randPick(genericAnalysis);
+        content = pickUniqueContent(genericAnalysis, 'matchPosts');
       }
 
       const isLiveMatch = ['live', 'halftime', 'extra_time', 'penalties'].includes(match.status);
@@ -612,9 +726,10 @@ export async function GET(req: NextRequest) {
       const commenter = randPick(availableCommenters.filter(t => t.id !== post.userId));
       if (!commenter) continue;
       try {
+        const commentSport = allMatches.find(m => m.id === post.matchId)?.sport?.slug;
         await addComment({
           postId: post.id, userId: commenter.id, authorName: commenter.displayName,
-          authorAvatar: commenter.avatar, content: smartComment(post),
+          authorAvatar: commenter.avatar, content: smartComment(post, commentSport),
         });
         g.__fakeActivityTipsterLastComment!.set(commenter.id, now);
         results.commentsCreated++;
@@ -634,7 +749,7 @@ export async function GET(req: NextRequest) {
       if (eligible.length === 0) break;
       const tipster = randPick(eligible);
       usedInGeneric.add(tipster.id);
-      const content = randPick(GENERIC_POSTS);
+      const content = pickUniqueContent(GENERIC_POSTS, 'genericPosts');
       const genRoomId = await pickRoomForPost({
         contentLower: content.toLowerCase(),
         isPro: tipster.isPro,

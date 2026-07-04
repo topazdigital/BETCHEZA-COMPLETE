@@ -1538,7 +1538,10 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     // If the resolved name is a generic placeholder (e.g. "League 851") AND
     // we have a better name from the event/grouping metadata, prefer that.
     const isGenericName = !resolvedLeagueInfo || /^League \d+$/.test(resolvedLeagueInfo.name);
-    const leagueInfo = (!isGenericName && resolvedLeagueInfo)
+    const friendlyOverrideGlobal = detectFriendlyOverride(event, competition as unknown as { notes?: Array<{ type?: string; headline?: string }>; season?: { slug?: string }; type?: { abbreviation?: string } });
+    const leagueInfo = friendlyOverrideGlobal
+      ? { name: friendlyOverrideGlobal.name, slug: friendlyOverrideGlobal.slug, country: friendlyOverrideGlobal.country, countryCode: friendlyOverrideGlobal.countryCode }
+      : (!isGenericName && resolvedLeagueInfo)
       ? resolvedLeagueInfo
       : { name: fallbackLeagueName !== 'Unknown League' ? fallbackLeagueName : (resolvedLeagueInfo?.name || 'Unknown League'), slug: `espn-${espnLeagueId}`, country: 'World', countryCode: 'WO' };
 
@@ -1571,7 +1574,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     // a deterministic synthetic id (80000 + espnNumericId). The mapping is
     // critical so that e.g. Saudi Pro League (ESPN: 21231) correctly maps to
     // our leagueId 14 and shows up on the /leagues/saudi-pro-league page.
-    const ourLeagueId = ESPN_NUMERIC_TO_OUR_LEAGUE_ID[espnLeagueId] ?? (80000 + parseInt(espnLeagueId, 10));
+    const ourLeagueId = friendlyOverrideGlobal
+      ? friendlyOverrideGlobal.id
+      : ESPN_NUMERIC_TO_OUR_LEAGUE_ID[espnLeagueId] ?? (80000 + parseInt(espnLeagueId, 10));
     // Use ESPN league id as the slug fragment in our match ID so the match
     // detail page can reconstruct it. Format: espn_global<id>_<eventId>
     const leagueKeyForId = `global${espnLeagueId}`;
@@ -3284,6 +3289,31 @@ function generateSportSpecificData(sportType: ESPNLeagueConfig['sportType'], sta
   }
 }
 
+// Safety net: ESPN's per-league scoreboard endpoints occasionally bleed in
+// pre-season / exhibition fixtures that aren't actually part of that league
+// (e.g. a Manchester United vs Wrexham pre-season friendly showing up while
+// querying esp.1/La Liga). ESPN tags these with a notes headline ("Club
+// Friendly" / "International Friendly") or a season/competition slug
+// containing "friendly"/"preseason"/"exhibition" — detect that and force the
+// correct generic friendly label instead of trusting the fetch config.
+const CLUB_FRIENDLY_OVERRIDE = { id: 280, name: 'Club Friendly', slug: 'club-friendly', country: 'World', countryCode: 'WO' };
+const INTL_FRIENDLY_OVERRIDE = { id: 106, name: 'International Friendly', slug: 'international-friendly', country: 'World', countryCode: 'WO' };
+function detectFriendlyOverride(
+  event: { name?: string; season?: { slug?: string } },
+  competition?: { notes?: Array<{ type?: string; headline?: string }>; season?: { slug?: string }; type?: { abbreviation?: string } },
+): { id: number; name: string; slug: string; country: string; countryCode: string } | null {
+  const notesHeadline = (competition?.notes || []).map(n => n.headline || '').join(' ').toLowerCase();
+  const seasonSlug = `${competition?.season?.slug || ''} ${event.season?.slug || ''}`.toLowerCase();
+  const typeAbbr = (competition?.type?.abbreviation || '').toLowerCase();
+  const hay = `${notesHeadline} ${seasonSlug} ${typeAbbr}`;
+  if (!hay.includes('friendly') && !hay.includes('preseason') && !hay.includes('pre-season') && !hay.includes('exhibition')) {
+    return null;
+  }
+  // International team names in the headline (national teams) → International Friendly.
+  if (hay.includes('international') || hay.includes('national team')) return INTL_FRIENDLY_OVERRIDE;
+  return CLUB_FRIENDLY_OVERRIDE;
+}
+
 // Generic ESPN match fetcher.
 // For priority leagues, fetch a multi-day window so today + the upcoming week
 // always show up — ESPN's default scoreboard otherwise only returns the
@@ -3409,17 +3439,30 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
       htAwayScore,
       minute: extractLiveMinute(event.status, config.sportType) ?? undefined,
       period: event.status.displayClock,
-      league: {
-        id: config.leagueId,
-        name: config.leagueName,
-        // Prefer the friendly slug from ALL_LEAGUES (e.g. "premier-league") so
-        // sidebar links and matches-page links resolve to the same URL. Fall
-        // back to the ESPN-style code (e.g. "eng-1") only when no row exists.
-        slug: ALL_LEAGUES.find(l => l.id === config.leagueId)?.slug || config.league.replace(/\./g, '-'),
-        country: config.country,
-        countryCode: config.countryCode,
-        tier: 1,
-      },
+      league: (() => {
+        const friendlyOverride = detectFriendlyOverride(event, competition);
+        if (friendlyOverride) {
+          return {
+            id: friendlyOverride.id,
+            name: friendlyOverride.name,
+            slug: friendlyOverride.slug,
+            country: friendlyOverride.country,
+            countryCode: friendlyOverride.countryCode,
+            tier: 1,
+          };
+        }
+        return {
+          id: config.leagueId,
+          name: config.leagueName,
+          // Prefer the friendly slug from ALL_LEAGUES (e.g. "premier-league") so
+          // sidebar links and matches-page links resolve to the same URL. Fall
+          // back to the ESPN-style code (e.g. "eng-1") only when no row exists.
+          slug: ALL_LEAGUES.find(l => l.id === config.leagueId)?.slug || config.league.replace(/\./g, '-'),
+          country: config.country,
+          countryCode: config.countryCode,
+          tier: 1,
+        };
+      })(),
       sport: {
         id: config.sportId,
         name: ALL_SPORTS.find(s => s.id === config.sportId)?.name || config.sport,
