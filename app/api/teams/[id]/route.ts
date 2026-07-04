@@ -408,7 +408,7 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
   const fmt = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
   // Future windows (next 35 days in 7-day chunks)
   const dateWindows: string[] = [];
-  for (let offset = 0; offset < 35; offset += 7) {
+  for (let offset = 0; offset < 120; offset += 7) {
     const start = new Date(today);
     start.setUTCDate(today.getUTCDate() + offset);
     const end = new Date(today);

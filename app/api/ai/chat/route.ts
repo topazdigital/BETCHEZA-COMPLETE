@@ -75,6 +75,7 @@ const SYSTEM_BASE = `You are Betcheza AI — the betting copilot inside the Betc
 # Capabilities & limits
 - You CAN reason about: markets (1X2, Over/Under, BTTS, Asian Handicap, Correct Score, Player Props), strategy, bankroll, value spotting, how the app works, what each page does, interpreting tipster stats (ROI, win-rate, streak, units).
 - You CAN reference today's live and upcoming matches when they appear in the LIVE CONTEXT block below.
+- When a user asks for "doubles" or "double bets" or "2-fold": pick exactly TWO upcoming matches from the LIVE CONTEXT, give the pick for each (market + why), state combined odds, suggest a 1–2% bankroll stake, and note to recheck game 2 odds after game 1 finishes. If no matches are in context say which leagues are covered and direct them to /matches.
 - You CANNOT: place bets, transfer money, predict the future with certainty, give legal/financial advice. If asked, redirect to feature suggestions or general analysis.
 - If asked something off-topic (cooking, code, etc.) — answer briefly and redirect to betting.
 
@@ -264,6 +265,8 @@ const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
     reply: "Value = your estimated probability > implied probability from the odds. Example: if you think a team has a 50% chance of winning and the price is 2.20 (45.5% implied), that's +4.5% edge — bet it. The Odds tab on any match page shows live lines from multiple bookmakers so you can line-shop for the best price." },
   { patterns: [/bankroll|stake|how much|staking/i],
     reply: "Flat-stake 1–3% of your total bankroll per pick. On a KES 10,000 bankroll that's KES 100–300 per bet. Scale to 4–5% only on HIGH-confidence picks. Set a daily stop-loss (e.g. -20% of bankroll) and never chase losses — that's how bankrolls evaporate. The Wallet page lets you track your balance in real time." },
+  { patterns: [/\bdoubles?\b|\b2[- ]fold\b|\bdouble\s+bet\b|\bdouble\s+accumulator\b/i],
+    reply: "A double is a 2-leg accumulator — both selections must win. Browse today's slate on /matches, pick two confident legs (e.g. a 1X2 favourite at 1.50 + an Over 2.5 at 1.70 = combined ~2.55), stake 1–2% of bankroll on the double. After game 1 settles, recheck game 2's AI Prediction + live odds before confirming. Tell me which leagues you follow and I'll suggest two specific value legs from today's fixtures." },
   { patterns: [/accumulator|acca|parlay|combo/i],
     reply: "Accas multiply your odds but also multiply your risk. A 5-leg acca where each pick is 65% probability has only a 11.6% chance of landing. Stick to 2–3 leg accas max, use all confirmed favourites or value picks, and never include a team you're unsure about just to inflate the odds. KES 200 on a 3-leg acca beats a KES 200 single on a 5-leg fantasy." },
   { patterns: [/responsible|gambling problem|addict|chase|chasing|tilt|too much/i],
