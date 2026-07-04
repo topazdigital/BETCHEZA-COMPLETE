@@ -57,7 +57,9 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - Web push notifications, 2FA, email verification (enforced — no skip; modal race condition fixed)
 - Help Centre page at `/help` with full FAQ content
 - Team pages show correct current head coach (KNOWN_COACHES override for top 40+ clubs)
-- AI fallback covers 13 market/strategy patterns (1X2, Double Chance, Asian Handicap, BTTS, accas, bankroll, etc.)
+- AI fallback covers 14 market/strategy patterns (1X2, Double Chance, Asian Handicap, BTTS, doubles/2-fold accas, bankroll, etc.)
+- Team upcoming-match window covers 120 days so pre-season fixtures (e.g. PL 26/27 from Aug) appear on team pages
+- News article pages each have a unique canonical URL + NewsArticle schema.org JSON-LD for SEO
 
 ## User preferences
 
