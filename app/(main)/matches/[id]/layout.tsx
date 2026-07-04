@@ -278,6 +278,24 @@ function buildJsonLd(
 
 // ─── generateMetadata ─────────────────────────────────────────────────────────
 
+/**
+ * Extract human-readable team names from a match slug like
+ * "hull-city-vs-manchester-united-401879322".
+ * Used to build a proper SEO title even when the match API times out.
+ */
+function extractTeamNamesFromSlug(id: string): [string, string] | null {
+  const vsIdx = id.indexOf('-vs-');
+  if (vsIdx === -1) return null;
+  const homePart = id.slice(0, vsIdx);
+  const awayWithId = id.slice(vsIdx + 4);
+  // Strip trailing numeric event ID (e.g. "-401879322")
+  const awayPart = awayWithId.replace(/-\d+$/, '');
+  if (!homePart || !awayPart) return null;
+  const toTitle = (s: string) =>
+    s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  return [toTitle(homePart), toTitle(awayPart)];
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -289,6 +307,20 @@ export async function generateMetadata({
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
 
   if (!match || !match.homeTeam?.name || !match.awayTeam?.name) {
+    // Recover team names from the URL slug so the page title is always
+    // meaningful even when the match API is slow or the league lookup fails.
+    const slugNames = extractTeamNamesFromSlug(id);
+    if (slugNames) {
+      const [home, away] = slugNames;
+      const canonical = `${baseUrl}/matches/${id}`;
+      return {
+        title: `${home} vs ${away} Predictions & Betting Tips | ${siteName}`,
+        description: `Get predictions, odds, and betting tips for ${home} vs ${away}. Compare bookmaker odds and expert tips on Betcheza.`,
+        alternates: { canonical },
+        openGraph: { title: `${home} vs ${away} | ${siteName}`, url: canonical, siteName },
+        robots: { index: true, follow: true },
+      };
+    }
     return {
       title: `Match Preview | ${siteName}`,
       alternates: { canonical: `${baseUrl}/matches/${encodeURIComponent(id)}` },

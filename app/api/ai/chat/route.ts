@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { getLiveMatches, getUpcomingMatches, getMatchById } from '@/lib/api/unified-sports-api';
 import { slugToMatchId } from '@/lib/utils/match-url';
 import { pickAngle, rememberReply } from '@/lib/ai-session-store';
+import { getApiKey } from '@/lib/api-keys';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,15 +19,16 @@ interface ChatRequestBody {
   sessionId?: string; // stable per-browser id so we can vary replies across turns
 }
 
-// Lazy-init the OpenAI client. We support several env-var names so the same
-// code works whether the deployment is using:
-//   • Replit AI Integrations (AI_INTEGRATIONS_OPENAI_*)
-//   • a plain OpenAI key (OPENAI_API_KEY)
-//   • a self-hosted OpenAI-compatible endpoint (OPENAI_BASE_URL)
-// If NO key is present we never construct the client and we just fall back to
-// the local rules-based replies — the chat keeps working either way.
-function getOpenAI(): OpenAI | null {
+// Lazy-init the OpenAI client. We support several key sources in priority order:
+//   1. Admin panel site-settings (openai_api_key) — rotatable without redeploy
+//   2. Replit AI Integrations env var (AI_INTEGRATIONS_OPENAI_API_KEY)
+//   3. Plain OPENAI_API_KEY env var
+//   4. Self-hosted OpenAI-compatible endpoint via OPENAI_BASE_URL
+// If NO key is found we fall back to local rules-based replies.
+async function getOpenAI(): Promise<OpenAI | null> {
+  const adminKey = await getApiKey('openai_api_key').catch(() => '');
   const apiKey =
+    adminKey ||
     process.env.AI_INTEGRATIONS_OPENAI_API_KEY ||
     process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -338,7 +340,7 @@ export async function POST(request: NextRequest) {
 
     const system = `${SYSTEM_BASE}\n\n${freshness}${liveContext ? liveContext + '\n\n' : ''}${matchContext ? matchContext + '\n\n' : ''}${body.context ? `EXTRA CONTEXT FROM CURRENT PAGE:\n${body.context}\n\n` : ''}Answer the user now.`;
 
-    const openai = getOpenAI();
+    const openai = await getOpenAI();
     if (!openai) {
       // No provider configured — return a deterministic local reply so the
       // chat still feels responsive and never throws.
