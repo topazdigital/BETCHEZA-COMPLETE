@@ -1732,7 +1732,7 @@ const PRIORITY_LEAGUE_KEYS = new Set<string>([
   'fifa.world', 'fifa.wwc', 'afc.asian.qual', 'concacaf.wcq',
   'uefa.euro.qual', 'copa.america',
   // Friendlies and women's qualifiers — high match count days need priority treatment
-  'fifa.friendly', 'fifa.friendly.w',
+  'fifa.friendly', 'fifa.friendly.w', 'club.friendly',
   'fifa.world.qualifiers.uefa', 'fifa.world.qualifiers.concacaf',
   'fifa.world.qualifiers.conmebol', 'fifa.world.qualifiers.afc', 'fifa.world.qualifiers.caf',
   'fifa.wwc.qualifier.uefa', 'fifa.wwc.qualifier.concacaf',
@@ -6088,7 +6088,7 @@ export function sortMatchesWithPriority(matches: UnifiedMatch[]): UnifiedMatch[]
   });
 }
 
-export async function getMatchById(matchId: string): Promise<UnifiedMatch | null> {
+export async function getMatchById(matchId: string, nameHints?: [string, string]): Promise<UnifiedMatch | null> {
   // 1) Fast path — match is in the current rolling window (today/upcoming/recent).
   //    For espn_eventid_ format we scan the cache and prefer the most recent match
   //    when multiple hits share the same numeric ID (ESPN reuses IDs across seasons).
@@ -6157,11 +6157,40 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
     const numericId = eventIdOnly[1];
 
     /**
+     * Team-name hint validator: returns true when the hint (extracted from the
+     * URL slug) plausibly corresponds to the ESPN team name.
+     *
+     * Key design choice: both sides are "slugified" the same way as the URL
+     * slug generator (`teamNameToSlug`), i.e. strip ALL non-alphanumeric chars.
+     * This correctly handles diacritic names like Mönchengladbach or Fenerbahçe
+     * where the URL slug loses the accented letter entirely
+     * ("Mönchengladbach" → "mnchengladbach" and "mnchengladbach" slugified is
+     * "mnchengladbach" — they match on both sides).
+     */
+    const hintMatchesName = (teamName: string, hint: string): boolean => {
+      const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const teamSlug = slugify(teamName);
+      const hintSlug = slugify(hint);
+      if (!hintSlug) return true; // empty hint — don't filter
+      // Direct slug containment covers single-token and concatenated multi-word
+      // names (e.g. "manchesterunited" in "manchesterunited").
+      if (teamSlug.includes(hintSlug) || hintSlug.includes(teamSlug)) return true;
+      // Word-level fallback: split hint on original spaces (pre-slugify), check
+      // each significant word (≥3 chars) against the team slug.
+      const words = hint.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(/\s+/).filter(w => w.length >= 3);
+      if (words.length === 0) return true;
+      const matched = words.filter(w => teamSlug.includes(w));
+      return matched.length >= Math.ceil(words.length / 2);
+    };
+
+    /**
      * Try each league in parallel and collect ALL results within the timeout.
      * No age cutoff — old historical matches must load too.
      * Collision guard: when multiple leagues return a match for the same event ID
      * (rare but possible), we pick the most recent kickoff date so a current
      * match always beats an older one from a different league.
+     * Name-hint validation: when nameHints are provided, any league that returns
+     * different team names is rejected so the wrong-league hijack is eliminated.
      */
     async function tryLeagues(leagues: ESPNLeagueConfig[]): Promise<string | null> {
       return new Promise<string | null>(resolve => {
@@ -6189,7 +6218,24 @@ export async function getMatchById(matchId: string): Promise<UnifiedMatch | null
             const competition = summary?.header?.competitions?.[0];
             if (competition) {
               const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
+              const awayComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'away');
               if (homeComp) {
+                // Team-name validation: when the caller supplies name hints (from
+                // the URL slug), reject leagues whose team names don't match.
+                // This kills the classic wrong-league collision where e.g. Serie A
+                // returns a match with the same event ID but completely different
+                // teams — it was winning the old date-only guard because it
+                // happened to have a more recent kickoff.
+                if (nameHints) {
+                  const homeName = (homeComp.team as { displayName?: string; name?: string })?.displayName
+                    || (homeComp.team as { displayName?: string; name?: string })?.name || '';
+                  const awayName = (awayComp?.team as { displayName?: string; name?: string })?.displayName
+                    || (awayComp?.team as { displayName?: string; name?: string })?.name || '';
+                  if (!hintMatchesName(homeName, nameHints[0]) || !hintMatchesName(awayName, nameHints[1])) {
+                    // Wrong league — skip this candidate entirely.
+                    return;
+                  }
+                }
                 const competitionDate = (competition as { date?: string }).date;
                 const matchDate = competitionDate ? new Date(competitionDate).getTime() : 0;
                 candidates.push({

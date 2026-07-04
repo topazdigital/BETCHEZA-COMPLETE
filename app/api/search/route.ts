@@ -6,6 +6,47 @@ import { teamHref, slugify } from '@/lib/utils/slug';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { SENIOR_FOOTBALL_TEAMS, type CatalogTeam } from '@/lib/data/team-catalog';
 
+// Maps league display name → ESPN league key for team schedule fetches
+const LEAGUE_NAME_TO_ESPN_KEY: Record<string, string> = {
+  'Premier League': 'eng.1',
+  'Championship': 'eng.2',
+  'League One': 'eng.3',
+  'League Two': 'eng.4',
+  'La Liga': 'esp.1',
+  'Segunda División': 'esp.2',
+  'Bundesliga': 'ger.1',
+  '2. Bundesliga': 'ger.2',
+  'Serie A': 'ita.1',
+  'Serie B': 'ita.2',
+  'Ligue 1': 'fra.1',
+  'Ligue 2': 'fra.2',
+  'Eredivisie': 'ned.1',
+  'Primeira Liga': 'por.1',
+  'Scottish Premiership': 'sco.1',
+  'Pro League': 'bel.1',
+  'Süper Lig': 'tur.1',
+  'Swiss Super League': 'sui.1',
+  'UEFA Champions League': 'uefa.champions',
+  'UEFA Europa League': 'uefa.europa',
+  'UEFA Conference League': 'uefa.europa.conf',
+  'MLS': 'usa.1',
+  'Brasileirão': 'bra.1',
+  'Liga MX': 'mex.1',
+  'Argentine Primera División': 'arg.1',
+  'Saudi Pro League': 'ksa.1',
+  'J1 League': 'jpn.1',
+  'K League 1': 'kor.1',
+  'Chinese Super League': 'chn.1',
+  'Botola Pro': 'mar.1',
+  'NPL': 'nga.1',
+  'Egyptian Premier League': 'egy.1',
+  'NPFL': 'nga.1',
+  'Kenya Premier League': 'ken.1',
+};
+
+// ESPN base URL for team schedule fetches
+const ESPN_SPORTS_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
+
 // Non-soccer sport slug → URL tag (injected into team URL to prevent cross-sport ID collision)
 // e.g. "basketball" → tag "nba" → URL /teams/utah-jazz-nba-26
 const SPORT_URL_TAG: Record<string, string> = {
@@ -298,6 +339,73 @@ export async function GET(request: NextRequest) {
     }
   } catch (err) {
     console.error('[search] match feed failed:', (err as Error).message);
+  }
+
+  // ── 2b. Upcoming-fixtures fallback for catalog teams ──────────────────────
+  // When a well-known senior team matches the query but no upcoming fixtures
+  // appear in the rolling cache (e.g. off-season, pre-season not yet in window),
+  // fetch the team's schedule directly from ESPN so users always see next games.
+  const topCatalogMatch = SENIOR_FOOTBALL_TEAMS
+    .map(t => ({ team: t, score: scoreCatalogTeam(t) }))
+    .filter(x => x.score >= 80) // high-confidence name match only
+    .sort((a, b) => b.score - a.score)[0];
+
+  const teamAlreadyHasUpcoming = topCatalogMatch
+    ? matchHits.some(mh => {
+        const titleLow = mh.title.toLowerCase();
+        const teamLow = topCatalogMatch.team.name.toLowerCase().split(' ').filter(w => w.length >= 3);
+        return teamLow.some(w => titleLow.includes(w));
+      })
+    : false;
+
+  if (topCatalogMatch && !teamAlreadyHasUpcoming) {
+    const leagueKey = LEAGUE_NAME_TO_ESPN_KEY[topCatalogMatch.team.league];
+    if (leagueKey) {
+      try {
+        const season = new Date().getUTCFullYear();
+        const schedUrl = `${ESPN_SPORTS_BASE}/soccer/${leagueKey}/teams/${topCatalogMatch.team.id}/schedule?season=${season}`;
+        const schedData = await Promise.race([
+          fetch(schedUrl, { headers: { Accept: 'application/json' }, next: { revalidate: 3600 } } as RequestInit)
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null),
+          new Promise<null>(r => setTimeout(() => r(null), 2000)),
+        ]);
+        const events: Array<{
+          id?: string;
+          date?: string;
+          competitions?: Array<{
+            competitors?: Array<{ homeAway?: string; team?: { id?: string; displayName?: string; name?: string } }>;
+          }>;
+        }> = schedData?.events ?? [];
+        const now = Date.now();
+        const seenIds = new Set(matchHits.map(m => m.id));
+        for (const ev of events.slice(0, 20)) {
+          if (!ev.id || !ev.date) continue;
+          const kickoff = new Date(ev.date);
+          if (isNaN(kickoff.getTime()) || kickoff.getTime() < now - 7_200_000) continue; // skip past/recent
+          const comp = ev.competitions?.[0];
+          const home = comp?.competitors?.find(c => c.homeAway === 'home');
+          const away = comp?.competitors?.find(c => c.homeAway === 'away');
+          const homeName = home?.team?.displayName || home?.team?.name || '';
+          const awayName = away?.team?.displayName || away?.team?.name || '';
+          if (!homeName || !awayName) continue;
+          const matchId = `espn_${leagueKey.replace(/[^a-z0-9]/gi, '')}_${ev.id}`;
+          if (seenIds.has(matchId)) continue;
+          seenIds.add(matchId);
+          const homeSlug = homeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30).replace(/-+$/, '');
+          const awaySlug = awayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30).replace(/-+$/, '');
+          matchHits.push({
+            type: 'match',
+            id: matchId,
+            title: `${homeName} vs ${awayName}`,
+            subtitle: topCatalogMatch.team.league,
+            href: `/matches/${homeSlug}-vs-${awaySlug}-${ev.id}`,
+            status: 'scheduled',
+            kickoffIso: kickoff.toISOString(),
+          });
+        }
+      } catch { /* ignore — schedule fetch is best-effort */ }
+    }
   }
 
   matchHits.sort((a, b) => {

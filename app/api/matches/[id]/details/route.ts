@@ -848,25 +848,28 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     let match: UnifiedMatch | null = null;
 
+    // Extract team name hints once — used both for cache scan and to validate
+    // ESPN league-probe results (prevents wrong-league collisions in tryLeagues).
+    const teamHints: [string, string] | null = (id.startsWith('espn_eventid_') && decodeURIComponent(rawId).includes('-vs-'))
+      ? extractTeamHintsFromSlug(rawId)
+      : null;
+
     // Fast path for human-readable slugs: scan the live match cache by team
     // names BEFORE doing the expensive ESPN league-probe. This prevents the
     // wrong-league bug where an old Champions League event with the same
     // numeric ID beats the actual current match in the race.
-    if (id.startsWith('espn_eventid_') && decodeURIComponent(rawId).includes('-vs-')) {
-      const hints = extractTeamHintsFromSlug(rawId);
-      if (hints) {
-        try {
-          const allMatches = await getAllMatches();
-          const byTeam = allMatches.find(m =>
-            teamNameMatches(m.homeTeam.name, hints[0]) &&
-            teamNameMatches(m.awayTeam.name, hints[1])
-          );
-          if (byTeam) match = byTeam;
-        } catch { /* fall through to getMatchById */ }
-      }
+    if (teamHints) {
+      try {
+        const allMatches = await getAllMatches();
+        const byTeam = allMatches.find(m =>
+          teamNameMatches(m.homeTeam.name, teamHints[0]) &&
+          teamNameMatches(m.awayTeam.name, teamHints[1])
+        );
+        if (byTeam) match = byTeam;
+      } catch { /* fall through to getMatchById */ }
     }
 
-    if (!match) match = await getMatchById(id);
+    if (!match) match = await getMatchById(id, teamHints ?? undefined);
 
     // Final fallback: scan camel1 directly by team name.
     // This catches non-ESPN matches (e.g. small WTA tournaments, camel1-only events)
@@ -893,22 +896,21 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       await new Promise(r => setTimeout(r, 2000));
 
       // Retry team-name fast-path first (cheapest)
-      if (id.startsWith('espn_eventid_') && decodeURIComponent(rawId).includes('-vs-')) {
-        const hints = extractTeamHintsFromSlug(rawId);
-        if (hints) {
-          try {
-            const allMatches = await getAllMatches();
-            const byTeam = allMatches.find(m =>
-              teamNameMatches(m.homeTeam.name, hints[0]) &&
-              teamNameMatches(m.awayTeam.name, hints[1])
-            );
-            if (byTeam) match = byTeam;
-          } catch { /* fall through */ }
-        }
+      if (teamHints) {
+        try {
+          const allMatches = await getAllMatches();
+          const byTeam = allMatches.find(m =>
+            teamNameMatches(m.homeTeam.name, teamHints[0]) &&
+            teamNameMatches(m.awayTeam.name, teamHints[1])
+          );
+          if (byTeam) match = byTeam;
+        } catch { /* fall through */ }
       }
 
-      // Full retry via getMatchById (cache likely warm now)
-      if (!match) match = await getMatchById(id);
+      // Full retry via getMatchById (cache likely warm now) — pass name hints
+      // so tryLeagues rejects wrong-league collisions (e.g. Serie A hijacking
+      // a Club Friendly event ID that happens to match numerically).
+      if (!match) match = await getMatchById(id, teamHints ?? undefined);
     }
 
     if (!match) {
