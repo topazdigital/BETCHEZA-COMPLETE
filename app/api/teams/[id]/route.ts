@@ -439,6 +439,9 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     'concacaf.champions', 'concacaf.gold', 'concacaf.nations.league',
     'caf.champions', 'caf.confed', 'caf.cup_of_nations',
     'afc.champions', 'afc.asian',
+    // Pre-season / friendly competitions — surfaces summer tours, community
+    // shield, super cups and international club friendlies on team pages.
+    'friendly.club', 'friendly.intl',
     // Domestic cups for the most-watched leagues — adds FA Cup, Copa del Rey,
     // Coupe de France, Coppa Italia, DFB Pokal goals when applicable.
     'eng.fa', 'eng.league_cup', 'esp.copa_del_rey', 'fra.coupe_de_france',

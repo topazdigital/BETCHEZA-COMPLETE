@@ -1,184 +1,147 @@
-'use client';
+import type { Metadata } from 'next';
+import { Suspense } from 'react';
+import { getSiteSettings } from '@/lib/site-settings';
+import ArticleReader from './_article-reader';
+
 export const dynamic = 'force-dynamic';
 
-import { Suspense, useEffect, useState } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Calendar, Loader2, Newspaper } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
 
-function ArticleReader() {
-  const params = useSearchParams();
-  const router = useRouter();
+type SearchParams = Promise<{
+  headline?: string;
+  description?: string;
+  source?: string;
+  published?: string;
+  image?: string;
+  source_url?: string;
+}>;
 
-  const headline = params.get('headline') || '';
-  const description = params.get('description') || '';
-  const image = params.get('image') || '';
-  const published = params.get('published') || '';
-  const sourceUrl = params.get('source_url') || '';
-  const source = params.get('source') || 'ESPN';
-
-  const [fullBody, setFullBody] = useState<string[] | null>(null);
-  const [fullBodyLoading, setFullBodyLoading] = useState(false);
-  const [fullBodyError, setFullBodyError] = useState<string | null>(null);
-
-  // Fetch the full article body inline so users never need to bounce off-site.
-  useEffect(() => {
-    if (!sourceUrl) return;
-    let cancelled = false;
-    setFullBodyLoading(true);
-    setFullBodyError(null);
-    fetch(`/api/news/article?url=${encodeURIComponent(sourceUrl)}`, { cache: 'no-store' })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || !j.ok) throw new Error(j.error || `Fetch ${r.status}`);
-        return j as { paragraphs?: string[] };
-      })
-      .then((j) => {
-        if (cancelled) return;
-        if (Array.isArray(j.paragraphs) && j.paragraphs.length > 0) {
-          setFullBody(j.paragraphs);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setFullBodyError(e instanceof Error ? e.message : 'Could not load full article');
-      })
-      .finally(() => {
-        if (!cancelled) setFullBodyLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [sourceUrl]);
-
-  if (!headline) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-12 text-center">
-        <Newspaper className="mx-auto h-12 w-12 text-muted-foreground/50" />
-        <h1 className="mt-4 text-2xl font-bold">Article not found</h1>
-        <p className="mt-2 text-muted-foreground">
-          We couldn&apos;t load this article. It may have been removed or the link is broken.
-        </p>
-        <Button className="mt-6" onClick={() => router.back()}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Go back
-        </Button>
-      </div>
-    );
-  }
-
-  // Format the published date in a human-friendly way.
-  const publishedLabel = published
-    ? new Date(published).toLocaleDateString(undefined, {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : '';
-
-  // Pull a few sentences out of the description to render as the article body.
-  // ESPN's match-news API exposes a short description rather than the full
-  // article body, so we render that here and link to the original story for
-  // readers who want the full piece.
-  const bodyParagraphs = description
-    .split(/(?<=[.!?])\s+/)
-    .reduce<string[]>((acc, sentence) => {
-      const last = acc[acc.length - 1];
-      if (!last || last.length > 220) acc.push(sentence);
-      else acc[acc.length - 1] = `${last} ${sentence}`;
-      return acc;
-    }, []);
-
-  return (
-    <article className="mx-auto max-w-2xl px-3 py-4">
-      <button
-        type="button"
-        onClick={() => router.back()}
-        className="mb-3 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" />
-        Back
-      </button>
-
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-tight">
-        <Badge variant="secondary" className="gap-1 h-5 px-1.5 text-[9px] font-bold">
-          <Newspaper className="h-2.5 w-2.5" />
-          {source}
-        </Badge>
-        {publishedLabel && (
-          <span className="inline-flex items-center gap-1">
-            <Calendar className="h-2.5 w-2.5" />
-            {publishedLabel}
-          </span>
-        )}
-      </div>
-
-      <h1 className="mb-4 text-balance text-xl font-bold tracking-tight sm:text-2xl leading-tight">
-        {headline}
-      </h1>
-
-      {image && (
-        <div className="mb-4 overflow-hidden rounded-xl">
-          <Image
-            src={image}
-            alt={headline}
-            width={800}
-            height={450}
-            unoptimized
-            className="h-auto w-full object-cover"
-          />
-        </div>
-      )}
-
-      <div className="prose prose-sm max-w-none text-foreground leading-snug">
-        {fullBodyLoading && (
-          <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Loading the full story…
-          </div>
-        )}
-        {!fullBodyLoading && fullBody && fullBody.length > 0 ? (
-          fullBody.map((p, i) => (
-            <p key={`f${i}`} className="mb-3 text-[13px] text-foreground/90">
-              {p}
-            </p>
-          ))
-        ) : !fullBodyLoading && bodyParagraphs.length > 0 ? (
-          bodyParagraphs.map((p, i) => (
-            <p key={i} className="mb-3 text-[13px] text-foreground/90">
-              {p}
-            </p>
-          ))
-        ) : !fullBodyLoading ? (
-          <p className="text-xs text-muted-foreground italic">No preview available for this story.</p>
-        ) : null}
-        {fullBodyError && !fullBody && bodyParagraphs.length > 0 && (
-          <p className="mt-2 text-[10px] text-muted-foreground italic">
-            (Showing summary — full article body unavailable.)
-          </p>
-        )}
-      </div>
-
-      <div className="mt-6 border-t border-border pt-4 text-center">
-        <Button variant="ghost" size="sm" asChild className="h-7 text-xs text-muted-foreground">
-          <Link href="/matches">Back to matches</Link>
-        </Button>
-      </div>
-    </article>
-  );
+function makeSlug(headline: string) {
+  return headline
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 80);
 }
 
-export default function NewsArticlePage() {
+// generateMetadata MUST live in the page (not layout) to receive searchParams.
+// Layouts in Next.js App Router do not receive searchParams.
+export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
+  const params = await searchParams;
+  const { headline, description, source, published, image, source_url } = params;
+
+  const s = await getSiteSettings();
+  const siteName = s.site_name || 'Betcheza';
+
+  const title = headline
+    ? `${headline.slice(0, 90)} | ${siteName}`
+    : `Sports News Article | ${siteName}`;
+
+  const desc = description
+    ? description.slice(0, 160)
+    : `Full sports news on ${siteName} — football, tennis, basketball, cricket and all major sports in Kenya.`;
+
+  const slug = headline ? makeSlug(headline) : '';
+  const canonical = source_url || (slug ? `${BASE_URL}/news/article/${slug}` : `${BASE_URL}/news`);
+
+  const headlineKeywords = (headline || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 4)
+    .slice(0, 6);
+
+  const keywords = [
+    'sports news Kenya', 'football news Kenya', 'betting analysis Kenya', 'match preview Kenya',
+    ...(source ? [`${source} news`] : []),
+    ...headlineKeywords,
+  ].filter((v, i, a) => a.indexOf(v) === i);
+
+  return {
+    title,
+    description: desc,
+    keywords,
+    alternates: { canonical },
+    robots: {
+      index: !!headline,
+      follow: true,
+      googleBot: { index: !!headline, follow: true, 'max-snippet': -1, 'max-image-preview': 'large' },
+    },
+    openGraph: {
+      title,
+      description: desc,
+      type: 'article',
+      url: canonical,
+      siteName,
+      ...(published ? { publishedTime: new Date(published).toISOString() } : {}),
+      ...(image ? { images: [{ url: image, width: 1200, height: 630, alt: headline ?? 'Sports News' }] } : {}),
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description: desc,
+      site: '@betcheza',
+      ...(image ? { images: [image] } : {}),
+    },
+  };
+}
+
+export default async function NewsArticlePage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const { headline = '', description = '', image = '', published = '', source_url = '', source = 'ESPN' } = params;
+
+  const s = await getSiteSettings();
+  const siteName = s.site_name || 'Betcheza';
+  const slug = headline ? makeSlug(headline) : '';
+  const canonical = source_url || (slug ? `${BASE_URL}/news/article/${slug}` : `${BASE_URL}/news`);
+
+  // Schema.org JSON-LD injected server-side so Google sees it on first crawl.
+  const articleSchema = headline ? {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: headline.slice(0, 110),
+    description: description.slice(0, 160),
+    url: canonical,
+    ...(published ? { datePublished: new Date(published).toISOString(), dateModified: new Date(published).toISOString() } : {}),
+    publisher: {
+      '@type': 'Organization',
+      name: siteName,
+      url: BASE_URL,
+      logo: { '@type': 'ImageObject', url: `${BASE_URL}/logo.png`, width: 200, height: 60 },
+    },
+    ...(image ? { image: { '@type': 'ImageObject', url: image, width: 1200, height: 630 } } : {}),
+    author: { '@type': 'Organization', name: source || siteName },
+    isPartOf: { '@id': `${BASE_URL}/#website` },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
+  } : null;
+
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: siteName, item: BASE_URL },
+      { '@type': 'ListItem', position: 2, name: 'News', item: `${BASE_URL}/news` },
+      ...(headline ? [{ '@type': 'ListItem', position: 3, name: headline.slice(0, 60), item: canonical }] : []),
+    ],
+  };
+
   return (
-    <Suspense
-      fallback={
-        <div className="mx-auto max-w-3xl px-4 py-12 text-center text-muted-foreground">
-          Loading article…
-        </div>
-      }
-    >
-      <ArticleReader />
-    </Suspense>
+    <>
+      {articleSchema && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
+      )}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      <Suspense fallback={<div className="mx-auto max-w-3xl px-4 py-12 text-center text-muted-foreground">Loading article…</div>}>
+        <ArticleReader
+          headline={headline}
+          description={description}
+          image={image}
+          published={published}
+          sourceUrl={source_url}
+          source={source}
+        />
+      </Suspense>
+    </>
   );
 }

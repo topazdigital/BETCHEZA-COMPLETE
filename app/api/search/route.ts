@@ -233,12 +233,17 @@ export async function GET(request: NextRequest) {
   };
 
   try {
+    // Use stale cache on timeout rather than caching an empty result — prevents
+    // a single slow ESPN response from blanking match hits for the next 5 min.
     const allMatches = await Promise.race([
       getCachedMatches(),
       new Promise<UnifiedMatch[]>((_, reject) =>
         setTimeout(() => reject(new Error('search-match-timeout')), 3000)
       ),
-    ]);
+    ]).catch((err) => {
+      console.warn('[search] match feed timed out, using stale cache:', err.message);
+      return _matchCache?.data ?? [];
+    });
     for (const m of allMatches) {
       const homeS = scoreMatch(q, m.homeTeam.name);
       const awayS = scoreMatch(q, m.awayTeam.name);
