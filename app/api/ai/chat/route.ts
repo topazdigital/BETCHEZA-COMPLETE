@@ -77,7 +77,14 @@ const SYSTEM_BASE = `You are Betcheza AI — the betting copilot inside the Betc
 # Capabilities & limits
 - You CAN reason about: markets (1X2, Over/Under, BTTS, Asian Handicap, Correct Score, Player Props), strategy, bankroll, value spotting, how the app works, what each page does, interpreting tipster stats (ROI, win-rate, streak, units).
 - You CAN reference today's live and upcoming matches when they appear in the LIVE CONTEXT block below.
-- When a user asks for "doubles" or "double bets" or "2-fold": pick exactly TWO upcoming matches from the LIVE CONTEXT, give the pick for each (market + why), state combined odds, suggest a 1–2% bankroll stake, and note to recheck game 2 odds after game 1 finishes. If no matches are in context say which leagues are covered and direct them to /matches.
+- When a user asks for "doubles" or "double bets" or "2-fold":
+  • Pull 2 (or more, if they say "hourly" or "sequential") upcoming matches from TODAY'S UPCOMING KICKOFFS in the LIVE CONTEXT, sorted by EAT kickoff time.
+  • For EACH leg give: kickoff time (EAT), home vs away, your pick (market + outcome), the odds, and ONE sharp reason (form, H2H trend, value vs implied probability).
+  • State the combined odds (leg1 × leg2).
+  • Staking: suggest 2% of bankroll on leg 1. If they say "after the 1st game finishes I stake the next" that means a ROLLING DOUBLE — after leg 1 settles, roll the full return (stake + winnings) into leg 2 as the new stake. Explain this: "Stake KES X on leg 1. If it wins you collect KES Y — reinvest that on leg 2."
+  • If they say "arranged hourly" pick legs that kick off roughly 1–2 hours apart so there is time for leg 1 to settle before leg 2 starts.
+  • If there are 3+ hours of action, offer 2–3 separate doubles (pair 1: 14:00+16:00, pair 2: 17:00+19:00) so they can run sequential rolling cycles.
+  • If no matches are in LIVE CONTEXT, tell them how many matches are on today across which sports, and direct them to /matches to browse.
 - You CANNOT: place bets, transfer money, predict the future with certainty, give legal/financial advice. If asked, redirect to feature suggestions or general analysis.
 - If asked something off-topic (cooking, code, etc.) — answer briefly and redirect to betting.
 
@@ -132,7 +139,7 @@ async function buildLiveContext(userQuery?: string): Promise<string> {
     const fmtMatchLine = (m: typeof sortedUpcoming[number]) => {
       const d = new Date(m.kickoffTime);
       const t = d.toLocaleTimeString('en-GB', {
-        hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
+        hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi',
       });
       const dayLabel = d.toISOString().slice(0, 10) === todayIso ? 'today' : d.toLocaleDateString('en-GB');
       const odds = m.odds
@@ -202,9 +209,10 @@ async function buildLiveContext(userQuery?: string): Promise<string> {
 - Upcoming today: ${todayMatches.length} (across ${upcoming.length} total upcoming)
 - Sports breakdown: ${sportsBreakdown || 'no fixtures'}
 - Top leagues active: ${leagueBreakdown || '—'}
+- All times shown are EAT (East Africa Time, UTC+3)
 ${queryHitLines.length ? `\nMatches matching your question:\n${queryHitLines.join('\n')}` : ''}
 ${liveLines.length ? `\nLive matches right now:\n${liveLines.join('\n')}` : ''}
-${todayLines.length ? `\nToday's upcoming kickoffs (UTC):\n${todayLines.join('\n')}` : ''}`.trim();
+${todayLines.length ? `\nToday's upcoming kickoffs (EAT):\n${todayLines.join('\n')}` : ''}`.trim();
   } catch {
     return 'LIVE CONTEXT: unavailable right now.';
   }
@@ -265,8 +273,10 @@ const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
     reply: "Correct Score is a high-risk, high-reward market. Focus on the most statistically common scorelines for that matchup: 1-0, 1-1, 2-1, and 2-0 cover around 45% of all football matches. Use H2H scoreline history from the match page as your baseline, then adjust for current form. Small stakes (0.5–1% of bankroll) only — variance is huge." },
   { patterns: [/value bet|value|edge/i],
     reply: "Value = your estimated probability > implied probability from the odds. Example: if you think a team has a 50% chance of winning and the price is 2.20 (45.5% implied), that's +4.5% edge — bet it. The Odds tab on any match page shows live lines from multiple bookmakers so you can line-shop for the best price." },
+  { patterns: [/arranged hourly|hourly double|rolling double|after.*1st.*finish|after.*first.*finish|stake.*next/i],
+    reply: "Rolling double strategy: pick 2 games with kick-offs 1–2 hours apart so leg 1 settles before leg 2 starts. Stake 2% bankroll on leg 1. If it wins, reinvest the full return (stake + profit) on leg 2 — that's your rolling stake. Example: KES 200 on leg 1 at 1.50 → collect KES 300 if it wins → stake KES 300 on leg 2 at 1.60 → land both and you walk away with KES 480 from KES 200. Open /matches, filter by today's kickoffs in EAT order, then tell me the leagues you follow and I'll give you two specific picks with the exact odds." },
   { patterns: [/\bdoubles?\b|\b2[- ]fold\b|\bdouble\s+bet\b|\bdouble\s+accumulator\b/i],
-    reply: "A double is a 2-leg accumulator — both selections must win. Browse today's slate on /matches, pick two confident legs (e.g. a 1X2 favourite at 1.50 + an Over 2.5 at 1.70 = combined ~2.55), stake 1–2% of bankroll on the double. After game 1 settles, recheck game 2's AI Prediction + live odds before confirming. Tell me which leagues you follow and I'll suggest two specific value legs from today's fixtures." },
+    reply: "A double is a 2-leg accumulator — both must win. For maximum value: pick legs that kick off 1–2 hours apart (so leg 1 settles before you confirm leg 2), choose different markets (e.g. 1X2 + Over 2.5) to avoid correlated risk, and stake 2% of bankroll. Combined odds around 2.20–2.80 hit the best value/risk sweet spot. Tell me which leagues you follow and I'll pick two specific value legs from today's fixtures." },
   { patterns: [/bankroll|stake|how much|staking/i],
     reply: "Flat-stake 1–3% of your total bankroll per pick. On a KES 10,000 bankroll that's KES 100–300 per bet. Scale to 4–5% only on HIGH-confidence picks. Set a daily stop-loss (e.g. -20% of bankroll) and never chase losses — that's how bankrolls evaporate. The Wallet page lets you track your balance in real time." },
   { patterns: [/accumulator|acca|parlay|combo/i],
