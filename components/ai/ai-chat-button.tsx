@@ -225,7 +225,7 @@ export function AIChatButton() {
           sessionId: getOrCreateSessionId(),
         }),
       })
-      let reply = "I'm here — give me a second and try again."
+      let reply = "Something went wrong on my end — try sending that again."
       try {
         const j = (await res.json()) as { reply?: string }
         if (j?.reply) reply = j.reply

@@ -404,16 +404,63 @@ const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
 // Detect a "tell me about / pick for this match" intent
 const MATCH_QUESTION_RE = /who.*win|who.*better|predict|what.*think|should.*bet|your.*pick|your.*take|your.*tip|recommend|analysis|value.*bet|best.*bet|best.*market|opinion|thoughts|breakdown|any.*good.*bet|worth.*bet|go.*with|lean.*toward|favourite.*win|upset/i;
 
+/**
+ * Try to find a match in the LIVE CONTEXT string whose team names match the
+ * user's query. Used when the user is NOT on a match page (no matchCtx) but
+ * is asking about a specific fixture visible in the live fixtures list.
+ */
+function findMatchInLiveCtx(userText: string, liveCtx: string): ParsedMatch | null {
+  if (!liveCtx || !userText) return null;
+  const tokens = userText.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 3);
+  if (tokens.length === 0) return null;
+
+  for (const line of liveCtx.split('\n')) {
+    if (!line.startsWith('•')) continue;
+    const hasToken = tokens.some(t => line.toLowerCase().includes(t));
+    if (!hasToken) continue;
+
+    // Scheduled: • Team A vs Team B — HH:MM ... League [home/draw/away]
+    const sched = line.match(/•\s+(.+?)\s+vs\s+(.+?)\s+—[^[]*\[([0-9.]+)\/([0-9.]+)(?:\/([0-9.]+))?\]/);
+    if (sched) {
+      const [, home, away, a, b, c] = sched;
+      const hasThree = !!c;
+      return {
+        home: home.trim(), away: away.trim(),
+        homeOdds: parseFloat(a) || undefined,
+        drawOdds: hasThree ? parseFloat(b) || undefined : undefined,
+        awayOdds: hasThree ? parseFloat(c!) || undefined : parseFloat(b) || undefined,
+      };
+    }
+
+    // Live: • [LIVE 75'] Team A 2-1 Team B — League
+    const live = line.match(/•\s+\[LIVE[^\]]*\]\s+(.+?)\s+\d+-\d+\s+(.+?)\s+—/);
+    if (live) {
+      const scoreBlock = line.match(/(\d+)-(\d+)/);
+      return {
+        home: live[1].trim(), away: live[2].trim(),
+        status: `LIVE (score ${scoreBlock?.[1] ?? 0}-${scoreBlock?.[2] ?? 0})`,
+      };
+    }
+  }
+  return null;
+}
+
 const FALLBACK = "Ask me about a specific match, a market (BTTS, Over/Under, 1X2, Double Chance, Asian Handicap), bankroll strategy, or how any feature on the app works — I'll give you a concrete answer.";
 
-function localReply(userText: string, matchCtx?: string): string {
-  // If the user is asking about the current match and we have live match data, use it.
+function localReply(userText: string, matchCtx?: string, liveCtx?: string): string {
+  // 1. If on a match page and asking about that match — use real match data
   if (matchCtx && MATCH_QUESTION_RE.test(userText)) {
     const parsed = parseMatchCtx(matchCtx);
     if (parsed) return matchAnalysisReply(parsed);
   }
 
-  // Pattern-matched strategy / market replies
+  // 2. If NOT on match page but team name appears in live context — still give real data
+  if (!matchCtx && liveCtx && MATCH_QUESTION_RE.test(userText)) {
+    const parsed = findMatchInLiveCtx(userText, liveCtx);
+    if (parsed) return matchAnalysisReply(parsed);
+  }
+
+  // 3. Pattern-matched strategy / market replies
   for (const h of TIPS_HINTS) if (h.patterns.some((p) => p.test(userText))) return h.reply;
 
   if (/^\s*(hi|hello|hey|sup|yo)\b/i.test(userText))
@@ -421,11 +468,11 @@ function localReply(userText: string, matchCtx?: string): string {
   if (/^\s*(thanks|thank you|cheers)/i.test(userText))
     return "Anytime — bet smart, bet small. Good luck out there.";
 
-  // If we're on a match page, give match-aware fallback rather than generic
+  // 4. On a match page but generic question — tell them what to ask
   if (matchCtx) {
     const parsed = parseMatchCtx(matchCtx);
     if (parsed) {
-      return `On this match (${parsed.home} vs ${parsed.away}): ask me who to bet on, which market has value (1X2, BTTS, Over/Under, Asian Handicap, Correct Score), or how to read the odds. I'll give you a specific, data-driven take.`;
+      return `On this match (${parsed.home} vs ${parsed.away}): ask me who to back, which market has value (1X2, BTTS, Over/Under, Asian Handicap), or what the best price is. I'll give you a data-driven take.`;
     }
   }
 
@@ -435,8 +482,9 @@ function localReply(userText: string, matchCtx?: string): string {
 // ----- Main handler -----
 export async function POST(request: NextRequest) {
   let lastUserText = '';
-  // Hoisted so catch block can pass it to localReply for context-aware error replies
+  // Hoisted so catch block can pass them to localReply for context-aware error replies
   let matchContext = '';
+  let liveContext  = '';
   try {
     const body = (await request.json()) as ChatRequestBody;
     const history = (body.messages || []).slice(-12); // keep last 12 turns
@@ -448,7 +496,7 @@ export async function POST(request: NextRequest) {
 
     // Always attach live context — keeps replies grounded in real fixtures/odds.
     // (Cached upstream by getLiveMatches/getUpcomingMatches.)
-    const liveContext = await buildLiveContext(lastUserText);
+    liveContext = await buildLiveContext(lastUserText);
 
     // If the user is on a match page, enrich with structured match info so
     // the LLM can answer "should I bet on Arsenal?" with form, odds, H2H, etc.
@@ -486,7 +534,7 @@ export async function POST(request: NextRequest) {
     if (!openai) {
       // No provider configured — return a deterministic local reply so the
       // chat still feels responsive and never throws.
-      return NextResponse.json({ reply: localReply(lastUserText, matchContext), source: 'fallback' });
+      return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext), source: 'fallback' });
     }
 
     // reasoning_effort is ONLY accepted by o-series models (o1, o3, o4).
@@ -510,7 +558,7 @@ export async function POST(request: NextRequest) {
     const reply = choice?.message?.content?.trim();
     if (!reply) {
       console.warn('[ai/chat] empty completion', { model: MODEL, finish: choice?.finish_reason });
-      return NextResponse.json({ reply: localReply(lastUserText, matchContext), source: 'fallback-empty' });
+      return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext), source: 'fallback-empty' });
     }
     rememberReply(sessionId, reply);
     return NextResponse.json({ reply, source: 'openai', model: MODEL });
@@ -521,7 +569,7 @@ export async function POST(request: NextRequest) {
     const status  = (e as { status?: number })?.status;
     console.error('[ai/chat] OpenAI call failed', { model: MODEL, status, message: errMsg });
     return NextResponse.json(
-      { reply: localReply(lastUserText, matchContext) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
+      { reply: localReply(lastUserText, matchContext, liveContext) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
       { status: 200 } // soft-fail so chat keeps working
     );
   }

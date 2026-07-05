@@ -24,13 +24,74 @@ interface BookmakerOddsStripProps {
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-const BK_COLORS = [
-  'bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-orange-500',
-  'bg-rose-500', 'bg-cyan-500', 'bg-amber-500', 'bg-indigo-500',
-];
+// Same domain map as sgo-odds-panel — powers Google favicon logos
+const BK_DOMAINS: Record<string, string> = {
+  pinnacle: 'pinnacle.com', bet365: 'bet365.com', '1xbet': '1xbet.com',
+  onexbet: '1xbet.com', draftkings: 'draftkings.com', fanduel: 'fanduel.com',
+  betway: 'betway.com', williamhill: 'williamhill.com', bwin: 'bwin.com',
+  unibet: 'unibet.com', unibeteu: 'unibet.eu', unibetuk: 'unibet.co.uk',
+  betfair: 'betfair.com', betfairexeu: 'betfair.com', betfairexuk: 'betfair.com',
+  ladbrokes: 'ladbrokes.com', ladbrokesuk: 'ladbrokes.com', coral: 'coral.co.uk',
+  betmgm: 'betmgm.com', '888sport': '888sport.com', sportybet: 'sportybet.com',
+  marathonbet: 'marathonbet.com', bovada: 'bovada.lv', coolbet: 'coolbet.com',
+  nordicbet: 'nordicbet.com', boylesports: 'boylesports.com',
+  mybookieag: 'mybookie.ag', betonlineag: 'betonline.ag',
+  betvictor: 'betvictor.com', betsson: 'betsson.com', betsafe: 'betsafe.com',
+  betclic: 'betclic.com', winamax: 'winamax.fr', vbet: 'vbet.com',
+  betano: 'betano.com', superbet: 'superbet.com', betika: 'betika.com',
+  sportpesa: 'sportpesa.com', odibets: 'odibets.com', betin: 'betin.co.ke',
+  betpawa: 'betpawa.com', mozzartbet: 'mozzartbet.com', melbet: 'melbet.com',
+  '22bet': '22bet.com', ggbet: 'gg.bet', betfred: 'betfred.com',
+  skybet: 'skybet.com', paddypower: 'paddypower.com', caesars: 'caesars.com',
+  pointsbet: 'pointsbet.com', matchbook: 'matchbook.com', smarkets: 'smarkets.com',
+  gibets: 'gibets.com', betanysports: 'betanysports.com',
+};
 
-function bkColor(name: string) {
-  return BK_COLORS[name.charCodeAt(0) % BK_COLORS.length];
+const BK_PALETTES: Record<string, { bg: string }> = {
+  pinnacle: { bg: 'bg-yellow-500' }, bet365: { bg: 'bg-emerald-600' },
+  '1xbet': { bg: 'bg-blue-600' }, onexbet: { bg: 'bg-blue-600' },
+  draftkings: { bg: 'bg-emerald-800' }, fanduel: { bg: 'bg-blue-800' },
+  betway: { bg: 'bg-green-700' }, williamhill: { bg: 'bg-blue-900' },
+  bwin: { bg: 'bg-rose-700' }, betmgm: { bg: 'bg-purple-700' },
+  sportybet: { bg: 'bg-green-500' }, melbet: { bg: 'bg-blue-700' },
+};
+const BK_COLORS = [
+  'bg-violet-500', 'bg-cyan-500', 'bg-amber-500', 'bg-indigo-500',
+  'bg-rose-500', 'bg-sky-500', 'bg-teal-500', 'bg-fuchsia-500',
+];
+function normKey(s: string) { return s.toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function fallbackBg(bookmaker: string, display: string) {
+  const k = normKey(bookmaker); const d = normKey(display);
+  if (BK_PALETTES[k]) return BK_PALETTES[k].bg;
+  if (BK_PALETTES[d]) return BK_PALETTES[d].bg;
+  return BK_COLORS[display.charCodeAt(0) % BK_COLORS.length];
+}
+
+function BookmakerLogo({ bookmaker, display }: { bookmaker: string; display: string }) {
+  const [failed, setFailed] = useState(false);
+  const k = normKey(bookmaker); const d = normKey(display);
+  const domain = BK_DOMAINS[k] || BK_DOMAINS[d];
+  if (domain && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+        alt={display}
+        width={14}
+        height={14}
+        className="rounded-[3px] object-contain shrink-0"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <span className={cn(
+      'inline-flex shrink-0 items-center justify-center rounded-[3px] text-[7px] font-bold text-white h-3.5 w-3.5',
+      fallbackBg(bookmaker, display)
+    )}>
+      {display.slice(0, 2).toUpperCase()}
+    </span>
+  );
 }
 
 export function BookmakerOddsStrip({ matchId, matchSlug, hasDraw }: BookmakerOddsStripProps) {
@@ -46,19 +107,21 @@ export function BookmakerOddsStrip({ matchId, matchSlug, hasDraw }: BookmakerOdd
   const lines = data?.lines ?? [];
   const actualHasDraw = data?.hasDraw ?? hasDraw;
 
-  const outcomes: Array<{ key: 'home' | 'draw' | 'away'; label: string; linkKey: 'home' | 'draw' | 'away' }> = [
-    { key: 'home', label: '1', linkKey: 'home' },
-    ...(actualHasDraw ? [{ key: 'draw' as const, label: 'X', linkKey: 'draw' as const }] : []),
-    { key: 'away', label: '2', linkKey: 'away' },
+  const outcomes: Array<{ key: 'home' | 'draw' | 'away'; label: string }> = [
+    { key: 'home', label: '1' },
+    ...(actualHasDraw ? [{ key: 'draw' as const, label: 'X' }] : []),
+    { key: 'away', label: '2' },
   ];
 
   const bestPrices = {
-    home: lines.length ? Math.max(...lines.map(l => l.home)) : 0,
+    home: lines.length ? Math.max(...lines.map(l => l.home).filter(v => v > 1)) : 0,
     draw: lines.length && actualHasDraw
-      ? Math.max(...lines.filter(l => l.draw !== undefined).map(l => l.draw!))
-      : 0,
-    away: lines.length ? Math.max(...lines.map(l => l.away)) : 0,
+      ? Math.max(...lines.filter(l => l.draw !== undefined).map(l => l.draw!).filter(v => v > 1)) : 0,
+    away: lines.length ? Math.max(...lines.map(l => l.away).filter(v => v > 1)) : 0,
   };
+
+  // Odd column width — narrower when draw present, wider when no-draw sport
+  const oddW = actualHasDraw ? 'w-11' : 'w-14';
 
   return (
     <div className="mt-1.5">
@@ -78,11 +141,12 @@ export function BookmakerOddsStrip({ matchId, matchSlug, hasDraw }: BookmakerOdd
           {isLoading ? (
             <div className="p-2 space-y-1.5">
               {[0, 1, 2].map(i => (
-                <div key={i} className="flex animate-pulse gap-1.5">
-                  <div className="h-5 w-16 rounded bg-muted" />
-                  <div className="h-5 w-10 rounded bg-muted" />
-                  <div className="h-5 w-10 rounded bg-muted" />
-                  <div className="h-5 w-10 rounded bg-muted" />
+                <div key={i} className="flex animate-pulse gap-1.5 items-center">
+                  <div className="h-3.5 w-3.5 rounded-[3px] bg-muted shrink-0" />
+                  <div className="h-3 w-16 rounded bg-muted flex-1" />
+                  <div className="h-4 w-8 rounded bg-muted" />
+                  {actualHasDraw && <div className="h-4 w-8 rounded bg-muted" />}
+                  <div className="h-4 w-8 rounded bg-muted" />
                 </div>
               ))}
             </div>
@@ -99,81 +163,80 @@ export function BookmakerOddsStrip({ matchId, matchSlug, hasDraw }: BookmakerOdd
             </div>
           ) : (
             <>
-              {/*
-                HORIZONTAL layout: outcomes are ROWS, bookmakers are COLUMNS.
-                Each outcome row scrolls right when there are many bookmakers.
-              */}
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-max border-collapse text-[11px]">
-                  {/* Header row — bookmaker names */}
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th className="sticky left-0 z-10 bg-muted/30 px-2.5 py-1.5 text-left font-semibold uppercase tracking-wide text-muted-foreground">
-                        Outcome
-                      </th>
-                      {lines.map(line => (
-                        <th key={line.bookmaker} className="px-2 py-1.5 text-center font-medium text-foreground whitespace-nowrap">
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className={cn('inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[8px] font-bold text-white', bkColor(line.display))}>
-                              {line.display.charAt(0).toUpperCase()}
-                            </span>
-                            <span className="max-w-[60px] truncate text-[9px] text-muted-foreground">{line.display}</span>
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    {outcomes.map(({ key, label }) => {
-                      const best = bestPrices[key];
+              {/* Column headers */}
+              <div className="flex items-center gap-1 border-b border-border/60 bg-muted/20 px-2 py-1">
+                <span className="flex-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Bookmaker
+                </span>
+                {outcomes.map(o => (
+                  <span
+                    key={o.key}
+                    className={cn('shrink-0 text-center text-[10px] font-black text-foreground', oddW)}
+                  >
+                    {o.label}
+                  </span>
+                ))}
+              </div>
+
+              {/* One row per bookmaker */}
+              <div className="divide-y divide-border/40">
+                {lines.map(line => (
+                  <div
+                    key={line.bookmaker}
+                    className="flex items-center gap-1 px-2 py-1 hover:bg-muted/10 transition-colors"
+                  >
+                    {/* Logo + name */}
+                    <div className="flex flex-1 items-center gap-1.5 min-w-0">
+                      <BookmakerLogo bookmaker={line.bookmaker} display={line.display} />
+                      <span className="text-[10px] text-foreground truncate">{line.display}</span>
+                    </div>
+
+                    {/* Odds */}
+                    {outcomes.map(o => {
+                      const val = line[o.key];
+                      const href = line.links?.[o.key];
+                      const isBest = typeof val === 'number' && val === bestPrices[o.key] && bestPrices[o.key] > 1;
+                      const invalid = val === undefined || val === null || (typeof val === 'number' && val <= 1);
+
+                      if (invalid) {
+                        return (
+                          <span key={o.key} className={cn('shrink-0 text-center text-[10px] text-muted-foreground/40', oddW)}>
+                            —
+                          </span>
+                        );
+                      }
+
+                      const formatted = formatOdds(val as number, settings.oddsFormat);
+                      const chip = (
+                        <span className={cn(
+                          'inline-block w-full rounded px-0.5 py-0.5 text-center font-mono text-[10px] font-semibold tabular-nums',
+                          isBest
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30'
+                            : 'text-foreground hover:bg-muted/60',
+                        )}>
+                          {formatted}
+                        </span>
+                      );
+
                       return (
-                        <tr key={key} className="hover:bg-muted/20 transition-colors">
-                          <td className="sticky left-0 z-10 bg-card px-2.5 py-1.5 font-semibold text-foreground">
-                            {label}
-                          </td>
-                          {lines.map(line => {
-                            const val = line[key as 'home' | 'draw' | 'away'];
-                            const href = line.links?.[key as 'home' | 'draw' | 'away'];
-                            const isBest = typeof val === 'number' && val === best && best > 0;
-
-                            if (val === undefined || val === null || (typeof val === 'number' && val <= 1)) {
-                              return (
-                                <td key={line.bookmaker} className="px-2 py-1.5 text-center text-muted-foreground">—</td>
-                              );
-                            }
-
-                            const formatted = formatOdds(val as number, settings.oddsFormat);
-                            const cellClass = cn(
-                              'rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums transition-colors',
-                              isBest
-                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30'
-                                : 'text-foreground',
-                            );
-
-                            return (
-                              <td key={line.bookmaker} className="px-2 py-1.5 text-center">
-                                {href ? (
-                                  <a
-                                    href={href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className={cn(cellClass, 'hover:opacity-80 cursor-pointer inline-block')}
-                                    title={`Bet at ${line.display}`}
-                                  >
-                                    {formatted}
-                                  </a>
-                                ) : (
-                                  <span className={cellClass}>{formatted}</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
+                        <div key={o.key} className={cn('shrink-0', oddW)}>
+                          {href ? (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="nofollow noopener noreferrer sponsored"
+                              onClick={(e) => e.stopPropagation()}
+                              className="block hover:opacity-80 transition-opacity"
+                              title={`${o.label} @ ${formatted} — ${line.display}`}
+                            >
+                              {chip}
+                            </a>
+                          ) : chip}
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </div>
+                ))}
               </div>
 
               {/* Footer */}
