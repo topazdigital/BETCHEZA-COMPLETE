@@ -403,46 +403,133 @@ const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
 
 // Detect a "tell me about / pick for this match" intent
 const MATCH_QUESTION_RE = /who.*win|who.*better|predict|what.*think|should.*bet|your.*pick|your.*take|your.*tip|recommend|analysis|value.*bet|best.*bet|best.*market|opinion|thoughts|breakdown|any.*good.*bet|worth.*bet|go.*with|lean.*toward|favourite.*win|upset/i;
+// Detect a time/schedule question
+const TIME_QUESTION_RE = /what time|when.*kick|kick.*off|when.*start|when.*play|what.*time.*match|match.*time|what.*hour|schedule|kick.?off time/i;
+// Detect a "is it live / what's the score" question
+const LIVE_QUESTION_RE = /is it live|score|current score|what.*score|is.*playing|playing now|started|in progress/i;
+
+interface LiveMatchInfo {
+  home: string;
+  away: string;
+  time?: string;        // e.g. "23:00 EAT"
+  dateLabel?: string;   // e.g. "today", "tomorrow"
+  league?: string;
+  homeOdds?: number;
+  drawOdds?: number;
+  awayOdds?: number;
+  isLive?: boolean;
+  score?: string;       // e.g. "2-1"
+  minute?: string;      // e.g. "75'"
+}
 
 /**
- * Try to find a match in the LIVE CONTEXT string whose team names match the
- * user's query. Used when the user is NOT on a match page (no matchCtx) but
- * is asking about a specific fixture visible in the live fixtures list.
+ * Find ANY live-context match line whose team names include a token from the
+ * user's query. Returns rich info — time, league, odds, live score.
  */
-function findMatchInLiveCtx(userText: string, liveCtx: string): ParsedMatch | null {
+function findLiveCtxMatch(userText: string, liveCtx: string): LiveMatchInfo | null {
   if (!liveCtx || !userText) return null;
   const tokens = userText.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 3);
   if (tokens.length === 0) return null;
 
   for (const line of liveCtx.split('\n')) {
     if (!line.startsWith('•')) continue;
-    const hasToken = tokens.some(t => line.toLowerCase().includes(t));
+    const lower = line.toLowerCase();
+    const hasToken = tokens.some(t => lower.includes(t));
     if (!hasToken) continue;
 
-    // Scheduled: • Team A vs Team B — HH:MM ... League [home/draw/away]
-    const sched = line.match(/•\s+(.+?)\s+vs\s+(.+?)\s+—[^[]*\[([0-9.]+)\/([0-9.]+)(?:\/([0-9.]+))?\]/);
-    if (sched) {
-      const [, home, away, a, b, c] = sched;
-      const hasThree = !!c;
+    // Live: • [LIVE 75'] Team A 2-1 Team B — League
+    const livePat = line.match(/•\s+\[LIVE\s*([^\]]*)\]\s+(.+?)\s+(\d+)-(\d+)\s+(.+?)\s+—\s*(.+)/);
+    if (livePat) {
       return {
-        home: home.trim(), away: away.trim(),
-        homeOdds: parseFloat(a) || undefined,
-        drawOdds: hasThree ? parseFloat(b) || undefined : undefined,
-        awayOdds: hasThree ? parseFloat(c!) || undefined : parseFloat(b) || undefined,
+        home: livePat[2].trim(),
+        away: livePat[5].trim(),
+        league: livePat[6].trim(),
+        isLive: true,
+        minute: livePat[1].trim() || undefined,
+        score: `${livePat[3]}-${livePat[4]}`,
+        // Try to grab odds if appended
+        ...(line.match(/\[([0-9.]+)\/([0-9.]+)(?:\/([0-9.]+))?\]/) ? (() => {
+          const m = line.match(/\[([0-9.]+)\/([0-9.]+)(?:\/([0-9.]+))?\]/)!;
+          return { homeOdds: parseFloat(m[1]) || undefined, drawOdds: m[3] ? parseFloat(m[2]) || undefined : undefined, awayOdds: m[3] ? parseFloat(m[3]) || undefined : parseFloat(m[2]) || undefined };
+        })() : {}),
       };
     }
 
-    // Live: • [LIVE 75'] Team A 2-1 Team B — League
-    const live = line.match(/•\s+\[LIVE[^\]]*\]\s+(.+?)\s+\d+-\d+\s+(.+?)\s+—/);
-    if (live) {
-      const scoreBlock = line.match(/(\d+)-(\d+)/);
+    // Scheduled: • Team A vs Team B — HH:MM EAT today/tomorrow/date, League [h/d/a]
+    const schedPat = line.match(/•\s+(.+?)\s+vs\s+(.+?)\s+—\s+([0-9:]+\s+\w+\s+\w+|\w+),\s+(.+?)(?:\s+\[([0-9.]+)\/([0-9.]+)(?:\/([0-9.]+))?\])?$/);
+    if (schedPat) {
+      const timePart = schedPat[3].trim();   // e.g. "23:00 EAT today"
+      const leaguePart = schedPat[4].trim();
       return {
-        home: live[1].trim(), away: live[2].trim(),
-        status: `LIVE (score ${scoreBlock?.[1] ?? 0}-${scoreBlock?.[2] ?? 0})`,
+        home: schedPat[1].trim(),
+        away: schedPat[2].trim(),
+        time: timePart.replace(/\b(today|tomorrow)\b.*/, '').trim() || timePart,
+        dateLabel: /today/i.test(timePart) ? 'today' : /tomorrow/i.test(timePart) ? 'tomorrow' : undefined,
+        league: leaguePart,
+        homeOdds: schedPat[5] ? parseFloat(schedPat[5]) || undefined : undefined,
+        drawOdds: schedPat[7] ? parseFloat(schedPat[6]) || undefined : undefined,
+        awayOdds: schedPat[7] ? parseFloat(schedPat[7]) || undefined : (schedPat[6] ? parseFloat(schedPat[6]) || undefined : undefined),
       };
+    }
+
+    // Fallback minimal: extract vs teams + time from any line
+    const minPat = line.match(/•\s+(.+?)\s+vs\s+(.+?)\s+—\s+(.+)/);
+    if (minPat) {
+      return { home: minPat[1].trim(), away: minPat[2].trim(), time: minPat[3].split(',')[0].trim(), league: minPat[3].split(',').slice(1).join(',').trim() || undefined };
     }
   }
   return null;
+}
+
+/** Generate a plain answer from live match info, shaped by what the user asked. */
+function liveMatchReply(info: LiveMatchInfo, userText: string): string {
+  const fixture = `${info.home} vs ${info.away}`;
+  const leaguePart = info.league ? ` (${info.league})` : '';
+
+  // Time question
+  if (TIME_QUESTION_RE.test(userText)) {
+    if (info.isLive) {
+      return `${fixture} is currently LIVE${info.minute ? ` — ${info.minute}` : ''}${info.score ? `, score ${info.score}` : ''}${leaguePart}.`;
+    }
+    const when = [info.time, info.dateLabel].filter(Boolean).join(' ') || 'soon';
+    return `${fixture}${leaguePart} kicks off at ${when}. You can tap the match on the Matches page to follow it live.`;
+  }
+
+  // Live/score question
+  if (LIVE_QUESTION_RE.test(userText)) {
+    if (info.isLive) {
+      return `Yes, ${fixture} is live right now${info.minute ? ` (${info.minute})` : ''}. Current score: ${info.score ?? 'unknown'}${leaguePart}. Open the match page for live stats and in-play odds.`;
+    }
+    const when = [info.time, info.dateLabel].filter(Boolean).join(' ');
+    return `Not yet — ${fixture}${leaguePart} is scheduled${when ? ` for ${when}` : ''}. It hasn't kicked off.`;
+  }
+
+  // Betting / pick question — use existing matchAnalysisReply logic if odds available
+  if (MATCH_QUESTION_RE.test(userText) && (info.homeOdds || info.awayOdds)) {
+    const parsed: ParsedMatch = {
+      home: info.home, away: info.away,
+      homeOdds: info.homeOdds, drawOdds: info.drawOdds, awayOdds: info.awayOdds,
+      status: info.isLive ? info.score : undefined,
+    };
+    return matchAnalysisReply(parsed);
+  }
+
+  // Generic match question — give everything we know
+  const parts: string[] = [];
+  if (info.isLive) {
+    parts.push(`${fixture}${leaguePart} is LIVE${info.minute ? ` (${info.minute})` : ''}${info.score ? `, score ${info.score}` : ''}.`);
+  } else {
+    const when = [info.time, info.dateLabel].filter(Boolean).join(' ');
+    parts.push(`${fixture}${leaguePart}${when ? ` kicks off ${when}` : ''}.`);
+  }
+  if (info.homeOdds && info.awayOdds) {
+    const fav = (info.homeOdds < (info.awayOdds ?? 99)) ? info.home : info.away;
+    const favOdds = Math.min(info.homeOdds, info.awayOdds ?? 99);
+    parts.push(`Market favourite: ${fav} at ${favOdds}.`);
+    if (info.drawOdds) parts.push(`Draw: ${info.drawOdds}.`);
+  }
+  parts.push(`Open the match page for the full prediction, stats and bookmaker odds.`);
+  return parts.join(' ');
 }
 
 const FALLBACK = "Ask me about a specific match, a market (BTTS, Over/Under, 1X2, Double Chance, Asian Handicap), bankroll strategy, or how any feature on the app works — I'll give you a concrete answer.";
@@ -454,10 +541,11 @@ function localReply(userText: string, matchCtx?: string, liveCtx?: string): stri
     if (parsed) return matchAnalysisReply(parsed);
   }
 
-  // 2. If NOT on match page but team name appears in live context — still give real data
-  if (!matchCtx && liveCtx && MATCH_QUESTION_RE.test(userText)) {
-    const parsed = findMatchInLiveCtx(userText, liveCtx);
-    if (parsed) return matchAnalysisReply(parsed);
+  // 2. Team name found in live context → answer the specific question type
+  //    (time, score, live status, pick — anything the user asks)
+  if (liveCtx) {
+    const info = findLiveCtxMatch(userText, liveCtx);
+    if (info) return liveMatchReply(info, userText);
   }
 
   // 3. Pattern-matched strategy / market replies
