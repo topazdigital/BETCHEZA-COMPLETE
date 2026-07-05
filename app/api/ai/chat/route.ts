@@ -260,6 +260,114 @@ async function buildMatchContext(pageContext: string): Promise<string> {
 }
 
 // ----- Lightweight rules-based fallback if the LLM is unreachable -----
+
+// Parses the CURRENT MATCH block built by buildMatchContext() so localReply()
+// can give a data-driven answer even without an LLM.
+interface ParsedMatch {
+  home: string; away: string;
+  league?: string; sport?: string;
+  homeOdds?: number; drawOdds?: number; awayOdds?: number;
+  homeForm?: string; awayForm?: string;
+  homeRecord?: string; awayRecord?: string;
+  status?: string; venue?: string;
+}
+function parseMatchCtx(ctx: string): ParsedMatch | null {
+  if (!ctx) return null;
+  const vsLine = ctx.match(/^- (.+?) vs (.+?)$/m);
+  if (!vsLine) return null;
+  const home = vsLine[1].trim();
+  const away = vsLine[2].trim();
+
+  const leagueLine = ctx.match(/^- (.+?) \((.+?)\)$/m);
+  const oddsLine   = ctx.match(/Odds: Home ([\d.]+)(?:\s*·\s*Draw ([\d.]+))?\s*·\s*Away ([\d.]+)/);
+  // form lines: "- Brazil recent form: WWLWD"
+  const formLines  = [...ctx.matchAll(/- .+? recent form: ([WDLX]+)/g)];
+  const recLines   = [...ctx.matchAll(/- .+? record: (.+?)$/gm)];
+  const statusLine = ctx.match(/^- (kicks off|LIVE|FINAL) (.+)$/m);
+  const venueLine  = ctx.match(/^- Venue: (.+)$/m);
+
+  return {
+    home, away,
+    league:      leagueLine?.[1],
+    sport:       leagueLine?.[2],
+    homeOdds:    oddsLine ? parseFloat(oddsLine[1]) : undefined,
+    drawOdds:    oddsLine?.[2] ? parseFloat(oddsLine[2]) : undefined,
+    awayOdds:    oddsLine ? parseFloat(oddsLine[3]) : undefined,
+    homeForm:    formLines[0]?.[1],
+    awayForm:    formLines[1]?.[1],
+    homeRecord:  recLines[0]?.[1],
+    awayRecord:  recLines[1]?.[1],
+    status:      statusLine ? `${statusLine[1]} ${statusLine[2]}` : undefined,
+    venue:       venueLine?.[1],
+  };
+}
+
+function formPoints(form: string): number {
+  let pts = 0;
+  for (const c of form) { if (c === 'W') pts += 3; else if (c === 'D') pts += 1; }
+  return pts;
+}
+function formLabel(pts: number, games: number): string {
+  const pct = pts / (games * 3);
+  if (pct >= 0.75) return 'excellent form';
+  if (pct >= 0.55) return 'good form';
+  if (pct >= 0.35) return 'mixed form';
+  return 'poor form';
+}
+
+// Generates a data-driven match analysis when the AI is in local-fallback mode.
+function matchAnalysisReply(m: ParsedMatch): string {
+  const hasOdds = m.homeOdds && m.awayOdds;
+  const lines: string[] = [];
+
+  if (hasOdds) {
+    const favTeam  = m.homeOdds! < m.awayOdds! ? m.home : (m.awayOdds! < m.homeOdds! ? m.away : null);
+    const favOdds  = favTeam === m.home ? m.homeOdds! : m.awayOdds!;
+    const undOdds  = favTeam === m.home ? m.awayOdds! : m.homeOdds!;
+    const undTeam  = favTeam === m.home ? m.away : m.home;
+
+    if (favTeam) {
+      lines.push(`Market lines: ${m.home} ${m.homeOdds}${m.drawOdds ? ` · Draw ${m.drawOdds}` : ''} · ${m.away} ${m.awayOdds}. ${favTeam} are the market favourite at ${favOdds} — ${undTeam} the upset at ${undOdds}.`);
+    } else {
+      lines.push(`Dead-even contest — ${m.home} ${m.homeOdds} · Draw ${m.drawOdds ?? '—'} · ${m.away} ${m.awayOdds}. Both sides priced the same.`);
+    }
+
+    // Form analysis
+    if (m.homeForm && m.awayForm) {
+      const hPts = formPoints(m.homeForm);
+      const aPts = formPoints(m.awayForm);
+      const hGames = m.homeForm.length;
+      const aGames = m.awayForm.length;
+      lines.push(`Form: ${m.home} ${m.homeForm} (${formLabel(hPts, hGames)}) vs ${m.away} ${m.awayForm} (${formLabel(aPts, aGames)}).`);
+      const formEdge = hPts > aPts ? m.home : (aPts > hPts ? m.away : null);
+      if (formEdge && formEdge !== favTeam) {
+        lines.push(`${formEdge} are in better recent shape than the odds suggest — worth checking if that's already priced in.`);
+      } else if (formEdge && formEdge === favTeam) {
+        lines.push(`${formEdge}'s form backs the market — the favourite call looks well-founded.`);
+      }
+    } else if (m.homeForm) {
+      lines.push(`${m.home} recent form: ${m.homeForm}.`);
+    } else if (m.awayForm) {
+      lines.push(`${m.away} recent form: ${m.awayForm}.`);
+    }
+
+    // Value hint
+    if (favTeam) {
+      const impliedPct = Math.round((1 / favOdds) * 100);
+      lines.push(`The AI Prediction widget on this page gives a confidence-rated pick. For the value angle: the market implies ${impliedPct}% for ${favTeam} — if you rate them higher, the ${favOdds} has edge.`);
+    }
+  } else if (m.homeForm || m.awayForm) {
+    if (m.homeForm) lines.push(`${m.home} recent form: ${m.homeForm}.`);
+    if (m.awayForm) lines.push(`${m.away} recent form: ${m.awayForm}.`);
+    lines.push('Check the Odds tab on this page for live bookmaker lines, then use the H2H tab to cross-reference historical results.');
+  } else {
+    lines.push(`Odds for ${m.home} vs ${m.away} aren't loaded yet — refresh the page or check the Odds tab for live bookmaker lines.`);
+  }
+
+  if (m.venue) lines.push(`Venue: ${m.venue}.`);
+  return lines.join(' ');
+}
+
 const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
   { patterns: [/1x2.*double chance|double chance.*1x2|difference.*1x2|difference.*double chance|1x2 vs|double chance vs/i],
     reply: "1X2 means you pick exactly one outcome: Home win (1), Draw (X), or Away win (2). Double Chance covers TWO of those three: 1X (home or draw), X2 (draw or away), or 12 (either team wins). Double Chance trades lower odds for much higher security — if you're confident a side won't lose but unsure if they'll draw, 1X or X2 around 1.20–1.40 is the play." },
@@ -292,19 +400,43 @@ const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
   { patterns: [/referral|invite|refer|bonus/i],
     reply: "Go to Dashboard → Refer & Earn to get your personal referral link. Share it — when a friend signs up and verifies their email, you earn KES 100 and they get KES 50. Your referral credit is in-platform only (used for entries, tips, and competitions) and can't be withdrawn." },
 ];
+
+// Detect a "tell me about / pick for this match" intent
+const MATCH_QUESTION_RE = /who.*win|who.*better|predict|what.*think|should.*bet|your.*pick|your.*take|your.*tip|recommend|analysis|value.*bet|best.*bet|best.*market|opinion|thoughts|breakdown|any.*good.*bet|worth.*bet|go.*with|lean.*toward|favourite.*win|upset/i;
+
 const FALLBACK = "Ask me about a specific match, a market (BTTS, Over/Under, 1X2, Double Chance, Asian Handicap), bankroll strategy, or how any feature on the app works — I'll give you a concrete answer.";
-function localReply(userText: string): string {
+
+function localReply(userText: string, matchCtx?: string): string {
+  // If the user is asking about the current match and we have live match data, use it.
+  if (matchCtx && MATCH_QUESTION_RE.test(userText)) {
+    const parsed = parseMatchCtx(matchCtx);
+    if (parsed) return matchAnalysisReply(parsed);
+  }
+
+  // Pattern-matched strategy / market replies
   for (const h of TIPS_HINTS) if (h.patterns.some((p) => p.test(userText))) return h.reply;
+
   if (/^\s*(hi|hello|hey|sup|yo)\b/i.test(userText))
     return "Hey 👋 I'm Betcheza AI — your betting copilot. Ask about picks, markets, value, bankroll, or anything on the app.";
   if (/^\s*(thanks|thank you|cheers)/i.test(userText))
     return "Anytime — bet smart, bet small. Good luck out there.";
+
+  // If we're on a match page, give match-aware fallback rather than generic
+  if (matchCtx) {
+    const parsed = parseMatchCtx(matchCtx);
+    if (parsed) {
+      return `On this match (${parsed.home} vs ${parsed.away}): ask me who to bet on, which market has value (1X2, BTTS, Over/Under, Asian Handicap, Correct Score), or how to read the odds. I'll give you a specific, data-driven take.`;
+    }
+  }
+
   return FALLBACK;
 }
 
 // ----- Main handler -----
 export async function POST(request: NextRequest) {
   let lastUserText = '';
+  // Hoisted so catch block can pass it to localReply for context-aware error replies
+  let matchContext = '';
   try {
     const body = (await request.json()) as ChatRequestBody;
     const history = (body.messages || []).slice(-12); // keep last 12 turns
@@ -320,7 +452,7 @@ export async function POST(request: NextRequest) {
 
     // If the user is on a match page, enrich with structured match info so
     // the LLM can answer "should I bet on Arsenal?" with form, odds, H2H, etc.
-    const matchContext = await buildMatchContext(body.context || '');
+    matchContext = await buildMatchContext(body.context || '');
 
     // Per-session memory: pick an angle this user/browser hasn't seen recently and
     // ban opening phrases the model used in earlier turns. This is the core of
@@ -354,7 +486,7 @@ export async function POST(request: NextRequest) {
     if (!openai) {
       // No provider configured — return a deterministic local reply so the
       // chat still feels responsive and never throws.
-      return NextResponse.json({ reply: localReply(lastUserText), source: 'fallback' });
+      return NextResponse.json({ reply: localReply(lastUserText, matchContext), source: 'fallback' });
     }
 
     // gpt-5 series is a thinking model: max_completion_tokens covers BOTH the
@@ -383,14 +515,14 @@ export async function POST(request: NextRequest) {
     const reply = completion.choices?.[0]?.message?.content?.trim();
     if (!reply) {
       console.warn('[ai/chat] empty completion', { model: MODEL, finish: completion.choices?.[0]?.finish_reason });
-      return NextResponse.json({ reply: localReply(lastUserText), source: 'fallback-empty' });
+      return NextResponse.json({ reply: localReply(lastUserText, matchContext), source: 'fallback-empty' });
     }
     rememberReply(sessionId, reply);
     return NextResponse.json({ reply, source: 'openai', model: MODEL });
   } catch (e) {
     console.error('[ai/chat] error', e);
     return NextResponse.json(
-      { reply: localReply(lastUserText) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
+      { reply: localReply(lastUserText, matchContext) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
       { status: 200 } // soft-fail so chat keeps working
     );
   }
