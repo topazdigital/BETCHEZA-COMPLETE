@@ -401,8 +401,8 @@ const TIPS_HINTS: Array<{ patterns: RegExp[]; reply: string }> = [
     reply: "Go to Dashboard → Refer & Earn to get your personal referral link. Share it — when a friend signs up and verifies their email, you earn KES 100 and they get KES 50. Your referral credit is in-platform only (used for entries, tips, and competitions) and can't be withdrawn." },
 ];
 
-// Detect a "tell me about / pick for this match" intent
-const MATCH_QUESTION_RE = /who.*win|who.*better|predict|what.*think|should.*bet|your.*pick|your.*take|your.*tip|recommend|analysis|value.*bet|best.*bet|best.*market|opinion|thoughts|breakdown|any.*good.*bet|worth.*bet|go.*with|lean.*toward|favourite.*win|upset/i;
+// Detect a "tell me about / pick for this match" intent (broad — catches casual phrasing)
+const MATCH_QUESTION_RE = /who.*win|who.*better|predict|what.*think|should.*bet|your.*pick|your.*take|your.*tip|recommend|analysis|value.*bet|best.*bet|best.*market|opinion|thoughts|breakdown|any.*good.*bet|worth.*bet|go.*with|lean.*toward|favourite.*win|upset|who.*fancy|do.*fancy|fancy.*who|who.*like|like.*chances|back.*who|who.*back|go.*for|pick.*match|tip.*match|which.*team|who.*side|what.*bet/i;
 // Detect a time/schedule question
 const TIME_QUESTION_RE = /what time|when.*kick|kick.*off|when.*start|when.*play|what.*time.*match|match.*time|what.*hour|schedule|kick.?off time/i;
 // Detect a "is it live / what's the score" question
@@ -424,17 +424,23 @@ interface LiveMatchInfo {
 
 /**
  * Find ANY live-context match line whose team names include a token from the
- * user's query. Returns rich info — time, league, odds, live score.
+ * user's query OR from recent conversation history (so "who do you fancy?"
+ * asked after "Brazil vs Norway what time?" still finds the right fixture).
  */
-function findLiveCtxMatch(userText: string, liveCtx: string): LiveMatchInfo | null {
-  if (!liveCtx || !userText) return null;
-  const tokens = userText.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 3);
-  if (tokens.length === 0) return null;
+function findLiveCtxMatch(userText: string, liveCtx: string, recentText?: string): LiveMatchInfo | null {
+  if (!liveCtx) return null;
+  // Combine current query + recent conversation for token extraction
+  const combined = [userText, recentText || ''].join(' ');
+  const tokens = combined.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 3);
+  // Filter out stop-words that would produce false positives
+  const STOP = new Set(['who','what','when','where','how','the','and','for','you','your','are','was','will','can','all','its','our','this','that','with','have','from','they','been','had','not','but','just','more','some','than','like','think','about','should','would','could','does','into','then']);
+  const queryTokens = tokens.filter(t => !STOP.has(t));
+  if (queryTokens.length === 0) return null;
 
   for (const line of liveCtx.split('\n')) {
     if (!line.startsWith('•')) continue;
     const lower = line.toLowerCase();
-    const hasToken = tokens.some(t => lower.includes(t));
+    const hasToken = queryTokens.some(t => lower.includes(t));
     if (!hasToken) continue;
 
     // Live: • [LIVE 75'] Team A 2-1 Team B — League
@@ -534,17 +540,19 @@ function liveMatchReply(info: LiveMatchInfo, userText: string): string {
 
 const FALLBACK = "Ask me about a specific match, a market (BTTS, Over/Under, 1X2, Double Chance, Asian Handicap), bankroll strategy, or how any feature on the app works — I'll give you a concrete answer.";
 
-function localReply(userText: string, matchCtx?: string, liveCtx?: string): string {
-  // 1. If on a match page and asking about that match — use real match data
-  if (matchCtx && MATCH_QUESTION_RE.test(userText)) {
-    const parsed = parseMatchCtx(matchCtx);
-    if (parsed) return matchAnalysisReply(parsed);
+function localReply(userText: string, matchCtx?: string, liveCtx?: string, recentText?: string): string {
+  // 1. On a match page — try match-specific reply
+  if (matchCtx) {
+    // Broad pick check (MATCH_QUESTION_RE already extended; also catch bare "who do you fancy?"-style)
+    if (MATCH_QUESTION_RE.test(userText) || MATCH_QUESTION_RE.test(recentText || '')) {
+      const parsed = parseMatchCtx(matchCtx);
+      if (parsed) return matchAnalysisReply(parsed);
+    }
   }
 
-  // 2. Team name found in live context → answer the specific question type
-  //    (time, score, live status, pick — anything the user asks)
+  // 2. Team name found in live context (current query OR recent history) → answer it
   if (liveCtx) {
-    const info = findLiveCtxMatch(userText, liveCtx);
+    const info = findLiveCtxMatch(userText, liveCtx, recentText);
     if (info) return liveMatchReply(info, userText);
   }
 
@@ -556,7 +564,7 @@ function localReply(userText: string, matchCtx?: string, liveCtx?: string): stri
   if (/^\s*(thanks|thank you|cheers)/i.test(userText))
     return "Anytime — bet smart, bet small. Good luck out there.";
 
-  // 4. On a match page but generic question — tell them what to ask
+  // 4. On a match page but unrecognised question — still surface match context
   if (matchCtx) {
     const parsed = parseMatchCtx(matchCtx);
     if (parsed) {
@@ -573,6 +581,7 @@ export async function POST(request: NextRequest) {
   // Hoisted so catch block can pass them to localReply for context-aware error replies
   let matchContext = '';
   let liveContext  = '';
+  let recentText   = '';
   try {
     const body = (await request.json()) as ChatRequestBody;
     const history = (body.messages || []).slice(-12); // keep last 12 turns
@@ -581,6 +590,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ reply: 'Ask me anything about a match, market, or strategy!' });
     }
     lastUserText = lastUser.content;
+
+    // Build recent conversation text (last 4 user turns excluding current) so the
+    // local fallback can pick up team names mentioned earlier in the thread.
+    recentText = history
+      .filter(m => m.role === 'user' && m.content !== lastUserText)
+      .slice(-4)
+      .map(m => m.content)
+      .join(' ');
 
     // Always attach live context — keeps replies grounded in real fixtures/odds.
     // (Cached upstream by getLiveMatches/getUpcomingMatches.)
@@ -622,7 +639,7 @@ export async function POST(request: NextRequest) {
     if (!openai) {
       // No provider configured — return a deterministic local reply so the
       // chat still feels responsive and never throws.
-      return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext), source: 'fallback' });
+      return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext, recentText), source: 'fallback' });
     }
 
     // reasoning_effort is ONLY accepted by o-series models (o1, o3, o4).
@@ -646,7 +663,7 @@ export async function POST(request: NextRequest) {
     const reply = choice?.message?.content?.trim();
     if (!reply) {
       console.warn('[ai/chat] empty completion', { model: MODEL, finish: choice?.finish_reason });
-      return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext), source: 'fallback-empty' });
+      return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext, recentText), source: 'fallback-empty' });
     }
     rememberReply(sessionId, reply);
     return NextResponse.json({ reply, source: 'openai', model: MODEL });
@@ -657,7 +674,7 @@ export async function POST(request: NextRequest) {
     const status  = (e as { status?: number })?.status;
     console.error('[ai/chat] OpenAI call failed', { model: MODEL, status, message: errMsg });
     return NextResponse.json(
-      { reply: localReply(lastUserText, matchContext, liveContext) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
+      { reply: localReply(lastUserText, matchContext, liveContext, recentText) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
       { status: 200 } // soft-fail so chat keeps working
     );
   }
