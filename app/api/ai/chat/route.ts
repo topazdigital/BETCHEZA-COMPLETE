@@ -489,38 +489,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ reply: localReply(lastUserText, matchContext), source: 'fallback' });
     }
 
-    // gpt-5 series is a thinking model: max_completion_tokens covers BOTH the
-    // hidden reasoning tokens AND the visible reply. With a small budget it
-    // burns the whole allowance on reasoning and returns an empty string
-    // (finish_reason="length"). For a chat assistant we want a fast, low-
-    // reasoning response, so we set reasoning.effort=minimal and give it a
-    // generous budget. These params are silently ignored by older models.
-    type ReasoningCreate = Parameters<typeof openai.chat.completions.create>[0] & {
-      reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high';
-    };
-    const params: ReasoningCreate = {
+    // reasoning_effort is ONLY accepted by o-series models (o1, o3, o4).
+    // Sending it to gpt-4o / gpt-4o-mini causes a 400 error.
+    const isReasoningModel = /^o\d/i.test(MODEL);
+
+    const params: Parameters<typeof openai.chat.completions.create>[0] = {
       model: MODEL,
       messages: [
         { role: 'system', content: system },
         ...history.map((m) => ({ role: m.role, content: m.content })),
       ],
-      max_completion_tokens: 2500,
-      // 'low' gives noticeably smarter, more specific answers (cites form, odds,
-      // tactical detail) at a tiny latency cost vs 'minimal'. Worth the trade
-      // for a chat assistant — feels meaningfully more analytical.
-      reasoning_effort: 'low',
+      // max_tokens for standard models, max_completion_tokens for o-series
+      ...(isReasoningModel
+        ? { max_completion_tokens: 2500, reasoning_effort: 'low' } as object
+        : { max_tokens: 600, temperature: 0.7 }),
     };
     const completion = await openai.chat.completions.create(params);
 
-    const reply = completion.choices?.[0]?.message?.content?.trim();
+    const choice = (completion as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> }).choices?.[0];
+    const reply = choice?.message?.content?.trim();
     if (!reply) {
-      console.warn('[ai/chat] empty completion', { model: MODEL, finish: completion.choices?.[0]?.finish_reason });
+      console.warn('[ai/chat] empty completion', { model: MODEL, finish: choice?.finish_reason });
       return NextResponse.json({ reply: localReply(lastUserText, matchContext), source: 'fallback-empty' });
     }
     rememberReply(sessionId, reply);
     return NextResponse.json({ reply, source: 'openai', model: MODEL });
-  } catch (e) {
-    console.error('[ai/chat] error', e);
+  } catch (e: unknown) {
+    // Log the full error so it's visible in server logs — crucial for diagnosing
+    // 400 bad-param errors (wrong model params), quota errors, network failures etc.
+    const errMsg = e instanceof Error ? e.message : String(e);
+    const status  = (e as { status?: number })?.status;
+    console.error('[ai/chat] OpenAI call failed', { model: MODEL, status, message: errMsg });
     return NextResponse.json(
       { reply: localReply(lastUserText, matchContext) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
       { status: 200 } // soft-fail so chat keeps working
