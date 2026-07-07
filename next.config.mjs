@@ -71,13 +71,9 @@ const nextConfig = {
   ],
   async redirects() {
     return [
-      // www → non-www canonical redirect (safe now that Apache/DA is no longer in the chain)
-      {
-        source: '/:path*',
-        has: [{ type: 'host', value: 'www.betcheza.co.ke' }],
-        destination: 'https://betcheza.co.ke/:path*',
-        permanent: true,
-      },
+      // NOTE: www → non-www redirect is handled by Apache on the production server.
+      // Do NOT add it here — it creates an infinite redirect loop:
+      //   Apache forces www.betcheza.co.ke → Next.js redirects back → Apache forces www → loop.
       {
         source: '/3-daily-odds-strategy',
         destination: '/strategy',
