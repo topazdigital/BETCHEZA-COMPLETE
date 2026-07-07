@@ -16,13 +16,14 @@ module.exports = {
       // ── Restart policy ─────────────────────────────────────────────────────
       autorestart: true,
       watch: false,
-      max_restarts: 20,
-      // min_uptime: app must stay alive at least 20s or PM2 counts it as a
-      // failed start and backs off. Prevents rapid crash-loop restarts.
-      min_uptime: '20s',
-      // Restart delay: 1s is fast enough for a quick recovery but avoids
-      // hammering ESPN/DB on an instant retry.
-      restart_delay: 1000,
+      // No cap on restarts — the app should always come back up.
+      // PM2 backs off exponentially via restart_delay so this is not a tight loop.
+      max_restarts: 0,
+      // min_uptime: app must stay alive at least 10s or PM2 counts it as a
+      // failed start and backs off.
+      min_uptime: '10s',
+      // Restart delay: 2s avoids hammering ESPN/DB on an instant retry.
+      restart_delay: 2000,
       // post_start: warm the match cache after every restart so the first
       // user request is never a cold-start ESPN fetch.
       // sleep 10 — enough for Next.js to finish binding the port (listen_timeout

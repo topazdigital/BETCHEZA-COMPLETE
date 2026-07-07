@@ -1167,43 +1167,50 @@ async function overlayLiveScores(days: DayPrediction[]): Promise<DayPrediction[]
 }
 
 export async function GET() {
-  const current = await loadCurrentWeek();
-  current.days = await autoSettleCompletedPicks(current.days);
-  current.days = await overlayLiveScores(current.days);
-  const past = await loadPastWeeks();
+  try {
+    const current = await loadCurrentWeek();
+    current.days = await autoSettleCompletedPicks(current.days);
+    current.days = await overlayLiveScores(current.days);
+    const past = await loadPastWeeks();
 
-  // Admin approval gate: hide unapproved today's picks from non-admin users.
-  // If the earliest match kickoff is ≤60 minutes away and picks exist,
-  // auto-approve as a fallback so users are never left without picks.
-  const user = await getCurrentUser().catch(() => null);
-  const isAdmin = user?.role === 'admin';
-  if (!isAdmin) {
-    const todayStr = getTodayStrEAT(new Date());
-    current.days = current.days.map(day => {
-      if (day.date !== todayStr) return day;
-      if (day.isApproved) return day;
-      if (day.picks.length === 0) return day;
-      // Check auto-approve deadline: if first match ≤60 min away, auto-approve
-      const now = Date.now();
-      const firstMatchMs = day.picks.reduce((min, p) => {
-        const t = p.matchTime ? new Date(p.matchTime).getTime() : Infinity;
-        return t < min ? t : min;
-      }, Infinity);
-      const minsUntil = isFinite(firstMatchMs) ? (firstMatchMs - now) / 60000 : Infinity;
-      if (minsUntil <= 60) {
-        // Auto-approve: admin missed the window — release picks to users
-        execute(
-          `UPDATE daily_strategy SET is_approved = 1, approved_at = NOW() WHERE date = ? AND is_approved = 0`,
-          [todayStr]
-        ).catch(() => undefined);
-        return { ...day, isApproved: true };
-      }
-      // Still awaiting admin review — hide picks
-      return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
-    });
+    // Admin approval gate: hide unapproved today's picks from non-admin users.
+    // If the earliest match kickoff is ≤60 minutes away and picks exist,
+    // auto-approve as a fallback so users are never left without picks.
+    const user = await getCurrentUser().catch(() => null);
+    const isAdmin = user?.role === 'admin';
+    if (!isAdmin) {
+      const todayStr = getTodayStrEAT(new Date());
+      current.days = current.days.map(day => {
+        if (day.date !== todayStr) return day;
+        if (day.isApproved) return day;
+        if (day.picks.length === 0) return day;
+        // Check auto-approve deadline: if first match ≤60 min away, auto-approve
+        const now = Date.now();
+        const firstMatchMs = day.picks.reduce((min, p) => {
+          const t = p.matchTime ? new Date(p.matchTime).getTime() : Infinity;
+          return t < min ? t : min;
+        }, Infinity);
+        const minsUntil = isFinite(firstMatchMs) ? (firstMatchMs - now) / 60000 : Infinity;
+        if (minsUntil <= 60) {
+          // Auto-approve: admin missed the window — release picks to users
+          execute(
+            `UPDATE daily_strategy SET is_approved = 1, approved_at = NOW() WHERE date = ? AND is_approved = 0`,
+            [todayStr]
+          ).catch(() => undefined);
+          return { ...day, isApproved: true };
+        }
+        // Still awaiting admin review — hide picks
+        return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
+      });
+    }
+
+    return NextResponse.json({ current, past });
+  } catch (err) {
+    console.error('[strategy/predictions] GET error:', err);
+    // Return a safe empty response rather than letting an unhandled error crash the process
+    const weekId = getWeekId(new Date());
+    return NextResponse.json({ current: buildEmptyWeek(weekId), past: [] });
   }
-
-  return NextResponse.json({ current, past });
 }
 
 export async function POST(req: NextRequest) {
