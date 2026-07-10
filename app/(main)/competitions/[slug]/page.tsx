@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: PageParams): Promise<Metadata
 
   if (!comp) {
     return {
-      title: `Competition Not Found | ${siteName}`,
+      title: `Competition Not Found`,
       robots: { index: false, follow: false },
     };
   }
@@ -45,7 +45,7 @@ export async function generateMetadata({ params }: PageParams): Promise<Metadata
     : 'Completed';
 
   // Title: "Weekly Tipster Challenge | Win KES 50,000 | Betcheza"
-  const title = `${comp.name} | Win ${prizeFormatted} | ${siteName}`;
+  const title = `${comp.name} | Win ${prizeFormatted}`;
 
   // Description optimised for click-through
   const topPrize = comp.prizes[0];

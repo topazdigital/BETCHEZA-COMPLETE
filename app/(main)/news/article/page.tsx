@@ -35,8 +35,8 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   const siteName = s.site_name || 'Betcheza';
 
   const title = headline
-    ? `${headline.slice(0, 90)} | ${siteName}`
-    : `Sports News Article | ${siteName}`;
+    ? `${headline.slice(0, 90)}`
+    : `Sports News Article`;
 
   const desc = description
     ? description.slice(0, 160)

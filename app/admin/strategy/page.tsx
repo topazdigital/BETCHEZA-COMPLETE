@@ -251,7 +251,7 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
       const res = await fetch('/api/strategy/predictions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ day: day.day, result: dayResult, picksResults: picksResultsArr, actualScores: picksScoresArr }),
+        body: JSON.stringify({ day: day.day, date: day.date, result: dayResult, picksResults: picksResultsArr, actualScores: picksScoresArr }),
       });
       const d = await res.json();
       if (d.success) {

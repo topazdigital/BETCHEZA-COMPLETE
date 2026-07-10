@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { NEWSLETTER_TEMPLATES } from '@/lib/newsletter-templates';
 
 interface Subscriber {
   id: number | string;
@@ -35,6 +36,14 @@ function EmailModal({
 }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [templateId, setTemplateId] = useState('');
+
+  function applyTemplate(id: string) {
+    setTemplateId(id);
+    if (!id) return;
+    const tpl = NEWSLETTER_TEMPLATES.find(t => t.id === id);
+    if (tpl) { setSubject(tpl.subject); setBody(tpl.body); }
+  }
   const [batchSize, setBatchSize] = useState(50);
   const [delayMin, setDelayMin] = useState(2);
   const [sending, setSending] = useState(false);
@@ -115,6 +124,24 @@ function EmailModal({
           {phase === 'compose' && (
             <>
               {error && <p className="text-xs text-destructive">{error}</p>}
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Template</label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  value={templateId}
+                  onChange={e => applyTemplate(e.target.value)}
+                >
+                  <option value="">Start from scratch…</option>
+                  {(['Engagement', 'Product', 'Promo', 'Results', 'Lifecycle'] as const).map(cat => (
+                    <optgroup key={cat} label={cat}>
+                      {NEWSLETTER_TEMPLATES.filter(t => t.category === cat).map(t => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">Pick a template to prefill the subject &amp; message below, then edit freely. Use {'{{name}}'} to personalise.</p>
+              </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium">Subject</label>
                 <input

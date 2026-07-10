@@ -46,7 +46,7 @@ export async function generateMetadata({
 
   if (!t || (!t.displayName && !t.username)) {
     return {
-      title: `Top Sports Tipster Profile | ${siteName}`,
+      title: `Top Sports Tipster Profile`,
       description: `View this tipster's verified picks, win rate and prediction history on ${siteName} — Kenya's #1 sports betting tips community. Free football tips daily.`,
       alternates: { canonical },
     };

@@ -314,15 +314,15 @@ export async function generateMetadata({
       const [home, away] = slugNames;
       const canonical = `${baseUrl}/matches/${id}`;
       return {
-        title: `${home} vs ${away} Predictions & Betting Tips | ${siteName}`,
+        title: `${home} vs ${away} Predictions & Betting Tips`,
         description: `Get predictions, odds, and betting tips for ${home} vs ${away}. Compare bookmaker odds and expert tips on Betcheza.`,
         alternates: { canonical },
-        openGraph: { title: `${home} vs ${away} | ${siteName}`, url: canonical, siteName },
+        openGraph: { title: `${home} vs ${away}`, url: canonical, siteName },
         robots: { index: true, follow: true },
       };
     }
     return {
-      title: `Match Preview | ${siteName}`,
+      title: `Match Preview`,
       alternates: { canonical: `${baseUrl}/matches/${encodeURIComponent(id)}` },
       robots: { index: false, follow: false },
     };
@@ -346,7 +346,7 @@ export async function generateMetadata({
     const winner = hs > as_ ? home : as_ > hs ? away : null;
     const resultLine = `${home} ${hs} - ${as_} ${away}`;
     const outcomeDesc = winner ? `${winner} win` : `${home} and ${away} drew`;
-    title = `${resultLine} Full Time Result${leagueSuffix} | ${siteName}`;
+    title = `${resultLine} Full Time Result${leagueSuffix}`;
     description = `Full time result: ${resultLine}. ${outcomeDesc}${league ? ` in the ${league}` : ''}. Match stats, lineups, tips and analysis on ${siteName}.`;
     keywords = [
       `${home} vs ${away} result`,
@@ -362,7 +362,7 @@ export async function generateMetadata({
   } else if (isLive(match.status)) {
     const hs = match.homeScore ?? 0;
     const as_ = match.awayScore ?? 0;
-    title = `🔴 LIVE: ${home} ${hs}-${as_} ${away}${leagueSuffix} | ${siteName}`;
+    title = `🔴 LIVE: ${home} ${hs}-${as_} ${away}${leagueSuffix}`;
     description = `Live score: ${home} ${hs} - ${as_} ${away}${league ? ` | ${league}` : ''}. Follow live commentary, lineups, stats and betting tips on ${siteName}.`;
     keywords = [
       `${home} vs ${away} live`,
@@ -374,7 +374,7 @@ export async function generateMetadata({
     ].filter(Boolean);
   } else {
     const datePart = dateStr ? ` on ${dateStr}` : '';
-    title = `${home} vs ${away} Predictions & Tips${leagueSuffix}${datePart ? ` | ${datePart}` : ''} | ${siteName}`;
+    title = `${home} vs ${away} Predictions & Tips${leagueSuffix}${datePart ? ` | ${datePart}` : ''}`;
     description = `Expert predictions and betting tips for ${home} vs ${away}${league ? ` in the ${league}` : ''}${datePart}. AI-powered match analysis, odds comparison, lineups and H2H stats on ${siteName}.`;
     keywords = [
       `${home} vs ${away} prediction`,

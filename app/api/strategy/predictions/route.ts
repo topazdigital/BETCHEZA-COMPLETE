@@ -1255,6 +1255,63 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.result && typeof body.day === 'number') {
+    // The admin UI can be viewing ANY week (current or historical) when it
+    // saves a result. `body.day` is only a 1-7 index WITHIN that displayed
+    // week, so it must never be applied against `current.days` unless the
+    // request is actually targeting the current week — otherwise an edit to
+    // a past week's day silently overwrites the wrong date in the current
+    // week while leaving the intended past date unchanged (the cause of the
+    // days-lost count drifting from what admins actually corrected).
+    const targetDate: string | undefined = body.date;
+
+    if (targetDate) {
+      // Look up the existing picks for that exact date so we can merge in
+      // picksResults/actualScores, then write to that date directly.
+      let picks: StrategyPick[] = [];
+      try {
+        const existing = await query<{ picks: string | null }>(
+          'SELECT picks FROM daily_strategy WHERE date = ? LIMIT 1',
+          [targetDate]
+        );
+        if (existing.rows[0]?.picks) picks = JSON.parse(existing.rows[0].picks) as StrategyPick[];
+      } catch { /* fall through with empty picks */ }
+
+      if (body.picksResults) {
+        picks = picks.map((p, i) => ({
+          ...p,
+          result: body.picksResults[i] || p.result,
+          actualScore: body.actualScores?.[i] || p.actualScore,
+        }));
+      }
+
+      try {
+        const upd = await execute(
+          `UPDATE daily_strategy SET result = ?, actual_return = ?, picks = ?, status = 'completed', settled_at = NOW()
+           WHERE date = ?`,
+          [body.result, body.actualReturn || null, JSON.stringify(picks), targetDate]
+        );
+        if (!upd.affectedRows) {
+          // No row exists for this date — silently reporting success would
+          // let an admin believe a past day was corrected when nothing in
+          // the DB actually changed (the exact class of bug this fix targets).
+          return NextResponse.json({ error: `No strategy day found for date ${targetDate}` }, { status: 404 });
+        }
+      } catch (e) {
+        return NextResponse.json({ error: 'Failed to save result' }, { status: 500 });
+      }
+
+      // Keep the in-memory/file caches for whichever week this date belongs
+      // to in sync, so the UI reflects the edit immediately without a refetch.
+      if (current.days.some(d => d.date === targetDate)) {
+        const idx = current.days.findIndex(d => d.date === targetDate);
+        current.days[idx] = { ...current.days[idx], result: body.result, actualReturn: body.actualReturn, picks };
+        fileStoreSet(`strategy-week-${weekId}`, current);
+      }
+      return NextResponse.json({ success: true, week: current });
+    }
+
+    // Legacy fallback (no date supplied): only safe to apply against the
+    // current week, since that's the only week whose day-index is unambiguous.
     const dayIdx = body.day - 1;
     if (dayIdx >= 0 && dayIdx < current.days.length) {
       current.days[dayIdx].result = body.result;

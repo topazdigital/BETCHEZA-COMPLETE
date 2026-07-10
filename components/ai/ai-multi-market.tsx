@@ -88,33 +88,56 @@ export function AIMultiMarket({
 
   const [frozenOdds, setFrozenOdds]       = useState<{ home: number; draw?: number; away: number } | null>(null)
   const [frozenMarkets, setFrozenMarkets] = useState<Market[] | null>(null)
+  const [frozenForm, setFrozenForm]       = useState<{ home?: string; away?: string } | null>(null)
+  const [frozenH2h, setFrozenH2h]         = useState<AIMultiMarketProps['h2h'] | null>(null)
   const [usingFrozen, setUsingFrozen]     = useState(false)
+
+  // Any signal worth remembering — not just odds. Form/H2H alone are enough
+  // for Smart AI mode to produce picks, so they must be snapshotted too.
+  const hasCurrentSignal = !!(odds || homeForm || awayForm || (h2h && h2h.length > 0))
 
   useEffect(() => {
     if (!matchId) return
     const key = `betcheza_prematch_${matchId}`
-    if (odds && !isFinalStatus) {
-      // Save live odds while the match is upcoming / live
+    if (hasCurrentSignal && !isFinalStatus) {
+      // Save whatever signals are live (odds, form, h2h) while the match is
+      // upcoming / live, so they survive after the provider stops returning
+      // them post-kickoff or post-final-whistle.
       try {
-        localStorage.setItem(key, JSON.stringify({ odds, markets: markets ?? null }))
+        localStorage.setItem(key, JSON.stringify({
+          odds: odds ?? null,
+          markets: markets ?? null,
+          form: { home: homeForm, away: awayForm },
+          h2h: h2h ?? null,
+        }))
       } catch { /* localStorage unavailable (SSR / private) */ }
-    } else if (isFinalStatus && !odds) {
-      // Match finished and bookmaker removed odds — restore from snapshot
+    } else if (isFinalStatus) {
+      // Match finished — restore whichever signals the provider has stopped
+      // returning from the pre-match snapshot. Restore each field
+      // independently rather than gating on "no live signal at all": a
+      // finished match can still have live form/H2H while odds/markets have
+      // gone missing (or vice-versa), and odds-mode specifically needs odds
+      // even when smart-mode signals are still flowing.
       try {
         const raw = localStorage.getItem(key)
         if (raw) {
           const snap = JSON.parse(raw)
-          setFrozenOdds(snap.odds ?? null)
-          setFrozenMarkets(snap.markets ?? null)
+          if (!odds) setFrozenOdds(snap.odds ?? null)
+          if (!markets) setFrozenMarkets(snap.markets ?? null)
+          if (!homeForm && !awayForm) setFrozenForm(snap.form ?? null)
+          if (!h2h || h2h.length === 0) setFrozenH2h(snap.h2h ?? null)
           setUsingFrozen(true)
         }
       } catch { /* ignore parse errors */ }
     }
-  }, [matchId, odds, markets, isFinalStatus])
+  }, [matchId, odds, markets, homeForm, awayForm, h2h, isFinalStatus, hasCurrentSignal])
 
-  // Use frozen odds as fallback when live odds have been pulled
+  // Use frozen signals as fallback when live signals have gone missing
   const effectiveOdds    = odds ?? frozenOdds
   const effectiveMarkets = markets ?? frozenMarkets
+  const effectiveHomeForm = homeForm ?? frozenForm?.home
+  const effectiveAwayForm = awayForm ?? frozenForm?.away
+  const effectiveH2h      = (h2h && h2h.length > 0) ? h2h : (frozenH2h ?? h2h)
 
   // Picks recompute whenever any input changes (odds, form, h2h, markets, lineups).
   // We intentionally do NOT lock picks — the algorithm is deterministic so the
@@ -123,15 +146,16 @@ export function AIMultiMarket({
   const picks = useMemo(() => {
     if (mode === 'smart') {
       // Smart AI runs on form + H2H — doesn't require odds.
-      // Frozen odds (pre-match snapshot) are used here for display prices.
-      const hasAnyData = !!(homeForm || awayForm || (h2h && h2h.length > 0) || effectiveOdds)
+      // Frozen signals (pre-match snapshot) are used as a fallback once the
+      // live provider stops returning them (post-kickoff / post-final).
+      const hasAnyData = !!(effectiveHomeForm || effectiveAwayForm || (effectiveH2h && effectiveH2h.length > 0) || effectiveOdds)
       if (!hasAnyData) return []
-      return buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds: effectiveOdds ?? null, homeForm, awayForm, h2h, markets: effectiveMarkets || null, lineups: lineups || null })
+      return buildSmartPicks({ homeTeam, awayTeam, sportSlug, odds: effectiveOdds ?? null, homeForm: effectiveHomeForm, awayForm: effectiveAwayForm, h2h: effectiveH2h, markets: effectiveMarkets || null, lineups: lineups || null })
     }
-    // Odds-based mode requires live odds (not frozen — live odds only)
-    if (!odds) return []
-    return buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets: markets || null, lineups: lineups || null })
-  }, [mode, homeTeam, awayTeam, sportSlug, odds, effectiveOdds, effectiveMarkets, homeForm, awayForm, h2h, markets, lineups])
+    // Odds-based mode requires odds — fall back to the frozen pre-match snapshot too.
+    if (!effectiveOdds) return []
+    return buildMultiMarketPicks({ homeTeam, awayTeam, sportSlug, odds: effectiveOdds, homeForm: effectiveHomeForm, awayForm: effectiveAwayForm, h2h: effectiveH2h, markets: effectiveMarkets || null, lineups: lineups || null })
+  }, [mode, homeTeam, awayTeam, sportSlug, effectiveOdds, effectiveMarkets, effectiveHomeForm, effectiveAwayForm, effectiveH2h, lineups])
 
   const isFinal =
     isFinalStatus &&
@@ -1063,9 +1087,9 @@ function buildSmartPicks(input: EngineInput): MarketPick[] {
       /\b(over.?under|o\/u|total)\b/i.test(m.name)
     )
     if (totalsMarket && totalsMarket.outcomes.length >= 2) {
-      const highFormBoth = hF >= 8 && aF >= 8
-      const lowFormBoth  = hF <= 4 && aF <= 4
-      const pickOver = highFormBoth || (!lowFormBoth && hF + aF >= 12)
+      const highFormBoth = hFormPts >= 8 && aFormPts >= 8
+      const lowFormBoth  = hFormPts <= 4 && aFormPts <= 4
+      const pickOver = highFormBoth || (!lowFormBoth && hFormPts + aFormPts >= 12)
       const overOut  = totalsMarket.outcomes.find(o => /over/i.test(o.name))
       const underOut = totalsMarket.outcomes.find(o => /under/i.test(o.name))
       const totalsOut = pickOver ? overOut : underOut

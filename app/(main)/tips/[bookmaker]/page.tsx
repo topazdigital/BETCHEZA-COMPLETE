@@ -191,11 +191,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const bm = BOOKMAKERS[bookmaker];
   const siteName = 'Betcheza';
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
-  if (!bm) return { title: `Tips | ${siteName}` };
+  if (!bm) return { title: `Tips` };
 
   const canonical = `${baseUrl}/tips/${bookmaker}`;
   const jackpotStr = bm.jackpot ? ` ${bm.jackpot} Predictions,` : '';
-  const title = `${bm.name} Tips & Predictions Today | Free ${bm.name} Kenya Tips | ${siteName}`;
+  const title = `${bm.name} Tips & Predictions Today | Free ${bm.name} Kenya Tips`;
   const description = `Free ${bm.name} Kenya tips today. Expert${jackpotStr} football predictions, jackpot banker picks and accumulator tips for ${bm.name}. Updated daily by verified tipsters.`;
 
   return {

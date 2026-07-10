@@ -709,12 +709,18 @@ async function fetchMatchResult(matchId: string): Promise<{ status: string; home
 }
 
 const FINISHED_STATUSES = new Set([
-  'finished', 'final', 'ft', 'full-time', 'complete', 'completed', 'ended',
-  'aet', 'pen', 'after extra time', 'after penalties',
+  'finished', 'final', 'ft', 'full-time', 'fulltime', 'complete', 'completed',
+  'ended', 'after extra time', 'after penalties', 'walkover', 'awarded',
+  'aet', 'pen',
 ]);
 
 function isStatusFinished(status: string): boolean {
-  return FINISHED_STATUSES.has((status || '').toLowerCase());
+  const s = (status || '').toLowerCase().trim();
+  if (FINISHED_STATUSES.has(s)) return true;
+  // Match cron's substring behaviour so providers' verbose status strings
+  // (e.g. "Match Finished", "Full Time") are still recognised as finished.
+  for (const fs of FINISHED_STATUSES) { if (s.includes(fs)) return true; }
+  return false;
 }
 
 export async function settlePendingChallenges(): Promise<{ settled: number; cancelled: number; skipped: number; errors: number }> {
@@ -732,8 +738,15 @@ export async function settlePendingChallenges(): Promise<{ settled: number; canc
     if (!c.challengedPick || !c.matchId) { skipped++; continue; }
     try {
       const match = await fetchMatchResult(c.matchId);
-      if (!match) { skipped++; continue; }
-      if (!isStatusFinished(match.status)) { skipped++; continue; }
+      // The status-sync cron already writes a normalised match_status to the
+      // DB every 5 minutes — trust it too, not just a fresh API refetch,
+      // since providers sometimes go quiet/stale right after full time.
+      const dbSaysFinished = isStatusFinished(c.matchStatus);
+      if (!match) {
+        if (dbSaysFinished) { skipped++; continue; } // no scores to settle with yet
+        skipped++; continue;
+      }
+      if (!isStatusFinished(match.status) && !dbSaysFinished) { skipped++; continue; }
       if (match.homeScore === null || match.awayScore === null) { skipped++; continue; }
       const res = await settleChallenge(c.id, match.homeScore, match.awayScore);
       if (res.ok) settled++;
@@ -747,8 +760,9 @@ export async function settlePendingChallenges(): Promise<{ settled: number; canc
     if (!c.matchId) { skipped++; continue; }
     try {
       const match = await fetchMatchResult(c.matchId);
-      if (!match) { skipped++; continue; }
-      if (!isStatusFinished(match.status)) { skipped++; continue; }
+      const dbSaysFinished = isStatusFinished(c.matchStatus);
+      if (!match && !dbSaysFinished) { skipped++; continue; }
+      if (match && !isStatusFinished(match.status) && !dbSaysFinished) { skipped++; continue; }
 
       // Refund challenger stake if they had locked funds
       if (c.stakeKes > 0 && !isFakeUserId(c.challengerId)) {
