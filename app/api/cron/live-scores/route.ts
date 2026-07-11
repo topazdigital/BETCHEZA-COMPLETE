@@ -324,7 +324,7 @@ async function settleRecentPendingStrategyPicks() {
   const pendingRows = rows.filter(r => {
     try {
       const picks: StrategyPick[] = JSON.parse(r.picks || '[]');
-      return picks.some(p => p.result === 'pending' || (p.result !== 'pending' && p.liveStatus === 'live'));
+      return picks.some(p => !p.result || p.result === 'pending' || p.liveStatus === 'live');
     } catch { return false; }
   });
 
@@ -438,7 +438,10 @@ async function settleRecentPendingStrategyPicks() {
     if (!changed) continue;
 
     const allSettled = updated.every(p => p.result !== 'pending');
-    const allWon = allSettled && updated.every(p => p.result === 'win');
+    // Void picks (no match data found) are neutral — don't count them as losses.
+    // A day with 2 wins + 1 void should still be "win", not "loss".
+    const nonVoidSettled = updated.filter(p => p.result !== 'void');
+    const allWon = allSettled && nonVoidSettled.length > 0 && nonVoidSettled.every(p => p.result === 'win');
     const wasUnsettled = row.status !== 'completed';
     try {
       await execute(
@@ -581,7 +584,9 @@ async function updateStrategyPickLiveScores(
   if (!changed) return;
 
   const allSettled = updatedPicks.every(p => p.result !== 'pending');
-  const allWon = allSettled && updatedPicks.every(p => p.result === 'win');
+  // Void picks are neutral — don't penalise a win day because one pick had no data.
+  const nonVoidPicks = updatedPicks.filter(p => p.result !== 'void');
+  const allWon = allSettled && nonVoidPicks.length > 0 && nonVoidPicks.every(p => p.result === 'win');
 
   await execute(
     `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = IF(?, NOW(), settled_at) WHERE id = ?`,

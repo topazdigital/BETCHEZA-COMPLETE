@@ -214,20 +214,23 @@ export async function GET(req: NextRequest) {
       ));
     }
 
-    // Trigger settlement for any challenges whose matches just finished
+    // Trigger settlement unconditionally — not just when a match transitioned to
+    // finished in this run. Challenges whose match_status was already set to
+    // 'finished' by the force-settle UPDATE above (or in a prior run) are still
+    // sitting in 'active' status and only get resolved when settlePendingChallenges()
+    // reads the DB-persisted matchStatus. Gating on finishedMatchIds caused
+    // stuck challenges from weeks/months ago to never get processed.
     let settled = 0;
     let cancelled = 0;
-    if (finishedMatchIds.size > 0) {
-      try {
-        const result = await settlePendingChallenges();
-        settled = result.settled;
-        cancelled = result.cancelled;
-        if (settled > 0 || cancelled > 0) {
-          console.log(`[challenge-status-sync] settled=${settled} cancelled=${cancelled}`);
-        }
-      } catch (e) {
-        console.warn('[challenge-status-sync] settlePendingChallenges failed:', e instanceof Error ? e.message : e);
+    try {
+      const result = await settlePendingChallenges();
+      settled = result.settled;
+      cancelled = result.cancelled;
+      if (settled > 0 || cancelled > 0) {
+        console.log(`[challenge-status-sync] settled=${settled} cancelled=${cancelled}`);
       }
+    } catch (e) {
+      console.warn('[challenge-status-sync] settlePendingChallenges failed:', e instanceof Error ? e.message : e);
     }
 
     console.log(

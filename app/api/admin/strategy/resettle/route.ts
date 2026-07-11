@@ -43,7 +43,10 @@ interface PickCorrection {
 function finalizeDay(picks: StrategyPick[]): { result: 'win' | 'loss' | null; status: string } {
   const allSettled = picks.every(p => p.result !== 'pending');
   if (!allSettled) return { result: null, status: 'active' };
-  const allWon = picks.filter(p => p.result !== 'pending').every(p => p.result === 'win');
+  // Void picks (no match data found) are neutral — don't count as losses.
+  // A day with 2 wins + 1 void should still be recorded as "win".
+  const nonVoid = picks.filter(p => p.result !== 'void');
+  const allWon = nonVoid.length > 0 && nonVoid.every(p => p.result === 'win');
   return { result: allWon ? 'win' : 'loss', status: 'completed' };
 }
 

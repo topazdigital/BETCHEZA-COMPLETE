@@ -17,7 +17,7 @@ export interface StrategyPick {
   odds: number;
   confidence: 'Low' | 'Medium' | 'High';
   reasoning: string;
-  result?: 'win' | 'loss' | 'pending';
+  result?: 'win' | 'loss' | 'pending' | 'void';
   actualScore?: string;
   liveScore?: string;
   liveStatus?: 'live' | 'finished';

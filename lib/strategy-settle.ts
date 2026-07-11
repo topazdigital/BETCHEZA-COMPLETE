@@ -456,7 +456,9 @@ export async function resettleStrategyPicksFromResults(
 
       if (changed) {
         const allSettled = updated.every(p => p.result !== 'pending');
-        const allWon = updated.filter(p => p.result !== 'pending').every(p => p.result === 'win');
+        // Void picks (no match data) are neutral — don't count as losses.
+        const nonVoid = updated.filter(p => p.result !== 'void');
+        const allWon = allSettled && nonVoid.length > 0 && nonVoid.every(p => p.result === 'win');
         const dayResult = allSettled ? (allWon ? 'win' : 'loss') : null;
         await executeFn(
           `UPDATE daily_strategy SET picks = ?, result = ?, status = ?, settled_at = NOW() WHERE id = ?`,

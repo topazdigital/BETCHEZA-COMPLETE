@@ -84,7 +84,10 @@ export function AIMultiMarket({
   // them to localStorage when they're live so they can be shown (read-only) as
   // "Pre-match odds" after the match ends — exactly like OddsPedia does.
   const isFinalStatus =
-    status === 'finished' || status === 'final' || status === 'ft' || status === 'ended'
+    status === 'finished' || status === 'final' || status === 'ft' || status === 'ended' ||
+    status === 'full-time' || status === 'fulltime' || status === 'aet' || status === 'pen' ||
+    status === 'post' || status === 'walkover' || status === 'awarded' || status === 'complete' ||
+    status === 'completed'
 
   const [frozenOdds, setFrozenOdds]       = useState<{ home: number; draw?: number; away: number } | null>(null)
   const [frozenMarkets, setFrozenMarkets] = useState<Market[] | null>(null)
