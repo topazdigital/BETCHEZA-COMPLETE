@@ -81,33 +81,23 @@ function espnSportForLeague(leagueKey: string): string {
  * event summary endpoint directly. Only tried when getMatchById returned
  * null AND the kickoff was >115 min ago.
  */
-async function fetchEspnEventDirect(matchId: string): Promise<MatchScore | null> {
-  // Format: espn_{leagueKey}_{eventId}  e.g. espn_club.friendly_12345
-  const m = matchId.match(/^espn_(.+)_(\d+)$/);
-  if (!m) return null;
-  const leagueKey = m[1];
-  const eventId = m[2];
 
-  // Skip global-sport IDs (espn_globalNNN_EVENT) — those use a different URL structure
-  if (/^global\d+/.test(leagueKey)) return null;
+type Competitor = { homeAway: string; score?: string };
+type Competition = {
+  status?: { type?: { completed?: boolean; name?: string } };
+  competitors?: Competitor[];
+};
 
-  const sport = espnSportForLeague(leagueKey);
-  const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${leagueKey}/summary?event=${eventId}`;
-
+async function tryEspnSummary(sport: string, league: string, eventId: string): Promise<MatchScore | null> {
   try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/summary?event=${eventId}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return null;
 
-    type Competitor = { homeAway: string; score?: string };
-    type Competition = {
-      status?: { type?: { completed?: boolean; name?: string } };
-      competitors?: Competitor[];
-    };
     const data = await res.json() as { header?: { competitions?: Competition[] } };
     const competition = data?.header?.competitions?.[0];
     if (!competition) return null;
 
-    // Only return scores if the match is confirmed completed
     const completed = competition.status?.type?.completed === true;
     const statusName = (competition.status?.type?.name || '').toLowerCase();
     const isFinished = completed ||
@@ -128,6 +118,49 @@ async function fetchEspnEventDirect(matchId: string): Promise<MatchScore | null>
   } catch {
     return null;
   }
+}
+
+async function fetchEspnEventDirect(matchId: string): Promise<MatchScore | null> {
+  // Format: espn_{leagueKey}_{eventId}  e.g. espn_club.friendly_12345
+  const m = matchId.match(/^espn_(.+)_(\d+)$/);
+  if (!m) return null;
+  const leagueKey = m[1];
+  const eventId = m[2];
+
+  // Skip global-sport IDs (espn_globalNNN_EVENT) — those use a different URL structure
+  if (/^global\d+/.test(leagueKey)) return null;
+
+  // Generic eventid format: espn_eventid_NNNNN — try common soccer leagues in order
+  // of likelihood for the Betcheza use-case (friendly/pre-season matches most common).
+  if (leagueKey === 'eventid') {
+    const candidates = [
+      ['soccer', 'club.friendly'],
+      ['soccer', 'int.friendly'],
+      ['soccer', 'usa.1'],
+      ['soccer', 'eng.1'],
+      ['soccer', 'ger.1'],
+      ['soccer', 'esp.1'],
+      ['soccer', 'fra.1'],
+      ['soccer', 'ita.1'],
+      ['soccer', 'uefa.champions'],
+      ['soccer', 'conmebol.libertadores'],
+      ['tennis', 'atp'],
+      ['tennis', 'wta'],
+      ['basketball', 'nba'],
+    ];
+    for (const [sport, league] of candidates) {
+      const result = await tryEspnSummary(sport, league, eventId);
+      if (result) {
+        console.log(`[challenge-status-sync] ESPN direct hit for ${matchId} via ${sport}/${league} → ${result.homeScore}-${result.awayScore}`);
+        return result;
+      }
+    }
+    return null;
+  }
+
+  // Standard league-keyed format: espn_club.friendly_12345
+  const sport = espnSportForLeague(leagueKey);
+  return tryEspnSummary(sport, leagueKey, eventId);
 }
 
 export async function GET(req: NextRequest) {
