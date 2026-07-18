@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { FollowTipsterButton } from "@/components/tipsters/follow-tipster-button"
 import { useAuth } from "@/contexts/auth-context"
+import { AdsterraNativeBanner } from "@/components/ads/adsterra-native-banner"
 
 type Day = "today" | "tomorrow" | "upcoming" | "mine"
 
@@ -830,9 +831,12 @@ export function TipsFeedClient({
                   </p>
                 </div>
                 <div className="space-y-2">
-                  {data.tips.map(tip => (
-                    <TipCard key={tip.id} tip={tip} />
-                  ))}
+                  {data.tips.flatMap((tip, i) => {
+                    const card = <TipCard key={tip.id} tip={tip} />
+                    // Insert native banner after the 5th tip (index 4)
+                    if (i === 4) return [card, <AdsterraNativeBanner key="adsterra-native" />]
+                    return [card]
+                  })}
                 </div>
               </>
             )

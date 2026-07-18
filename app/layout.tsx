@@ -16,6 +16,7 @@ import { NavigationProgress } from '@/components/layout/navigation-progress'
 import { ServiceWorkerRegister } from '@/components/layout/service-worker-register'
 import { ClarityAnalytics } from '@/components/layout/clarity-analytics'
 import { PageviewTracker } from '@/components/layout/pageview-tracker'
+import { AdsterraSocialBar } from '@/components/ads/adsterra-social-bar'
 import './globals.css'
 
 const geist = Geist({ 
@@ -937,6 +938,7 @@ export default function RootLayout({
                   {children}
                   <ClientModals />
                   <Toaster position="top-right" richColors closeButton />
+                  <AdsterraSocialBar />
                 </UserSettingsProvider>
               </BetSlipProvider>
             </AuthModalProvider>
