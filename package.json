@@ -55,6 +55,7 @@
     "drizzle-zod": "^0.8.3",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.42.0",
+    "imapflow": "^1.4.7",
     "input-otp": "^1.4.2",
     "jose": "^6.2.3",
     "js-cookie": "^3.0.8",
