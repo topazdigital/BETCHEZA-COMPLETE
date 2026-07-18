@@ -1,10 +1,13 @@
 /**
  * imap-client.ts
  * Fetches emails from all betcheza.co.ke inboxes via IMAP.
- * All accounts share the same password (IMAP_PASSWORD).
- * Results are cached in memory for 2 minutes per account.
+ * Password is read from:
+ *   1. IMAP_PASSWORD env var (Replit dev)
+ *   2. SMTP password stored in admin Email Config (production)
+ * IMAP host is derived from the SMTP host set in Email Config.
  */
 import { ImapFlow } from 'imapflow';
+import { getEmailConfig } from './email-config-store';
 
 export interface InboxEmail {
   uid: number;
@@ -23,9 +26,9 @@ export interface InboxEmail {
 }
 
 // ---------------------------------------------------------------------------
-// Account registry — all share one IMAP_PASSWORD secret
+// Account registry
 // ---------------------------------------------------------------------------
-const IMAP_HOST = 'server.richdatingnetwork.com';
+const FALLBACK_IMAP_HOST = 'mail.betcheza.co.ke';
 const IMAP_PORT = 993;
 
 const ACCOUNTS = [
@@ -35,8 +38,16 @@ const ACCOUNTS = [
   { name: 'info',         email: 'info@betcheza.co.ke' },
 ];
 
-function getPassword(): string {
-  return process.env.IMAP_PASSWORD || '';
+/** Resolve IMAP credentials — env var first, then saved Email Config. */
+async function getImapConfig(): Promise<{ host: string; pass: string }> {
+  const envPass = process.env.IMAP_PASSWORD || '';
+  if (envPass) return { host: FALLBACK_IMAP_HOST, pass: envPass };
+
+  const cfg = await getEmailConfig();
+  const pass = cfg.password || '';
+  // Derive IMAP host from SMTP host (same mail server, different port)
+  const host = cfg.host || FALLBACK_IMAP_HOST;
+  return { host, pass };
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +73,7 @@ export function invalidateImapCache(account?: string) {
 // ---------------------------------------------------------------------------
 async function fetchAccountEmails(
   acct: typeof ACCOUNTS[number],
+  host: string,
   pass: string,
   limit: number
 ): Promise<InboxEmail[]> {
@@ -72,7 +84,7 @@ async function fetchAccountEmails(
   }
 
   const client = new ImapFlow({
-    host: IMAP_HOST,
+    host,
     port: IMAP_PORT,
     secure: true,
     auth: { user: acct.email, pass },
@@ -139,11 +151,11 @@ export async function fetchInboxEmails(limit = 60): Promise<{
   accounts: { name: string; email: string }[];
   errors: { account: string; message: string }[];
 }> {
-  const pass = getPassword();
-  if (!pass) throw new Error('IMAP_PASSWORD secret not set');
+  const { host, pass } = await getImapConfig();
+  if (!pass) throw new Error('No IMAP password configured. Set it in Admin → Config → Email Setup.');
 
   const settled = await Promise.allSettled(
-    ACCOUNTS.map(acct => fetchAccountEmails(acct, pass, limit))
+    ACCOUNTS.map(acct => fetchAccountEmails(acct, host, pass, limit))
   );
 
   const allEmails: InboxEmail[] = [];
@@ -171,10 +183,10 @@ export async function fetchInboxEmails(limit = 60): Promise<{
 export async function markEmailSeen(uid: number, account: string): Promise<void> {
   const acct = ACCOUNTS.find(a => a.name === account);
   if (!acct) return;
-  const pass = getPassword();
+  const { host, pass } = await getImapConfig();
   if (!pass) return;
   const client = new ImapFlow({
-    host: IMAP_HOST, port: IMAP_PORT, secure: true,
+    host, port: IMAP_PORT, secure: true,
     auth: { user: acct.email, pass }, logger: false,
     tls: { rejectUnauthorized: false },
   });
