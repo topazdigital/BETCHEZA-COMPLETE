@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendMail } from '@/lib/mailer';
+import { saveEnquiry } from '@/lib/enquiry-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,9 @@ export async function POST(req: NextRequest) {
       model ? `Model: ${model}` : '',
       message ? `\nMessage:\n${message}` : '',
     ].filter(Boolean).join('\n');
+
+    // Always persist to file store so admin can read without Roundcube
+    saveEnquiry({ company, name, email, phone, website, budget, model, message });
 
     const result = await sendMail({
       to: 'partnerships@betcheza.co.ke',

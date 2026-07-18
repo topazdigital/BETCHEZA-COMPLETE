@@ -93,6 +93,10 @@ const BetWinnersInFeed = dynamic(
   () => import('@/components/ads/affiliate-banner').then(m => ({ default: m.BetWinnersInFeed })),
   { ssr: false }
 );
+const AdsterraNativeBanner = dynamic(
+  () => import('@/components/ads/adsterra-native-banner').then(m => ({ default: m.AdsterraNativeBanner })),
+  { ssr: false }
+);
 const BetWinnersLeaderboard = dynamic(
   () => import('@/components/ads/affiliate-banner').then(m => ({ default: m.BetWinnersLeaderboard })),
   { ssr: false }
@@ -762,9 +766,11 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                 <div>
                 {todayMatches.length > 0 ? (
                   <div className="space-y-2">
-                    {todayMatches.slice(0, 12).map(match => (
-                      <MatchCardNew key={match.id} match={match} variant="compact" showSport />
-                    ))}
+                    {todayMatches.slice(0, 12).flatMap((match, i) => {
+                      const card = <MatchCardNew key={match.id} match={match} variant="compact" showSport />
+                      if (i === 4) return [card, <AdsterraNativeBanner key="adsterra-home" />]
+                      return [card]
+                    })}
                   </div>
                 ) : (
                   <div className="rounded-xl border border-border bg-card p-5 text-center">

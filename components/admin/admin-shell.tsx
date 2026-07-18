@@ -136,6 +136,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin/analytics", label: "Traffic Analytics", icon: BarChart3 },
       { href: "/admin/bookmakers", label: "Bookmakers", icon: Globe },
+      { href: "/admin/enquiries", label: "Enquiries Inbox", icon: Mail },
       { href: "/admin/advertising", label: "Partner Outreach", icon: Mail },
       { href: "/admin/ads", label: "Ad Slots", icon: Globe },
       { href: "/admin/affiliate-clicks", label: "Affiliates", icon: MousePointerClick },
