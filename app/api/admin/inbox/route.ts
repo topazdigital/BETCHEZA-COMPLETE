@@ -12,15 +12,15 @@ async function guard() {
   } catch { return false; }
 }
 
-// GET  — fetch inbox
+// GET — fetch inbox (all accounts)
 export async function GET() {
   if (!await guard()) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
-    const emails = await fetchInboxEmails(60);
-    return NextResponse.json({ emails });
+    const result = await fetchInboxEmails(60);
+    return NextResponse.json(result);
   } catch (e: any) {
     console.error('[admin/inbox]', e?.message);
-    return NextResponse.json({ error: e?.message || 'IMAP error' }, { status: 500 });
+    return NextResponse.json({ error: e?.message || 'IMAP error', emails: [], accounts: [], errors: [] }, { status: 500 });
   }
 }
 
@@ -28,15 +28,15 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   if (!await guard()) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
-    const { uid } = await req.json();
-    await markEmailSeen(uid);
+    const { uid, account } = await req.json();
+    await markEmailSeen(uid, account || 'partnerships');
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message }, { status: 500 });
   }
 }
 
-// DELETE — invalidate cache (force refresh)
+// DELETE — bust cache
 export async function DELETE() {
   if (!await guard()) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   invalidateImapCache();
