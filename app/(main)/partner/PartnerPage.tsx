@@ -423,7 +423,8 @@ export default function PartnerPage() {
               {[
                 {
                   icon: Eye,        color: 'text-purple-500', bg: 'bg-purple-500/10',
-                  val: '50K+',      label: 'Monthly Visitors',   sub: 'Rolling 30 days · Clarity',
+                  val: fmtStat(loading, stats?.monthlyPageviews ?? null, '', '7K'),
+                  label: 'Monthly Pageviews',  sub: 'Rolling 30 days · Clarity',
                 },
                 {
                   icon: Globe,      color: 'text-blue-500',   bg: 'bg-blue-500/10',
