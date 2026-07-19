@@ -149,8 +149,17 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
   const [saving, setSaving] = useState(false);
   const [savingResult, setSavingResult] = useState(false);
   const [dayResult, setDayResult] = useState<'win' | 'loss' | null>(day.result || null);
-  const [pickResults, setPickResults] = useState<Record<number, 'win' | 'loss'>>({});
-  const [pickScores, setPickScores] = useState<Record<number, string>>({});
+  // Pre-fill from existing settlement so admin sees what's currently set and can correct it
+  const [pickResults, setPickResults] = useState<Record<number, 'win' | 'loss'>>(() => {
+    const init: Record<number, 'win' | 'loss'> = {};
+    day.picks.forEach((p, i) => { if (p.result === 'win' || p.result === 'loss') init[i] = p.result; });
+    return init;
+  });
+  const [pickScores, setPickScores] = useState<Record<number, string>>(() => {
+    const init: Record<number, string> = {};
+    day.picks.forEach((p, i) => { if (p.actualScore) init[i] = p.actualScore; });
+    return init;
+  });
   const [msg, setMsg] = useState('');
   const [approving, setApproving] = useState(false);
   const [isApproved, setIsApproved] = useState(!!day.isApproved);
@@ -402,22 +411,27 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
                     {pick.actualScore && <p className="text-[11px] font-medium text-foreground">Score: {pick.actualScore}</p>}
 
                     {/* Per-pick result override */}
-                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                      <span className="text-[10px] text-muted-foreground">Result:</span>
-                      <button
-                        onClick={() => setPickResults(p => ({ ...p, [i]: 'win' }))}
-                        className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold border transition-colors', pickResults[i] === 'win' ? 'bg-green-500 text-white border-green-500' : 'border-border text-muted-foreground hover:border-green-500/40')}
-                      >✓ Win</button>
-                      <button
-                        onClick={() => setPickResults(p => ({ ...p, [i]: 'loss' }))}
-                        className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold border transition-colors', pickResults[i] === 'loss' ? 'bg-red-500 text-white border-red-500' : 'border-border text-muted-foreground hover:border-red-500/40')}
-                      >✗ Loss</button>
-                      <input
-                        placeholder="Score e.g. 2-1"
-                        value={pickScores[i] || ''}
-                        onChange={e => setPickScores(p => ({ ...p, [i]: e.target.value }))}
-                        className="w-20 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary/30"
-                      />
+                    <div className="mt-1.5 space-y-1">
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                        Wrong result? Enter the real score + click the correct outcome, then Save Result below.
+                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-muted-foreground">Result:</span>
+                        <button
+                          onClick={() => setPickResults(p => ({ ...p, [i]: 'win' }))}
+                          className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold border transition-colors', pickResults[i] === 'win' ? 'bg-green-500 text-white border-green-500' : 'border-border text-muted-foreground hover:border-green-500/40')}
+                        >✓ Win</button>
+                        <button
+                          onClick={() => setPickResults(p => ({ ...p, [i]: 'loss' }))}
+                          className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold border transition-colors', pickResults[i] === 'loss' ? 'bg-red-500 text-white border-red-500' : 'border-border text-muted-foreground hover:border-red-500/40')}
+                        >✗ Loss</button>
+                        <input
+                          placeholder="Score e.g. 0-2"
+                          value={pickScores[i] || ''}
+                          onChange={e => setPickScores(p => ({ ...p, [i]: e.target.value }))}
+                          className="w-24 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary/30"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -480,14 +494,14 @@ function ResettleButton({ onDone }: { onDone: () => void }) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<ResettleResult | null>(null);
 
-  const run = async () => {
+  const run = async (forceRefresh = false) => {
     setRunning(true);
     setResult(null);
     try {
       const res = await fetch('/api/admin/strategy/resettle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false }),
+        body: JSON.stringify({ dryRun: false, forceRefresh }),
       });
       const data: ResettleResult = await res.json();
       setResult(data);
@@ -506,14 +520,20 @@ function ResettleButton({ onDone }: { onDone: () => void }) {
           <Wrench className="h-3.5 w-3.5 text-amber-600" />
           <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Fix Past Results</span>
         </div>
-        <Button size="sm" variant="outline" onClick={run} disabled={running} className="h-7 gap-1 text-xs border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10">
-          {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          {running ? 'Re-settling…' : 'Re-settle All Past Picks'}
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={() => run(false)} disabled={running} className="h-7 gap-1 text-xs border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10">
+            {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {running ? 'Re-settling…' : 'Re-settle All'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => run(true)} disabled={running} className="h-7 gap-1 text-xs border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10" title="Clears match cache first — use when a score was stored wrong (e.g. settled at half-time)">
+            {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            Force Re-fetch & Resettle
+          </Button>
+        </div>
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Scans all historical picks and corrects any wrong WON/LOST labels using the stored final score.
-        Safe to run multiple times — only changes picks that are currently wrong.
+        <strong>Re-settle All</strong> — corrects picks where the stored score was wrong based on logic fixes.
+        <strong> Force Re-fetch</strong> — clears the match cache and fetches live final scores before re-settling (use when a pick was settled mid-match with the wrong score).
       </p>
       {result && (
         <div className={cn('rounded px-2.5 py-2 text-xs space-y-1', result.success ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'bg-red-500/10 text-red-600')}>

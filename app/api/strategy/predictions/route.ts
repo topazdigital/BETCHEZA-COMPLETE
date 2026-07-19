@@ -1134,17 +1134,27 @@ async function overlayLiveScores(days: DayPrediction[]): Promise<DayPrediction[]
         const scoreStr = `${hs}-${as_}`;
         const liveStatus: 'live' | 'finished' = match.status === 'live' || match.status === 'inprogress' ? 'live' : 'finished';
 
-        // For pending picks: check if outcome is already mathematically certain mid-game.
-        // Both wins and losses can be certain before FT:
-        //   LOSS certain: Under line blown (can never recover)
-        //   WIN certain:  Over line already cleared, BTTS Yes after both teams scored, etc.
-        // VAR can disallow a single goal but once play resumes from kick-off the review
-        // window is closed. We settle immediately — identical to how bookmakers pay out.
+        // Settle from live scores only when the match is genuinely finished.
+        // Settling during live play causes wrong results — e.g. Over 1.5 at
+        // half-time 0-0 would be stored as "loss" even if the match ends 0-2.
+        // During live play, only an early WIN is certain (line already cleared,
+        // BTTS already scored, etc.). Never lock in an early LOSS mid-game.
         if (pick.result === 'pending') {
-          const earlyResult = checkPickResultLocal(pick, hs, as_);
-          if (earlyResult === 'loss' || earlyResult === 'win') {
-            dayChanged = true;
-            return { ...pick, result: earlyResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+          if (liveStatus === 'finished') {
+            // Match over — settle definitively either way
+            const finalResult = checkPickResultLocal(pick, hs, as_);
+            if (finalResult === 'loss' || finalResult === 'win') {
+              dayChanged = true;
+              return { ...pick, result: finalResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+            }
+          } else {
+            // Match still live — only settle early WINs (mathematically irreversible)
+            const earlyResult = checkPickResultLocal(pick, hs, as_);
+            if (earlyResult === 'win') {
+              dayChanged = true;
+              return { ...pick, result: earlyResult, actualScore: scoreStr, liveScore: scoreStr, liveStatus };
+            }
+            // Do NOT lock in early losses — score can still change
           }
         }
 

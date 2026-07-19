@@ -16,6 +16,7 @@ import { query, execute } from '@/lib/db';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getMatchById, getAllMatches } from '@/lib/api/unified-sports-api';
 import { checkPickResult, parseStoredScore, normalizeTeam, matchTeamWords } from '@/lib/strategy-settle';
+import { clearMatchCache } from '@/lib/api/unified-sports-api';
 import { sendStrategyResultPush } from '@/lib/strategy-push';
 import type { WeeklyStrategy, StrategyPick } from '@/app/api/strategy/predictions/route';
 
@@ -59,6 +60,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   // If dryRun=true, report what would change without saving
   const dryRun = body.dryRun === true;
+  // forceRefresh=true clears the match cache so we fetch the latest final scores
+  if (body.forceRefresh === true) {
+    console.log('[strategy/resettle] forceRefresh=true — clearing match cache before resettling');
+    await clearMatchCache();
+  }
 
   const corrections: PickCorrection[] = [];
   let pass1Fixed = 0;
