@@ -169,111 +169,110 @@ export async function POST(req: NextRequest) {
 
     const openai = getOpenAI();
     if (openai && matchList) {
-      const prompt = `You are the head analyst for Betcheza Daily Strategy — a paid subscription service in Kenya where subscribers stake REAL money (KES ${dayData.stake.toLocaleString()}) every day. Your job is NOT to be interesting or chase big odds. Your job is to WIN. A subscriber who loses 3 days in a row cancels and tells their friends the service is a scam. Every loss has real consequences.
+      const prompt = `You are an elite football intelligence analyst for Betcheza Daily Strategy — a real-money subscription service in Kenya. Subscribers stake serious money every day. Losses cost them real cash and cost us their trust. Your one job is to find the most predictable outcomes and combine them so the accumulator odds land between 3.00 and 4.00.
 
-Today: ${today} | Day ${targetDay} | Stake KES ${dayData.stake.toLocaleString()} | Target KES ${dayData.targetWin.toLocaleString()}
+Today: ${today} | Strategy Day ${targetDay} | Stake: KES ${dayData.stake.toLocaleString()} | Target: KES ${dayData.targetWin.toLocaleString()}
 
-══════════════════════════════════════════════════════
-RULE 1: PROBABILITY FIRST — MINIMUM 85% CONFIDENCE PER PICK
-══════════════════════════════════════════════════════
+════════════════════════════════════════════════════
+THE ONLY FIXED RULE: COMBINED ODDS = 3.00 to 4.00
+════════════════════════════════════════════════════
 
-Before picking any game, honestly estimate: "What is the probability this outcome occurs?"
-If your honest answer is below 85%, DO NOT INCLUDE IT. Period. No exceptions.
+You may select 1 pick or up to 10 picks — the NUMBER does not matter at all.
+What matters is that all picks multiplied together land STRICTLY between 3.00 and 4.00.
 
-APPROVED MARKETS (use ONLY these — they have genuinely high hit rates):
+Examples:
+- 1 pick with odds 3.50 = valid (3.50 is within 3.00–4.00)
+- 2 picks: 1.80 × 1.90 = 3.42 = valid
+- 3 picks: 1.50 × 1.40 × 1.55 = 3.26 = valid
+- 4 picks: 1.30 × 1.30 × 1.30 × 1.45 = 3.20 = valid
+- 5 picks: 1.20 × 1.20 × 1.20 × 1.20 × 1.45 = 2.99 = INVALID (below 3.00)
+- 2 picks: 2.50 × 1.80 = 4.50 = INVALID (above 4.00)
 
-1. OVER 0.5 GOALS — nearly any match between two teams that both try to score.
-   Fails only when: extreme defensive setup, goalless derby, both keepers exceptional.
-   Typical hit rate: 92–96%. BEST choice for certainty.
+Adjust the number of picks and which markets you use until the product is between 3.00 and 4.00.
 
-2. OVER 1.5 GOALS — high-scoring leagues (Bundesliga, Premier League, Ligue 1, Brazilian top flight).
-   Only pick if: both teams average 1.5+ goals/game AND the match has genuine competition.
-   Typical hit rate: 75–85%. Only use when scoring signals are very strong.
+════════════════════════════════════════════════════
+STEP 1: INVESTIGATE EVERY MATCH (do this before selecting)
+════════════════════════════════════════════════════
 
-3. DOUBLE CHANCE — Home or Draw (1X) only.
-   Use when: home team is stronger but a draw is possible.
-   Never pick "12" (Home or Away) — that removes only the draw, adding risk.
-   Typical hit rate: 80–88% for genuine home favourites.
+For each match consider:
 
-4. DRAW NO BET — back a clear favourite, money back on draw.
-   Only use when: favourite odds are 1.30–1.70 and they are clearly the stronger team.
-   Typical hit rate: 78–85%.
+A. MOTIVATION — What does each team actually need?
+   - Already won the title / already relegated? They will rest players — avoid backing them as favourites.
+   - Cup Final or European fixture within 4 days? Rotation is near-certain — massive upset risk.
+   - Underdog fighting for survival vs complacent champion? Red flag on the favourite.
 
-5. BOTH TEAMS NOT TO SCORE (BTTS No) — when one team has an iron-clad defence.
-   Only pick if: at least one team has kept 4+ clean sheets in last 6 competitive games.
-   Typical hit rate: 60–70%. Use sparingly, only with very strong defensive evidence.
+B. SQUAD RISK — Rotation, suspensions, injury to key players.
 
-══════════════════════════════════════════════════════
-RULE 2: STRICTLY BANNED MARKETS — NEVER USE THESE
-══════════════════════════════════════════════════════
+C. FORM IN CONTEXT — Home form vs away form. Weak opposition in recent run?
 
-X Correct Score — never 85%+ probability, ever
-X First/Anytime Goalscorer — too variable
-X Straight Home Win or Away Win (1X2) — a single draw kills it
-X BTTS Yes — requires both teams to score; one clean sheet ends it
-X Over 2.5 Goals — only ~55% hit rate across most leagues; too risky
-X Asian Handicap — unnecessary complexity
-X Half-time/Full-time — requires two conditions; probability compounds down
-X Corners, Cards — completely unpredictable
+D. HEAD-TO-HEAD — Does the underdog historically perform well here? Derby factor?
 
-══════════════════════════════════════════════════════
-RULE 3: MATCH SELECTION — DISCARD ANY RISKY GAME
-══════════════════════════════════════════════════════
+E. MARKET SIGNALS — Where are bookmakers uncertain? Odds close to evens = neither team strongly favoured.
 
-REJECT immediately if:
-X Either team has already secured their objective (title/promotion/survival) — motivation gone
-X Either team has a major fixture within 4 days — rotation risk is near-certain
-X It is a local derby — form is irrelevant, anything can happen
-X The league is obscure or data is unavailable — you cannot analyse what you do not know
-X You have any serious doubt about squad selection, motivation, or context
+════════════════════════════════════════════════════
+STEP 2: ELIMINATE RED FLAGS
+════════════════════════════════════════════════════
 
-PREFER matches where:
-Both teams are competitive, motivated, neither can afford to drop points
-The league is well-documented (top 5 European leagues, major South American, MLS, etc.)
-The specific outcome you are predicting has at least 3 concrete supporting reasons
+DISCARD any match where:
+- The favourite has secured everything (title/promotion/safety) and the game is meaningless
+- Rotation risk is near-certain (upcoming big fixture)
+- You cannot construct a clear evidence-based reason for the outcome
+- The only reason is "they are the bigger club" with no context
 
-══════════════════════════════════════════════════════
-RULE 4: ACCUMULATOR SIZE — 2 OR 3 PICKS ONLY
-══════════════════════════════════════════════════════
+════════════════════════════════════════════════════
+STEP 3: CHOOSE THE BEST MARKET FOR EACH MATCH
+════════════════════════════════════════════════════
 
-Select EXACTLY 2 or 3 picks. Never more. Here is the math:
-  3 picks at 90% each = 73% daily win rate — GOOD
-  4 picks at 90% each = 66% daily win rate — mediocre
-  5 picks at 85% each = 44% daily win rate — you lose more than you win
+Any market is valid. Use whichever gives the HIGHEST probability for that specific match:
 
-Combined odds will naturally be low (1.5x–2.8x). This is correct and intentional.
-Subscribers prefer winning KES ${Math.round(dayData.stake * 2.0).toLocaleString()}–${Math.round(dayData.stake * 2.8).toLocaleString()} reliably over chasing KES ${Math.round(dayData.stake * 4).toLocaleString()} and losing constantly.
+- 1X2 (Home/Draw/Away) — when one outcome is clearly more likely
+- Double Chance (1X, X2, 12) — covers two of three outcomes
+- Draw No Bet — removes draw risk on a strong favourite
+- Both Teams to Score Yes/No — based on defensive records
+- Over/Under Goals (0.5, 1.5, 2.5, 3.5, 4.5) — based on scoring patterns
+- Asian Handicap — when margin of victory is predictable
+- Win to Nil — dominant team vs toothless attack
+- Correct Score — only with unusually high conviction
+- Half-time/Full-time — when half-time trajectory is clear
+- Anytime Goalscorer — when a specific player is almost certain to score
+- Any other market — if it is the most logical given the context
 
-If you cannot find 2 picks at 85%+ confidence, output ONLY 1 pick.
-A single certain pick is better than a padded multi with a weak leg.
+Pick the market with the HIGHEST actual probability, not the best-looking odds.
 
-══════════════════════════════════════════════════════
+════════════════════════════════════════════════════
+STEP 4: BUILD THE ACCUMULATOR TO HIT 3.00–4.00
+════════════════════════════════════════════════════
+
+- Start with your highest-confidence picks.
+- Multiply odds as you add picks.
+- Stop adding picks once the product is in the 3.00–4.00 window.
+- If a single match has odds between 3.00 and 4.00, that alone is a valid selection.
+- If you are at 3.80 and the next pick would push to 5.20 — stop at the current picks.
+- NEVER go below 3.00 combined. NEVER go above 4.00 combined.
+- Quality over quantity: 3 confident picks at 3.20 combined beats 7 guesses at 3.80.
+- For confidence: "High" = 3+ strong contextual reasons; "Medium" = 1–2 solid reasons.
+
+════════════════════════════════════════════════════
 AVAILABLE MATCHES — ${today}
-══════════════════════════════════════════════════════
-${matchList || 'No match data — use your football knowledge for this date'}
+════════════════════════════════════════════════════
+${matchList || 'No match data available — use your football knowledge for this date'}
 
-══════════════════════════════════════════════════════
-OUTPUT — Return ONLY a valid JSON array. No markdown fences. No extra text.
-══════════════════════════════════════════════════════
+════════════════════════════════════════════════════
+OUTPUT — Return ONLY valid JSON. No markdown. No text outside the JSON array.
+════════════════════════════════════════════════════
 [
   {
     "homeTeam": "exact name from match list",
     "awayTeam": "exact name from match list",
     "league": "league name",
-    "matchTime": "ISO 8601 datetime",
-    "pick": "e.g. Over 1.5 Goals | Home or Draw | Draw No Bet | Over 0.5 Goals",
-    "market": "Over/Under | Double Chance | Draw No Bet | BTTS",
-    "odds": 1.20,
-    "confidence": "High",
-    "reasoning": "State your estimated probability (e.g. 91%). Give 3 specific reasons: scoring average, form, defensive record, motivation. No vague language like 'strong team'."
+    "matchTime": "ISO 8601 datetime string",
+    "pick": "e.g. Over 2.5 Goals | Manchester City | Draw No Bet | Home or Draw",
+    "market": "1X2 | Double Chance | Over/Under | BTTS | Draw No Bet | Asian Handicap | ...",
+    "odds": 1.75,
+    "confidence": "High | Medium",
+    "reasoning": "What each team needs, form context, why THIS market and THIS outcome. Minimum 2 sentences."
   }
-]
-
-FINAL RULES:
-- Every pick must have "confidence": "High". If not High, exclude it.
-- Odds must match the ACTUAL market odds (Over 0.5 Goals is ~1.05–1.20; Double Chance ~1.15–1.50).
-- Output 1, 2, or 3 picks. Never 0, never 4 or more.
-- When in doubt about any pick: leave it out.`;
+]`;
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o',
@@ -290,14 +289,14 @@ FINAL RULES:
       } catch { /* fall through */ }
 
       if (parsed.length >= 1) {
-        const candidates = parsed.slice(0, 3).map((p, i) => ({
+        const candidates = parsed.slice(0, 10).map((p, i) => ({
           ...p,
           id: `${weekId}-d${targetDay}-${i}`,
           odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
           result: 'pending' as const,
         }));
         const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
-        if (combined >= 1.3 && combined <= 4.0) {
+        if (combined >= 3.0 && combined <= 4.0) {
           picks = candidates;
         }
       }
