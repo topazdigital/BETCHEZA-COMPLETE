@@ -19,13 +19,19 @@ interface ChatRequestBody {
   sessionId?: string; // stable per-browser id so we can vary replies across turns
 }
 
+interface ChatProvider {
+  client: OpenAI;
+  model: string;
+  name: string;
+}
+
 // Lazy-init the OpenAI client. We support several key sources in priority order:
 //   1. Admin panel site-settings (openai_api_key) — rotatable without redeploy
 //   2. Replit AI Integrations env var (AI_INTEGRATIONS_OPENAI_API_KEY)
 //   3. Plain OPENAI_API_KEY env var
 //   4. Self-hosted OpenAI-compatible endpoint via OPENAI_BASE_URL
-// If NO key is found we fall back to local rules-based replies.
-async function getOpenAI(): Promise<OpenAI | null> {
+// If NO key is found we fall back to Groq, then local rules-based replies.
+async function getOpenAIProvider(): Promise<ChatProvider | null> {
   const adminKey = await getApiKey('openai_api_key').catch(() => '');
   const apiKey =
     adminKey ||
@@ -37,15 +43,36 @@ async function getOpenAI(): Promise<OpenAI | null> {
     process.env.OPENAI_BASE_URL ||
     undefined;
   try {
-    return new OpenAI({ apiKey, baseURL });
+    return { client: new OpenAI({ apiKey, baseURL }), model: process.env.OPENAI_MODEL || 'gpt-4o-mini', name: 'openai' };
   } catch {
     return null;
   }
 }
 
-// Default model — overridable via env. We use gpt-4o-mini through Replit AI
-// Integrations: cost-effective, fast and chat-optimised. Override with
-// OPENAI_MODEL=gpt-4o etc. if you want a smarter (more expensive) brain.
+// Groq fallback — OpenAI-compatible, free tier, llama-3.3-70b-versatile.
+// Used automatically when OpenAI quota runs out or returns an error.
+async function getGroqProvider(): Promise<ChatProvider | null> {
+  const adminKey = await getApiKey('groq_api_key').catch(() => '');
+  const apiKey = process.env.GROQ_API_KEY || adminKey;
+  if (!apiKey) return null;
+  try {
+    return {
+      client: new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' }),
+      model: 'llama-3.3-70b-versatile',
+      name: 'groq',
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the ordered provider list: OpenAI first, Groq as fallback.
+async function resolveProviders(): Promise<ChatProvider[]> {
+  const [openai, groq] = await Promise.all([getOpenAIProvider(), getGroqProvider()]);
+  return [openai, groq].filter((p): p is ChatProvider => p !== null);
+}
+
+// Default model — kept for backwards compatibility (used for isReasoningModel check).
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 // ----- App-knowledge system prompt -----
@@ -635,47 +662,59 @@ export async function POST(request: NextRequest) {
 
     const system = `${SYSTEM_BASE}\n\n${freshness}${liveContext ? liveContext + '\n\n' : ''}${matchContext ? matchContext + '\n\n' : ''}${body.context ? `EXTRA CONTEXT FROM CURRENT PAGE:\n${body.context}\n\n` : ''}Answer the user now.`;
 
-    const openai = await getOpenAI();
-    if (!openai) {
+    const providers = await resolveProviders();
+    if (providers.length === 0) {
       // No provider configured — return a deterministic local reply so the
       // chat still feels responsive and never throws.
       return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext, recentText), source: 'fallback' });
     }
 
-    // reasoning_effort is ONLY accepted by o-series models (o1, o3, o4).
-    // Sending it to gpt-4o / gpt-4o-mini causes a 400 error.
-    const isReasoningModel = /^o\d/i.test(MODEL);
+    const baseMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: system },
+      ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    ];
 
-    const params: Parameters<typeof openai.chat.completions.create>[0] = {
-      model: MODEL,
-      messages: [
-        { role: 'system', content: system },
-        ...history.map((m) => ({ role: m.role, content: m.content })),
-      ],
-      // max_tokens for standard models, max_completion_tokens for o-series
-      ...(isReasoningModel
-        ? { max_completion_tokens: 2500, reasoning_effort: 'low' } as object
-        : { max_tokens: 600, temperature: 0.7 }),
-    };
-    const completion = await openai.chat.completions.create(params);
-
-    const choice = (completion as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> }).choices?.[0];
-    const reply = choice?.message?.content?.trim();
-    if (!reply) {
-      console.warn('[ai/chat] empty completion', { model: MODEL, finish: choice?.finish_reason });
-      return NextResponse.json({ reply: localReply(lastUserText, matchContext, liveContext, recentText), source: 'fallback-empty' });
+    // Try each provider in order (OpenAI → Groq). Move to next on any error.
+    for (const { client, model, name } of providers) {
+      try {
+        // reasoning_effort is ONLY accepted by o-series models (o1, o3, o4).
+        const isReasoningModel = /^o\d/i.test(model);
+        const params: Parameters<typeof client.chat.completions.create>[0] = {
+          model,
+          messages: baseMessages,
+          ...(isReasoningModel
+            ? { max_completion_tokens: 2500, reasoning_effort: 'low' } as object
+            : { max_tokens: 600, temperature: 0.7 }),
+        };
+        const completion = await client.chat.completions.create(params);
+        const choice = (completion as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> }).choices?.[0];
+        const reply = choice?.message?.content?.trim();
+        if (!reply) {
+          console.warn(`[ai/chat] empty completion from ${name}`, { model, finish: choice?.finish_reason });
+          continue; // try next provider
+        }
+        rememberReply(sessionId, reply);
+        return NextResponse.json({ reply, source: name, model });
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        const status = (e as { status?: number })?.status;
+        console.warn(`[ai/chat] ${name} failed (${status ?? 'no status'}): ${errMsg}`);
+        // continue to next provider
+      }
     }
-    rememberReply(sessionId, reply);
-    return NextResponse.json({ reply, source: 'openai', model: MODEL });
-  } catch (e: unknown) {
-    // Log the full error so it's visible in server logs — crucial for diagnosing
-    // 400 bad-param errors (wrong model params), quota errors, network failures etc.
-    const errMsg = e instanceof Error ? e.message : String(e);
-    const status  = (e as { status?: number })?.status;
-    console.error('[ai/chat] OpenAI call failed', { model: MODEL, status, message: errMsg });
+
+    // All providers exhausted
+    console.error('[ai/chat] all AI providers failed — using local fallback');
     return NextResponse.json(
       { reply: localReply(lastUserText, matchContext, liveContext, recentText) || "I had a hiccup — try again in a moment. Meanwhile check the AI Prediction widget on any match page.", source: 'fallback-error' },
-      { status: 200 } // soft-fail so chat keeps working
+      { status: 200 },
+    );
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    console.error('[ai/chat] handler error:', errMsg);
+    return NextResponse.json(
+      { reply: localReply(lastUserText, matchContext, liveContext, recentText) || "I had a hiccup — try again in a moment.", source: 'fallback-error' },
+      { status: 200 },
     );
   }
 }
