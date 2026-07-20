@@ -235,6 +235,10 @@ export function MatchCardNew({
                 <div className={cn("text-[10px] font-bold uppercase", isLikelyEnded && !isFinished ? "text-muted-foreground" : "text-foreground/70")}>{isLikelyEnded && !isFinished ? 'Ended' : 'FT'}</div>
                 <div className="text-[9px]">{timeStr}</div>
               </div>
+            ) : match.status === 'postponed' ? (
+              <div className="leading-tight text-center">
+                <div className="text-[9px] font-bold uppercase text-amber-500">PPD</div>
+              </div>
             ) : (
               <div className="leading-tight text-muted-foreground">
                 <div className="text-[11px] font-semibold tabular-nums text-foreground">{timeStr}</div>
@@ -529,6 +533,10 @@ export function MatchCardNew({
             <div className="text-right text-xs text-muted-foreground">
               <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", isLikelyEnded && !isFinished ? "bg-muted/50 text-muted-foreground" : "bg-muted")}>{isLikelyEnded && !isFinished ? 'Ended' : 'FT'}</span>
               <div className="mt-0.5">{formatDate(kickoffTime, timezone)} · {timeStr}</div>
+            </div>
+          ) : match.status === 'postponed' ? (
+            <div className="text-right">
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500 border border-amber-500/25">Postponed</span>
             </div>
           ) : (
             <div className="text-right text-xs text-muted-foreground">

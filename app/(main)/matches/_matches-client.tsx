@@ -467,9 +467,11 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
         // "No matches today" whenever all of the day's games had ended.
         const tomorrowKey = toLocalISO(1);
         result = result.filter(m => {
-          if (m.status === 'cancelled' || m.status === 'postponed') return false;
+          if (m.status === 'cancelled') return false;
           const kickoff = new Date(m.kickoffTime);
           const k = toLocalISODate(kickoff);
+          // Postponed: only show today's postponed matches (labeled as Postponed)
+          if (m.status === 'postponed') return k === todayKey;
           if (k === todayKey) return true;
           // Include early-morning next-day matches (before 06:00 local time) —
           // e.g. a 22:00 UTC / 01:00 EAT kickoff is still "tonight" for EAT users.
@@ -484,8 +486,9 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
         );
       } else if (dateTab === 'calendar' && calendarDate) {
         // Calendar: show all statuses for the selected date (past dates show results)
+        // Include postponed matches for the selected date (labeled as Postponed)
         result = result.filter(m =>
-          m.status !== 'cancelled' && m.status !== 'postponed' &&
+          m.status !== 'cancelled' &&
           toLocalISODate(new Date(m.kickoffTime)) === calendarDate
         );
       }

@@ -244,6 +244,7 @@ const ESPN_LEAGUES: ESPNLeagueConfig[] = [
   { sport: 'soccer', league: 'usa.1', sportId: 1, leagueId: 11, leagueName: 'MLS', country: 'USA', countryCode: 'US', sportType: 'soccer' },
   { sport: 'soccer', league: 'bra.1', sportId: 1, leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR', sportType: 'soccer' },
   { sport: 'soccer', league: 'arg.1', sportId: 1, leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'arg.2', sportId: 1, leagueId: 258, leagueName: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR', sportType: 'soccer' },
   { sport: 'soccer', league: 'mex.1', sportId: 1, leagueId: 27, leagueName: 'Liga MX', country: 'Mexico', countryCode: 'MX', sportType: 'soccer' },
   { sport: 'soccer', league: 'conmebol.libertadores', sportId: 1, leagueId: 25, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
   
@@ -1202,6 +1203,24 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '5337': { name: 'US Open Cup', country: 'United States', countryCode: 'US' },
   '5699': { name: 'CONCACAF Champions Cup', country: 'North America', countryCode: 'WO' },
   '3903': { name: 'Argentine Primera B Metropolitana', country: 'Argentina', countryCode: 'AR' },
+  // LATAM leagues — numeric IDs as observed in /all/scoreboard uid (l:<id>)
+  '4310': { name: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR' },
+  '4311': { name: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR' },
+  '4681': { name: 'Bolivian Liga Profesional', country: 'Bolivia', countryCode: 'BO' },
+  '4682': { name: 'Bolivian Liga Profesional', country: 'Bolivia', countryCode: 'BO' },
+  '4683': { name: 'LigaPro Ecuador', country: 'Ecuador', countryCode: 'EC' },
+  '4684': { name: 'LigaPro Ecuador', country: 'Ecuador', countryCode: 'EC' },
+  '4685': { name: 'Peruvian Liga 1', country: 'Peru', countryCode: 'PE' },
+  '4686': { name: 'Uruguayan Primera División', country: 'Uruguay', countryCode: 'UY' },
+  '4687': { name: 'Venezuelan Primera', country: 'Venezuela', countryCode: 'VE' },
+  '4688': { name: 'Paraguayan Primera División', country: 'Paraguay', countryCode: 'PY' },
+  '4689': { name: 'Colombian Primera A', country: 'Colombia', countryCode: 'CO' },
+  '4690': { name: 'Chilean Primera División', country: 'Chile', countryCode: 'CL' },
+  '4691': { name: 'Costa Rican Primera', country: 'Costa Rica', countryCode: 'CR' },
+  // Central America
+  '9055': { name: 'Guatemalan Liga Nacional', country: 'Guatemala', countryCode: 'GT' },
+  '9056': { name: 'Honduran Liga Nacional', country: 'Honduras', countryCode: 'HN' },
+  '9057': { name: 'Salvadoran Primera División', country: 'El Salvador', countryCode: 'SV' },
   // International / Continental
   '22059': { name: 'AFC Champions League Elite', country: 'Asia', countryCode: 'WO' },
   '775': { name: 'UEFA Champions League', country: 'Europe', countryCode: 'EU' },
@@ -1390,6 +1409,28 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       }
     }
     if (merged.length > 0) data = { ...data, events: merged } as ESPNScoreboardResponseFull;
+  }
+
+  // Soccer supplementary: ALSO fetch today-only to maximise same-day coverage.
+  // The 60-day range hits the 300-event cap, meaning smaller LATAM/Asian leagues
+  // scheduled for today can be truncated out. A separate today query gets up to
+  // 300 more events specifically for today's date so no league is missed.
+  if (sport === 'soccer' && data?.events?.length) {
+    const todayStr = formatYYYYMMDD(now);
+    try {
+      const todayUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`;
+      const r = await directFetch(todayUrl, { headers: { Accept: 'application/json' }, timeoutMs: 8_000 });
+      if (r.ok) {
+        const todayData = await r.json() as ESPNScoreboardResponseFull;
+        if (todayData?.events?.length) {
+          const seenTodayIds = new Set((data.events || []).map(ev => ev.id));
+          const newTodayEvents = todayData.events.filter(ev => !seenTodayIds.has(ev.id));
+          if (newTodayEvents.length > 0) {
+            data = { ...data, events: [...data.events, ...newTodayEvents] } as ESPNScoreboardResponseFull;
+          }
+        }
+      }
+    } catch { /* fall through — supplementary only */ }
   }
 
   // Fallback: if the date-range request returns nothing, try the default
@@ -1764,7 +1805,7 @@ const PRIORITY_LEAGUE_KEYS = new Set<string>([
   'uefa.nations', 'uefa.wchampions',
   // ── Americas ─────────────────────────────────────────────
   'usa.1', 'usa.2', 'usa.nwsl', 'mex.1',
-  'bra.1', 'arg.1', 'col.1', 'chi.1', 'per.1', 'uru.1', 'ven.1', 'ecu.1',
+  'bra.1', 'arg.1', 'arg.2', 'col.1', 'chi.1', 'per.1', 'uru.1', 'ven.1', 'ecu.1', 'bol.1', 'par.1', 'crc.1',
   'conmebol.libertadores', 'conmebol.sudamericana',
   'concacaf.champions_cup', 'concacaf.gold',
   // ── Middle East & Africa ─────────────────────────────────

@@ -455,7 +455,11 @@ export async function GET(request: NextRequest) {
       const nowMs = Date.now();
       const STALE_SCHEDULED_OTHER_DAY_MS = 6 * 60 * 60 * 1000; // 6 hours for non-today
       matches = matches.filter(m => {
-        if (m.status === 'cancelled' || m.status === 'postponed') return false;
+        if (m.status === 'cancelled') return false;
+        // Postponed: only show today's postponed matches (labeled as Postponed)
+        if (m.status === 'postponed') {
+          return getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
+        }
         if (m.status === 'finished') {
           // Keep finished matches only if they kicked off today
           return getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
