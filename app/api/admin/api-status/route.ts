@@ -128,9 +128,17 @@ export async function GET() {
     check(async (): Promise<IntegrationItem> => {
       const key = await getApiKey('openai_api_key');
       if (!key) {
-        return { id: 'openai', name: 'OpenAI (AI Predictions)', category: 'AI', status: 'missing', message: 'API key not configured — AI tips disabled', configLink: '/admin/settings' };
+        return { id: 'openai', name: 'OpenAI (AI Predictions)', category: 'AI', status: 'missing', message: 'API key not configured — Groq will be used as fallback', configLink: '/admin/settings' };
       }
       return { id: 'openai', name: 'OpenAI (AI Predictions)', category: 'AI', status: 'ok', message: 'Key configured', detail: `Key: ${key.slice(0, 8)}…`, configLink: '/admin/settings' };
+    }),
+
+    check(async (): Promise<IntegrationItem> => {
+      const key = await getApiKey('groq_api_key');
+      if (!key) {
+        return { id: 'groq', name: 'Groq (AI Fallback)', category: 'AI', status: 'missing', message: 'Not configured — add a free key at console.groq.com', configLink: '/admin/settings' };
+      }
+      return { id: 'groq', name: 'Groq (AI Fallback)', category: 'AI', status: 'ok', message: 'Key configured — used when OpenAI quota runs out', detail: `Key: ${key.slice(0, 8)}…`, configLink: '/admin/settings' };
     }),
 
     // ── Payments ────────────────────────────────────────────────────
