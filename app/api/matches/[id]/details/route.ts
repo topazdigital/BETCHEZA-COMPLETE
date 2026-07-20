@@ -1165,14 +1165,17 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       }
     }
 
-    // For any finished match where the cached score is null/null or 0-0, read
-    // the real final score from the ESPN summary (which we already fetched).
-    // This covers the case where the match was cached pre-kick-off with score
-    // null and then finished without being refreshed in the match list cache.
-    if (FINISHED_STATUSES.has(resolvedStatus) && summary) {
-      const hasRealScore = (resolvedHomeScore !== null && resolvedHomeScore !== undefined && resolvedHomeScore > 0)
-        || (resolvedAwayScore !== null && resolvedAwayScore !== undefined && resolvedAwayScore > 0);
-      if (!hasRealScore) {
+    // For any finished match where the cached score is null/null or 0-0, try
+    // to recover the real final score from two sources:
+    //  1. ESPN summary (already fetched in parallel above) — fastest path.
+    //  2. SofaScore today/yesterday schedule — fallback when ESPN is circuit-broken.
+    const hasRealScore = () =>
+      (resolvedHomeScore !== null && resolvedHomeScore !== undefined && resolvedHomeScore > 0) ||
+      (resolvedAwayScore !== null && resolvedAwayScore !== undefined && resolvedAwayScore > 0);
+
+    if (FINISHED_STATUSES.has(resolvedStatus) && !hasRealScore()) {
+      // ── Path 1: ESPN summary score ─────────────────────────────────────────
+      if (summary) {
         const espnCompForScore = summary?.header?.competitions?.[0];
         const hcScore = espnCompForScore?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'home') as { score?: string } | undefined;
         const acScore = espnCompForScore?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'away') as { score?: string } | undefined;
@@ -1182,8 +1185,38 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           if (!isNaN(hs) && !isNaN(as_)) {
             resolvedHomeScore = hs;
             resolvedAwayScore = as_;
-            console.info(`[match details] Final score fix: ${resolvedId} → ${hs}-${as_} (was ${match.homeScore}-${match.awayScore})`);
+            console.info(`[match details] Final score (ESPN summary): ${resolvedId} → ${hs}-${as_}`);
           }
+        }
+      }
+
+      // ── Path 2: SofaScore today/yesterday schedule (ESPN circuit-broken) ───
+      // Only try for recent matches (within the last 2 days) to avoid wasting
+      // SofaScore quota on old fixtures we'll never find there.
+      if (!hasRealScore() && kickoffMs > Date.now() - 2 * 86_400_000) {
+        try {
+          const ssMod = await import('@/lib/api/sofascore');
+          const sportSsSlug = match.sport?.slug === 'soccer' ? 'football' : (match.sport?.slug ?? 'football');
+          const todayMatches = await ssMod.fetchSofaScoreTodaySchedule();
+          const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const hNorm = norm(match.homeTeam.name);
+          const aNorm = norm(match.awayTeam.name);
+          // Team name matching is unique enough across sports — no need to
+          // filter by sport slug (ESPN global slugs differ from SofaScore's).
+          const ssMatch = todayMatches.find(m => {
+            const mh = norm(m.homeTeam.name);
+            const ma = norm(m.awayTeam.name);
+            return (mh === hNorm || mh.includes(hNorm) || hNorm.includes(mh)) &&
+                   (ma === aNorm || ma.includes(aNorm) || aNorm.includes(ma));
+          });
+          if (ssMatch && FINISHED_STATUSES.has(ssMatch.status) &&
+              (ssMatch.homeScore !== null || ssMatch.awayScore !== null)) {
+            resolvedHomeScore = ssMatch.homeScore ?? 0;
+            resolvedAwayScore = ssMatch.awayScore ?? 0;
+            console.info(`[match details] Final score (SofaScore fallback): ${resolvedId} → ${resolvedHomeScore}-${resolvedAwayScore}`);
+          }
+        } catch (e) {
+          console.warn('[match details] SofaScore score fallback failed:', e);
         }
       }
     }

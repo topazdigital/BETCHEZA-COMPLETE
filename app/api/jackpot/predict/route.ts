@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJackpotById, updateJackpot } from '@/lib/jackpot-store';
+import { getApiKey } from '@/lib/api-keys';
 import type { JackpotGame, Prediction } from '@/lib/jackpot-types';
 
 export const dynamic = 'force-dynamic';
@@ -67,7 +68,7 @@ function impliedProb(decimal?: number): string {
 }
 
 async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpotTitle: string): Promise<JackpotGame[]> {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = await getApiKey('openai_api_key');
   if (!apiKey) {
     // Fallback: deterministic algorithm
     return games.map((g, i) => {
@@ -170,7 +171,7 @@ Confidence must be between 52 and 91. Never output more than 85 unless the evide
 }
 
 async function generateAnalysis(bookmakerName: string, jackpotTitle: string, games: JackpotGame[]): Promise<string> {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = await getApiKey('openai_api_key');
   if (!apiKey) {
     const highConf = games.filter(g => (g.aiConfidence || 0) >= 70).length;
     return `Our AI has analysed all ${games.length} ${jackpotTitle} games using odds data, form, and head-to-head records. We identified ${highConf} high-confidence picks (≥70%) — focus on those for your best shot at the jackpot.`;
