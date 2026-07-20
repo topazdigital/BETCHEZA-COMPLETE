@@ -53,10 +53,15 @@ export function matchIdToSlug(matchId: string): string {
 /**
  * Convert match to a human-readable URL slug using team names.
  * Works for ALL match ID formats:
- *   espn_eng.1_740942  → leeds-united-vs-burnley-740942
- *   fd_544563          → rc-celta-de-vigo-vs-levante-ud-544563
- *   camel1_12345       → afghanistan-u20-vs-turkmenistan-u20-12345
- *   camel1f_xyz        → team-a-vs-team-b-<hash>
+ *   espn_eng.1_740942       → leeds-united-vs-burnley--eng1-740942
+ *   espn_eng.league.cup_X   → arsenal-vs-man-city--engleaguecup-X
+ *   fd_544563               → rc-celta-de-vigo-vs-levante-ud-544563
+ *   camel1_12345            → afghanistan-u20-vs-turkmenistan-u20-12345
+ *   camel1f_xyz             → team-a-vs-team-b-<hash>
+ *
+ * The double-dash (--) before the league slug lets slugToMatchId reconstruct
+ * the exact ESPN ID (league + event) without ambiguity, preventing cross-league
+ * event-ID collisions (e.g. Carabao Cup final vs Community Shield same ID).
  */
 export function matchToSlug(matchId: string, homeTeam: string, awayTeam: string): string {
   const homeSlug = teamNameToSlug(homeTeam)
@@ -65,7 +70,9 @@ export function matchToSlug(matchId: string, homeTeam: string, awayTeam: string)
   // ESPN format: espn_ita.1_737421
   const espnMatch = matchId.match(/^espn_([a-z0-9.]+)_(\d+)$/i)
   if (espnMatch) {
-    return `${homeSlug}-vs-${awaySlug}-${espnMatch[2]}`
+    const leagueSlug = espnLeagueToSlug(espnMatch[1])
+    // Embed the league slug separated by -- so slugToMatchId can round-trip exactly
+    return `${homeSlug}-vs-${awaySlug}--${leagueSlug}-${espnMatch[2]}`
   }
 
   // Football-data.org format: fd_544563
@@ -157,16 +164,21 @@ const LEAGUE_KEY_MAP: Record<string, string> = {
 
 /**
  * Convert a clean URL slug back to the internal match ID.
- * Handles four formats:
- *   1. Full ESPN ID:  espn_ita.1_737421  → pass through (normalised to no-dot form)
- *   2. Legacy format: ita1-737421        → espn_ita1_737421
- *   3. New format:    team-a-vs-team-b-737421 → espn_eventid_737421 (resolved later)
- *   4. fd_/camel1 raw: fd_544563        → returned as-is (direct ID lookup works)
+ * Handles five formats:
+ *   1. Full ESPN ID:    espn_ita.1_737421            → normalised no-dot form
+ *   2. Legacy format:  ita1-737421                  → espn_ita1_737421
+ *   3. New format:     team-a-vs-team-b--eng1-737421 → espn_eng1_737421  (exact round-trip)
+ *   4. Old new format: team-a-vs-team-b-737421       → espn_eventid_737421 (fallback)
+ *   5. fd_/camel1 raw: fd_544563                    → returned as-is
  *
  * IMPORTANT: cached match IDs are generated with
  *   `espn_${league.replace(/[^a-z0-9]/gi, '')}_${eventId}`
  * so dots and hyphens in league keys are always stripped. slugToMatchId MUST
  * produce the same no-dot form so the fast-path cache scan hits correctly.
+ *
+ * The double-dash (--) separator before the league slug is the unambiguous
+ * signal that the league key is embedded and the match can be round-tripped
+ * exactly, preventing cross-league event-ID collisions.
  */
 export function slugToMatchId(slug: string): string {
   const decoded = decodeURIComponent(slug)
@@ -195,8 +207,18 @@ export function slugToMatchId(slug: string): string {
     return `espn_${cleanKey}_${eventId}`
   }
 
-  // New human-readable format: anything-vs-anything-NUMERICID
-  // Extract the trailing numeric ID (4-9 digits)
+  // New format with embedded league key (double-dash separator):
+  //   team-a-vs-team-b--engleaguecup-401859037
+  //   team-a-vs-team-b--eng1-737421
+  const embeddedLeagueMatch = decoded.match(/--([a-z0-9]+)-(\d{4,12})$/)
+  if (embeddedLeagueMatch) {
+    const leagueSlug = embeddedLeagueMatch[1]
+    const eventId = embeddedLeagueMatch[2]
+    return `espn_${leagueSlug}_${eventId}`
+  }
+
+  // Old new format (no league key): anything-vs-anything-NUMERICID
+  // Returns ambiguous espn_eventid_ form — resolved later via cache scan
   const numericMatch = decoded.match(/-(\d{4,9})$/)
   if (numericMatch) {
     return `espn_eventid_${numericMatch[1]}`

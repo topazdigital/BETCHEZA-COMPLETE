@@ -760,12 +760,34 @@ export default function BettingAcademyPage() {
 
   const categoryLabel = CATEGORIES.find(c => c.id === currentMarket.category)?.label ?? '';
 
+  // Gate the title/hash sync until the initial hash has been read, so a
+  // deep-linked URL like /betting-academy#btts is never overwritten on mount.
+  const [hashInitialized, setHashInitialized] = useState(false);
+
+  // 1. On mount: read URL hash and set the active market if it's valid.
+  //    Must be declared BEFORE the sync effect so it runs first.
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (hash && MARKETS.some(m => m.id === hash)) {
+      setActiveMarket(hash);
+    }
+    setHashInitialized(true);
+  }, []);
+
+  // 2. After hash is read, keep document title + URL hash in sync with the
+  //    active market whenever the user navigates between markets.
+  useEffect(() => {
+    if (!hashInitialized) return;
+    document.title = `${currentMarket.title} — Betting Academy | Betcheza`;
+    window.history.replaceState(null, '', `#${activeMarket}`);
+  }, [activeMarket, currentMarket.title, hashInitialized]);
+
   return (
     <div className="min-h-screen bg-background">
 
       {/* Hero */}
       <div className="border-b bg-gradient-to-br from-primary/10 via-background to-background px-4 py-8 md:py-12">
-        <div className="mx-auto max-w-6xl">
+        <div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
             <Link href="/" className="hover:text-foreground">Home</Link>
             <ChevronRight className="h-3 w-3" />
@@ -828,7 +850,7 @@ export default function BettingAcademyPage() {
       </div>
 
       {/* 3-column layout */}
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="px-4 py-6">
         <div className="flex gap-6">
 
           {/* ── LEFT SIDEBAR ──────────────────────────────────────────────── */}
@@ -937,7 +959,7 @@ export default function BettingAcademyPage() {
             </article>
 
             {/* Category Quick Nav */}
-            <div className="mt-6 flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+            <div className="mt-6 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
               <button
                 onClick={() => setActiveCategory('all')}
                 className={cn(
