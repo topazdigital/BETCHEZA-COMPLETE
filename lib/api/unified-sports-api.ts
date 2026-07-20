@@ -6306,19 +6306,30 @@ export async function getMatchById(matchId: string, nameHints?: [string, string]
       });
     }
 
-    const soccerLeagues = ESPN_LEAGUES.filter(l => l.sport === 'soccer');
-    const otherLeagues = ESPN_LEAGUES.filter(l => l.sport !== 'soccer');
+    // ── Tiered league probing ─────────────────────────────────────────────────
+    // Firing ALL 200+ leagues simultaneously opens ESPN's circuit breaker (5
+    // consecutive timeouts → 30 s silence) and causes "Match not found" for
+    // every subsequent request including the very one we're trying to resolve.
+    //
+    // Instead: probe the PRIORITY_LEAGUE_KEYS subset first (~80 leagues,
+    // includes club.friendly / fifa.friendly / all top domestic leagues).
+    // Only if that yields nothing do we fan-out to the long tail.
+    const prioritySoccer = ESPN_LEAGUES.filter(l => l.sport === 'soccer' && PRIORITY_LEAGUE_KEYS.has(l.league));
+    const tailSoccer     = ESPN_LEAGUES.filter(l => l.sport === 'soccer' && !PRIORITY_LEAGUE_KEYS.has(l.league));
+    const otherLeagues   = ESPN_LEAGUES.filter(l => l.sport !== 'soccer');
 
-    // Run soccer and non-soccer lookups IN PARALLEL so the worst-case is
-    // ~10 s (one timeout) instead of ~20 s (two sequential timeouts).
     let resolvedId: string | null = null;
     try {
+      // Stage 1: priority soccer + non-soccer in parallel (covers ~95% of matches)
       resolvedId = await Promise.any([
-        tryLeagues(soccerLeagues).then(r => { if (!r) throw new Error('no result'); return r; }),
+        tryLeagues(prioritySoccer).then(r => { if (!r) throw new Error('no result'); return r; }),
         tryLeagues(otherLeagues).then(r => { if (!r) throw new Error('no result'); return r; }),
       ]);
-    } catch {
-      resolvedId = null;
+    } catch { resolvedId = null; }
+
+    // Stage 2: only if stage 1 found nothing, try remaining long-tail soccer leagues
+    if (!resolvedId) {
+      try { resolvedId = await tryLeagues(tailSoccer); } catch { resolvedId = null; }
     }
     if (!resolvedId) return staleHitFallback;
 

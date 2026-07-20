@@ -144,6 +144,15 @@ const LEAGUE_KEY_MAP: Record<string, string> = {
   wta: 'wta',
   rufc: 'rugbyunion',
   rl: 'rugbyleague',
+  // Pre-season / friendly / curtain-raisers
+  clubfriendly: 'club.friendly',
+  fifafriendly: 'fifa.friendly',
+  fifafriendlyw: 'fifa.friendly.w',
+  engcharity: 'eng.charity',
+  espsupercopa: 'esp.supercopa',
+  itasupercoppa: 'ita.supercoppa',
+  gersupercup: 'ger.supercup',
+  fratropheechampions: 'fra.trophee_champions',
 }
 
 /**
