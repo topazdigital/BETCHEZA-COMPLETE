@@ -2613,6 +2613,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                 h2h={h2h ?? []}
                 onJumpToTab={setActiveTab}
                 isFinished={isFinished}
+                isPostponed={isPostponed}
                 openTipWithPrefill={openTipWithPrefill}
               />
             </div>
@@ -3027,6 +3028,7 @@ function MatchInfoRail({
   h2h,
   onJumpToTab,
   isFinished,
+  isPostponed,
   openTipWithPrefill,
 }: {
   match: MatchDetails['match']
@@ -3036,6 +3038,7 @@ function MatchInfoRail({
   h2h: H2HGame[]
   onJumpToTab: (tab: string) => void
   isFinished?: boolean
+  isPostponed?: boolean
   openTipWithPrefill?: (marketKey: string, outcome: { name: string; price: number }) => void
 }) {
   const timezone = getBrowserTimezone()
