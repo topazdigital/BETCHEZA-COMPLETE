@@ -25,10 +25,23 @@ export function SocialOnboardingModal() {
   const [search, setSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Auto-detect country on mount
+  // Auto-detect country on mount — IP-based first, timezone fallback
   useEffect(() => {
-    const cc = detectCountryCode();
-    setSelected(getDialCodeForCountry(cc));
+    let cancelled = false;
+    async function detect() {
+      let cc = '';
+      try {
+        const res = await fetch('/api/geo', { credentials: 'omit' });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({})) as { country?: string };
+          cc = data.country ?? '';
+        }
+      } catch {}
+      if (!cc) cc = detectCountryCode(); // timezone fallback
+      if (!cancelled) setSelected(getDialCodeForCountry(cc));
+    }
+    detect();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

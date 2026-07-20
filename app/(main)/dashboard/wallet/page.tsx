@@ -325,18 +325,29 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
   const [pendingRef, setPendingRef] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-detect country on mount
+  // Auto-detect country on mount — IP-based first, timezone fallback
   useEffect(() => {
-    const cc = detectCountryCode();
-    setCountryCode(cc);
-    const cur = getCurrencyForCountry(cc);
-    setCurrency(cur);
-    // Convert 500 KES default to local currency
-    const localDefault = kesToLocal(500, cur);
-    setLocalAmount(String(localDefault));
-    // Set default method for this country
-    const methods = getDepositMethodsForCountry(cc);
-    setMethod(methods[0]?.id ?? 'card');
+    let cancelled = false;
+    async function detect() {
+      let cc = '';
+      try {
+        const res = await fetch('/api/geo', { credentials: 'omit' });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({})) as { country?: string };
+          cc = data.country ?? '';
+        }
+      } catch {}
+      if (!cc) cc = detectCountryCode();
+      if (cancelled) return;
+      setCountryCode(cc);
+      const cur = getCurrencyForCountry(cc);
+      setCurrency(cur);
+      setLocalAmount(String(kesToLocal(500, cur)));
+      const methods = getDepositMethodsForCountry(cc);
+      setMethod(methods[0]?.id ?? 'card');
+    }
+    detect();
+    return () => { cancelled = true; };
   }, []);
 
   // Quick-amount presets — in local currency, derived from KES presets
