@@ -7,6 +7,15 @@ export const dynamic = 'force-dynamic';
 
 const PICKS: Prediction[] = ['1', 'X', '2', '1X', 'X2', '12'];
 
+function fallbackReasoning(prediction: Prediction, home: string, away: string): string {
+  if (prediction === '1') return `Based on recent form and head-to-head statistics, ${home} is the most likely outcome.`;
+  if (prediction === '2') return `Based on recent form and head-to-head statistics, ${away} is the most likely outcome.`;
+  if (prediction === 'X') return `Based on recent form and head-to-head statistics, a draw is the most likely outcome.`;
+  if (prediction === '1X') return `Based on recent form and head-to-head statistics, ${home} or a draw covers the most likely outcomes.`;
+  if (prediction === 'X2') return `Based on recent form and head-to-head statistics, a draw or ${away} win covers the most likely outcomes.`;
+  return `Based on recent form and head-to-head statistics, either team winning is the most likely scenario.`;
+}
+
 function deterministicPick(home: string, away: string, seed: number): { prediction: Prediction; confidence: number } {
   const h = (Array.from(home + away).reduce((a, c) => a + c.charCodeAt(0), 0) + seed) % 100;
   let prediction: Prediction;
@@ -72,8 +81,8 @@ async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpo
   if (!apiKey) {
     // Fallback: deterministic algorithm
     return games.map((g, i) => {
-      const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17 + 42);
-      return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: `Based on recent form and head-to-head statistics, ${prediction === '1' ? g.home : prediction === '2' ? g.away : 'a draw'} is the most likely outcome.` };
+      const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
+      return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
     });
   }
 
@@ -165,7 +174,7 @@ Confidence must be between 52 and 91. Never output more than 85 unless the evide
     console.warn('[jackpot predict] AI failed, using fallback:', e);
     return games.map((g, i) => {
       const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
-      return { ...g, aiPrediction: prediction, aiConfidence: confidence };
+      return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
     });
   }
 }
