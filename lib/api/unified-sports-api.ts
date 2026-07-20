@@ -1130,7 +1130,10 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '8296': { name: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
   '8297': { name: 'EFL League Cup', country: 'England', countryCode: 'GB-ENG' },
   '8299': { name: 'FA Cup', country: 'England', countryCode: 'GB-ENG' },
-  '8301': { name: 'Copa del Rey', country: 'Spain', countryCode: 'ES' },
+  // NOTE: ESPN global soccer scoreboard uses 8301 for NWSL — NOT Copa del Rey.
+  // Copa del Rey is fetched via the esp.copa_del_rey LEAGUE_CONFIGS path and
+  // does not appear on the global scoreboard with this ID.
+  '8301': { name: 'NWSL', country: 'USA', countryCode: 'US' },
   '8302': { name: 'Coppa Italia', country: 'Italy', countryCode: 'IT' },
   '8303': { name: 'DFB Pokal', country: 'Germany', countryCode: 'DE' },
   '8304': { name: 'Coupe de France', country: 'France', countryCode: 'FR' },
@@ -1270,7 +1273,8 @@ const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
   '17176': 194, // Women's WC Qual CONMEBOL
   '22287': 194, // Women's WC Qual CONMEBOL alt
   '17163': 200, // UEFA Women's Champions League
-  '16980': 201, // NWSL
+  '8301':  79,  // NWSL (ESPN global uses 8301 for NWSL, confirmed from scoreboard)
+  '16980': 79,  // NWSL alternate ESPN numeric ID
   // FIFA World Cup numeric IDs
   '606':   29,  // FIFA World Cup 2026 (ESPN global scoreboard league id)
   '607':   29,  // FIFA World Cup alt id

@@ -441,7 +441,8 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     'afc.champions', 'afc.asian',
     // Pre-season / friendly competitions — surfaces summer tours, community
     // shield, super cups and international club friendlies on team pages.
-    'friendly.club', 'friendly.intl',
+    // ESPN's actual league slugs: club.friendly and fifa.friendly (NOT friendly.club / friendly.intl).
+    'club.friendly', 'fifa.friendly',
     // Community shields / super cups — national curtain-raisers
     'eng.charity',       // FA Community Shield
     'esp.supercopa',     // Spanish Super Cup
@@ -476,6 +477,9 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     'FAC': 'eng.fa', 'FA': 'eng.fa', 'FACUP': 'eng.fa', 'FACH': 'eng.fa',
     'CC': 'eng.league_cup', 'LC': 'eng.league_cup', 'EFLC': 'eng.league_cup', 'ELC': 'eng.league_cup',
     'CDR': 'esp.copa_del_rey', 'COPA': 'esp.copa_del_rey', 'CDF': 'fra.coupe_de_france',
+    // Pre-season / friendly abbreviations
+    'FR': 'club.friendly', 'FREN': 'club.friendly', 'FRI': 'club.friendly',
+    'INTFR': 'fifa.friendly', 'INTLFR': 'fifa.friendly',
     'CI': 'ita.coppa_italia', 'COPI': 'ita.coppa_italia',
     'DFBP': 'ger.dfb_pokal', 'DFB': 'ger.dfb_pokal',
     // FIFA / International
