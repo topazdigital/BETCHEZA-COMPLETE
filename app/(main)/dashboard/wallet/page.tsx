@@ -8,6 +8,7 @@ import {
   Wallet, ArrowDownToLine, ArrowUpFromLine, Smartphone, CreditCard,
   Building2, Bitcoin, Loader2, CheckCircle2, AlertTriangle,
   ArrowDownLeft, ArrowUpRight, Trophy, Gift, RotateCcw, Clock, Medal,
+  Globe,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,8 +19,17 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
+import {
+  detectCountryCode,
+  getCurrencyForCountry,
+  kesToLocal,
+  localToKes,
+  fmtLocalCurrency,
+  getDepositMethodsForCountry,
+  type DepositMethodId,
+  type CurrencyInfo,
+} from '@/lib/geo-currency';
 
-type DepositMethod = 'mpesa' | 'mpesa_till' | 'card' | 'bank' | 'crypto';
 type WithdrawMethod = 'mpesa' | 'bank' | 'paypal' | 'crypto';
 
 interface Txn {
@@ -69,14 +79,6 @@ const TXN_ICON: Record<Txn['type'], { icon: typeof ArrowDownLeft; color: string;
 };
 
 const MPESA_TILL_NUMBER = '9867233';
-
-const DEPOSIT_METHODS: Array<{ id: DepositMethod; label: string; icon: typeof Smartphone; help: string }> = [
-  { id: 'mpesa',      label: 'M-Pesa STK', icon: Smartphone, help: 'Instant prompt to phone' },
-  { id: 'mpesa_till', label: 'M-Pesa Till', icon: Smartphone, help: `Pay to Till ${MPESA_TILL_NUMBER}` },
-  { id: 'card',       label: 'Card',        icon: CreditCard, help: 'Visa / Mastercard / Verve' },
-  { id: 'bank',       label: 'Bank',        icon: Building2,  help: 'Bank transfer / SWIFT / SEPA' },
-  { id: 'crypto',     label: 'Crypto',      icon: Bitcoin,    help: 'USDT / BTC / ETH' },
-];
 
 const WITHDRAW_METHODS: Array<{ id: WithdrawMethod; label: string; icon: typeof Smartphone; help: string }> = [
   { id: 'mpesa',  label: 'M-Pesa',  icon: Smartphone, help: 'Send to your M-Pesa number' },
@@ -304,8 +306,15 @@ export default function WalletPage() {
 }
 
 function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
-  const [method, setMethod] = useState<DepositMethod>('mpesa_till');
-  const [amount, setAmount] = useState<string>('500');
+  // Geo + currency
+  const [countryCode, setCountryCode] = useState('KE');
+  const [currency, setCurrency] = useState<CurrencyInfo>({ code: 'KES', symbol: 'KES', name: 'Kenyan Shilling', rateFromKES: 1, decimals: 0 });
+  const [localAmount, setLocalAmount] = useState<string>('500');  // amount in user's local currency
+  const kesAmount = localToKes(parseFloat(localAmount) || 0, currency);
+
+  const countryMethods = getDepositMethodsForCountry(countryCode);
+  const [method, setMethod] = useState<DepositMethodId>(() => countryMethods[0]?.id ?? 'card');
+
   const [phone, setPhone] = useState('');
   const [tillRef, setTillRef] = useState('');
   const [card, setCard] = useState({ number: '', exp: '', cvc: '' });
@@ -316,45 +325,38 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
   const [pendingRef, setPendingRef] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch active admin-configured gateways to know which methods to surface.
-  // Falls back to the default DEPOSIT_METHODS list when none are configured.
-  interface ActiveGateway { id: string; name: string; type: string; supportsPayouts: boolean }
-  const { data: methodsData } = useSWR<{ gateways: ActiveGateway[] }>(
-    '/api/wallet/methods',
-    fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 },
-  );
-  const activeGateways = methodsData?.gateways ?? [];
+  // Auto-detect country on mount
+  useEffect(() => {
+    const cc = detectCountryCode();
+    setCountryCode(cc);
+    const cur = getCurrencyForCountry(cc);
+    setCurrency(cur);
+    // Convert 500 KES default to local currency
+    const localDefault = kesToLocal(500, cur);
+    setLocalAmount(String(localDefault));
+    // Set default method for this country
+    const methods = getDepositMethodsForCountry(cc);
+    setMethod(methods[0]?.id ?? 'card');
+  }, []);
 
-  // Map gateway types → deposit method IDs. Multiple gateways of the same
-  // type (e.g. "mpesa-payhero" and "mpesa-pesapal") collapse to one tile.
-  const visibleMethods: typeof DEPOSIT_METHODS = (() => {
-    if (activeGateways.length === 0) return DEPOSIT_METHODS;
-    const seenIds = new Set<DepositMethod>();
-    const result: typeof DEPOSIT_METHODS = [];
-    for (const gw of activeGateways) {
-      let id: DepositMethod | null = null;
-      if (gw.type === 'mobile_money' || gw.id.startsWith('mpesa')) id = 'mpesa';
-      else if (gw.type === 'card') id = 'card';
-      else if (gw.type === 'bank') id = 'bank';
-      else if (gw.type === 'crypto') id = 'crypto';
-      if (id && !seenIds.has(id)) {
-        seenIds.add(id);
-        result.push(DEPOSIT_METHODS.find(m => m.id === id)!);
-      }
-    }
-    const base = result.length > 0 ? result : DEPOSIT_METHODS;
-    // Always include mpesa_till (manual Till Number payment) if not already present
-    const mpesaTillEntry = DEPOSIT_METHODS.find(m => m.id === 'mpesa_till')!;
-    return base.some(m => m.id === 'mpesa_till') ? base : [mpesaTillEntry, ...base];
-  })();
+  // Quick-amount presets — in local currency, derived from KES presets
+  const kesPresets = [100, 500, 1000, 2500, 5000, 10000];
+  const localPresets = kesPresets.map(k => kesToLocal(k, currency));
+
+  // Icon mapping
+  const methodIcon = (icon: string) => {
+    if (icon === 'phone') return <Smartphone className="h-4 w-4" />;
+    if (icon === 'card') return <CreditCard className="h-4 w-4" />;
+    if (icon === 'bank') return <Building2 className="h-4 w-4" />;
+    if (icon === 'bitcoin') return <Bitcoin className="h-4 w-4" />;
+    return <Globe className="h-4 w-4" />;
+  };
 
   // Poll PayHero status while an STK push is pending
-  // Times out after 3 minutes (45 × 4 s) — user can retry if needed
   useEffect(() => {
     if (!pendingRef) return;
     let pollCount = 0;
-    const MAX_POLLS = 45; // 45 × 4 s = 3 minutes
+    const MAX_POLLS = 45;
     const interval = setInterval(async () => {
       pollCount++;
       try {
@@ -371,16 +373,15 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           clearInterval(interval);
           pollRef.current = null;
           setPendingRef(null);
-          setStatus({ kind: 'err', msg: 'M-Pesa payment failed or was cancelled. Please try again.' });
+          setStatus({ kind: 'err', msg: 'Payment failed or was cancelled. Please try again.' });
           return;
         }
       } catch {}
-      // Timeout after MAX_POLLS
       if (pollCount >= MAX_POLLS) {
         clearInterval(interval);
         pollRef.current = null;
         setPendingRef(null);
-        setStatus({ kind: 'err', msg: 'Confirmation timed out. If you entered your PIN the payment may still complete — check your balance in a moment or try again.' });
+        setStatus({ kind: 'err', msg: 'Confirmation timed out. If you entered your PIN the payment may still complete — check your balance in a moment.' });
       }
     }, 4000);
     pollRef.current = interval;
@@ -391,8 +392,13 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
     setStatus(null);
     setPendingRef(null);
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) { setStatus({ kind: 'err', msg: 'Enter a positive amount.' }); return; }
+    if (!kesAmount || kesAmount <= 0) { setStatus({ kind: 'err', msg: 'Enter a positive amount.' }); return; }
+
+    const currentMethod = countryMethods.find(m => m.id === method);
+    if (currentMethod?.needsPhone && !phone.trim()) {
+      setStatus({ kind: 'err', msg: 'Enter your phone number.' });
+      return;
+    }
     if (method === 'mpesa' && !/^(\+?254|0)?[17]\d{8}$/.test(phone.replace(/\s/g, ''))) {
       setStatus({ kind: 'err', msg: 'Enter a valid M-Pesa phone (e.g. 0712345678).' });
       return;
@@ -401,9 +407,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
       setStatus({ kind: 'err', msg: 'Enter your M-Pesa transaction reference (e.g. SJ12A3B4CD).' });
       return;
     }
-    if (method === 'card') {
+    if ((method === 'card' || method === 'paystack') && card.number) {
       if (card.number.replace(/\s/g, '').length < 13) { setStatus({ kind: 'err', msg: 'Enter a valid card number.' }); return; }
-      if (!/^\d{2}\/\d{2}$/.test(card.exp)) { setStatus({ kind: 'err', msg: 'Expiry must be MM/YY.' }); return; }
+      if (card.exp && !/^\d{2}\/\d{2}$/.test(card.exp)) { setStatus({ kind: 'err', msg: 'Expiry must be MM/YY.' }); return; }
     }
 
     setSubmitting(true);
@@ -412,11 +418,13 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: amt,
+          amount: kesAmount,
           currency: 'KES',
+          localAmount: parseFloat(localAmount),
+          localCurrency: currency.code,
           method,
-          phone: method === 'mpesa' ? phone : undefined,
-          cardLast4: method === 'card' ? card.number.replace(/\s/g, '').slice(-4) : undefined,
+          phone: (method === 'mpesa' || method === 'mobile_money') ? phone : undefined,
+          cardLast4: (method === 'card' || method === 'paystack') ? card.number.replace(/\s/g, '').slice(-4) : undefined,
           reference: method === 'bank' ? bank : method === 'crypto' ? crypto : method === 'mpesa_till' ? tillRef.trim() : undefined,
         }),
       });
@@ -424,14 +432,17 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
       if (!res.ok || !data.success) {
         setStatus({ kind: 'err', msg: data.error || 'Deposit failed.' });
       } else if (data.pending) {
-        if (method === 'mpesa_till') {
-          setStatus({ kind: 'pending', msg: data.message || 'Payment reference received. Your wallet will be credited after admin confirmation (usually within 15 minutes).' });
-        } else {
+        if (method === 'mpesa') {
+          // Real STK push — poll for confirmation
           setPendingRef(data.reference);
           setStatus({ kind: 'pending', msg: `M-Pesa prompt sent to ${phone}. Enter your PIN on your phone to complete.` });
+        } else {
+          // All other pending methods (mpesa_till, mobile_money, paystack, bank, crypto)
+          // are admin-confirmed; no polling needed
+          setStatus({ kind: 'pending', msg: data.message || 'Payment request received. Your wallet will be credited after confirmation (usually within 15 minutes).' });
         }
       } else {
-        setStatus({ kind: 'ok', msg: `Deposited ${amt.toLocaleString()} KES — balance updated.` });
+        setStatus({ kind: 'ok', msg: `Deposited ${kesAmount.toLocaleString()} KES — balance updated.` });
         await onDone();
       }
     } catch {
@@ -439,7 +450,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
     } finally {
       setSubmitting(false);
     }
-  }, [amount, method, phone, card, bank, crypto, onDone]);
+  }, [kesAmount, localAmount, currency, method, phone, card, bank, crypto, tillRef, countryMethods, onDone]);
+
+  const isNonKES = currency.code !== 'KES';
 
   return (
     <Card>
@@ -448,10 +461,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
         <CardDescription className="text-xs">Funds settle instantly for in-platform spend.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 px-4 pb-4">
-        {/* Method picker — derived from admin-active gateways or default list */}
-        <div className={`grid gap-2 ${visibleMethods.length <= 2 ? 'grid-cols-2' : visibleMethods.length <= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3 sm:grid-cols-5'}`}>
-          {visibleMethods.map((m) => {
-            const Icon = m.icon;
+        {/* Method picker */}
+        <div className={`grid gap-2 ${countryMethods.length <= 2 ? 'grid-cols-2' : countryMethods.length <= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3 sm:grid-cols-5'}`}>
+          {countryMethods.map((m) => {
             const active = method === m.id;
             return (
               <button
@@ -462,7 +474,7 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
                   active ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:bg-muted',
                 )}
               >
-                <Icon className="h-4 w-4" />
+                {methodIcon(m.icon)}
                 <span className="font-medium">{m.label}</span>
                 <span className="text-center text-[10px] text-muted-foreground">{m.help}</span>
               </button>
@@ -470,21 +482,35 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           })}
         </div>
 
-        {/* Amount */}
+        {/* Amount — shown in user's local currency */}
         <div className="space-y-1">
-          <Label className="text-[10px] uppercase tracking-wide">Amount (KES)</Label>
-          <Input
-            type="number"
-            min="1"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="h-9"
-          />
+          <Label className="text-[10px] uppercase tracking-wide">
+            Amount ({currency.code})
+          </Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">
+              {currency.symbol}
+            </span>
+            <Input
+              type="number"
+              min="1"
+              value={localAmount}
+              onChange={(e) => setLocalAmount(e.target.value)}
+              className="h-9 pl-10"
+            />
+          </div>
+          {/* KES equivalent for non-KES users */}
+          {isNonKES && kesAmount > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              ≈ <span className="font-semibold text-foreground">KES {kesAmount.toLocaleString()}</span> · Betcheza stores balances in KES
+            </p>
+          )}
+          {/* Quick presets */}
           <div className="flex flex-wrap gap-1.5">
-            {[100, 500, 1000, 2500, 5000, 10000].map((v) => (
-              <Button key={v} type="button" variant="outline" size="sm" className="h-6 text-[10px] px-2"
-                onClick={() => setAmount(String(v))}>
-                {v.toLocaleString()}
+            {localPresets.map((v, i) => (
+              <Button key={i} type="button" variant="outline" size="sm" className="h-6 text-[10px] px-2"
+                onClick={() => setLocalAmount(String(v))}>
+                {currency.symbol}{v.toLocaleString(undefined, { maximumFractionDigits: currency.decimals })}
               </Button>
             ))}
           </div>
@@ -499,9 +525,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
                 <li>Open <strong>M-Pesa</strong> on your phone</li>
                 <li>Select <strong>Lipa na M-Pesa</strong> → <strong>Buy Goods and Services</strong></li>
                 <li>Enter Till Number: <span className="font-mono font-bold text-green-700 dark:text-green-400 text-sm">{MPESA_TILL_NUMBER}</span></li>
-                <li>Enter the amount: <strong>KES {amount || '0'}</strong></li>
+                <li>Enter the amount: <strong>KES {kesAmount.toLocaleString() || '0'}</strong></li>
                 <li>Enter your M-Pesa PIN and confirm</li>
-                <li>Copy the <strong>M-Pesa confirmation message reference</strong> (e.g. SJ12A3B4CD) and paste it below</li>
+                <li>Copy the <strong>M-Pesa confirmation reference</strong> (e.g. SJ12A3B4CD) and paste it below</li>
               </ol>
             </div>
             <div className="space-y-1">
@@ -520,6 +546,66 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           <div className="space-y-1">
             <Label className="text-[10px] uppercase tracking-wide">M-Pesa phone</Label>
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" className="h-9" />
+          </div>
+        )}
+        {method === 'mobile_money' && (
+          <div className="space-y-2">
+            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-[11px] text-blue-700 dark:text-blue-300">
+              <p className="font-semibold mb-1">Mobile Money — enter your number</p>
+              <p className="text-muted-foreground">We support MTN Mobile Money, Airtel Money, Vodacom M-Pesa, and other local operators.</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-wide">Mobile Money number</Label>
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder={countryMethods.find(m => m.id === 'mobile_money')?.phonePlaceholder ?? '07XX XXX XXX'}
+                className="h-9"
+              />
+            </div>
+          </div>
+        )}
+        {method === 'paystack' && (
+          <div className="space-y-2">
+            <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 text-[11px] text-indigo-700 dark:text-indigo-300">
+              <p className="font-semibold mb-1">Pay with Paystack</p>
+              <p>You&apos;ll be able to use card, bank transfer, or USSD. Enter your card details below or leave blank to pay via bank/USSD.</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-wide">Card number (optional)</Label>
+              <Input
+                value={card.number}
+                onChange={(e) => setCard({ ...card, number: e.target.value.replace(/[^\d ]/g, '').slice(0, 19) })}
+                placeholder="1234 5678 9012 3456"
+                className="h-9"
+              />
+            </div>
+            {card.number && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wide">Expiry</Label>
+                  <Input
+                    value={card.exp}
+                    onChange={(e) => {
+                      let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      if (v.length > 2) v = `${v.slice(0, 2)}/${v.slice(2)}`;
+                      setCard({ ...card, exp: v });
+                    }}
+                    placeholder="MM/YY"
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wide">CVC</Label>
+                  <Input
+                    value={card.cvc}
+                    onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    placeholder="123"
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
         {method === 'card' && (
@@ -594,21 +680,20 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
             <div className="flex items-center gap-2 font-medium">
               <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-              <span>Waiting for M-Pesa confirmation…</span>
+              <span>Waiting for payment confirmation…</span>
             </div>
             <ol className="ml-1 list-decimal list-inside space-y-1 text-[11px] text-amber-700/80 dark:text-amber-400/80">
-              <li>Check your phone — an M-Pesa prompt should appear.</li>
-              <li>Enter your M-Pesa PIN and press <strong>OK</strong>.</li>
-              <li>Your wallet will be credited automatically once confirmed.</li>
+              <li>Check your phone — a payment prompt should appear.</li>
+              <li>Enter your PIN and confirm.</li>
+              <li>Your wallet will be credited automatically.</li>
             </ol>
-            <p className="text-[10px] text-amber-600/70 dark:text-amber-500/60">
-              Didn&apos;t get a prompt? Ensure your phone has a signal and try again. Times out after 3 minutes.
-            </p>
           </div>
         )}
 
         <Button onClick={submit} disabled={submitting || !!pendingRef} className="w-full h-9 text-xs">
-          {submitting ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Processing…</> : <>Deposit KES {amount || '0'}</>}
+          {submitting
+            ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Processing…</>
+            : <>Deposit {fmtLocalCurrency(parseFloat(localAmount) || 0, currency)}{isNonKES ? ` (≈ KES ${kesAmount.toLocaleString()})` : ''}</>}
         </Button>
       </CardContent>
     </Card>

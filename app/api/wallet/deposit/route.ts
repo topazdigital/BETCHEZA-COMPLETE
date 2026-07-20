@@ -10,7 +10,9 @@ export const runtime = 'nodejs';
 interface Body {
   amount: number;
   currency?: string;
-  method: 'mpesa' | 'mpesa_till' | 'card' | 'bank' | 'crypto';
+  localAmount?: number;
+  localCurrency?: string;
+  method: 'mpesa' | 'mpesa_till' | 'mobile_money' | 'paystack' | 'card' | 'bank' | 'crypto';
   phone?: string;
   cardLast4?: string;
   reference?: string;
@@ -107,7 +109,30 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Other methods (card, bank, crypto) ──
+  // ── Paystack / Mobile Money — not yet live; store as pending for admin review ──
+  if (body.method === 'paystack' || body.method === 'mobile_money') {
+    const ref = generateRef(body.method === 'paystack' ? 'PAYSTACK' : 'MOBMONEY');
+    storePending(ref, {
+      userId: user.userId,
+      amount: body.amount,
+      currency: body.currency || 'KES',
+      phone: body.phone || '',
+      type: 'deposit',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    });
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      reference: ref,
+      message:
+        body.method === 'paystack'
+          ? 'Your Paystack payment request has been received. Your wallet will be credited after confirmation (usually within 15 minutes).'
+          : 'Your Mobile Money payment request has been received. Your wallet will be credited after confirmation (usually within 15 minutes).',
+    });
+  }
+
+  // ── Other methods (card, bank, crypto) — store as pending; admin confirms ──
   const txn = credit(user.userId, body.amount, {
     type: 'deposit',
     currency: body.currency || 'KES',
