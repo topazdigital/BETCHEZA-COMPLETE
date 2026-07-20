@@ -94,7 +94,8 @@ function ResponsiveBanner({ className = '' }: { className?: string }) {
             height={250}
             sizes="(min-width: 1024px) calc(100vw - 600px)"
             className="w-full h-auto rounded-xl"
-            loading="lazy"
+            loading="eager"
+            priority
           />
         </Link>
       </div>

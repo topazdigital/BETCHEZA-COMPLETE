@@ -588,12 +588,38 @@ function buildSegmentBreakdown(summary: ESPNSummaryResponse, sportType: string):
 }
 
 function buildNews(summary: ESPNSummaryResponse) {
-  if (!summary.news?.articles) return [];
-  return summary.news.articles.slice(0, 8).map((a, idx) => {
-    // ESPN articles have a stable numeric id at `a.id`, but TypeScript may
-    // not have it on the typed shape. Falling back to the article index keeps
-    // the link unique inside one match's news set.
-    const articleId = String((a as unknown as { id?: string | number }).id || idx);
+  // ESPN may return articles in summary.news.articles OR as individual
+  // article/headlines fields (structure changed in mid-2025). Check both.
+  type AnyArticle = {
+    id?: string | number;
+    headline?: string;
+    description?: string;
+    published?: string;
+    images?: Array<{ url?: string }>;
+    links?: { web?: { href?: string } };
+    type?: string;
+  };
+
+  const raw = summary as unknown as Record<string, unknown>;
+
+  // Primary: summary.news.articles
+  let articles: AnyArticle[] = (summary.news?.articles as AnyArticle[] | undefined) || [];
+
+  // Fallback 1: summary.headlines (some ESPN endpoints use this)
+  if (articles.length === 0 && Array.isArray(raw.headlines)) {
+    articles = (raw.headlines as AnyArticle[]).filter(a => a.headline);
+  }
+
+  // Fallback 2: summary.article (single article object)
+  if (articles.length === 0 && raw.article && typeof raw.article === 'object') {
+    const art = raw.article as AnyArticle;
+    if (art.headline) articles = [art];
+  }
+
+  if (articles.length === 0) return [];
+
+  return articles.slice(0, 8).map((a, idx) => {
+    const articleId = String(a.id || idx);
     return {
       id: articleId,
       headline: a.headline,

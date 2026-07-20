@@ -442,6 +442,12 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     // Pre-season / friendly competitions — surfaces summer tours, community
     // shield, super cups and international club friendlies on team pages.
     'friendly.club', 'friendly.intl',
+    // Community shields / super cups — national curtain-raisers
+    'eng.charity',       // FA Community Shield
+    'esp.supercopa',     // Spanish Super Cup
+    'ita.supercoppa',    // Italian Super Cup
+    'ger.supercup',      // German Super Cup
+    'fra.trophee_champions', // French Trophy of Champions
     // Domestic cups for the most-watched leagues — adds FA Cup, Copa del Rey,
     // Coupe de France, Coppa Italia, DFB Pokal goals when applicable.
     'eng.fa', 'eng.league_cup', 'esp.copa_del_rey', 'fra.coupe_de_france',
@@ -1086,12 +1092,20 @@ export async function GET(
   type EventOut = (typeof events)[number];
   const byDateAsc = (a: EventOut, b: EventOut) => new Date(a.date).getTime() - new Date(b.date).getTime();
   const byDateDesc = (a: EventOut, b: EventOut) => new Date(b.date).getTime() - new Date(a.date).getTime();
+  // Filter out events where the competition name resolved to a raw ESPN fallback
+  // like "League 8301" or "World League 23286" — these have no useful identity.
+  const isKnownCompetition = (e: EventOut) => {
+    const name = e.competitionFull || e.competition || '';
+    return !(/^(World\s+)?League\s+\d+$/i.test(name));
+  };
   const past = events
     .filter((e: EventOut) => e.status === 'finished')
+    .filter(isKnownCompetition)
     .sort(byDateDesc)
     .slice(0, 30);
   const upcoming = events
     .filter((e: EventOut) => e.status === 'scheduled' || e.status === 'live')
+    .filter(isKnownCompetition)
     .sort(byDateAsc)
     .slice(0, 20);
 

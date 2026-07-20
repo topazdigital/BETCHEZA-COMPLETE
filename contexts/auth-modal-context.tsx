@@ -26,11 +26,13 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
 
   // Open the modal automatically when the URL has ?auth=login|register|forgot|reset
   // or a bare ?reset_token=... (password-reset email link).
+  // Also handles ?auth_error=... from failed OAuth flows (shows login view + error banner).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const v = params.get('auth');
     const hasResetToken = !!params.get('reset_token');
+    const authError = params.get('auth_error');
 
     if (v === 'login' || v === 'register' || v === 'forgot' || v === 'reset') {
       setView(v);
@@ -44,6 +46,27 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       // Bare reset_token without auth param — still open the reset view.
       setView('reset');
       setIsOpen(true);
+    } else if (authError) {
+      // OAuth callback failure — open the login view so the user can try again.
+      // The auth modal will display the error from sessionStorage if it set it.
+      setView('login');
+      setIsOpen(true);
+      // Store the error message in sessionStorage so the auth modal can show it.
+      try {
+        const msg = authError === 'email_taken'
+          ? 'An account with this email already exists. Please sign in with your password.'
+          : authError === 'provider_error'
+          ? 'Google sign-in failed. Please try again or use email/password.'
+          : authError === 'missing_email'
+          ? 'Google did not provide an email address. Please use email/password sign-in.'
+          : 'Sign-in failed. Please try again.';
+        sessionStorage.setItem('auth_error_msg', msg);
+      } catch { /* ignore */ }
+      // Strip auth_error from URL so it doesn't persist on reload.
+      params.delete('auth_error');
+      const next = params.toString();
+      const url = window.location.pathname + (next ? `?${next}` : '');
+      window.history.replaceState(null, '', url);
     }
   }, []);
 

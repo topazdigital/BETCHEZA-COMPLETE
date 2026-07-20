@@ -392,6 +392,18 @@ function LoginPanel() {
 
   useEffect(() => { setLoginPhoneCode(detectCountryCode()); }, []);
 
+  // Read any auth error message stored by the OAuth callback failure handler
+  // (auth-modal-context.tsx writes to sessionStorage when ?auth_error= is in the URL).
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem('auth_error_msg');
+      if (msg) {
+        setError(msg);
+        sessionStorage.removeItem('auth_error_msg');
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (loginCountryRef.current && !loginCountryRef.current.contains(e.target as Node)) {
