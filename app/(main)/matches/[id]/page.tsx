@@ -1158,6 +1158,7 @@ export default function MatchDetailPage({ params }: PageProps) {
   const FINISHED_STATUS_SET = new Set(['finished', 'ft', 'full-time', 'aet', 'pen', 'post', 'walkover', 'awarded', 'final'])
   const isFinished = !!(match && FINISHED_STATUS_SET.has(match.status))
   const isHalftime = match?.status === 'halftime'
+  const isPostponed = match?.status === 'postponed'
   const liveMinute = useLiveMinute(
     match?.minute,
     match?.status || '',
@@ -1276,6 +1277,11 @@ export default function MatchDetailPage({ params }: PageProps) {
                   {getDayLabel(match.kickoffTime, timezone)} {formatTime(match.kickoffTime, timezone)}
                 </div>
               )}
+              {isPostponed && (
+                <div className="flex items-center gap-1 bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  <Clock className="h-2.5 w-2.5" /> POSTPONED
+                </div>
+              )}
               {isFinished && (
                 <div className="flex items-center gap-1 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                   <CheckCircle2 className="h-2.5 w-2.5" /> FT
@@ -1353,7 +1359,13 @@ export default function MatchDetailPage({ params }: PageProps) {
 
               {/* Score / Time */}
               <div className="flex flex-col items-center min-w-[70px] md:min-w-[90px]">
-                {(isLive || isFinished) ? (
+                {isPostponed ? (
+                  <>
+                    <p className="text-xl md:text-2xl font-black text-amber-400 tracking-widest">PPD</p>
+                    <p className="mt-1 text-[10px] font-bold text-amber-400/70 uppercase">Postponed</p>
+                    <p className="mt-0.5 text-[9px] text-white/30">{formatDate(match.kickoffTime, timezone)}</p>
+                  </>
+                ) : (isLive || isFinished) ? (
                   <>
                     <div className="flex items-center gap-1 md:gap-2 tabular-nums">
                       <span className="text-3xl md:text-4xl font-black text-white leading-none">
@@ -1451,8 +1463,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                     label="1"
                     sublabel={match.homeTeam.name.split(' ')[0]}
                     value={match.odds.home}
-                    disabled={isFinished}
-                    selected={!isFinished && isSelected(match.id, 'h2h', match.homeTeam.name)}
+                    disabled={isFinished || isPostponed}
+                    selected={!(isFinished || isPostponed) && isSelected(match.id, 'h2h', match.homeTeam.name)}
                     onClick={() => addSelection({
                       matchId: match.id,
                       matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1468,8 +1480,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                       label="X"
                       sublabel="Draw"
                       value={match.odds.draw}
-                      disabled={isFinished}
-                      selected={!isFinished && isSelected(match.id, 'h2h', 'Draw')}
+                      disabled={isFinished || isPostponed}
+                      selected={!(isFinished || isPostponed) && isSelected(match.id, 'h2h', 'Draw')}
                       onClick={() => addSelection({
                         matchId: match.id,
                         matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1485,8 +1497,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                     label="2"
                     sublabel={match.awayTeam.name.split(' ')[0]}
                     value={match.odds.away}
-                    disabled={isFinished}
-                    selected={!isFinished && isSelected(match.id, 'h2h', match.awayTeam.name)}
+                    disabled={isFinished || isPostponed}
+                    selected={!(isFinished || isPostponed) && isSelected(match.id, 'h2h', match.awayTeam.name)}
                     onClick={() => addSelection({
                       matchId: match.id,
                       matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1503,7 +1515,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                   <p className="text-[9px] text-white/30">
                     {`Odds • ${match.odds.bookmaker || 'Market'}`}
                   </p>
-                  {!isFinished && (
+                  {!(isFinished || isPostponed) && (
                     <button
                       onClick={() => openTipWithPrefill('h2h', { name: match.homeTeam.name, price: match.odds!.home })}
                       className="flex items-center gap-1 text-[9px] text-amber-400/70 hover:text-amber-400 transition-colors font-medium"
@@ -1585,11 +1597,11 @@ export default function MatchDetailPage({ params }: PageProps) {
                         ...(match.odds.draw !== undefined ? [{ label: 'X', sublabel: 'Draw', value: match.odds.draw, outcome: 'Draw' }] : []),
                         { label: '2', sublabel: match.awayTeam.name.split(' ')[0], value: match.odds.away, outcome: match.awayTeam.name },
                       ].map((o) => {
-                        const sel = !isFinished && isSelected(match.id, 'h2h', o.outcome)
+                        const sel = !(isFinished || isPostponed) && isSelected(match.id, 'h2h', o.outcome)
                         return (
                           <button
                             key={o.label}
-                            disabled={isFinished}
+                            disabled={isFinished || isPostponed}
                             onClick={isFinished ? undefined : () => addSelection({
                               matchId: match.id,
                               matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1633,11 +1645,11 @@ export default function MatchDetailPage({ params }: PageProps) {
                           <p className="mb-1 text-[9px] uppercase tracking-wider text-white/40 font-semibold">{mkt.name}</p>
                           <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(mkt.outcomes.length, 3)}, minmax(0,1fr))` }}>
                             {mkt.outcomes.slice(0, 3).map((o, oi) => {
-                              const sel = !isFinished && isSelected(match.id, mkt.key, o.name)
+                              const sel = !(isFinished || isPostponed) && isSelected(match.id, mkt.key, o.name)
                               return (
                                 <button
                                   key={oi}
-                                  disabled={isFinished}
+                                  disabled={isFinished || isPostponed}
                                   onClick={isFinished ? undefined : () => addSelection({
                                     matchId: match.id,
                                     matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -1713,7 +1725,7 @@ export default function MatchDetailPage({ params }: PageProps) {
         )}
 
         {/* ─── PROMINENT "ADD TIP" CTA — hidden for finished matches ─── */}
-        {!isFinished && (
+        {!(isFinished || isPostponed) && (
           <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent px-2.5 py-1.5">
             <div className="flex items-center gap-2 min-w-0">
               <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" />
@@ -2030,7 +2042,7 @@ export default function MatchDetailPage({ params }: PageProps) {
           {/* ══ TIPS ══ */}
           <TabsContent value="tips" className="mt-0 space-y-4">
             {/* Top "Add a Tip" CTA inside the Tips tab — hidden for finished matches */}
-            {!isFinished ? (
+            {!(isFinished || isPostponed) ? (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold leading-tight">Got a strong read on this game?</p>
@@ -2273,12 +2285,12 @@ export default function MatchDetailPage({ params }: PageProps) {
                           </p>
                           <div className={cn('grid gap-1', cols)}>
                             {mkt.outcomes.slice(0, Math.min(mkt.outcomes.length, 6)).map((o, i) => {
-                              const sel = !isFinished && isSelected(match.id, mkt.key, o.name)
+                              const sel = !(isFinished || isPostponed) && isSelected(match.id, mkt.key, o.name)
                               return (
                                 <div key={i} className="relative group">
                                   <button
                                     type="button"
-                                    disabled={isFinished}
+                                    disabled={isFinished || isPostponed}
                                     onClick={isFinished ? undefined : () => addSelection({
                                       matchId: match.id,
                                       matchName: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
@@ -2303,7 +2315,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                                       {o.price.toFixed(2)}
                                     </span>
                                   </button>
-                                  {!isFinished && (
+                                  {!(isFinished || isPostponed) && (
                                     <button
                                       type="button"
                                       title="Share as tip"
@@ -2849,7 +2861,7 @@ const SOCCER_TABS = [
 
 type SoccerTabId = (typeof SOCCER_TABS)[number]['id']
 
-function MarketsSection({ match, isFinished, onShareTip }: { match: MatchDetails['match']; isFinished?: boolean; onShareTip?: (marketKey: string, outcome: { name: string; price: number }) => void }) {
+function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match: MatchDetails['match']; isFinished?: boolean; isPostponed?: boolean; onShareTip?: (marketKey: string, outcome: { name: string; price: number }) => void }) {
   const { addSelection, isSelected } = useBetSlip()
   const [activeTab, setActiveTab] = useState<SoccerTabId>('main')
 
@@ -2953,11 +2965,11 @@ function MarketsSection({ match, isFinished, onShareTip }: { match: MatchDetails
                 </p>
                 <div className={cn('grid gap-1', cols)}>
                   {displayOutcomes.map((o, oi) => {
-                    const selected = !isFinished && isSelected(match.id, mkt.key, o.name)
+                    const selected = !(isFinished || isPostponed) && isSelected(match.id, mkt.key, o.name)
                     return (
                       <div key={oi} className="relative group">
                         <button
-                          disabled={isFinished}
+                          disabled={isFinished || isPostponed}
                           onClick={isFinished ? undefined : () => addSelection({
                             matchId: match.id,
                             matchName,
@@ -2982,7 +2994,7 @@ function MarketsSection({ match, isFinished, onShareTip }: { match: MatchDetails
                             {o.price.toFixed(2)}
                           </span>
                         </button>
-                        {!isFinished && onShareTip && (
+                        {!(isFinished || isPostponed) && onShareTip && (
                           <button
                             type="button"
                             title="Share as tip"
@@ -3101,7 +3113,7 @@ function MatchInfoRail({
 
       {/* Betting markets */}
       {match.markets && match.markets.length > 0 && (
-        <MarketsSection match={match} isFinished={isFinished} onShareTip={openTipWithPrefill} />
+        <MarketsSection match={match} isFinished={isFinished} isPostponed={isPostponed} onShareTip={openTipWithPrefill} />
       )}
 
       {/* Standings snapshot */}

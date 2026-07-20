@@ -14,13 +14,15 @@ export function MatchHeader({ match }: MatchHeaderProps) {
   const { settings } = useUserSettings();
   const isLive = match.status === 'live' || match.status === 'halftime';
   const isFinished = match.status === 'finished';
+  const isPostponed = match.status === 'postponed';
 
   const kickoffTime = new Date(match.kickoff_time);
 
   return (
     <div className={cn(
       'rounded-lg border border-border bg-card p-6',
-      isLive && 'border-live/30 bg-live/5'
+      isLive && 'border-live/30 bg-live/5',
+      isPostponed && 'border-amber-500/30 bg-amber-500/5'
     )}>
       {/* League & Status */}
       <div className="mb-4 flex items-center justify-between">
@@ -36,6 +38,10 @@ export function MatchHeader({ match }: MatchHeaderProps) {
             status={match.status}
             sportSlug={match.league?.slug || 'soccer'}
           />
+        ) : isPostponed ? (
+          <span className="rounded-full bg-amber-500/10 border border-amber-500/30 px-3 py-1 text-sm font-bold text-amber-500">
+            Postponed
+          </span>
         ) : isFinished ? (
           <span className="rounded-full bg-muted px-3 py-1 text-sm font-medium text-foreground">
             Full Time
@@ -61,7 +67,12 @@ export function MatchHeader({ match }: MatchHeaderProps) {
 
         {/* Score / Time */}
         <div className="flex flex-col items-center px-4">
-          {isLive || isFinished ? (
+          {isPostponed ? (
+            <div className="text-center">
+              <div className="text-3xl font-black text-amber-500 tracking-widest">PPD</div>
+              <div className="mt-1 text-xs font-medium text-amber-500/70">Postponed</div>
+            </div>
+          ) : isLive || isFinished ? (
             <>
               <div className="flex items-center gap-3">
                 <span className={cn(
@@ -110,7 +121,7 @@ export function MatchHeader({ match }: MatchHeaderProps) {
       {/* Match Info */}
       <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
         <span>{match.country?.name || 'International'}</span>
-        {!isLive && !isFinished && (
+        {!isLive && !isFinished && !isPostponed && (
           <>
             <span className="h-1 w-1 rounded-full bg-muted-foreground"></span>
             <span>{formatDate(kickoffTime, settings.timezone)}</span>

@@ -218,7 +218,8 @@ function mapStatus(s: SSStatus): UnifiedMatch['status'] {
     return 'live';
   }
   if (t === 'notstarted')                      return 'scheduled';
-  if (t === 'cancelled' || t === 'postponed')  return 'cancelled';
+  if (t === 'cancelled')  return 'cancelled';
+  if (t === 'postponed') return 'postponed';
   return 'scheduled';
 }
 
