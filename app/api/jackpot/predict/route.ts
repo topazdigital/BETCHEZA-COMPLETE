@@ -135,37 +135,29 @@ async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpo
     const openai = new OpenAI({ apiKey: credentials.apiKey, baseURL: credentials.baseURL });
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: `You are a professional sports analyst and betting expert specialising in ${bookmakerName} jackpot predictions for East African bettors. Your goal is to achieve at least 75% correct predictions through rigorous, data-driven analysis.
+          content: `You are a professional sports analyst specialising in ${bookmakerName} jackpot predictions for East African bettors. Provide rigorous, data-driven picks targeting ≥75% accuracy.
 
-For each match you MUST:
-1. Evaluate the market odds to derive the true probability of each outcome (correct for bookmaker margin)
-2. Assess home/away form, recent results, league position, and motivation
-3. Consider head-to-head history in similar contexts (home/away, cup vs league)
-4. Weigh defensive vs attacking strengths — over-favourite bias is a common trap
-5. Factor in competition stakes, fatigue (fixture congestion), travel distance
-6. Explicitly state which team has the statistical edge and why
-7. Choose the BEST single or double-chance prediction that maximises EV while keeping risk acceptable for a jackpot
+For each match, assess: market odds (implied probability), home/away form, head-to-head history, competition context, and squad motivation. Pick the outcome with the best expected value.
 
-Prediction options: 1 (home win), X (draw), 2 (away win), 1X (home or draw), X2 (draw or away), 12 (home or away).
+Prediction options: 1 (home win), X (draw), 2 (away win), 1X (home or draw), X2 (draw or away), 12 (home or away). Use double-chance only when evidence genuinely suggests a close contest.
 
-Use double-chance (1X / X2 / 12) only when odds genuinely suggest a close contest — don't use them just to play it safe on every game. A jackpot with too many double-chance picks rarely wins the top prize.
+IMPORTANT: Respond with ONLY a valid JSON array — no markdown, no text outside the array.
+Every object MUST include a non-empty "reasoning" field with a unique 2-sentence analysis specific to that match.
+Format: [{"index": 0, "prediction": "1", "confidence": 72, "reasoning": "specific reason for this exact match"}, ...]
 
-Respond with ONLY a JSON array, no markdown, no explanation outside JSON. Each object must have:
-{"index": N, "prediction": "X", "confidence": 75, "reasoning": "2-3 sentence analysis citing specific factors"}
-
-Confidence must be between 52 and 91. Never output more than 85 unless the evidence is overwhelming.`,
+Confidence range: 52–91. Each reasoning must be different and mention the specific teams by name.`,
         },
         {
           role: 'user',
-          content: `Analyse all ${games.length} games in the ${jackpotTitle} and provide predictions:\n\n${gamesText}\n\nRemember: your target is ≥75% accuracy. Be selective, analytical, and precise. Return a JSON array only.`,
+          content: `Analyse all ${games.length} matches in the ${jackpotTitle} and return predictions as a JSON array:\n\n${gamesText}\n\nReturn valid JSON only. Every object needs a unique non-empty reasoning mentioning the specific teams.`,
         },
       ],
-      temperature: 0.2,
-      max_tokens: 2500,
+      temperature: 0.3,
+      max_tokens: 3000,
     });
 
     const content = response.choices[0]?.message?.content || '';
@@ -184,7 +176,8 @@ Confidence must be between 52 and 91. Never output more than 85 unless the evide
       }
       const pick = PICKS.includes(pred.prediction as Prediction) ? (pred.prediction as Prediction) : deterministicPick(g.home, g.away, i).prediction;
       const confidence = Math.min(91, Math.max(52, pred.confidence || 65));
-      return { ...g, aiPrediction: pick, aiConfidence: confidence, aiReasoning: pred.reasoning };
+      const reasoning = (pred.reasoning && pred.reasoning.trim()) ? pred.reasoning.trim() : fallbackReasoning(pick, g.home, g.away);
+      return { ...g, aiPrediction: pick, aiConfidence: confidence, aiReasoning: reasoning };
     });
   } catch (e) {
     console.warn('[jackpot predict] AI failed, using fallback:', e);
