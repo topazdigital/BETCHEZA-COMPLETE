@@ -76,15 +76,31 @@ function impliedProb(decimal?: number): string {
   return `(${Math.round((1 / decimal) * 100)}% implied)`;
 }
 
+function getOpenAI() {
+  const apiKey =
+    process.env.AI_INTEGRATIONS_OPENAI_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    '';
+  const baseURL =
+    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ||
+    process.env.OPENAI_BASE_URL ||
+    undefined;
+  return apiKey ? { apiKey, baseURL } : null;
+}
+
 async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpotTitle: string): Promise<JackpotGame[]> {
-  const apiKey = await getApiKey('openai_api_key');
-  if (!apiKey) {
+  // Also check admin-panel key as last resort
+  const adminKey = await getApiKey('openai_api_key').catch(() => '');
+  const credentials = getOpenAI() ?? (adminKey ? { apiKey: adminKey, baseURL: undefined } : null);
+
+  if (!credentials) {
     // Fallback: deterministic algorithm
     return games.map((g, i) => {
       const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
       return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
     });
   }
+  const apiKey = credentials.apiKey;
 
   // Enrich games with real match data from our cache
   const enriched = await Promise.all(games.map(async (g, i) => {
@@ -116,7 +132,7 @@ async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpo
     }).join('\n\n');
 
     const { default: OpenAI } = await import('openai');
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({ apiKey: credentials.apiKey, baseURL: credentials.baseURL });
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -163,8 +179,8 @@ Confidence must be between 52 and 91. Never output more than 85 unless the evide
     return games.map((g, i) => {
       const pred = predictions.find(p => p.index === i);
       if (!pred) {
-        const fallback = deterministicPick(g.home, g.away, i * 13);
-        return { ...g, aiPrediction: fallback.prediction, aiConfidence: fallback.confidence };
+        const fallback = deterministicPick(g.home, g.away, i * 17);
+        return { ...g, aiPrediction: fallback.prediction, aiConfidence: fallback.confidence, aiReasoning: fallbackReasoning(fallback.prediction, g.home, g.away) };
       }
       const pick = PICKS.includes(pred.prediction as Prediction) ? (pred.prediction as Prediction) : deterministicPick(g.home, g.away, i).prediction;
       const confidence = Math.min(91, Math.max(52, pred.confidence || 65));
@@ -180,14 +196,15 @@ Confidence must be between 52 and 91. Never output more than 85 unless the evide
 }
 
 async function generateAnalysis(bookmakerName: string, jackpotTitle: string, games: JackpotGame[]): Promise<string> {
-  const apiKey = await getApiKey('openai_api_key');
-  if (!apiKey) {
+  const adminKey = await getApiKey('openai_api_key').catch(() => '');
+  const credentials = getOpenAI() ?? (adminKey ? { apiKey: adminKey, baseURL: undefined } : null);
+  if (!credentials) {
     const highConf = games.filter(g => (g.aiConfidence || 0) >= 70).length;
     return `Our AI has analysed all ${games.length} ${jackpotTitle} games using odds data, form, and head-to-head records. We identified ${highConf} high-confidence picks (≥70%) — focus on those for your best shot at the jackpot.`;
   }
   try {
     const { default: OpenAI } = await import('openai');
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({ apiKey: credentials.apiKey, baseURL: credentials.baseURL });
     const highConf = games.filter(g => (g.aiConfidence || 0) >= 75);
     const bankers = highConf.slice(0, 3).map(g => `${g.home} vs ${g.away}: ${g.aiPrediction} (${g.aiConfidence}%)`).join(', ');
     const doubleChance = games.filter(g => ['1X','X2','12'].includes(g.aiPrediction || '')).length;
