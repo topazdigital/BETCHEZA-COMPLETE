@@ -1361,13 +1361,15 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   const cached = getCached<UnifiedMatch[]>(cacheKey, CACHE_DURATION.live);
   if (cached) return cached;
 
-  // Pull a 60-day window (30 back → +30 ahead) so multi-day tournaments
-  // (tennis Slams, cricket Tests, golf majors) and weekend-heavy sports
-  // always surface their full Today / Upcoming coverage AND historical
-  // results going back a month — essential for form/standings context.
+  // Pull a 120-day window (60 back → +60 ahead) so small/regional leagues
+  // whose fixtures are scheduled far in advance are discovered early.
+  // Auto-pagination (below) splits this into two 60-day halves when ESPN's
+  // 300-event cap is hit, giving up to 600 events over the full window.
+  // The supplementary today-only query (also below) ensures today's fixtures
+  // are never squeezed out of the cap by distant future events.
   const now = new Date();
-  const start = new Date(now); start.setUTCDate(start.getUTCDate() - 30);
-  const end = new Date(now); end.setUTCDate(end.getUTCDate() + 30);
+  const start = new Date(now); start.setUTCDate(start.getUTCDate() - 60);
+  const end = new Date(now); end.setUTCDate(end.getUTCDate() + 60);
   const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
   // Add &limit=300 so ESPN returns all events (default page size is 25).
   const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}&limit=300`;
@@ -3427,10 +3429,10 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
   const pastDays = isHighFreq ? 14 : isPriority ? 60 : 14;
   start.setUTCDate(start.getUTCDate() - pastDays);
   const end = new Date(now);
-  // Priority leagues (top-tier with daily fixtures): 30 days ahead.
-  // Smaller / cup competitions (sporadic fixtures): 90 days so we surface
-  // fixtures far in the future — tipsters need months-ahead visibility.
-  end.setUTCDate(end.getUTCDate() + (isPriority ? 30 : 90));
+  // Priority leagues (top-tier with daily fixtures): 60 days ahead so
+  // fixture lists surface 2 months out. Smaller / cup competitions
+  // (sporadic fixtures): 120 days so tipsters get full visibility.
+  end.setUTCDate(end.getUTCDate() + (isPriority ? 60 : 120));
   // Use the paginated wrapper so that leagues with >300 events in the window
   // (e.g. NFL regular season, dense international windows) are fully fetched
   // by recursively splitting the date range when ESPN's 300-event cap is hit.
