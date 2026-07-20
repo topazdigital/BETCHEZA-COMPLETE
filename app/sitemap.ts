@@ -84,6 +84,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/predictor/h2h`,        lastModified: now, changeFrequency: 'daily',   priority: 0.58 },
     { url: `${base}/players/compare`,      lastModified: now, changeFrequency: 'weekly',  priority: 0.52 },
     { url: `${base}/specials`,             lastModified: now, changeFrequency: 'daily',   priority: 0.72 },
+    { url: `${base}/betting-academy`,     lastModified: now, changeFrequency: 'monthly', priority: 0.78 },
     { url: `${base}/challenges`,           lastModified: now, changeFrequency: 'weekly',  priority: 0.50 },
     { url: `${base}/help`,                 lastModified: now, changeFrequency: 'monthly', priority: 0.42 },
     { url: `${base}/faq`,                  lastModified: now, changeFrequency: 'monthly', priority: 0.40 },

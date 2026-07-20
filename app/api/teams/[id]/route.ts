@@ -415,9 +415,11 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     end.setUTCDate(today.getUTCDate() + offset + 7);
     dateWindows.push(`${fmt(start)}-${fmt(end)}`);
   }
-  // Past windows (last 90 days in 30-day chunks) — needed for historical cup/CL results
+  // Past windows (last 365 days in 30-day chunks) — FA Cup / EFL Cup rounds
+  // often happen in Jan-March which can be 5-7 months before the current date.
+  // Without 365-day coverage those cup matches are invisible on team pages.
   const pastDateWindows: string[] = [];
-  for (let offset = 0; offset < 90; offset += 30) {
+  for (let offset = 0; offset < 365; offset += 30) {
     const end = new Date(today);
     end.setUTCDate(today.getUTCDate() - offset);
     const start = new Date(today);
@@ -450,9 +452,20 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     'ger.supercup',      // German Super Cup
     'fra.trophee_champions', // French Trophy of Champions
     // Domestic cups for the most-watched leagues — adds FA Cup, Copa del Rey,
-    // Coupe de France, Coppa Italia, DFB Pokal goals when applicable.
-    'eng.fa', 'eng.league_cup', 'esp.copa_del_rey', 'fra.coupe_de_france',
-    'ita.coppa_italia', 'ger.dfb_pokal',
+    // Coupe de France, Coppa Italia, DFB Pokal, KNVB Cup, Taça de Portugal etc.
+    'eng.fa', 'eng.league_cup', 'eng.charity',
+    'esp.copa_del_rey', 'esp.supercopa',
+    'fra.coupe_de_france', 'fra.trophee_champions',
+    'ita.coppa_italia', 'ita.supercoppa',
+    'ger.dfb_pokal', 'ger.supercup',
+    'ned.knvb', 'por.cup',
+    'sco.fa_cup', 'sco.league_cup',
+    'bel.cup', 'tur.cup',
+    'bra.copa_do_brazil',
+    'arg.copa_argentina',
+    'mex.copa_mx',
+    'usa.open.cup',
+    'caf.confed',
   ];
   // Women's continental + women's-specific cups. Probed when the team
   // resolved to a women's domestic league so we surface UWCL fixtures
@@ -465,31 +478,60 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     ? [...SOCCER_CONTINENTAL_LEAGUES, ...(isWomens ? SOCCER_WOMENS_LEAGUES : [])].filter(l => l !== league)
     : [];
 
-  // ESPN league abbreviation → internal league key.
+  // ESPN league abbreviation / type text → internal league key.
   // Used to re-label events from the /schedule endpoint that ESPN returns
   // mixed across competitions (domestic + cups + continental).
+  // This map is intentionally exhaustive — ESPN uses different abbreviations
+  // across different API endpoints and seasons, so we cover all variants.
   const ABBREV_TO_LEAGUE: Record<string, string> = {
-    // European continental
-    'UCL': 'uefa.champions', 'CL': 'uefa.champions', 'CLSSF': 'uefa.champions', 'UCLQ': 'uefa.champions',
-    'UEL': 'uefa.europa', 'EL': 'uefa.europa',
+    // ── European continental ──────────────────────────────────────────────
+    'UCL': 'uefa.champions',    'CL': 'uefa.champions',
+    'CLSSF': 'uefa.champions',  'UCLQ': 'uefa.champions',
+    'UEL': 'uefa.europa',       'EL': 'uefa.europa',
     'UECL': 'uefa.europa.conf', 'CONF': 'uefa.europa.conf', 'ECL': 'uefa.europa.conf',
-    // Domestic cups
-    'FAC': 'eng.fa', 'FA': 'eng.fa', 'FACUP': 'eng.fa', 'FACH': 'eng.fa',
-    'CC': 'eng.league_cup', 'LC': 'eng.league_cup', 'EFLC': 'eng.league_cup', 'ELC': 'eng.league_cup',
-    'CDR': 'esp.copa_del_rey', 'COPA': 'esp.copa_del_rey', 'CDF': 'fra.coupe_de_france',
-    // Pre-season / friendly abbreviations
-    'FR': 'club.friendly', 'FREN': 'club.friendly', 'FRI': 'club.friendly',
-    'INTFR': 'fifa.friendly', 'INTLFR': 'fifa.friendly',
-    'CI': 'ita.coppa_italia', 'COPI': 'ita.coppa_italia',
-    'DFBP': 'ger.dfb_pokal', 'DFB': 'ger.dfb_pokal',
-    // FIFA / International
-    'WC': 'fifa.world', 'FIFA': 'fifa.world', 'CWC': 'fifa.cwc', 'FCWC': 'fifa.cwc',
-    'CONCAF': 'concacaf.champions', 'CCL': 'concacaf.champions',
-    'CAF': 'caf.champions', 'CAFCL': 'caf.champions',
-    'AFCON': 'caf.cup_of_nations', 'CON': 'caf.cup_of_nations',
-    'ACL': 'afc.champions', 'AFC': 'afc.champions',
+    'EURO': 'uefa.euro',        'EUROL': 'uefa.euro',       'EUROQ': 'uefa.euroq',
+    'UNL': 'uefa.nations',      'NL': 'uefa.nations',
+    'USUPERCUP': 'uefa.super_cup', 'SUPERCUP': 'uefa.super_cup',
+    // ── English cups ─────────────────────────────────────────────────────
+    'FAC': 'eng.fa',   'FA': 'eng.fa',    'FACUP': 'eng.fa', 'FACH': 'eng.fa',
+    'CC':  'eng.league_cup',  'LC':   'eng.league_cup',
+    'EFLC': 'eng.league_cup', 'ELC':  'eng.league_cup',
+    'EFL': 'eng.league_cup',  'CARABAO': 'eng.league_cup',
+    'ENGCS': 'eng.charity',   'CS': 'eng.charity', 'COMM': 'eng.charity',
+    // ── Spanish cups ─────────────────────────────────────────────────────
+    'CDR': 'esp.copa_del_rey',  'COPA': 'esp.copa_del_rey',
+    'ESSC': 'esp.supercopa',    'SUPESC': 'esp.supercopa',
+    // ── French cups ──────────────────────────────────────────────────────
+    'CDF': 'fra.coupe_de_france', 'CDFL': 'fra.coupe_de_france',
+    'FRTC': 'fra.trophee_champions',
+    // ── Italian cups ─────────────────────────────────────────────────────
+    'CI': 'ita.coppa_italia', 'COPI': 'ita.coppa_italia', 'CPI': 'ita.coppa_italia',
+    'ITASC': 'ita.supercoppa',
+    // ── German cups ──────────────────────────────────────────────────────
+    'DFBP': 'ger.dfb_pokal', 'DFB': 'ger.dfb_pokal', 'POKAL': 'ger.dfb_pokal',
+    'GERSC': 'ger.supercup',
+    // ── Netherlands cups ─────────────────────────────────────────────────
+    'KNVB': 'ned.knvb',
+    // ── Portuguese cups ──────────────────────────────────────────────────
+    'PORCUP': 'por.cup', 'TACAPT': 'por.cup',
+    // ── Scottish cups ────────────────────────────────────────────────────
+    'SCOC': 'sco.league_cup', 'SLCUP': 'sco.league_cup',
+    // ── Friendlies / pre-season ──────────────────────────────────────────
+    'FR': 'club.friendly',   'FRI': 'club.friendly',  'FREN': 'club.friendly',
+    'CLUB': 'club.friendly', 'CLB': 'club.friendly',  'PRE': 'club.friendly',
+    'INTFR': 'fifa.friendly', 'INTLFR': 'fifa.friendly', 'INTL': 'fifa.friendly',
+    // ── Americas ─────────────────────────────────────────────────────────
     'CONML': 'conmebol.libertadores', 'LIB': 'conmebol.libertadores',
-    'CONS': 'conmebol.sudamericana',
+    'CONS': 'conmebol.sudamericana', 'SUDM': 'conmebol.sudamericana',
+    'COPA.AM': 'conmebol.america',
+    'CCL': 'concacaf.champions', 'CONCAF': 'concacaf.champions',
+    // ── FIFA / International ─────────────────────────────────────────────
+    'WC': 'fifa.world',  'FIFA': 'fifa.world',
+    'CWC': 'fifa.cwc',   'FCWC': 'fifa.cwc', 'WCWC': 'fifa.cwc',
+    // ── Africa / Asia ────────────────────────────────────────────────────
+    'CAF': 'caf.champions',     'CAFCL': 'caf.champions',
+    'AFCON': 'caf.cup_of_nations', 'CON': 'caf.cup_of_nations',
+    'ACL': 'afc.champions',     'AFC': 'afc.champions',
   };
 
   const candidates = [
@@ -502,8 +544,9 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
     ...continentalLeagues.flatMap(l =>
       dateWindows.map(w => `${ESPN_BASE}/${sport}/${l}/scoreboard?dates=${w}`)
     ),
-    // Also probe continental/cup competitions for PAST 90 days so historical
-    // FA Cup, UCL, Copa del Rey results surface with correct competition labels.
+    // Also probe continental/cup competitions for PAST 365 days so historical
+    // FA Cup, UCL, Copa del Rey, EFL Cup results always surface regardless of
+    // how far back in the season they occurred (Jan FA Cup rounds = 6+ months ago).
     ...continentalLeagues.flatMap(l =>
       pastDateWindows.map(w => `${ESPN_BASE}/${sport}/${l}/scoreboard?dates=${w}`)
     ),
@@ -549,9 +592,47 @@ async function fetchTeamSchedule(sport: string, league: string, teamId: string) 
       // correct label instead of being bucketed under the domestic league.
       let stampLeague = sourceLeague;
       if (!isScoreboard) {
-        const abbrev = (ev as { league?: { abbreviation?: string } }).league?.abbreviation?.toUpperCase();
+        // ESPN places the competition abbreviation in different fields depending
+        // on the endpoint version and sport. Check all known locations so that
+        // FA Cup, EFL Cup, Copa del Rey, DFB-Pokal etc. always get the right label.
+        const evExt = ev as {
+          league?: { abbreviation?: string };
+          season?: { type?: { abbreviation?: string }; slug?: string };
+          competitions?: Array<{ type?: { abbreviation?: string; text?: string } }>;
+          type?: { abbreviation?: string };
+        };
+        const abbrev = (
+          evExt.league?.abbreviation ||
+          evExt.competitions?.[0]?.type?.abbreviation ||
+          evExt.type?.abbreviation ||
+          evExt.season?.type?.abbreviation || ''
+        ).toUpperCase().trim();
+
         if (abbrev && ABBREV_TO_LEAGUE[abbrev]) {
           stampLeague = ABBREV_TO_LEAGUE[abbrev];
+        } else {
+          // Season slug fallback: e.g. "2025-fa-cup", "2025-league-cup",
+          // "2025-champions-league" all carry the competition in the slug.
+          const seasonSlug = (evExt.season?.slug || '').toLowerCase();
+          if (seasonSlug) {
+            if (/fa.?cup|f\.a\.cup/i.test(seasonSlug))          stampLeague = 'eng.fa';
+            else if (/league.?cup|efl.?cup|carabao|carling/i.test(seasonSlug)) stampLeague = 'eng.league_cup';
+            else if (/community.?shield|charity.?shield/i.test(seasonSlug))    stampLeague = 'eng.charity';
+            else if (/copa.?del.?rey/i.test(seasonSlug))          stampLeague = 'esp.copa_del_rey';
+            else if (/supercopa/i.test(seasonSlug))               stampLeague = 'esp.supercopa';
+            else if (/coupe.?de.?france/i.test(seasonSlug))       stampLeague = 'fra.coupe_de_france';
+            else if (/trophee.?champions/i.test(seasonSlug))      stampLeague = 'fra.trophee_champions';
+            else if (/coppa.?italia/i.test(seasonSlug))           stampLeague = 'ita.coppa_italia';
+            else if (/supercoppa/i.test(seasonSlug))              stampLeague = 'ita.supercoppa';
+            else if (/dfb.?pokal/i.test(seasonSlug))              stampLeague = 'ger.dfb_pokal';
+            else if (/champions.?league|champions-lg/i.test(seasonSlug)) stampLeague = 'uefa.champions';
+            else if (/europa.?league|europa-lg/i.test(seasonSlug))       stampLeague = 'uefa.europa';
+            else if (/conference.?league/i.test(seasonSlug))      stampLeague = 'uefa.europa.conf';
+            else if (/club.?friendly|preseason|pre-season/i.test(seasonSlug)) stampLeague = 'club.friendly';
+            else if (/friendly/i.test(seasonSlug))                stampLeague = 'fifa.friendly';
+            else if (/libertadores/i.test(seasonSlug))            stampLeague = 'conmebol.libertadores';
+            else if (/sudamericana/i.test(seasonSlug))            stampLeague = 'conmebol.sudamericana';
+          }
         }
       }
       (ev as { _sourceLeague?: string })._sourceLeague = stampLeague;
@@ -728,9 +809,12 @@ export async function GET(
   let finalLeague = league;
   let finalSport = sport;
   if (!teamData?.team) {
+    // Compute the same key format used by resolveTeamSportLeague so we can
+    // read / write the shared teamLeagueCache for cross-function coordination.
+    const localCacheKey = sport !== 'soccer' ? `${sport}:${espnTeamId}` : espnTeamId;
     const recoveryLeagues: Array<[string, string]> = [];
     // Derive from slug if available (e.g. "sau.al_nassr" → "ksa.1")
-    const slugResult = teamLeagueCache.get(cacheKey + ':slug') as { sport: string; league: string } | undefined;
+    const slugResult = teamLeagueCache.get(localCacheKey + ':slug') as { sport: string; league: string } | undefined;
     if (slugResult) recoveryLeagues.push([slugResult.sport, slugResult.league]);
     // Try the most common leagues for well-known clubs
     for (const [s, l] of TEAM_RESOLVER_CANDIDATES.slice(0, 20)) {
@@ -743,7 +827,7 @@ export async function GET(
         finalLeague = l;
         finalSport = s;
         // Update cache with the working league
-        teamLeagueCache.set(cacheKey, { sport: s, league: l });
+        teamLeagueCache.set(localCacheKey, { sport: s, league: l });
         break;
       }
     }
@@ -1001,9 +1085,19 @@ export async function GET(
     'ita.coppa_italia': { short: 'Coppa', full: 'Coppa Italia' },
     'ger.dfb_pokal': { short: 'Pokal', full: 'DFB-Pokal' },
     'ned.knvb': { short: 'KNVB Cup', full: 'KNVB Cup' },
-    'por.cup': { short: 'Taça de Portugal', full: 'Taça de Portugal' },
+    'por.cup': { short: 'Taça PT', full: 'Taça de Portugal' },
+    'sco.fa_cup': { short: 'Scottish FA Cup', full: 'Scottish FA Cup' },
     'sco.league_cup': { short: 'League Cup', full: 'Scottish League Cup' },
     'bra.copa_do_brazil': { short: 'Copa do Brasil', full: 'Copa do Brasil' },
+    'arg.copa_argentina': { short: 'Copa Arg', full: 'Copa Argentina' },
+    'mex.copa_mx': { short: 'Copa MX', full: 'Copa MX' },
+    'usa.open.cup': { short: 'US Open Cup', full: 'Lamar Hunt U.S. Open Cup' },
+    'bel.cup': { short: 'Belgian Cup', full: 'Belgian Cup' },
+    'tur.cup': { short: 'Turkish Cup', full: 'Turkish Cup' },
+    'esp.supercopa': { short: 'Supercopa', full: 'Supercopa de España' },
+    'ita.supercoppa': { short: 'Supercoppa', full: 'Supercoppa Italiana' },
+    'ger.supercup': { short: 'Supercup', full: 'DFL Supercup' },
+    'fra.trophee_champions': { short: 'Trophée', full: 'Trophée des Champions' },
   };
 
   const readScore = (s: CompScore | undefined): number | null => {
@@ -1106,12 +1200,12 @@ export async function GET(
     .filter((e: EventOut) => e.status === 'finished')
     .filter(isKnownCompetition)
     .sort(byDateDesc)
-    .slice(0, 30);
+    .slice(0, 60);
   const upcoming = events
     .filter((e: EventOut) => e.status === 'scheduled' || e.status === 'live')
     .filter(isKnownCompetition)
     .sort(byDateAsc)
-    .slice(0, 20);
+    .slice(0, 30);
 
   // ----- Roster (multiple ESPN response shapes: athletes:[…] or athletes:[{position, items:[…]}]) -----
   type RawAthlete = {

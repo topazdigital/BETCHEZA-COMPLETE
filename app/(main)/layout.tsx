@@ -153,6 +153,7 @@ const mainNavItems: NavItem[] = [
   { href: "/challenges", label: "Challenges", icon: Swords, color: "text-red-500", activeColor: "bg-red-500" },
   { href: "/strategy", label: "3 Daily Odds Strategy", icon: TrendingUp, hot: true, color: "text-emerald-500", activeColor: "bg-emerald-500" },
   { href: "/specials", label: "Betting Markets", icon: Star, color: "text-rose-500", activeColor: "bg-rose-500" },
+  { href: "/betting-academy", label: "Betting Academy", icon: BookOpen, color: "text-cyan-600", activeColor: "bg-cyan-600" },
   { href: "/jackpots", label: "Jackpots", icon: Trophy, color: "text-amber-500", activeColor: "bg-amber-500" },
   { href: "/competitions", label: "Competitions", icon: Star, color: "text-pink-500", activeColor: "bg-pink-500" },
   { href: "/results", label: "Results", icon: BarChart3, color: "text-slate-400", activeColor: "bg-slate-500" },

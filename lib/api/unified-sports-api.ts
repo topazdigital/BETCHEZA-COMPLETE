@@ -6285,8 +6285,73 @@ export async function getMatchById(matchId: string, nameHints?: [string, string]
                 }
                 const competitionDate = (competition as { date?: string }).date;
                 const matchDate = competitionDate ? new Date(competitionDate).getTime() : 0;
+
+                // ── Competition-type override ─────────────────────────────────
+                // ESPN's event summary is sometimes accessible via ANY league URL
+                // (e.g. a Club Friendly queried under bel.1 still returns the
+                // correct match data). This means the probing league (cfg.league)
+                // can be completely wrong. We read the actual competition type /
+                // abbreviation from the summary response and override the league
+                // so we never label "Arsenal vs Betis" as "Belgian Pro League".
+                const COMP_TYPE_TO_LEAGUE: Record<string, string> = {
+                  // Friendlies
+                  'FR':     'club.friendly', 'FRI':    'club.friendly', 'FREN':  'club.friendly',
+                  'CLUB':   'club.friendly', 'CLB':    'club.friendly',
+                  'INTFR':  'fifa.friendly', 'INTLFR': 'fifa.friendly', 'INTL':  'fifa.friendly',
+                  // European club comps
+                  'UCL': 'uefa.champions',    'CL':    'uefa.champions',
+                  'UCLQ': 'uefa.champions',   'CLSSF': 'uefa.champions',
+                  'UEL': 'uefa.europa',       'EL':    'uefa.europa',
+                  'UECL': 'uefa.europa.conf', 'CONF':  'uefa.europa.conf', 'ECL': 'uefa.europa.conf',
+                  // English cups
+                  'FAC': 'eng.fa', 'FA': 'eng.fa', 'FACUP': 'eng.fa', 'FACH': 'eng.fa',
+                  'CC':  'eng.league_cup', 'LC':   'eng.league_cup',
+                  'EFLC': 'eng.league_cup', 'ELC': 'eng.league_cup',
+                  // Spanish / French / Italian / German cups
+                  'CDR': 'esp.copa_del_rey', 'COPA': 'esp.copa_del_rey',
+                  'CDF': 'fra.coupe_de_france',
+                  'CI':  'ita.coppa_italia',  'COPI': 'ita.coppa_italia',
+                  'DFBP': 'ger.dfb_pokal',   'DFB':  'ger.dfb_pokal',
+                  // FIFA / CAF / AFC / CONMEBOL
+                  'WC':    'fifa.world',     'FIFA':   'fifa.world',
+                  'CWC':   'fifa.cwc',       'FCWC':  'fifa.cwc',
+                  'CONCAF': 'concacaf.champions', 'CCL': 'concacaf.champions',
+                  'CAF':   'caf.champions',  'CAFCL': 'caf.champions',
+                  'AFCON': 'caf.cup_of_nations',
+                  'ACL':   'afc.champions',
+                  'LIB':   'conmebol.libertadores', 'CONML': 'conmebol.libertadores',
+                  'CONS':  'conmebol.sudamericana',
+                };
+                const rawComp = competition as {
+                  type?: { abbreviation?: string; text?: string; description?: string };
+                  season?: { type?: { abbreviation?: string } };
+                  notes?: Array<{ type?: string; headline?: string }>;
+                };
+                const typeAbbrev = (
+                  rawComp.type?.abbreviation ||
+                  rawComp.season?.type?.abbreviation || ''
+                ).toUpperCase().trim();
+                const typeText = (rawComp.type?.text || rawComp.type?.description || '').toLowerCase();
+
+                let actualLeague = cfg.league;
+                // Override from competition type abbreviation (most reliable)
+                if (typeAbbrev && COMP_TYPE_TO_LEAGUE[typeAbbrev]) {
+                  actualLeague = COMP_TYPE_TO_LEAGUE[typeAbbrev];
+                }
+                // Override from competition type free-text description
+                else if (/friendly|preseason|pre-season|pre season/i.test(typeText)) {
+                  actualLeague = 'club.friendly';
+                }
+                // Safety net: if ESPN returned data for a completely different
+                // domestic league (e.g. bel.1) but the competition type isn't
+                // one of our domestic leagues — trust cfg.league only when
+                // it matches a known competition abbreviation OR the probing
+                // league matches the competition abbreviation.
+                // In practice this means: if bel.1 returns a UCL/friendly match,
+                // we correctly override the league to the real competition.
+
                 candidates.push({
-                  id: `espn_${cfg.league.replace(/[^a-z0-9]/gi, '')}_${numericId}`,
+                  id: `espn_${actualLeague.replace(/[^a-z0-9]/gi, '')}_${numericId}`,
                   date: matchDate,
                 });
                 // Once we have at least 1 result, resolve quickly to avoid waiting
