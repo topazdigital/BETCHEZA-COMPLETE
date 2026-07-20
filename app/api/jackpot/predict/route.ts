@@ -180,7 +180,10 @@ Confidence range: 52–91. Each reasoning must be different and mention the spec
       return { ...g, aiPrediction: pick, aiConfidence: confidence, aiReasoning: reasoning };
     });
   } catch (e) {
-    console.warn('[jackpot predict] AI failed, using fallback:', e);
+    const errMsg = e instanceof Error ? e.message : String(e);
+    console.error('[jackpot predict] AI failed:', errMsg);
+    // Store the error so admin can see it via the jackpot aiAnalysis field
+    (globalThis as Record<string, string>).__lastJackpotAIError = errMsg;
     return games.map((g, i) => {
       const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
       return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
@@ -235,8 +238,9 @@ export async function POST(req: NextRequest) {
 
     // Save back
     const updated = updateJackpot(jackpotId, { games: predictedGames, aiAnalysis });
+    const lastError = (globalThis as Record<string, string>).__lastJackpotAIError;
 
-    return NextResponse.json({ success: true, jackpot: updated });
+    return NextResponse.json({ success: true, jackpot: updated, aiError: lastError || null });
   } catch (e) {
     console.error('[jackpot predict] error:', e);
     return NextResponse.json({ error: 'Prediction failed' }, { status: 500 });
