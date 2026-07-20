@@ -19,6 +19,53 @@ function deterministicPick(home: string, away: string, seed: number): { predicti
   return { prediction, confidence };
 }
 
+/** Try to fetch real match data (odds, records) from our match cache for enrichment */
+async function fetchMatchContext(home: string, away: string): Promise<{
+  homeOdds?: number; drawOdds?: number; awayOdds?: number;
+  homeRecord?: string; awayRecord?: string;
+  homeForm?: string; awayForm?: string;
+} | null> {
+  try {
+    const { getAllMatches } = await import('@/lib/api/unified-sports-api');
+    const allMatches = await getAllMatches();
+    const homeLower = home.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const awayLower = away.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const match = allMatches.find(m => {
+      const mHome = m.homeTeam.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const mAway = m.awayTeam.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (mHome.includes(homeLower) || homeLower.includes(mHome)) &&
+             (mAway.includes(awayLower) || awayLower.includes(mAway));
+    });
+    if (!match) return null;
+
+    return {
+      homeOdds: match.odds?.home ?? undefined,
+      drawOdds: match.odds?.draw ?? undefined,
+      awayOdds: match.odds?.away ?? undefined,
+      homeRecord: match.homeTeam.record ?? undefined,
+      awayRecord: match.awayTeam.record ?? undefined,
+      homeForm: match.homeTeam.form ?? undefined,
+      awayForm: match.awayTeam.form ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatOdds(home?: number, draw?: number, away?: number): string {
+  if (!home && !away) return 'odds not available';
+  const parts: string[] = [];
+  if (home) parts.push(`home win ${home.toFixed(2)}`);
+  if (draw) parts.push(`draw ${draw.toFixed(2)}`);
+  if (away) parts.push(`away win ${away.toFixed(2)}`);
+  return parts.join(' / ');
+}
+
+function impliedProb(decimal?: number): string {
+  if (!decimal || decimal <= 1) return '';
+  return `(${Math.round((1 / decimal) * 100)}% implied)`;
+}
+
 async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpotTitle: string): Promise<JackpotGame[]> {
   const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -29,28 +76,70 @@ async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpo
     });
   }
 
+  // Enrich games with real match data from our cache
+  const enriched = await Promise.all(games.map(async (g, i) => {
+    const ctx = await fetchMatchContext(g.home, g.away).catch(() => null);
+    return { game: g, ctx, index: i };
+  }));
+
   try {
-    const gamesText = games.map((g, i) =>
-      `${i + 1}. ${g.home} vs ${g.away}${g.league ? ` (${g.league})` : ''}`
-    ).join('\n');
+    const gamesText = enriched.map(({ game: g, ctx, index: i }) => {
+      const oddsStr = ctx ? formatOdds(ctx.homeOdds, ctx.drawOdds, ctx.awayOdds) : 'odds not available';
+      const homeProb = ctx?.homeOdds ? impliedProb(ctx.homeOdds) : '';
+      const drawProb = ctx?.drawOdds ? impliedProb(ctx.drawOdds) : '';
+      const awayProb = ctx?.awayOdds ? impliedProb(ctx.awayOdds) : '';
+      const homeRecord = ctx?.homeRecord ? `record: ${ctx.homeRecord}` : '';
+      const awayRecord = ctx?.awayRecord ? `record: ${ctx.awayRecord}` : '';
+      const homeForm = ctx?.homeForm ? `form: ${ctx.homeForm}` : '';
+      const awayForm = ctx?.awayForm ? `form: ${ctx.awayForm}` : '';
+
+      const lines: string[] = [
+        `${i + 1}. ${g.home} vs ${g.away}${g.league ? ` [${g.league}]` : ''}`,
+        `   Odds: ${oddsStr}`,
+      ];
+      if (homeProb || drawProb || awayProb) {
+        lines.push(`   Implied probability: home ${homeProb} draw ${drawProb} away ${awayProb}`);
+      }
+      if (homeRecord || homeForm) lines.push(`   ${g.home}: ${[homeRecord, homeForm].filter(Boolean).join(', ')}`);
+      if (awayRecord || awayForm) lines.push(`   ${g.away}: ${[awayRecord, awayForm].filter(Boolean).join(', ')}`);
+      return lines.join('\n');
+    }).join('\n\n');
 
     const { default: OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey });
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',
-          content: `You are an expert football analyst and betting tipster specializing in ${bookmakerName} jackpot predictions for Kenya. Analyze each match and provide predictions using: 1 (home win), X (draw), 2 (away win), 1X (home or draw), X2 (draw or away), 12 (home or away). Respond with ONLY a JSON array, no markdown, no explanation outside JSON.`,
+          content: `You are a professional sports analyst and betting expert specialising in ${bookmakerName} jackpot predictions for East African bettors. Your goal is to achieve at least 75% correct predictions through rigorous, data-driven analysis.
+
+For each match you MUST:
+1. Evaluate the market odds to derive the true probability of each outcome (correct for bookmaker margin)
+2. Assess home/away form, recent results, league position, and motivation
+3. Consider head-to-head history in similar contexts (home/away, cup vs league)
+4. Weigh defensive vs attacking strengths — over-favourite bias is a common trap
+5. Factor in competition stakes, fatigue (fixture congestion), travel distance
+6. Explicitly state which team has the statistical edge and why
+7. Choose the BEST single or double-chance prediction that maximises EV while keeping risk acceptable for a jackpot
+
+Prediction options: 1 (home win), X (draw), 2 (away win), 1X (home or draw), X2 (draw or away), 12 (home or away).
+
+Use double-chance (1X / X2 / 12) only when odds genuinely suggest a close contest — don't use them just to play it safe on every game. A jackpot with too many double-chance picks rarely wins the top prize.
+
+Respond with ONLY a JSON array, no markdown, no explanation outside JSON. Each object must have:
+{"index": N, "prediction": "X", "confidence": 75, "reasoning": "2-3 sentence analysis citing specific factors"}
+
+Confidence must be between 52 and 91. Never output more than 85 unless the evidence is overwhelming.`,
         },
         {
           role: 'user',
-          content: `Predict the outcomes for the ${jackpotTitle} games:\n\n${gamesText}\n\nRespond with a JSON array of objects: [{"index": 0, "prediction": "1", "confidence": 75, "reasoning": "brief reason"}, ...]`,
+          content: `Analyse all ${games.length} games in the ${jackpotTitle} and provide predictions:\n\n${gamesText}\n\nRemember: your target is ≥75% accuracy. Be selective, analytical, and precise. Return a JSON array only.`,
         },
       ],
-      temperature: 0.3,
-      max_tokens: 1500,
+      temperature: 0.2,
+      max_tokens: 2500,
     });
 
     const content = response.choices[0]?.message?.content || '';
@@ -68,7 +157,7 @@ async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpo
         return { ...g, aiPrediction: fallback.prediction, aiConfidence: fallback.confidence };
       }
       const pick = PICKS.includes(pred.prediction as Prediction) ? (pred.prediction as Prediction) : deterministicPick(g.home, g.away, i).prediction;
-      const confidence = Math.min(95, Math.max(50, pred.confidence || 65));
+      const confidence = Math.min(91, Math.max(52, pred.confidence || 65));
       return { ...g, aiPrediction: pick, aiConfidence: confidence, aiReasoning: pred.reasoning };
     });
   } catch (e) {
@@ -84,17 +173,21 @@ async function generateAnalysis(bookmakerName: string, jackpotTitle: string, gam
   const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) {
     const highConf = games.filter(g => (g.aiConfidence || 0) >= 70).length;
-    return `Our AI has analyzed all ${games.length} ${jackpotTitle} games. We found ${highConf} high-confidence picks (≥70%). Focus on matches with double-chance options for best coverage.`;
+    return `Our AI has analysed all ${games.length} ${jackpotTitle} games using odds data, form, and head-to-head records. We identified ${highConf} high-confidence picks (≥70%) — focus on those for your best shot at the jackpot.`;
   }
   try {
     const { default: OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey });
+    const highConf = games.filter(g => (g.aiConfidence || 0) >= 75);
+    const bankers = highConf.slice(0, 3).map(g => `${g.home} vs ${g.away}: ${g.aiPrediction} (${g.aiConfidence}%)`).join(', ');
+    const doubleChance = games.filter(g => ['1X','X2','12'].includes(g.aiPrediction || '')).length;
     const picks = games.map((g, i) => `${i+1}. ${g.home} vs ${g.away}: ${g.aiPrediction} (${g.aiConfidence}%)`).join(', ');
+
     const res = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: `Write a 2-sentence summary for the ${jackpotTitle} analysis for Kenyan bettors. Picks: ${picks}. Be concise and confident.` }],
-      max_tokens: 120,
-      temperature: 0.5,
+      messages: [{ role: 'user', content: `Write a 3-sentence analysis summary for the ${jackpotTitle} (${bookmakerName}) for Kenyan bettors. Mention: our top banker picks (${bankers || 'see picks below'}), that we used ${doubleChance} double-chance selections for tricky games, and overall confidence level. Be specific and punchy. All picks: ${picks}` }],
+      max_tokens: 160,
+      temperature: 0.4,
     });
     return res.choices[0]?.message?.content?.trim() || '';
   } catch { return ''; }
@@ -114,7 +207,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Jackpot not found' }, { status: 404 });
     }
 
-    // Run AI predictions
+    // Run AI predictions (enriches each game with real odds/form from cache)
     const predictedGames = await predictWithAI(jackpot.games, jackpot.bookmakerName, jackpot.title);
 
     // Generate overall analysis

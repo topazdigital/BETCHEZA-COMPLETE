@@ -1165,6 +1165,29 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       }
     }
 
+    // For any finished match where the cached score is null/null or 0-0, read
+    // the real final score from the ESPN summary (which we already fetched).
+    // This covers the case where the match was cached pre-kick-off with score
+    // null and then finished without being refreshed in the match list cache.
+    if (FINISHED_STATUSES.has(resolvedStatus) && summary) {
+      const hasRealScore = (resolvedHomeScore !== null && resolvedHomeScore !== undefined && resolvedHomeScore > 0)
+        || (resolvedAwayScore !== null && resolvedAwayScore !== undefined && resolvedAwayScore > 0);
+      if (!hasRealScore) {
+        const espnCompForScore = summary?.header?.competitions?.[0];
+        const hcScore = espnCompForScore?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'home') as { score?: string } | undefined;
+        const acScore = espnCompForScore?.competitors?.find((c: { homeAway?: string }) => c.homeAway === 'away') as { score?: string } | undefined;
+        if (hcScore?.score !== undefined && acScore?.score !== undefined) {
+          const hs = parseInt(hcScore.score, 10);
+          const as_ = parseInt(acScore.score, 10);
+          if (!isNaN(hs) && !isNaN(as_)) {
+            resolvedHomeScore = hs;
+            resolvedAwayScore = as_;
+            console.info(`[match details] Final score fix: ${resolvedId} → ${hs}-${as_} (was ${match.homeScore}-${match.awayScore})`);
+          }
+        }
+      }
+    }
+
     // sportType must be declared BEFORE extractEspnOdds (which uses it below)
     const sportType = cfg?.sportType || 'soccer';
 
