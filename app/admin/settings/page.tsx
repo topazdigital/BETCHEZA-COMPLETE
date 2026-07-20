@@ -52,6 +52,7 @@ interface Settings {
   the_odds_api_key: string
   sportsgameodds_api_key: string
   openai_api_key: string
+  groq_api_key: string
   football_data_api_key: string
   sharp_api_key: string
   vapid_public_key: string
@@ -143,6 +144,7 @@ const defaultSettings: Settings = {
   the_odds_api_key: "",
   sportsgameodds_api_key: "",
   openai_api_key: "",
+  groq_api_key: "",
   football_data_api_key: "",
   sharp_api_key: "",
   vapid_public_key: "",
@@ -875,6 +877,12 @@ export default function AdminSettingsPage() {
                 hint="Used by the AI tip-generation features. Falls back to OPENAI_API_KEY when blank."
                 value={settings.openai_api_key}
                 onChange={(v) => updateSetting('openai_api_key', v)}
+              />
+              <ApiKeyField
+                label="Groq API key"
+                hint="Free-tier LLM (llama-3.3-70b) used as automatic fallback when OpenAI quota runs out. Get a free key at console.groq.com. Falls back to GROQ_API_KEY env var when blank."
+                value={settings.groq_api_key || ''}
+                onChange={(v) => updateSetting('groq_api_key', v)}
               />
               <ApiKeyField
                 label="Football-Data.org API key"

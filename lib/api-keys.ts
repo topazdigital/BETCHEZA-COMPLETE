@@ -12,6 +12,7 @@ type KnownKey =
   | 'the_odds_api_key'
   | 'sportsgameodds_api_key'
   | 'openai_api_key'
+  | 'groq_api_key'
   | 'vapid_public_key'
   | 'vapid_private_key'
   | 'vapid_subject'
@@ -21,6 +22,7 @@ const ENV_MAP: Record<KnownKey, string> = {
   the_odds_api_key: 'THE_ODDS_API_KEY',
   sportsgameodds_api_key: 'SPORTSGAMEODDS_API_KEY',
   openai_api_key: 'OPENAI_API_KEY',
+  groq_api_key: 'GROQ_API_KEY',
   vapid_public_key: 'VAPID_PUBLIC_KEY',
   vapid_private_key: 'VAPID_PRIVATE_KEY',
   vapid_subject: 'VAPID_SUBJECT',

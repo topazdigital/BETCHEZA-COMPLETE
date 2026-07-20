@@ -49,6 +49,7 @@ const ENV_BACKED_SETTINGS: Record<string, string> = {
   the_odds_api_key: 'THE_ODDS_API_KEY',
   sportsgameodds_api_key: 'SPORTSGAMEODDS_API_KEY',
   openai_api_key: 'OPENAI_API_KEY',
+  groq_api_key: 'GROQ_API_KEY',
   vapid_public_key: 'VAPID_PUBLIC_KEY',
   vapid_private_key: 'VAPID_PRIVATE_KEY',
   vapid_subject: 'VAPID_SUBJECT',

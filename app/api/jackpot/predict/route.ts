@@ -76,7 +76,14 @@ function impliedProb(decimal?: number): string {
   return `(${Math.round((1 / decimal) * 100)}% implied)`;
 }
 
-function getOpenAI() {
+interface AIProvider {
+  name: string;
+  apiKey: string;
+  baseURL?: string;
+  model: string;
+}
+
+function getOpenAIProvider(): AIProvider | null {
   const apiKey =
     process.env.AI_INTEGRATIONS_OPENAI_API_KEY ||
     process.env.OPENAI_API_KEY ||
@@ -85,61 +92,98 @@ function getOpenAI() {
     process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ||
     process.env.OPENAI_BASE_URL ||
     undefined;
-  return apiKey ? { apiKey, baseURL } : null;
+  return apiKey ? { name: 'OpenAI', apiKey, baseURL, model: 'gpt-4o-mini' } : null;
+}
+
+function getGroqProvider(adminGroqKey: string): AIProvider | null {
+  const apiKey = process.env.GROQ_API_KEY || adminGroqKey || '';
+  return apiKey
+    ? { name: 'Groq', apiKey, baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' }
+    : null;
+}
+
+/** Call an OpenAI-compatible provider; throws on failure so callers can try the next one. */
+async function callProvider(
+  provider: AIProvider,
+  messages: Array<{ role: 'system' | 'user'; content: string }>,
+  opts: { max_tokens: number; temperature: number },
+): Promise<string> {
+  const { default: OpenAI } = await import('openai');
+  const client = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL });
+  const res = await client.chat.completions.create({
+    model: provider.model,
+    messages,
+    ...opts,
+  });
+  return res.choices[0]?.message?.content || '';
+}
+
+async function resolveProviders(): Promise<AIProvider[]> {
+  const [adminOpenAI, adminGroq] = await Promise.all([
+    getApiKey('openai_api_key').catch(() => ''),
+    getApiKey('groq_api_key').catch(() => ''),
+  ]);
+
+  const providers: AIProvider[] = [];
+
+  // 1. OpenAI (env vars first, then admin panel key)
+  const openaiEnv = getOpenAIProvider();
+  if (openaiEnv) {
+    providers.push(openaiEnv);
+  } else if (adminOpenAI) {
+    providers.push({ name: 'OpenAI', apiKey: adminOpenAI, baseURL: undefined, model: 'gpt-4o-mini' });
+  }
+
+  // 2. Groq as fallback
+  const groq = getGroqProvider(adminGroq);
+  if (groq) providers.push(groq);
+
+  return providers;
 }
 
 async function predictWithAI(games: JackpotGame[], bookmakerName: string, jackpotTitle: string): Promise<JackpotGame[]> {
-  // Also check admin-panel key as last resort
-  const adminKey = await getApiKey('openai_api_key').catch(() => '');
-  const credentials = getOpenAI() ?? (adminKey ? { apiKey: adminKey, baseURL: undefined } : null);
+  const providers = await resolveProviders();
 
-  if (!credentials) {
-    // Fallback: deterministic algorithm
-    return games.map((g, i) => {
-      const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
-      return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
-    });
-  }
-  const apiKey = credentials.apiKey;
-
-  // Enrich games with real match data from our cache
+  // Enrich games with real match data from our cache (regardless of AI availability)
   const enriched = await Promise.all(games.map(async (g, i) => {
     const ctx = await fetchMatchContext(g.home, g.away).catch(() => null);
     return { game: g, ctx, index: i };
   }));
 
-  try {
-    const gamesText = enriched.map(({ game: g, ctx, index: i }) => {
-      const oddsStr = ctx ? formatOdds(ctx.homeOdds, ctx.drawOdds, ctx.awayOdds) : 'odds not available';
-      const homeProb = ctx?.homeOdds ? impliedProb(ctx.homeOdds) : '';
-      const drawProb = ctx?.drawOdds ? impliedProb(ctx.drawOdds) : '';
-      const awayProb = ctx?.awayOdds ? impliedProb(ctx.awayOdds) : '';
-      const homeRecord = ctx?.homeRecord ? `record: ${ctx.homeRecord}` : '';
-      const awayRecord = ctx?.awayRecord ? `record: ${ctx.awayRecord}` : '';
-      const homeForm = ctx?.homeForm ? `form: ${ctx.homeForm}` : '';
-      const awayForm = ctx?.awayForm ? `form: ${ctx.awayForm}` : '';
+  if (providers.length === 0) {
+    // No AI keys at all — deterministic fallback
+    return games.map((g, i) => {
+      const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
+      return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
+    });
+  }
 
-      const lines: string[] = [
-        `${i + 1}. ${g.home} vs ${g.away}${g.league ? ` [${g.league}]` : ''}`,
-        `   Odds: ${oddsStr}`,
-      ];
-      if (homeProb || drawProb || awayProb) {
-        lines.push(`   Implied probability: home ${homeProb} draw ${drawProb} away ${awayProb}`);
-      }
-      if (homeRecord || homeForm) lines.push(`   ${g.home}: ${[homeRecord, homeForm].filter(Boolean).join(', ')}`);
-      if (awayRecord || awayForm) lines.push(`   ${g.away}: ${[awayRecord, awayForm].filter(Boolean).join(', ')}`);
-      return lines.join('\n');
-    }).join('\n\n');
+  const gamesText = enriched.map(({ game: g, ctx, index: i }) => {
+    const oddsStr = ctx ? formatOdds(ctx.homeOdds, ctx.drawOdds, ctx.awayOdds) : 'odds not available';
+    const homeProb = ctx?.homeOdds ? impliedProb(ctx.homeOdds) : '';
+    const drawProb = ctx?.drawOdds ? impliedProb(ctx.drawOdds) : '';
+    const awayProb = ctx?.awayOdds ? impliedProb(ctx.awayOdds) : '';
+    const homeRecord = ctx?.homeRecord ? `record: ${ctx.homeRecord}` : '';
+    const awayRecord = ctx?.awayRecord ? `record: ${ctx.awayRecord}` : '';
+    const homeForm = ctx?.homeForm ? `form: ${ctx.homeForm}` : '';
+    const awayForm = ctx?.awayForm ? `form: ${ctx.awayForm}` : '';
 
-    const { default: OpenAI } = await import('openai');
-    const openai = new OpenAI({ apiKey: credentials.apiKey, baseURL: credentials.baseURL });
+    const lines: string[] = [
+      `${i + 1}. ${g.home} vs ${g.away}${g.league ? ` [${g.league}]` : ''}`,
+      `   Odds: ${oddsStr}`,
+    ];
+    if (homeProb || drawProb || awayProb) {
+      lines.push(`   Implied probability: home ${homeProb} draw ${drawProb} away ${awayProb}`);
+    }
+    if (homeRecord || homeForm) lines.push(`   ${g.home}: ${[homeRecord, homeForm].filter(Boolean).join(', ')}`);
+    if (awayRecord || awayForm) lines.push(`   ${g.away}: ${[awayRecord, awayForm].filter(Boolean).join(', ')}`);
+    return lines.join('\n');
+  }).join('\n\n');
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a professional sports analyst specialising in ${bookmakerName} jackpot predictions for East African bettors. Provide rigorous, data-driven picks targeting ≥75% accuracy.
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [
+    {
+      role: 'system',
+      content: `You are a professional sports analyst specialising in ${bookmakerName} jackpot predictions for East African bettors. Provide rigorous, data-driven picks targeting ≥75% accuracy.
 
 For each match, assess: market odds (implied probability), home/away form, head-to-head history, competition context, and squad motivation. Pick the outcome with the best expected value.
 
@@ -150,70 +194,80 @@ Every object MUST include a non-empty "reasoning" field with a unique 2-sentence
 Format: [{"index": 0, "prediction": "1", "confidence": 72, "reasoning": "specific reason for this exact match"}, ...]
 
 Confidence range: 52–91. Each reasoning must be different and mention the specific teams by name.`,
-        },
-        {
-          role: 'user',
-          content: `Analyse all ${games.length} matches in the ${jackpotTitle} and return predictions as a JSON array:\n\n${gamesText}\n\nReturn valid JSON only. Every object needs a unique non-empty reasoning mentioning the specific teams.`,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 3000,
-    });
+    },
+    {
+      role: 'user',
+      content: `Analyse all ${games.length} matches in the ${jackpotTitle} and return predictions as a JSON array:\n\n${gamesText}\n\nReturn valid JSON only. Every object needs a unique non-empty reasoning mentioning the specific teams.`,
+    },
+  ];
 
-    const content = response.choices[0]?.message?.content || '';
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('No JSON in AI response');
+  // Try each provider in order; move to next on any error
+  for (const provider of providers) {
+    try {
+      console.log(`[jackpot predict] Trying ${provider.name} (${provider.model})...`);
+      const content = await callProvider(provider, messages, { max_tokens: 3000, temperature: 0.3 });
 
-    const predictions = JSON.parse(jsonMatch[0]) as Array<{
-      index: number; prediction: string; confidence: number; reasoning?: string;
-    }>;
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error('No JSON array in AI response');
 
-    return games.map((g, i) => {
-      const pred = predictions.find(p => p.index === i);
-      if (!pred) {
-        const fallback = deterministicPick(g.home, g.away, i * 17);
-        return { ...g, aiPrediction: fallback.prediction, aiConfidence: fallback.confidence, aiReasoning: fallbackReasoning(fallback.prediction, g.home, g.away) };
-      }
-      const pick = PICKS.includes(pred.prediction as Prediction) ? (pred.prediction as Prediction) : deterministicPick(g.home, g.away, i).prediction;
-      const confidence = Math.min(91, Math.max(52, pred.confidence || 65));
-      const reasoning = (pred.reasoning && pred.reasoning.trim()) ? pred.reasoning.trim() : fallbackReasoning(pick, g.home, g.away);
-      return { ...g, aiPrediction: pick, aiConfidence: confidence, aiReasoning: reasoning };
-    });
-  } catch (e) {
-    const errMsg = e instanceof Error ? e.message : String(e);
-    console.error('[jackpot predict] AI failed:', errMsg);
-    // Store the error so admin can see it via the jackpot aiAnalysis field
-    (globalThis as Record<string, string>).__lastJackpotAIError = errMsg;
-    return games.map((g, i) => {
-      const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
-      return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
-    });
+      const predictions = JSON.parse(jsonMatch[0]) as Array<{
+        index: number; prediction: string; confidence: number; reasoning?: string;
+      }>;
+
+      console.log(`[jackpot predict] ${provider.name} succeeded — got ${predictions.length} predictions`);
+      (globalThis as Record<string, string>).__lastJackpotAIError = '';
+
+      return games.map((g, i) => {
+        const pred = predictions.find(p => p.index === i);
+        if (!pred) {
+          const fallback = deterministicPick(g.home, g.away, i * 17);
+          return { ...g, aiPrediction: fallback.prediction, aiConfidence: fallback.confidence, aiReasoning: fallbackReasoning(fallback.prediction, g.home, g.away) };
+        }
+        const pick = PICKS.includes(pred.prediction as Prediction) ? (pred.prediction as Prediction) : deterministicPick(g.home, g.away, i).prediction;
+        const confidence = Math.min(91, Math.max(52, pred.confidence || 65));
+        const reasoning = (pred.reasoning && pred.reasoning.trim()) ? pred.reasoning.trim() : fallbackReasoning(pick, g.home, g.away);
+        return { ...g, aiPrediction: pick, aiConfidence: confidence, aiReasoning: reasoning };
+      });
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.warn(`[jackpot predict] ${provider.name} failed: ${errMsg}`);
+      (globalThis as Record<string, string>).__lastJackpotAIError = `${provider.name}: ${errMsg}`;
+      // continue to next provider
+    }
   }
+
+  // All providers failed — deterministic fallback
+  console.error('[jackpot predict] All AI providers failed; using deterministic fallback');
+  return games.map((g, i) => {
+    const { prediction, confidence } = deterministicPick(g.home, g.away, i * 17);
+    return { ...g, aiPrediction: prediction, aiConfidence: confidence, aiReasoning: fallbackReasoning(prediction, g.home, g.away) };
+  });
 }
 
 async function generateAnalysis(bookmakerName: string, jackpotTitle: string, games: JackpotGame[]): Promise<string> {
-  const adminKey = await getApiKey('openai_api_key').catch(() => '');
-  const credentials = getOpenAI() ?? (adminKey ? { apiKey: adminKey, baseURL: undefined } : null);
-  if (!credentials) {
+  const providers = await resolveProviders();
+  if (providers.length === 0) {
     const highConf = games.filter(g => (g.aiConfidence || 0) >= 70).length;
     return `Our AI has analysed all ${games.length} ${jackpotTitle} games using odds data, form, and head-to-head records. We identified ${highConf} high-confidence picks (≥70%) — focus on those for your best shot at the jackpot.`;
   }
-  try {
-    const { default: OpenAI } = await import('openai');
-    const openai = new OpenAI({ apiKey: credentials.apiKey, baseURL: credentials.baseURL });
-    const highConf = games.filter(g => (g.aiConfidence || 0) >= 75);
-    const bankers = highConf.slice(0, 3).map(g => `${g.home} vs ${g.away}: ${g.aiPrediction} (${g.aiConfidence}%)`).join(', ');
-    const doubleChance = games.filter(g => ['1X','X2','12'].includes(g.aiPrediction || '')).length;
-    const picks = games.map((g, i) => `${i+1}. ${g.home} vs ${g.away}: ${g.aiPrediction} (${g.aiConfidence}%)`).join(', ');
 
-    const res = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: `Write a 3-sentence analysis summary for the ${jackpotTitle} (${bookmakerName}) for Kenyan bettors. Mention: our top banker picks (${bankers || 'see picks below'}), that we used ${doubleChance} double-chance selections for tricky games, and overall confidence level. Be specific and punchy. All picks: ${picks}` }],
-      max_tokens: 160,
-      temperature: 0.4,
-    });
-    return res.choices[0]?.message?.content?.trim() || '';
-  } catch { return ''; }
+  const highConf = games.filter(g => (g.aiConfidence || 0) >= 75);
+  const bankers = highConf.slice(0, 3).map(g => `${g.home} vs ${g.away}: ${g.aiPrediction} (${g.aiConfidence}%)`).join(', ');
+  const doubleChance = games.filter(g => ['1X', 'X2', '12'].includes(g.aiPrediction || '')).length;
+  const picks = games.map((g, i) => `${i + 1}. ${g.home} vs ${g.away}: ${g.aiPrediction} (${g.aiConfidence}%)`).join(', ');
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [
+    { role: 'user', content: `Write a 3-sentence analysis summary for the ${jackpotTitle} (${bookmakerName}) for Kenyan bettors. Mention: our top banker picks (${bankers || 'see picks below'}), that we used ${doubleChance} double-chance selections for tricky games, and overall confidence level. Be specific and punchy. All picks: ${picks}` },
+  ];
+
+  for (const provider of providers) {
+    try {
+      const text = await callProvider(provider, messages, { max_tokens: 160, temperature: 0.4 });
+      if (text.trim()) return text.trim();
+    } catch {
+      // try next provider
+    }
+  }
+  return '';
 }
 
 export async function POST(req: NextRequest) {
