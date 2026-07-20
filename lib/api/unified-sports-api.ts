@@ -3146,17 +3146,19 @@ function mapESPNStatus(status: ESPNEvent['status']): UnifiedMatch['status'] {
   const name = status.type.name?.toLowerCase() || '';
   const detail = (status.type.detail || status.type.shortDetail || '').toLowerCase();
 
-  // Check completed FIRST — ESPN sometimes leaves state='in' briefly after
-  // the final whistle, so a match with completed=true is always finished
-  // regardless of what state says.
+  // Check postponed/cancelled BEFORE completed — ESPN sets completed=true on
+  // postponed matches (the event is "done" in their system), which previously
+  // caused 0-0 postponed games to be returned as 'finished'.
+  if (name === 'status_postponed' || name === 'postponed' || detail.includes('postpon')) return 'postponed';
+  if (name === 'status_canceled' || name === 'canceled' || name === 'cancelled' || detail.includes('cancel')) return 'cancelled';
+
+  // completed=true / state='post' → finished (but only after ruling out postponed/cancelled above).
   if (status.type.completed || state === 'post') return 'finished';
 
   if (name.includes('halftime') || name === 'half' || detail.includes('halftime') || detail.includes('half time')) return 'halftime' as UnifiedMatch['status'];
   if (name.includes('extra') || detail.includes('extra time') || detail.includes('et')) return 'live';
   if (name.includes('penalt') || detail.includes('penalt')) return 'live';
   if (state === 'in' || name === 'in progress' || name === 'in_progress' || name.startsWith('status_in')) return 'live';
-  if (name === 'postponed' || detail.includes('postpon')) return 'postponed';
-  if (name === 'canceled' || name === 'cancelled' || detail.includes('cancel')) return 'cancelled';
   return 'scheduled';
 }
 
