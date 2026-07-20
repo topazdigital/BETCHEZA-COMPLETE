@@ -142,6 +142,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  try {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const pool = getPool();
@@ -159,8 +160,8 @@ export async function POST(request: NextRequest) {
   }
 
   Object.assign(memorySettings, settings);
-  fileStoreSet('site-settings', memorySettings);
-  invalidateSiteSettingsCache();
+  try { fileStoreSet('site-settings', memorySettings); } catch (e) { console.warn('[settings] fileStore write failed:', e); }
+  try { invalidateSiteSettingsCache(); } catch (e) { console.warn('[settings] cache invalidate failed:', e); }
 
   if (!pool) {
     return NextResponse.json({ success: true, message: 'Settings saved successfully', source: 'file' });
@@ -193,4 +194,8 @@ export async function POST(request: NextRequest) {
     source: 'memory',
     dbFailures,
   });
+  } catch (e) {
+    console.error('[Admin API] POST /api/admin/settings unhandled error:', e);
+    return NextResponse.json({ error: `Internal server error: ${e instanceof Error ? e.message : String(e)}` }, { status: 500 });
+  }
 }

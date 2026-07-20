@@ -212,8 +212,15 @@ export default function AdminSettingsPage() {
         setSaveStatus('success')
         setTimeout(() => setSaveStatus('idle'), 3000)
       } else {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to save')
+        let errorMsg = `Server error ${response.status}`
+        try {
+          const data = await response.json()
+          errorMsg = data.error || errorMsg
+        } catch {
+          const text = await response.text().catch(() => '')
+          if (text && !text.includes('<!DOCTYPE')) errorMsg = text.slice(0, 200)
+        }
+        throw new Error(errorMsg)
       }
     } catch (error) {
       setSaveStatus('error')
@@ -239,8 +246,15 @@ export default function AdminSettingsPage() {
         setSaveStatus('success');
         setTimeout(() => setSaveStatus('idle'), 3000);
       } else {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save');
+        let errorMsg = `Server error ${response.status}`;
+        try {
+          const data = await response.json();
+          errorMsg = data.error || errorMsg;
+        } catch {
+          const text = await response.text().catch(() => '');
+          if (text && !text.includes('<!DOCTYPE')) errorMsg = text.slice(0, 200);
+        }
+        throw new Error(errorMsg);
       }
     } catch (error) {
       setSaveStatus('error');
