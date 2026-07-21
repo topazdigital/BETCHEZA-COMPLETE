@@ -13,6 +13,7 @@ import type { WeeklyStrategy, DayPrediction, StrategyPick } from '@/app/api/stra
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { isPushSupported, getPushPermission, ensurePushSubscribed } from '@/lib/push-client';
+import { useCurrency } from '@/contexts/currency-context';
 
 /* ────────────────────────────────────────────────────────── */
 /* Strategy Result Notification Toggle                      */
@@ -187,6 +188,7 @@ function DayCard({
   isBrowserFuture,
   isAdmin,
   onSubscribe,
+  fmt = (n: number) => `KES ${n.toLocaleString()}`,
 }: {
   day: DayPrediction;
   planItem: typeof WEEK_PLAN[0];
@@ -196,6 +198,7 @@ function DayCard({
   isBrowserFuture?: boolean;
   isAdmin?: boolean;
   onSubscribe?: () => void;
+  fmt?: (n: number) => string;
 }) {
   const [open, setOpen] = useState(day.status === 'active' || isYesterday === true || isSettled === true);
   const isActive = day.status === 'active';
@@ -285,9 +288,9 @@ function DayCard({
 
       {/* Mobile stake info */}
       <div className="sm:hidden flex items-center gap-3 px-3 pb-2 text-xs">
-        <span className="text-muted-foreground">Stake: <span className="font-mono font-bold text-foreground">{formatKES(planItem.stake)}</span></span>
-        {planItem.save > 0 && <span className="text-muted-foreground">Save: <span className="font-mono font-bold text-blue-500">{formatKES(planItem.save)}</span></span>}
-        <span className="text-muted-foreground">Win: <span className="font-mono font-bold text-green-500">{formatKES(planItem.targetWin)}</span></span>
+        <span className="text-muted-foreground">Stake: <span className="font-mono font-bold text-foreground">{fmt(planItem.stake)}</span></span>
+        {planItem.save > 0 && <span className="text-muted-foreground">Save: <span className="font-mono font-bold text-blue-500">{fmt(planItem.save)}</span></span>}
+        <span className="text-muted-foreground">Win: <span className="font-mono font-bold text-green-500">{fmt(planItem.targetWin)}</span></span>
       </div>
 
       {open && (
@@ -318,7 +321,7 @@ function DayCard({
                 className="rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2"
               >
                 <CreditCard className="h-4 w-4" />
-                Subscribe — KES 5,000 via M-Pesa
+                Subscribe — {fmt(5000)}
               </button>
             </div>
           ) : picksDateMismatch ? (
@@ -378,7 +381,9 @@ function SubscribeModal({
   walletBalance?: number;
   balanceLoading?: boolean;
 }) {
-  const COST = 5000;
+  const COST_KES = 5000;
+  const { fmt, countryCode } = useCurrency();
+  const isMpesaCountry = countryCode === 'KE' || countryCode === 'TZ';
   const { isAuthenticated } = useAuth();
   const { open: openAuthModal } = useAuthModal();
   const [phone, setPhone] = useState('');
@@ -391,8 +396,8 @@ function SubscribeModal({
   const autoAdvancedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const canPayFull = walletBalance >= COST;
-  const canPayPartial = walletBalance > 0 && walletBalance < COST;
+  const canPayFull = walletBalance >= COST_KES;
+  const canPayPartial = walletBalance > 0 && walletBalance < COST_KES;
 
   useEffect(() => {
     if (!open) {
@@ -408,7 +413,7 @@ function SubscribeModal({
     // Auto-route to topup-form as soon as balance is loaded and user has partial balance
     if (!balanceLoading && isAuthenticated && canPayPartial && !autoAdvancedRef.current) {
       autoAdvancedRef.current = true;
-      setTopUpAmount(COST - walletBalance);
+      setTopUpAmount(COST_KES - walletBalance);
       setWalletContrib(walletBalance);
       setStep('topup-form');
     }
@@ -560,7 +565,7 @@ function SubscribeModal({
 
   if (!open) return null;
 
-  const pendingMpesaAmount = topUpAmount ?? COST;
+  const pendingMpesaAmount = topUpAmount ?? COST_KES;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pb-16 sm:p-4">
@@ -593,14 +598,14 @@ function SubscribeModal({
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-green-500 shrink-0" />
                 <div>
-                  <p className="text-sm font-bold text-green-600 dark:text-green-400">KES 5,000 / week</p>
+                  <p className="text-sm font-bold text-green-600 dark:text-green-400">{fmt(COST_KES)} / week</p>
                   <p className="text-[11px] text-muted-foreground">7-day access, starts today</p>
                 </div>
               </div>
               {isAuthenticated && walletBalance > 0 && (
                 <div className="text-right shrink-0">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Wallet</p>
-                  <p className="text-sm font-mono font-bold text-primary">KES {walletBalance.toLocaleString()}</p>
+                  <p className="text-sm font-mono font-bold text-primary">{fmt(walletBalance)}</p>
                 </div>
               )}
             </div>
@@ -674,11 +679,11 @@ function SubscribeModal({
               </button>
               <div className="rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 space-y-1 text-xs">
                 <p className="font-semibold text-blue-600 dark:text-blue-400">Split payment breakdown</p>
-                <p className="text-muted-foreground">✓ KES {walletBalance.toLocaleString()} — deducted from your wallet automatically</p>
-                <p className="text-muted-foreground">📱 KES {(topUpAmount ?? COST - walletBalance).toLocaleString()} — you will receive an M-Pesa STK push</p>
+                <p className="text-muted-foreground">✓ {fmt(walletBalance)} — deducted from your wallet automatically</p>
+                <p className="text-muted-foreground">📱 {fmt(topUpAmount ?? COST_KES - walletBalance)} — you will receive an M-Pesa STK push</p>
               </div>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">M-Pesa number for KES {(topUpAmount ?? COST - walletBalance).toLocaleString()} top-up</label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">M-Pesa number for {fmt(topUpAmount ?? COST_KES - walletBalance)} top-up</label>
                 <div className="relative">
                   <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
@@ -705,8 +710,8 @@ function SubscribeModal({
                 <div>
                   <p className="text-sm font-bold text-foreground">Check your phone!</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Enter your M-Pesa PIN to confirm the KES {pendingMpesaAmount.toLocaleString()} payment
-                    {walletContrib > 0 && <span className="block text-primary font-medium">KES {walletContrib.toLocaleString()} already deducted from your wallet</span>}
+                    Enter your M-Pesa PIN to confirm the {fmt(pendingMpesaAmount)} payment
+                    {walletContrib > 0 && <span className="block text-primary font-medium">{fmt(walletContrib)} already deducted from your wallet</span>}
                   </p>
                 </div>
               </div>
@@ -746,7 +751,7 @@ function SubscribeModal({
                       className="w-full rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 py-3 text-sm font-bold text-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                     >
                       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
-                      Pay KES 5,000 from Wallet
+                      Pay {fmt(COST_KES)} from Wallet
                     </button>
                   )}
                   {canPayFull && (
@@ -756,12 +761,25 @@ function SubscribeModal({
                       <div className="flex-1 h-px bg-border" />
                     </div>
                   )}
-                  {!canPayPartial && (
+                  {/* M-Pesa — KE / TZ only */}
+                  {isMpesaCountry && !canPayPartial && (
                     <button
                       onClick={() => setStep('mpesa-form')}
                       className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
                     >
-                      <Phone className="h-4 w-4" /> Pay KES 5,000 via M-Pesa
+                      <Phone className="h-4 w-4" /> Pay {fmt(COST_KES)} via M-Pesa
+                    </button>
+                  )}
+                  {/* Paystack card — non-KE/TZ (coming soon) */}
+                  {!isMpesaCountry && (
+                    <button
+                      disabled
+                      title="Paystack card payments coming soon — use wallet for now"
+                      className="w-full rounded-xl bg-muted border border-border py-3 text-sm font-bold text-muted-foreground flex items-center justify-center gap-2 cursor-not-allowed relative"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Pay {fmt(COST_KES)} via Card
+                      <span className="absolute top-1.5 right-2.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 uppercase tracking-wide">Soon</span>
                     </button>
                   )}
                 </div>
@@ -772,7 +790,7 @@ function SubscribeModal({
                 disabled={loading}
                 className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : <><CreditCard className="h-4 w-4" /> Pay KES 5,000 &amp; Unlock</>}
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : <><CreditCard className="h-4 w-4" /> Pay {fmt(COST_KES)} &amp; Unlock</>}
               </button>
             ) : step === 'topup-form' ? (
               <button
@@ -780,7 +798,7 @@ function SubscribeModal({
                 disabled={loading}
                 className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</> : <><CreditCard className="h-4 w-4" /> Confirm &amp; Top Up KES {(topUpAmount ?? COST - walletBalance).toLocaleString()}</>}
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</> : <><CreditCard className="h-4 w-4" /> Confirm &amp; Top Up {fmt(topUpAmount ?? COST_KES - walletBalance)}</>}
               </button>
             ) : null}
           </div>
@@ -1366,6 +1384,7 @@ export default function StrategyPage() {
 
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const { fmt } = useCurrency();
 
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
@@ -1494,7 +1513,7 @@ export default function StrategyPage() {
               className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-sm"
             >
               <TrendingUp className="h-3.5 w-3.5" />
-              Re-subscribe — KES 5,000
+              Re-subscribe — {fmt(5000)}
             </button>
           </div>
           {/* Compact wallet hint if they have balance */}
@@ -1502,7 +1521,7 @@ export default function StrategyPage() {
             <div className="border-t border-amber-500/20 bg-amber-500/5 px-4 py-2 flex items-center justify-between gap-2">
               <p className="text-xs text-amber-700 dark:text-amber-400">
                 <Coins className="inline h-3 w-3 mr-1" />
-                You have KES {(access?.walletBalance ?? 0).toLocaleString()} in your wallet — enough to pay instantly.
+                You have {fmt(access?.walletBalance ?? 0)} in your wallet — enough to pay instantly.
               </p>
               <button
                 onClick={async () => {
@@ -1609,7 +1628,7 @@ export default function StrategyPage() {
           {!hasAccess && (
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
               <p className="font-semibold flex items-center gap-1.5"><Info className="h-3.5 w-3.5 shrink-0" /> How it works</p>
-              <p>Pay KES 5,000 and your <strong>personal 7-day plan starts immediately</strong>. Yesterday&apos;s picks are always free.</p>
+              <p>Pay {fmt(5000)} and your <strong>personal 7-day plan starts immediately</strong>. Yesterday&apos;s picks are always free.</p>
             </div>
           )}
 
@@ -1620,7 +1639,7 @@ export default function StrategyPage() {
               className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
             >
               <CreditCard className="h-4 w-4" />
-              Subscribe — KES 5,000
+              Subscribe — {fmt(5000)}
             </button>
           )}
 
@@ -1670,9 +1689,9 @@ export default function StrategyPage() {
                             <span className={cn('font-semibold', isCurrentDay ? 'text-primary' : '')}>D{p.day}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-right font-mono text-muted-foreground">{p.stake.toLocaleString()}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-blue-500 font-semibold">{p.save > 0 ? p.save.toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-mono font-bold text-green-500">{p.targetWin.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-muted-foreground">{fmt(p.stake)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-blue-500 font-semibold">{p.save > 0 ? fmt(p.save) : '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-green-500">{fmt(p.targetWin)}</td>
                       </tr>
                     );
                   })}
@@ -1680,16 +1699,16 @@ export default function StrategyPage() {
                 <tfoot>
                   <tr className="bg-muted/30 text-[10px] font-semibold border-t border-border">
                     <td className="px-3 py-2.5 text-muted-foreground">Total</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-muted-foreground">{WEEK_PLAN.reduce((s, p) => s + p.stake, 0).toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-blue-500">{WEEK_PLAN.reduce((s, p) => s + p.save, 0).toLocaleString()}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-green-600">{WEEK_PLAN.reduce((s, p) => s + p.targetWin, 0).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-muted-foreground">{fmt(WEEK_PLAN.reduce((s, p) => s + p.stake, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-blue-500">{fmt(WEEK_PLAN.reduce((s, p) => s + p.save, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-green-600">{fmt(WEEK_PLAN.reduce((s, p) => s + p.targetWin, 0))}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
             <div className="px-3 pb-2.5 pt-1.5">
               <p className="text-[10px] text-muted-foreground leading-relaxed">
-                Save a portion each day — total savings KES {WEEK_PLAN.reduce((s, p) => s + p.save, 0).toLocaleString()}. Stake only what you can afford to lose.
+                Save a portion each day — total savings {fmt(WEEK_PLAN.reduce((s, p) => s + p.save, 0))}. Stake only what you can afford to lose.
               </p>
             </div>
           </div>
@@ -1762,6 +1781,7 @@ export default function StrategyPage() {
                       isBrowserFuture={isBrowserFuture && !isSettled}
                       isAdmin={isAdmin}
                       onSubscribe={() => setShowSubscribeModal(true)}
+                      fmt={fmt}
                     />
                   );
                 })}

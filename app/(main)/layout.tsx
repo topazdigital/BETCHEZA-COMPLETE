@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { CurrencyProvider } from "@/contexts/currency-context"
 import { useSiteSettings } from "@/lib/hooks/use-site-settings"
 import dynamicImport from "next/dynamic"
 import Link from "next/link"
@@ -172,7 +173,7 @@ const SIDEBAR_BOOKMAKERS = [
   { name: "Mozzartbet", slug: "mozzartbet", color: "#8B0000" },
 ];
 
-export default function MainLayout({ children }: { children: React.ReactNode }) {
+function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { user, isAuthenticated, logout, isLoading } = useAuth()
   const { open: openAuthModal } = useAuthModal()
@@ -598,3 +599,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     </div>
   )
 }
+
+function MainLayoutWithCurrency({ children }: { children: React.ReactNode }) {
+  return (
+    <CurrencyProvider>
+      <MainLayout>{children}</MainLayout>
+    </CurrencyProvider>
+  );
+}
+
+// Re-export as default so Next.js picks up the provider-wrapped version
+export { MainLayoutWithCurrency as default };

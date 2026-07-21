@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Trophy, X, ShieldCheck, Coins, Phone, Loader2, CheckCircle2 } from 'lucide-react';
+import { Trophy, X, ShieldCheck, Coins, Phone, Loader2, CheckCircle2, CreditCard } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useAuthModal } from '@/contexts/auth-modal-context';
+import { useCurrency } from '@/contexts/currency-context';
 
 interface Props {
   open: boolean;
@@ -28,6 +29,8 @@ export function CompetitionPaymentModal({
 }: Props) {
   const { isAuthenticated } = useAuth();
   const { open: openAuthModal } = useAuthModal();
+  const { fmt, countryCode } = useCurrency();
+  const isMpesaCountry = countryCode === 'KE' || countryCode === 'TZ';
 
   const [step, setStep] = useState<Step>('choose');
   const [phone, setPhone] = useState('');
@@ -241,14 +244,14 @@ export function CompetitionPaymentModal({
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-green-500" />
               <div>
-                <p className="text-sm font-bold text-green-600 dark:text-green-400">{currency} {amount.toLocaleString()} entry fee</p>
+                <p className="text-sm font-bold text-green-600 dark:text-green-400">{fmt(amount)} entry fee</p>
                 <p className="text-[11px] text-muted-foreground">One-time payment to join</p>
               </div>
             </div>
-            {isAuthenticated && walletBalance > 0 && (
+            {isAuthenticated && walletBalance !== null && walletBalance > 0 && (
               <div className="text-right">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Wallet</p>
-                <p className="text-sm font-mono font-bold text-primary">{currency} {walletBalance.toLocaleString()}</p>
+                <p className="text-sm font-mono font-bold text-primary">{fmt(walletBalance)}</p>
               </div>
             )}
           </div>
@@ -278,12 +281,12 @@ export function CompetitionPaymentModal({
                   className="w-full rounded-xl border-2 border-primary bg-primary/5 hover:bg-primary/10 py-3.5 text-sm font-bold text-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
-                  Pay {currency} {amount.toLocaleString()} from Wallet
+                  Pay {fmt(amount)} from Wallet
                 </button>
               )}
 
-              {/* Partial wallet + top-up */}
-              {canPayPartial && (
+              {/* Partial wallet + top-up (M-Pesa countries only) */}
+              {canPayPartial && isMpesaCountry && (
                 <button
                   onClick={handleTopUpInit}
                   disabled={loading}
@@ -293,7 +296,7 @@ export function CompetitionPaymentModal({
                     <>
                       <span className="flex items-center gap-1.5">
                         <Coins className="h-4 w-4" />
-                        Use {currency} {walletBalance.toLocaleString()} from Wallet + {currency} {(amount - walletBalance).toLocaleString()} via M-Pesa
+                        Use {fmt(walletBalance ?? 0)} from Wallet + {fmt(amount - (walletBalance ?? 0))} via M-Pesa
                       </span>
                       <span className="text-[11px] font-normal text-muted-foreground">Wallet covers part — top up the rest via M-Pesa</span>
                     </>
@@ -302,7 +305,7 @@ export function CompetitionPaymentModal({
               )}
 
               {/* Divider */}
-              {(canPayFull || canPayPartial) && (
+              {(canPayFull || (canPayPartial && isMpesaCountry)) && (
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-px bg-border" />
                   <span className="text-[11px] text-muted-foreground">or pay entirely via</span>
@@ -310,13 +313,28 @@ export function CompetitionPaymentModal({
                 </div>
               )}
 
-              {/* Full M-Pesa */}
-              <button
-                onClick={() => setStep('mpesa-form')}
-                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-              >
-                <Phone className="h-4 w-4" /> Pay {currency} {amount.toLocaleString()} via M-Pesa
-              </button>
+              {/* M-Pesa — KE / TZ only */}
+              {isMpesaCountry && (
+                <button
+                  onClick={() => setStep('mpesa-form')}
+                  className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Phone className="h-4 w-4" /> Pay {fmt(amount)} via M-Pesa
+                </button>
+              )}
+
+              {/* Paystack card — non-KE/TZ (coming soon) */}
+              {!isMpesaCountry && (
+                <button
+                  disabled
+                  title="Card payments coming soon — use wallet for now"
+                  className="w-full rounded-xl bg-muted border border-border py-3 text-sm font-bold text-muted-foreground flex items-center justify-center gap-2 cursor-not-allowed relative"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Pay {fmt(amount)} via Card
+                  <span className="absolute top-1.5 right-2.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 uppercase tracking-wide">Soon</span>
+                </button>
+              )}
             </div>
 
           /* ── Full M-Pesa form ── */
@@ -336,7 +354,7 @@ export function CompetitionPaymentModal({
                   inputMode="tel"
                 />
                 <p className="text-[11px] text-muted-foreground mt-1.5">
-                  You will receive an STK push to confirm <span className="font-semibold text-foreground">{currency} {amount.toLocaleString()}</span>.
+                  You will receive an STK push to confirm <span className="font-semibold text-foreground">{fmt(amount)}</span>.
                 </p>
               </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
@@ -346,7 +364,7 @@ export function CompetitionPaymentModal({
                 className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-                Send STK Push — {currency} {amount.toLocaleString()}
+                Send STK Push — {fmt(amount)}
               </button>
             </div>
 
@@ -359,11 +377,11 @@ export function CompetitionPaymentModal({
               <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs space-y-1">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Wallet covers</span>
-                  <span className="font-bold text-primary">{currency} {walletContrib.toLocaleString()}</span>
+                  <span className="font-bold text-primary">{fmt(walletContrib)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">M-Pesa top-up needed</span>
-                  <span className="font-bold text-foreground">{currency} {(topUpAmount ?? (amount - walletContrib)).toLocaleString()}</span>
+                  <span className="font-bold text-foreground">{fmt(topUpAmount ?? (amount - walletContrib))}</span>
                 </div>
               </div>
               <div>
@@ -384,7 +402,7 @@ export function CompetitionPaymentModal({
                 className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-                Send STK Push — {currency} {(topUpAmount ?? (amount - walletContrib)).toLocaleString()}
+                Send STK Push — {fmt(topUpAmount ?? (amount - walletContrib))}
               </button>
             </div>
 
@@ -397,17 +415,17 @@ export function CompetitionPaymentModal({
                 </div>
                 <div>
                   <p className="text-sm font-bold text-foreground">STK push sent to {phone}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Enter your M-Pesa PIN on your phone to complete payment of <span className="font-semibold text-foreground">{currency} {pendingMpesaAmount.toLocaleString()}</span>.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Enter your M-Pesa PIN to confirm <span className="font-semibold text-foreground">{fmt(pendingMpesaAmount)}</span>.</p>
                 </div>
                 {walletContrib > 0 && (
                   <p className="text-[11px] text-muted-foreground">
-                    <span className="text-primary font-semibold">{currency} {walletContrib.toLocaleString()}</span> already deducted from your wallet.
+                    <span className="text-primary font-semibold">{fmt(walletContrib)}</span> already deducted from your wallet.
                   </p>
                 )}
               </div>
               <div className="flex items-center gap-2 text-[11px] text-muted-foreground justify-center">
                 <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                Waiting for M-Pesa confirmation — checking every 5 seconds…
+                Waiting for payment confirmation — checking every 5 seconds…
               </div>
               {error && (
                 <div className="space-y-2">
