@@ -1096,6 +1096,172 @@ const GLOBAL_SPORT_TYPES: Array<{ sport: string; sportType: ESPNLeagueConfig['sp
 interface GlobalLeagueInfo { name: string; slug: string; country: string; countryCode: string; }
 const globalLeagueInfoCache = new Map<string, GlobalLeagueInfo>();
 
+// Comprehensive map of ESPN's 2-3 letter country slug prefixes → {country, countryCode}.
+// ESPN encodes the country in team slugs: e.g. "sco.alloa-athletic" → prefix "sco" → Scotland.
+// Used as a fallback when a league isn't in KNOWN_GLOBAL_LEAGUES and ESPN doesn't supply a name.
+const ESPN_SLUG_TO_COUNTRY: Record<string, { country: string; countryCode: string }> = {
+  // UK & Ireland
+  eng: { country: 'England',          countryCode: 'GB-ENG' },
+  sco: { country: 'Scotland',         countryCode: 'GB-SCT' },
+  wal: { country: 'Wales',            countryCode: 'GB-WLS' },
+  nir: { country: 'Northern Ireland', countryCode: 'GB-NIR' },
+  irl: { country: 'Ireland',          countryCode: 'IE'     },
+  // Western Europe
+  fra: { country: 'France',           countryCode: 'FR' },
+  ger: { country: 'Germany',          countryCode: 'DE' },
+  ita: { country: 'Italy',            countryCode: 'IT' },
+  esp: { country: 'Spain',            countryCode: 'ES' },
+  por: { country: 'Portugal',         countryCode: 'PT' },
+  ned: { country: 'Netherlands',      countryCode: 'NL' },
+  bel: { country: 'Belgium',          countryCode: 'BE' },
+  sui: { country: 'Switzerland',      countryCode: 'CH' },
+  aut: { country: 'Austria',          countryCode: 'AT' },
+  lux: { country: 'Luxembourg',       countryCode: 'LU' },
+  // Scandinavia
+  swe: { country: 'Sweden',           countryCode: 'SE' },
+  nor: { country: 'Norway',           countryCode: 'NO' },
+  den: { country: 'Denmark',          countryCode: 'DK' },
+  fin: { country: 'Finland',          countryCode: 'FI' },
+  isl: { country: 'Iceland',          countryCode: 'IS' },
+  fro: { country: 'Faroe Islands',    countryCode: 'FO' },
+  // Eastern Europe
+  rus: { country: 'Russia',           countryCode: 'RU' },
+  ukr: { country: 'Ukraine',          countryCode: 'UA' },
+  pol: { country: 'Poland',           countryCode: 'PL' },
+  cze: { country: 'Czech Republic',   countryCode: 'CZ' },
+  svk: { country: 'Slovakia',         countryCode: 'SK' },
+  hun: { country: 'Hungary',          countryCode: 'HU' },
+  rou: { country: 'Romania',          countryCode: 'RO' },
+  bul: { country: 'Bulgaria',         countryCode: 'BG' },
+  srb: { country: 'Serbia',           countryCode: 'RS' },
+  cro: { country: 'Croatia',          countryCode: 'HR' },
+  svn: { country: 'Slovenia',         countryCode: 'SI' },
+  bih: { country: 'Bosnia',           countryCode: 'BA' },
+  alb: { country: 'Albania',          countryCode: 'AL' },
+  mkd: { country: 'North Macedonia',  countryCode: 'MK' },
+  mne: { country: 'Montenegro',       countryCode: 'ME' },
+  kos: { country: 'Kosovo',           countryCode: 'XK' },
+  gre: { country: 'Greece',           countryCode: 'GR' },
+  tur: { country: 'Turkey',           countryCode: 'TR' },
+  // Baltics & CIS
+  est: { country: 'Estonia',          countryCode: 'EE' },
+  lat: { country: 'Latvia',           countryCode: 'LV' },
+  ltu: { country: 'Lithuania',        countryCode: 'LT' },
+  blr: { country: 'Belarus',          countryCode: 'BY' },
+  mda: { country: 'Moldova',          countryCode: 'MD' },
+  arm: { country: 'Armenia',          countryCode: 'AM' },
+  geo: { country: 'Georgia',          countryCode: 'GE' },
+  aze: { country: 'Azerbaijan',       countryCode: 'AZ' },
+  kaz: { country: 'Kazakhstan',       countryCode: 'KZ' },
+  // Small European nations
+  isr: { country: 'Israel',           countryCode: 'IL' },
+  cyp: { country: 'Cyprus',           countryCode: 'CY' },
+  mlt: { country: 'Malta',            countryCode: 'MT' },
+  and: { country: 'Andorra',          countryCode: 'AD' },
+  smr: { country: 'San Marino',       countryCode: 'SM' },
+  lie: { country: 'Liechtenstein',    countryCode: 'LI' },
+  gib: { country: 'Gibraltar',        countryCode: 'GI' },
+  // Americas
+  usa: { country: 'USA',              countryCode: 'US' },
+  can: { country: 'Canada',           countryCode: 'CA' },
+  mex: { country: 'Mexico',           countryCode: 'MX' },
+  bra: { country: 'Brazil',           countryCode: 'BR' },
+  arg: { country: 'Argentina',        countryCode: 'AR' },
+  col: { country: 'Colombia',         countryCode: 'CO' },
+  chi: { country: 'Chile',            countryCode: 'CL' },
+  chl: { country: 'Chile',            countryCode: 'CL' },
+  per: { country: 'Peru',             countryCode: 'PE' },
+  ven: { country: 'Venezuela',        countryCode: 'VE' },
+  ury: { country: 'Uruguay',          countryCode: 'UY' },
+  par: { country: 'Paraguay',         countryCode: 'PY' },
+  ecu: { country: 'Ecuador',          countryCode: 'EC' },
+  bol: { country: 'Bolivia',          countryCode: 'BO' },
+  crc: { country: 'Costa Rica',       countryCode: 'CR' },
+  gtm: { country: 'Guatemala',        countryCode: 'GT' },
+  hon: { country: 'Honduras',         countryCode: 'HN' },
+  slv: { country: 'El Salvador',      countryCode: 'SV' },
+  pan: { country: 'Panama',           countryCode: 'PA' },
+  jam: { country: 'Jamaica',          countryCode: 'JM' },
+  tri: { country: 'Trinidad & Tobago',countryCode: 'TT' },
+  // Asia-Pacific
+  jpn: { country: 'Japan',            countryCode: 'JP' },
+  kor: { country: 'South Korea',      countryCode: 'KR' },
+  chn: { country: 'China',            countryCode: 'CN' },
+  aus: { country: 'Australia',        countryCode: 'AU' },
+  nzl: { country: 'New Zealand',      countryCode: 'NZ' },
+  ind: { country: 'India',            countryCode: 'IN' },
+  idn: { country: 'Indonesia',        countryCode: 'ID' },
+  tha: { country: 'Thailand',         countryCode: 'TH' },
+  mys: { country: 'Malaysia',         countryCode: 'MY' },
+  vnm: { country: 'Vietnam',          countryCode: 'VN' },
+  phl: { country: 'Philippines',      countryCode: 'PH' },
+  sgp: { country: 'Singapore',        countryCode: 'SG' },
+  // Middle East
+  ksa: { country: 'Saudi Arabia',     countryCode: 'SA' },
+  are: { country: 'UAE',              countryCode: 'AE' },
+  qat: { country: 'Qatar',            countryCode: 'QA' },
+  irn: { country: 'Iran',             countryCode: 'IR' },
+  irq: { country: 'Iraq',             countryCode: 'IQ' },
+  jor: { country: 'Jordan',           countryCode: 'JO' },
+  lbn: { country: 'Lebanon',          countryCode: 'LB' },
+  kuw: { country: 'Kuwait',           countryCode: 'KW' },
+  omn: { country: 'Oman',             countryCode: 'OM' },
+  bhr: { country: 'Bahrain',          countryCode: 'BH' },
+  // Africa
+  egy: { country: 'Egypt',            countryCode: 'EG' },
+  mar: { country: 'Morocco',          countryCode: 'MA' },
+  tun: { country: 'Tunisia',          countryCode: 'TN' },
+  alg: { country: 'Algeria',          countryCode: 'DZ' },
+  nga: { country: 'Nigeria',          countryCode: 'NG' },
+  gha: { country: 'Ghana',            countryCode: 'GH' },
+  rsa: { country: 'South Africa',     countryCode: 'ZA' },
+  ken: { country: 'Kenya',            countryCode: 'KE' },
+  tan: { country: 'Tanzania',         countryCode: 'TZ' },
+  eth: { country: 'Ethiopia',         countryCode: 'ET' },
+  zmb: { country: 'Zambia',           countryCode: 'ZM' },
+  uga: { country: 'Uganda',           countryCode: 'UG' },
+  cmr: { country: 'Cameroon',         countryCode: 'CM' },
+  civ: { country: "Côte d'Ivoire",    countryCode: 'CI' },
+  sen: { country: 'Senegal',          countryCode: 'SN' },
+  zim: { country: 'Zimbabwe',         countryCode: 'ZW' },
+  tza: { country: 'Tanzania',         countryCode: 'TZ' },
+};
+
+/** Detect the country/continent for a multi-national competition by inspecting its name.
+ *  Confederation-specific prefixes (CONCACAF, CONMEBOL, AFC, CAF) are checked FIRST so
+ *  names like "AFC Champions League" or "CAF Champions League" resolve to Asia/Africa and
+ *  are not misclassified as Europe by the generic "champions league" catch-all.
+ *  Returns null if the name doesn't suggest a specific confederation. */
+function inferContinentalCountry(name: string): { country: string; countryCode: string } | null {
+  const n = name.toLowerCase();
+  // --- Confederation-specific keywords first (highest specificity) ---
+  if (n.includes('concacaf'))
+    return { country: 'North America', countryCode: 'NA' };
+  if (n.includes('conmebol') || n.includes('sudamericana') || n.includes('libertadores') ||
+      n.includes('copa america'))
+    return { country: 'South America', countryCode: 'SA' };
+  if (n.includes('afc ') || n.startsWith('afc') || n.includes(' afc') ||
+      n.includes('asian champions') || n.includes('asian cup') || n.includes('asian games'))
+    return { country: 'Asia', countryCode: 'AS' };
+  if (n.includes('caf ') || n.startsWith('caf') || n.includes(' caf') ||
+      n.includes('africa cup') || n.includes('afcon') || n.includes('african nations'))
+    return { country: 'Africa', countryCode: 'AF' };
+  // --- UEFA / European keywords (checked after confederation-specific) ---
+  if (n.includes('uefa') || n.includes('champions league') || n.includes('europa league') ||
+      n.includes('conference league') || n.includes('nations league') ||
+      n.includes('supercup') || n.includes('super cup') || n.includes('european') ||
+      n.includes('euro ') || n.includes('qualifying — eur') || n.includes('qual. eur'))
+    return { country: 'Europe', countryCode: 'EU' };
+  return null;
+}
+
+/** Resolve { country, countryCode } from an ESPN team slug prefix (e.g. "sco.alloa" → Scotland). */
+function countryFromSlugPrefix(teamSlug?: string): { country: string; countryCode: string } {
+  if (!teamSlug) return { country: 'World', countryCode: 'WO' };
+  const prefix = teamSlug.split('.')[0].toLowerCase();
+  return ESPN_SLUG_TO_COUNTRY[prefix] ?? { country: 'World', countryCode: 'WO' };
+}
+
 // Build a fast index of "ESPN league code (e.g. eng.1) → ESPNLeagueConfig" so
 // when the global feed surfaces a known league we still link to our internal
 // league page instead of inventing a duplicate.
@@ -1199,9 +1365,9 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '8341': { name: 'Thai League 1', country: 'Thailand', countryCode: 'TH' },
   '8342': { name: 'Vietnamese V.League 1', country: 'Vietnam', countryCode: 'VN' },
   // Americas
-  '5454': { name: 'Copa Libertadores', country: 'South America', countryCode: 'WO' },
+  '5454': { name: 'Copa Libertadores', country: 'South America', countryCode: 'SA' },
   '5337': { name: 'US Open Cup', country: 'United States', countryCode: 'US' },
-  '5699': { name: 'CONCACAF Champions Cup', country: 'North America', countryCode: 'WO' },
+  '5699': { name: 'CONCACAF Champions Cup', country: 'North America', countryCode: 'NA' },
   '3903': { name: 'Argentine Primera B Metropolitana', country: 'Argentina', countryCode: 'AR' },
   // LATAM leagues — numeric IDs as observed in /all/scoreboard uid (l:<id>)
   '4310': { name: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR' },
@@ -1222,7 +1388,7 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '9056': { name: 'Honduran Liga Nacional', country: 'Honduras', countryCode: 'HN' },
   '9057': { name: 'Salvadoran Primera División', country: 'El Salvador', countryCode: 'SV' },
   // International / Continental
-  '22059': { name: 'AFC Champions League Elite', country: 'Asia', countryCode: 'WO' },
+  '22059': { name: 'AFC Champions League Elite', country: 'Asia', countryCode: 'AS' },
   '775': { name: 'UEFA Champions League', country: 'Europe', countryCode: 'EU' },
   '783': { name: 'Copa Sudamericana', country: 'South America', countryCode: 'SA' },
   '1062': { name: 'UEFA Europa League', country: 'Europe', countryCode: 'EU' },
@@ -1249,6 +1415,66 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '22285': { name: "Women's WC Qualifying — AFC", country: 'Asia', countryCode: 'AS' },
   '22286': { name: "Women's WC Qualifying — CAF", country: 'Africa', countryCode: 'AF' },
   '22287': { name: "Women's WC Qualifying — CONMEBOL", country: 'South America', countryCode: 'SA' },
+  // Scottish Domestic Leagues (multiple ESPN numeric IDs observed for same competition)
+  '5330': { name: 'Scottish Championship', country: 'Scotland', countryCode: 'GB-SCT' },
+  '5331': { name: 'Scottish League One',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '5332': { name: 'Scottish League Two',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '5333': { name: 'Scottish Cup',          country: 'Scotland', countryCode: 'GB-SCT' },
+  '5334': { name: 'Scottish League Cup',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '8592': { name: 'Scottish Championship', country: 'Scotland', countryCode: 'GB-SCT' },
+  '8593': { name: 'Scottish League One',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '8594': { name: 'Scottish League Two',   country: 'Scotland', countryCode: 'GB-SCT' },
+  // UEFA Qualifying Rounds (per-season ESPN numeric IDs — updated for 2025/26)
+  // These IDs change each season; add new ones as they appear in the scoreboard.
+  '19674': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '20221': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '19673': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '19675': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '20220': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '20222': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '19670': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '19671': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '19672': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20215': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20216': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20217': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20218': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20219': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '20223': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '20224': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '20225': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  // More English lower-league & cup IDs
+  '3918': { name: 'EFL League One Playoffs',  country: 'England', countryCode: 'GB-ENG' },
+  '3919': { name: 'EFL Championship Playoffs',country: 'England', countryCode: 'GB-ENG' },
+  '3920': { name: 'National League Playoffs', country: 'England', countryCode: 'GB-ENG' },
+  '8295': { name: 'Premier League',           country: 'England', countryCode: 'GB-ENG' },
+  '8298': { name: 'EFL League Two',           country: 'England', countryCode: 'GB-ENG' },
+  // Additional European domestic leagues
+  '8589': { name: 'Bosnian Premier League',         country: 'Bosnia',           countryCode: 'BA' },
+  '8590': { name: 'Albanian Superliga',             country: 'Albania',          countryCode: 'AL' },
+  '8591': { name: 'North Macedonia League',         country: 'North Macedonia',  countryCode: 'MK' },
+  '8595': { name: 'Montenegrin First League',       country: 'Montenegro',       countryCode: 'ME' },
+  '8596': { name: 'Kosovan Superliga',              country: 'Kosovo',           countryCode: 'XK' },
+  '8597': { name: 'Faroe Islands Premier League',  country: 'Faroe Islands',    countryCode: 'FO' },
+  '8598': { name: 'Maltese Premier League',         country: 'Malta',            countryCode: 'MT' },
+  '8599': { name: 'Luxembourg National Division',  country: 'Luxembourg',       countryCode: 'LU' },
+  '8600': { name: 'Latvian Higher League',          country: 'Latvia',           countryCode: 'LV' },
+  '8601': { name: 'Lithuanian A Lyga',              country: 'Lithuania',        countryCode: 'LT' },
+  '8602': { name: 'Belarusian Premier League',      country: 'Belarus',          countryCode: 'BY' },
+  '8603': { name: 'Moldovan National Division',     country: 'Moldova',          countryCode: 'MD' },
+  '8604': { name: 'Armenian Premier League',        country: 'Armenia',          countryCode: 'AM' },
+  '8605': { name: 'Georgian Erovnuli Liga',         country: 'Georgia',          countryCode: 'GE' },
+  '8606': { name: 'Azerbaijani Premier League',     country: 'Azerbaijan',       countryCode: 'AZ' },
+  '8607': { name: 'Kazakh Premier League',          country: 'Kazakhstan',       countryCode: 'KZ' },
+  '8608': { name: 'Cypriot First Division',         country: 'Cyprus',           countryCode: 'CY' },
+  '8609': { name: 'Estonian Meistriliiga',          country: 'Estonia',          countryCode: 'EE' },
+  // Americas — additional IDs
+  '4692': { name: 'Brazilian Série B',              country: 'Brazil',           countryCode: 'BR' },
+  '4693': { name: 'Brazilian Série C',              country: 'Brazil',           countryCode: 'BR' },
+  '4694': { name: 'Argentine Copa de la Liga',      country: 'Argentina',        countryCode: 'AR' },
+  '4695': { name: 'Argentine Primera B Nacional',   country: 'Argentina',        countryCode: 'AR' },
+  '4696': { name: 'Uruguayan Apertura',             country: 'Uruguay',          countryCode: 'UY' },
+  '4697': { name: 'Colombian Primera B',            country: 'Colombia',         countryCode: 'CO' },
 };
 
 // Maps ESPN's internal numeric league IDs → our internal leagueId.
@@ -1298,6 +1524,33 @@ const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
   '606':   29,  // FIFA World Cup 2026 (ESPN global scoreboard league id)
   '607':   29,  // FIFA World Cup alt id
   '2000':  29,  // FIFA World Cup alt id
+  // Scottish domestic — multiple ESPN IDs observed for same competition
+  '5330':  231, // Scottish Championship
+  '5331':  233, // Scottish League One
+  '5332':  234, // Scottish League Two
+  '4002':  231, // Scottish Championship (alt ID)
+  '4003':  233, // Scottish League One (alt ID)
+  '8592':  231, // Scottish Championship (alt ID)
+  '8593':  233, // Scottish League One (alt ID)
+  '8594':  234, // Scottish League Two (alt ID)
+  // UEFA Qualifying (map to parent competition)
+  '19674': 26,  // UEFA Conference League Qualifying → Conference League id
+  '20221': 10,  // UEFA Europa League Qualifying → Europa League id
+  '19673': 26,
+  '19675': 26,
+  '20220': 10,
+  '20222': 10,
+  '20224': 26,
+  '20225': 26,
+  '19670': 9,   // UEFA Champions League Qualifying → UCL id
+  '19671': 9,
+  '19672': 9,
+  '20215': 9,
+  '20216': 9,
+  '20217': 9,
+  '20218': 9,
+  '20219': 10,
+  '20223': 10,
 };
 
 // Convert a season slug like "2025-26-saudi-pro-league" or "uefa-champions-league"
@@ -1337,36 +1590,41 @@ async function resolveGlobalLeagueInfo(
     globalLeagueInfoCache.set(ck, info);
     return info;
   }
+
   // 2. Try the season slug (e.g. "2025-26-saudi-pro-league" → "Saudi Pro League").
   const fromSlug = leagueNameFromSeasonSlug(hint?.seasonSlug);
   if (fromSlug) {
-    const country2 = hint?.teamSlug?.split('.')[0]?.toUpperCase();
-    const info: GlobalLeagueInfo = { name: fromSlug, slug: fromSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-'), country: country2 || 'World', countryCode: 'WO' };
+    const continental = inferContinentalCountry(fromSlug);
+    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
+    const info: GlobalLeagueInfo = { name: fromSlug, slug: fromSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...loc };
     globalLeagueInfoCache.set(ck, info);
     return info;
   }
+
   // 3. Use ESPN's own league name from the scoreboard response — always accurate,
   //    covers every league ESPN tracks, prevents "League XXXXX" fallback names.
   if (hint?.espnName && hint.espnName.trim().length > 2) {
     const name = hint.espnName.trim();
-    const country3 = hint?.teamSlug?.split('.')[0]?.toUpperCase();
+    const continental = inferContinentalCountry(name);
+    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
     const info: GlobalLeagueInfo = {
       name,
       slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-      country: country3 || 'World',
-      countryCode: 'WO',
+      ...loc,
     };
     globalLeagueInfoCache.set(ck, info);
     return info;
   }
-  // 4. Fallback: derive country from team slug ("ksa.1" → KSA).
-  //    At worst shows "KSA League" instead of "League 19874".
-  const country = hint?.teamSlug?.split('.')[0]?.toUpperCase();
+
+  // 4. Fallback: derive country from team slug (e.g. "sco.alloa-athletic" → Scotland).
+  //    Uses the comprehensive ESPN_SLUG_TO_COUNTRY map for proper names and ISO codes.
+  const loc = countryFromSlugPrefix(hint?.teamSlug);
   const info: GlobalLeagueInfo = {
-    name: country ? `${country} League` : `League ${espnLeagueId}`,
+    name: loc.country !== 'World'
+      ? `${loc.country} League`
+      : `League ${espnLeagueId}`,
     slug: `espn-${espnLeagueId}`,
-    country: country || 'World',
-    countryCode: 'WO',
+    ...loc,
   };
   globalLeagueInfoCache.set(ck, info);
   return info;
@@ -1664,7 +1922,13 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       ? { name: friendlyOverrideGlobal.name, slug: friendlyOverrideGlobal.slug, country: friendlyOverrideGlobal.country, countryCode: friendlyOverrideGlobal.countryCode }
       : (!isGenericName && resolvedLeagueInfo)
       ? resolvedLeagueInfo
-      : { name: fallbackLeagueName !== 'Unknown League' ? fallbackLeagueName : (resolvedLeagueInfo?.name || 'Unknown League'), slug: `espn-${espnLeagueId}`, country: 'World', countryCode: 'WO' };
+      : (() => {
+          const fbName = fallbackLeagueName !== 'Unknown League' ? fallbackLeagueName : (resolvedLeagueInfo?.name || 'Unknown League');
+          const fbLoc = inferContinentalCountry(fbName) ?? countryFromSlugPrefix(
+            (competition?.competitors?.[0]?.team as { slug?: string } | undefined)?.slug
+          );
+          return { name: fbName, slug: `espn-${espnLeagueId}`, ...fbLoc };
+        })();
 
     // For individual sports (tennis/golf/mma) build ESPN CDN headshot URLs from
     // the athlete id embedded in each competitor uid (e.g. "s:850~l:851~a:4691").
