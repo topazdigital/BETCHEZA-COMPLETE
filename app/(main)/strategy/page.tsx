@@ -392,15 +392,17 @@ function SubscribeModal({
   const [error, setError] = useState('');
   const [topUpAmount, setTopUpAmount] = useState<number | null>(null);
   const [walletContrib, setWalletContrib] = useState(0);
-  const [step, setStep] = useState<'choose' | 'mpesa-form' | 'topup-form' | 'pending' | 'card-form' | 'card-otp'>('choose');
+  const [step, setStep] = useState<'choose' | 'mpesa-form' | 'topup-form' | 'pending' | 'card-form' | 'card-otp' | 'card-poll'>('choose');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
   const [cardOtp, setCardOtp] = useState('');
   const [cardRef, setCardRef] = useState<string | null>(null);
   const [cardOtpPrompt, setCardOtpPrompt] = useState('');
+  const [cardPollPrompt, setCardPollPrompt] = useState('');
   const autoAdvancedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cardPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canPayFull = walletBalance >= COST_KES;
   const canPayPartial = walletBalance > 0 && walletBalance < COST_KES;
@@ -418,8 +420,10 @@ function SubscribeModal({
       setCardOtp('');
       setCardRef(null);
       setCardOtpPrompt('');
+      setCardPollPrompt('');
       autoAdvancedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
+      if (cardPollRef.current) clearInterval(cardPollRef.current);
       return;
     }
     // Auto-route to topup-form (M-Pesa split) only for M-Pesa countries with partial balance.
@@ -531,7 +535,7 @@ function SubscribeModal({
           currency: 'KES',
         }),
       });
-      const data = await res.json() as { success?: boolean; needsOtp?: boolean; reference?: string; displayText?: string; error?: string; daysRemaining?: number; startDayOffset?: number };
+      const data = await res.json() as { success?: boolean; needsOtp?: boolean; needsPoll?: boolean; reference?: string; displayText?: string; error?: string; daysRemaining?: number; startDayOffset?: number };
       if (data.success) {
         onUnlocked({ daysRemaining: data.daysRemaining || 7, startDayOffset: data.startDayOffset || 0 });
         onClose();
@@ -541,6 +545,34 @@ function SubscribeModal({
         setCardRef(data.reference);
         setCardOtpPrompt(data.displayText || 'Enter the OTP sent to your phone or email.');
         setStep('card-otp');
+        return;
+      }
+      if (data.needsPoll && data.reference) {
+        setCardRef(data.reference);
+        setCardPollPrompt(data.displayText || 'Your bank is processing the payment. Please wait…');
+        setStep('card-poll');
+        // Poll /api/paystack/verify every 5 s
+        if (cardPollRef.current) clearInterval(cardPollRef.current);
+        cardPollRef.current = setInterval(async () => {
+          try {
+            const vRes = await fetch('/api/paystack/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reference: data.reference }),
+            });
+            const vData = await vRes.json() as { success?: boolean; pending?: boolean; error?: string; daysRemaining?: number; startDayOffset?: number };
+            if (vData.success) {
+              clearInterval(cardPollRef.current!);
+              onUnlocked({ daysRemaining: vData.daysRemaining || 7, startDayOffset: vData.startDayOffset || 0 });
+              onClose();
+            } else if (vData.error) {
+              clearInterval(cardPollRef.current!);
+              setStep('card-form');
+              setError(vData.error);
+            }
+            // vData.pending → keep polling
+          } catch { /* keep polling */ }
+        }, 5000);
         return;
       }
       setError(data.error || 'Card payment failed. Please try again.');
@@ -861,6 +893,32 @@ function SubscribeModal({
             </div>
           )}
 
+          {/* ── Card polling (3DS async) ── */}
+          {isAuthenticated && step === 'card-poll' && (
+            <div className="text-center space-y-4 py-4">
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 border-2 border-primary/30">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-foreground">Processing payment…</p>
+                  <p className="text-xs text-muted-foreground mt-1">{cardPollPrompt}</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold text-primary">This page unlocks automatically</p>
+                <p className="text-[11px] text-muted-foreground">Your bank is verifying the payment — we&apos;ll detect it and unlock instantly</p>
+              </div>
+              {cardRef && <p className="text-[10px] text-muted-foreground font-mono">Ref: {cardRef}</p>}
+              <button
+                onClick={() => { if (cardPollRef.current) clearInterval(cardPollRef.current); setStep('card-form'); setError(''); }}
+                className="text-xs text-muted-foreground underline hover:text-foreground"
+              >
+                Cancel and try again
+              </button>
+            </div>
+          )}
+
           {/* ── Pending: full content (no footer button needed) ── */}
           {isAuthenticated && step === 'pending' && (
             <div className="text-center space-y-4 py-4">
@@ -893,7 +951,7 @@ function SubscribeModal({
         </div>
 
         {/* ── Sticky CTA footer — always visible, never scrolls away ── */}
-        {step !== 'pending' && (
+        {step !== 'pending' && step !== 'card-poll' && (
           <div className="shrink-0 px-5 pb-5 pt-3 border-t border-border/40">
             {!isAuthenticated ? (
               <button

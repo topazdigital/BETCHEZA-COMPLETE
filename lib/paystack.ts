@@ -21,6 +21,7 @@ export interface PaystackCard {
 export type ChargeStatus =
   | 'success'
   | 'send_otp'
+  | 'pending'
   | 'send_phone'
   | 'send_birthday'
   | 'pay_offline'
@@ -118,7 +119,16 @@ export async function chargeCard(
       };
     }
 
-    // Any other status is a failure
+    // pending = bank is processing asynchronously (3DS / async authorisation).
+    // Caller should poll verifyTransaction() until it resolves.
+    if (chargeStatus === 'pending') {
+      return {
+        ok: true,
+        result: { status: 'pending', reference },
+      };
+    }
+
+    // Any other status (failed, pay_offline, send_phone, send_birthday) is a failure
     return {
       ok: false,
       error: gateway_response || data.message || 'Your card could not be charged.',

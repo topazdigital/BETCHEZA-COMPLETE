@@ -2,12 +2,13 @@
  * POST /api/paystack/charge
  *
  * Charges a card via Paystack Direct Charge API.
- * On success → performs the action (grant strategy / credit wallet / record competition entry).
- * On send_otp → stores pending and returns { needsOtp: true, reference }.
+ * On success   → performs the action (grant strategy / credit wallet / record competition entry).
+ * On send_otp  → stores pending and returns { needsOtp: true, reference }.
+ * On pending   → polls verifyTransaction up to 3×(2 s); if still pending returns { needsPoll: true, reference }.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { chargeCard, isConfiguredAsync, PaystackCard } from '@/lib/paystack';
+import { chargeCard, isConfiguredAsync, verifyTransaction, PaystackCard } from '@/lib/paystack';
 import { credit } from '@/lib/wallet-store';
 import { grantStrategyAccess } from '@/app/api/strategy/access/route';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
@@ -109,37 +110,7 @@ export async function POST(req: NextRequest) {
 
   const chargeResult = result.result!;
 
-  // OTP required — store pending so submit-otp route can complete it
-  if (chargeResult.status === 'send_otp') {
-    const pending = fileStoreGet<PendingCardPayment[]>('card-pending', []);
-    // Remove any old pending for this user+purpose
-    const filtered = pending.filter(
-      p => !(p.userId === user.userId && p.purpose === body.purpose),
-    );
-    filtered.push({
-      userId: user.userId,
-      email,
-      reference: chargeResult.reference,
-      purpose: body.purpose!,
-      amount: body.amount!,
-      meta: {
-        competitionName: body.competitionName,
-        competitionSlug: body.competitionSlug,
-        currency: body.currency,
-      },
-      initiatedAt: new Date().toISOString(),
-    });
-    fileStoreSet('card-pending', filtered);
-
-    return NextResponse.json({
-      needsOtp: true,
-      reference: chargeResult.reference,
-      displayText: chargeResult.displayText || 'Enter the OTP sent to your phone/email.',
-    });
-  }
-
-  // Success — perform the action
-  return performAction({
+  const actionParams = {
     userId: user.userId,
     purpose: body.purpose!,
     amount: body.amount!,
@@ -150,7 +121,65 @@ export async function POST(req: NextRequest) {
       competitionSlug: body.competitionSlug,
       currency: body.currency || 'KES',
     },
+  };
+
+  // OTP required — store pending so submit-otp route can complete it
+  if (chargeResult.status === 'send_otp') {
+    storePending(user.userId, email, chargeResult.reference, body);
+    return NextResponse.json({
+      needsOtp: true,
+      reference: chargeResult.reference,
+      displayText: chargeResult.displayText || 'Enter the OTP sent to your phone/email.',
+    });
+  }
+
+  // Pending = bank doing async 3DS authorisation. Poll up to 3×2s then hand off to client.
+  if (chargeResult.status === 'pending') {
+    for (let i = 0; i < 3; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const v = await verifyTransaction(chargeResult.reference);
+      if (v.ok && v.status === 'success') return performAction(actionParams);
+      if (v.status === 'failed') {
+        return NextResponse.json({ error: 'Your card was declined by the bank.' }, { status: 402 });
+      }
+    }
+    // Still pending after 6 s — store it so the verify endpoint can complete it later
+    storePending(user.userId, email, chargeResult.reference, body);
+    return NextResponse.json({
+      needsPoll: true,
+      reference: chargeResult.reference,
+      displayText: 'Your bank is processing the payment. Please wait — this usually takes under 30 seconds.',
+    });
+  }
+
+  // Success — perform the action
+  return performAction(actionParams);
+}
+
+function storePending(
+  userId: number,
+  email: string,
+  reference: string,
+  body: RequestBody,
+): void {
+  const pending = fileStoreGet<PendingCardPayment[]>('card-pending', []);
+  const filtered = pending.filter(
+    p => !(p.userId === userId && p.purpose === body.purpose),
+  );
+  filtered.push({
+    userId,
+    email,
+    reference,
+    purpose: body.purpose!,
+    amount: body.amount!,
+    meta: {
+      competitionName: body.competitionName,
+      competitionSlug: body.competitionSlug,
+      currency: body.currency,
+    },
+    initiatedAt: new Date().toISOString(),
   });
+  fileStoreSet('card-pending', filtered);
 }
 
 export async function performAction(params: {
