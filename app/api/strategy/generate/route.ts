@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
 import OpenAI from 'openai';
+import { getApiKey } from '@/lib/api-keys';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '../predictions/route';
 
 // EAT = UTC+3
@@ -22,11 +23,24 @@ function getWeekId(date: Date): string {
   return monday.toISOString().slice(0, 10);
 }
 
-function getOpenAI(): OpenAI | null {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || undefined;
-  try { return new OpenAI({ apiKey, baseURL }); } catch { return null; }
+interface AIProvider { name: string; apiKey: string; baseURL?: string; model: string; }
+
+async function getStrategyProviders(): Promise<AIProvider[]> {
+  const [adminOpenAI, adminGroq] = await Promise.all([
+    getApiKey('openai_api_key').catch(() => ''),
+    getApiKey('groq_api_key').catch(() => ''),
+  ]);
+  const providers: AIProvider[] = [];
+  // Groq first — free tier, no quota issues
+  const groqKey = process.env.GROQ_API_KEY || adminGroq;
+  if (groqKey) providers.push({ name: 'Groq', apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' });
+  // OpenAI as fallback
+  const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || adminOpenAI;
+  if (openaiKey) {
+    const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || undefined;
+    providers.push({ name: 'OpenAI', apiKey: openaiKey, baseURL, model: process.env.OPENAI_MODEL || 'gpt-4o' });
+  }
+  return providers;
 }
 
 function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; kickoffTime: Date; odds?: { home: number; draw: number; away: number } | null }): StrategyPick {
@@ -177,8 +191,8 @@ export async function POST(req: NextRequest) {
 
     const today = new Date(dayData.date).toDateString();
 
-    const openai = getOpenAI();
-    if (openai && matchList) {
+    const providers = await getStrategyProviders();
+    if (providers.length > 0 && matchList) {
       const prompt = `You are an elite football intelligence analyst for Betcheza Daily Strategy — a real-money subscription service in Kenya. Subscribers stake serious money every day. Losses cost them real cash and cost us their trust. Your one job is to find the most predictable outcomes and combine them so the accumulator odds land between 3.00 and 4.00.
 
 Today: ${today} | Strategy Day ${targetDay} | Stake: KES ${dayData.stake.toLocaleString()} | Target: KES ${dayData.targetWin.toLocaleString()}
@@ -217,7 +231,7 @@ C. FORM IN CONTEXT — Home form vs away form. Weak opposition in recent run?
 
 D. HEAD-TO-HEAD — Does the underdog historically perform well here? Derby factor?
 
-E. MARKET SIGNALS — Where are bookmakers uncertain? Odds close to evens = neither team strongly favoured.
+E. MARKET SIGNALS — Where are bookmakers uncertain? Implied probability (shown in brackets) close to 50% = uncertain match — pick the safer market, not the team.
 
 ════════════════════════════════════════════════════
 STEP 2: ELIMINATE RED FLAGS
@@ -264,6 +278,7 @@ STEP 4: BUILD THE ACCUMULATOR TO HIT 3.00–4.00
 
 ════════════════════════════════════════════════════
 AVAILABLE MATCHES — ${today}
+(Odds shown as decimal. Implied probability in brackets = 100/odds.)
 ════════════════════════════════════════════════════
 ${matchList || 'No match data available — use your football knowledge for this date'}
 
@@ -284,30 +299,41 @@ OUTPUT — Return ONLY valid JSON. No markdown. No text outside the JSON array.
   }
 ]`;
 
-      const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 2500,
-      });
+      for (const provider of providers) {
+        try {
+          const client = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL });
+          const completion = await client.chat.completions.create({
+            model: provider.model,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 2500,
+            temperature: 0.3,
+          });
 
-      const raw = completion.choices?.[0]?.message?.content || '[]';
-      let parsed: StrategyPick[] = [];
-      try {
-        const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-        const obj = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
-        parsed = Array.isArray(obj) ? obj : (obj.picks || obj.selections || []);
-      } catch { /* fall through */ }
+          const raw = completion.choices?.[0]?.message?.content || '[]';
+          let parsed: StrategyPick[] = [];
+          try {
+            const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+            const obj = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
+            parsed = Array.isArray(obj) ? obj : (obj.picks || obj.selections || []);
+          } catch { /* try next provider */ }
 
-      if (parsed.length >= 1) {
-        const candidates = parsed.slice(0, 10).map((p, i) => ({
-          ...p,
-          id: `${weekId}-d${targetDay}-${i}`,
-          odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
-          result: 'pending' as const,
-        }));
-        const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
-        if (combined >= 3.0 && combined <= 4.0) {
-          picks = candidates;
+          if (parsed.length >= 1) {
+            const candidates = parsed.slice(0, 10).map((p, i) => ({
+              ...p,
+              id: `${weekId}-d${targetDay}-${i}`,
+              odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
+              result: 'pending' as const,
+            }));
+            const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
+            if (combined >= 3.0 && combined <= 4.0) {
+              picks = candidates;
+              console.log(`[strategy/generate] picks via ${provider.name}`);
+              break; // success — stop trying providers
+            }
+          }
+        } catch (provErr) {
+          console.warn(`[strategy/generate] ${provider.name} failed:`, provErr instanceof Error ? provErr.message : provErr);
+          // continue to next provider
         }
       }
     }

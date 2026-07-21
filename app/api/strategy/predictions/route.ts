@@ -362,13 +362,23 @@ async function autoGenerateTodayPicks(weekId: string, todayStr: string, dayNumbe
 
     if (pool.length === 0) return buildAutoFallbackPicks(todayStr);
 
-    // Try AI generation
+    // Try AI generation — Groq first (free, no quota), OpenAI as fallback
     const { default: OpenAI } = await import('openai');
-    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (apiKey) {
+    const { getApiKey: getKey } = await import('@/lib/api-keys');
+    const [adminOpenAI, adminGroq] = await Promise.all([
+      getKey('openai_api_key').catch(() => ''),
+      getKey('groq_api_key').catch(() => ''),
+    ]);
+    const aiProviders: Array<{ name: string; apiKey: string; baseURL?: string; model: string }> = [];
+    const groqKey = process.env.GROQ_API_KEY || adminGroq;
+    if (groqKey) aiProviders.push({ name: 'Groq', apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' });
+    const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || adminOpenAI;
+    if (openaiKey) {
       const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || undefined;
-      const openai = new OpenAI({ apiKey, baseURL });
+      aiProviders.push({ name: 'OpenAI', apiKey: openaiKey, baseURL, model: process.env.OPENAI_MODEL || 'gpt-4o' });
+    }
 
+    if (aiProviders.length > 0) {
       const matchList = pool
         .map((m: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; odds?: { home: number; draw: number; away: number } }) => {
           let oddsStr = '';
@@ -425,13 +435,13 @@ RED FLAGS — ELIMINATE THESE MATCHES:
 OUTPUT FORMAT
 ═══════════════════════════════════════════
 
-Return ONLY a JSON array (1–5 picks) with no explanation outside the JSON.
+Return ONLY a JSON array (1–10 picks) with no explanation outside the JSON.
 Each pick must have:
 - homeTeam, awayTeam, league (strings)
-- matchTime (ISO datetime string from the match list)
+- matchTime (ISO datetime string — use today's date if not in match list)
 - pick (e.g. "Arsenal Win", "Over 2.5 Goals", "BTTS Yes", "Draw No Bet Napoli")
 - market (e.g. "1X2", "Over/Under 2.5", "BTTS", "Double Chance", "Asian Handicap")
-- odds (number — ONLY use odds actually listed in the match data, never invent)
+- odds (number — use odds from match data if available; otherwise your best estimate)
 - confidence ("High", "Medium", or "Low")
 - reasoning (2–3 sentence explanation of WHY this pick wins, referencing motivation, rotation, form, or H2H)
 
@@ -439,28 +449,40 @@ REQUIRED: the product of all odds MUST be between 3.00 and 4.00.
 Example with 2 picks: 1.80 × 1.80 = 3.24 ✓
 Example with 1 pick: 3.50 ✓
 
-Matches available today:
+Matches available today (implied probability = 100/odds shown in brackets):
 ${matchList}`;
 
-      const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 2000,
-      });
+      for (const provider of aiProviders) {
+        try {
+          const client = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL });
+          const completion = await client.chat.completions.create({
+            model: provider.model,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 2000,
+            temperature: 0.3,
+          });
 
-      const raw = completion.choices?.[0]?.message?.content || '[]';
-      const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
-      const arr = Array.isArray(parsed) ? parsed : [];
-      if (arr.length >= 1) {
-        const picks: StrategyPick[] = arr.slice(0, 5).map((p: Partial<StrategyPick>, i: number) => ({
-          ...p,
-          id: `${todayStr}-ai-${i}`,
-          odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
-          result: 'pending' as const,
-        }));
-        const combined = picks.reduce((acc, p) => acc * p.odds, 1);
-        if (combined >= 3.0 && combined <= 4.0) return picks;
+          const raw = completion.choices?.[0]?.message?.content || '[]';
+          const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+          const parsed = JSON.parse(cleaned.startsWith('[') ? cleaned : `[${cleaned}]`);
+          const arr = Array.isArray(parsed) ? parsed : [];
+          if (arr.length >= 1) {
+            const picks: StrategyPick[] = arr.slice(0, 10).map((p: Partial<StrategyPick>, i: number) => ({
+              ...p,
+              id: `${todayStr}-ai-${i}`,
+              odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
+              result: 'pending' as const,
+            }));
+            const combined = picks.reduce((acc, p) => acc * p.odds, 1);
+            if (combined >= 3.0 && combined <= 4.0) {
+              console.log(`[strategy/auto] picks via ${provider.name}`);
+              return picks;
+            }
+          }
+        } catch (provErr) {
+          console.warn(`[strategy/auto] ${provider.name} failed:`, provErr instanceof Error ? provErr.message : provErr);
+          // continue to next provider
+        }
       }
     }
 
