@@ -3,6 +3,7 @@ import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getUpcomingMatches } from '@/lib/api/unified-sports-api';
 import { query, execute } from '@/lib/db';
 import OpenAI from 'openai';
+import { getApiKey } from '@/lib/api-keys';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '@/app/api/strategy/predictions/route';
 import type { AccessRecord } from '@/app/api/strategy/access/route';
 import { sendMail } from '@/lib/mailer';
@@ -49,11 +50,46 @@ function getTodayStrEAT(date: Date): string {
   return eat.toISOString().slice(0, 10);
 }
 
-function getOpenAI(): OpenAI | null {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+interface AIProvider { name: string; apiKey: string; baseURL?: string; model: string; }
+
+function getGroqProvider(adminKey: string): AIProvider | null {
+  const apiKey = process.env.GROQ_API_KEY || adminKey || '';
+  return apiKey
+    ? { name: 'Groq', apiKey, baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' }
+    : null;
+}
+
+function getOpenAIProvider(): AIProvider | null {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
   const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || undefined;
-  try { return new OpenAI({ apiKey, baseURL }); } catch { return null; }
+  return apiKey ? { name: 'OpenAI', apiKey, baseURL, model: 'gpt-4o' } : null;
+}
+
+async function resolveStrategyProviders(): Promise<AIProvider[]> {
+  const [adminOpenAI, adminGroq] = await Promise.all([
+    getApiKey('openai_api_key').catch(() => ''),
+    getApiKey('groq_api_key').catch(() => ''),
+  ]);
+  const providers: AIProvider[] = [];
+  // Groq first — free, fast, no quota issues
+  const groq = getGroqProvider(adminGroq);
+  if (groq) providers.push(groq);
+  // OpenAI as fallback
+  const openaiEnv = getOpenAIProvider();
+  if (openaiEnv) providers.push(openaiEnv);
+  else if (adminOpenAI) providers.push({ name: 'OpenAI', apiKey: adminOpenAI, baseURL: undefined, model: 'gpt-4o' });
+  return providers;
+}
+
+async function callStrategyProvider(provider: AIProvider, prompt: string): Promise<string> {
+  const client = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL });
+  const res = await client.chat.completions.create({
+    model: provider.model,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 3000,
+    temperature: 0.3,
+  });
+  return res.choices?.[0]?.message?.content || '';
 }
 
 /**
@@ -383,8 +419,8 @@ async function generatePicksForDate(
       return `• ${m.homeTeam.name} vs ${m.awayTeam.name} | ${m.league.name} ${lqLabel} | KO: ${timeStr} | ${oddsStr}`;
     }).join('\n');
 
-    const openai = getOpenAI();
-    if (openai && matchList) {
+    const providers = await resolveStrategyProviders();
+    if (providers.length > 0 && matchList) {
       const dateDisplay = targetDate.toLocaleDateString('en-KE', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
@@ -449,14 +485,18 @@ Return ONLY a valid JSON array. No markdown, no commentary, just the JSON:
 
 Double-check: multiply all odds together. Result MUST be between 2.90 and 4.20.`;
 
-      const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 3000,
-        temperature: 0.3, // Lower temp = more conservative, consistent picks
-      });
-
-      const raw = completion.choices?.[0]?.message?.content || '[]';
+      let raw = '';
+      for (const provider of providers) {
+        try {
+          console.log(`[daily-strategy] Trying ${provider.name} (${provider.model})…`);
+          raw = await callStrategyProvider(provider, prompt);
+          console.log(`[daily-strategy] ${provider.name} responded OK`);
+          break;
+        } catch (provErr: unknown) {
+          const e = provErr as { status?: number; code?: string; message?: string };
+          console.warn(`[daily-strategy] ${provider.name} failed — ${e?.message ?? provErr}. Trying next provider.`);
+        }
+      }
       try {
         const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
         const jsonStr = cleaned.startsWith('[') ? cleaned : `[${cleaned}]`;
