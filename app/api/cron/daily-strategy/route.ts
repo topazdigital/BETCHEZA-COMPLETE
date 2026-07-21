@@ -396,7 +396,7 @@ Date: ${dateDisplay} — Day ${dayNumber} of 7 | Stake: KES ${dayPlan.stake.toLo
 ═══════════════════════════════════════════
 OBJECTIVE
 ═══════════════════════════════════════════
-Select 2–6 football picks whose combined accumulator odds multiply to between 2.90 and 4.20.
+Select EXACTLY 2–3 football picks whose combined accumulator odds multiply to between 2.90 and 4.20. Fewer picks = fewer chances to fail. Only add a 3rd pick if it genuinely improves safety — never add legs just to inflate odds.
 
 ═══════════════════════════════════════════
 STRICT RULES — MUST FOLLOW
@@ -404,8 +404,8 @@ STRICT RULES — MUST FOLLOW
 1. ONLY use matches from the list below. Never invent matches or teams.
 2. ONLY use the bookmaker odds shown (Home=/Draw=/Away=). If no odds are shown, DO NOT include that match.
 3. PREFER top-tier leagues (5-star ★★★★★ and 4-star ★★★★ ratings). Avoid 2-star leagues unless no better option exists.
-4. NEVER pick an outright winner unless their odds are ≤ 1.80. Otherwise use Double Chance.
-5. PREFER Double Chance (1X or X2) over straight 1X2 picks — covers two outcomes.
+4. NEVER pick an outright winner unless their odds are ≤ 1.50. Otherwise MUST use Double Chance.
+5. ALWAYS use Double Chance (1X or X2) instead of straight win unless odds ≤ 1.50 — it covers two of three outcomes and is the single biggest safety lever available.
 6. AVOID coin-flip matches where home and away odds are within 0.30 of each other (balanced match, too risky).
 7. Combined odds MUST land in [2.90 – 4.20]. Recalculate before finalising.
 8. KICK-OFF TIME: Picks can come from ANY time of day — midnight games, 10pm games, early morning, and afternoon matches are all equally acceptable as long as they fall on the correct date in EAT. Do NOT filter or deprioritise matches based on kick-off hour. Focus entirely on odds quality and league tier.
@@ -450,7 +450,7 @@ Return ONLY a valid JSON array. No markdown, no commentary, just the JSON:
 Double-check: multiply all odds together. Result MUST be between 2.90 and 4.20.`;
 
       const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: process.env.OPENAI_MODEL || 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_completion_tokens: 3000,
         temperature: 0.3, // Lower temp = more conservative, consistent picks

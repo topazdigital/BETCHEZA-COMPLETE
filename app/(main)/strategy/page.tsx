@@ -688,8 +688,8 @@ function SubscribeModal({
             </div>
           )}
 
-          {/* Benefits — shown for not-auth and choose steps */}
-          {(!isAuthenticated || step === 'choose') && step !== 'pending' && (
+          {/* Benefits — shown for not-auth and choose steps (not while loading) */}
+          {(!isAuthenticated || (step === 'choose' && !balanceLoading)) && step !== 'pending' && (
             <div className="rounded-xl border border-border bg-muted/30 px-4 py-2.5 space-y-1.5">
               {[
                 'Day 1 starts TODAY — no waiting for Monday',
@@ -711,15 +711,18 @@ function SubscribeModal({
             <p className="text-sm text-muted-foreground text-center">Sign in to continue with your subscription</p>
           )}
 
-          {/* ── Choose: error + balance loading indicator only ── */}
-          {isAuthenticated && step === 'choose' && (
+          {/* ── Balance loading: spinner covers entire step — no flash ── */}
+          {isAuthenticated && balanceLoading && (
+            <div className="flex flex-col items-center justify-center py-10 gap-3 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span className="text-sm">Loading payment options…</span>
+            </div>
+          )}
+
+          {/* ── Choose: error only (loading handled above) ── */}
+          {isAuthenticated && step === 'choose' && !balanceLoading && (
             <>
               {error && <p className="text-xs text-red-500 text-center">{error}</p>}
-              {balanceLoading && (
-                <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Checking wallet balance…
-                </div>
-              )}
             </>
           )}
 
@@ -899,7 +902,7 @@ function SubscribeModal({
                 Sign In / Register
               </button>
             ) : step === 'choose' ? (
-              !balanceLoading && (
+              balanceLoading ? null : (
                 <div className="space-y-2.5">
                   {canPayFull && (
                     <button
