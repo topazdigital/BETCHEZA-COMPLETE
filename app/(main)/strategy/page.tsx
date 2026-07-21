@@ -422,14 +422,15 @@ function SubscribeModal({
       if (pollRef.current) clearInterval(pollRef.current);
       return;
     }
-    // Auto-route to topup-form as soon as balance is loaded and user has partial balance
-    if (!balanceLoading && isAuthenticated && canPayPartial && !autoAdvancedRef.current) {
+    // Auto-route to topup-form (M-Pesa split) only for M-Pesa countries with partial balance.
+    // Non-M-Pesa countries stay on 'choose' and pay full amount via card.
+    if (!balanceLoading && isAuthenticated && canPayPartial && isMpesaCountry && !autoAdvancedRef.current) {
       autoAdvancedRef.current = true;
       setTopUpAmount(COST_KES - walletBalance);
       setWalletContrib(walletBalance);
       setStep('topup-form');
     }
-  }, [open, balanceLoading, canPayPartial, walletBalance, isAuthenticated]);
+  }, [open, balanceLoading, canPayPartial, walletBalance, isAuthenticated, isMpesaCountry]);
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -751,8 +752,8 @@ function SubscribeModal({
             </div>
           )}
 
-          {/* ── Top-up form: back + breakdown + inputs ── */}
-          {isAuthenticated && step === 'topup-form' && (
+          {/* ── Top-up form: back + breakdown + inputs (M-Pesa countries only) ── */}
+          {isAuthenticated && step === 'topup-form' && isMpesaCountry && (
             <div className="space-y-3">
               <button onClick={() => { setStep('choose'); setError(''); setTopUpAmount(null); }} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                 ← Back
@@ -947,7 +948,7 @@ function SubscribeModal({
               >
                 {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : <><CreditCard className="h-4 w-4" /> Pay {fmt(COST_KES)} &amp; Unlock</>}
               </button>
-            ) : step === 'topup-form' ? (
+            ) : step === 'topup-form' && isMpesaCountry ? (
               <button
                 onClick={handleTopUpPay}
                 disabled={loading}

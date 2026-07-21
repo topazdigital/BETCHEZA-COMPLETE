@@ -162,7 +162,17 @@ export async function POST(req: NextRequest) {
     }
 
     const matchList = extendedPool
-      .map((m) => `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Sport: ${m.sport.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${m.odds ? ` | Odds: H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''}`)
+      .map((m) => {
+        let oddsStr = '';
+        if (m.odds) {
+          const { home, draw, away } = m.odds;
+          const implH = home > 0 ? Math.round(100 / home) : 0;
+          const implD = draw > 0 ? Math.round(100 / draw) : 0;
+          const implA = away > 0 ? Math.round(100 / away) : 0;
+          oddsStr = ` | Odds: H=${home}(${implH}%) D=${draw}(${implD}%) A=${away}(${implA}%)`;
+        }
+        return `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Sport: ${m.sport.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${oddsStr}`;
+      })
       .join('\n');
 
     const today = new Date(dayData.date).toDateString();

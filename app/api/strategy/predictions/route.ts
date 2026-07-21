@@ -370,15 +370,23 @@ async function autoGenerateTodayPicks(weekId: string, todayStr: string, dayNumbe
       const openai = new OpenAI({ apiKey, baseURL });
 
       const matchList = pool
-        .map((m: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; odds?: { home: number; draw: number; away: number } }) =>
-          `${m.homeTeam.name} vs ${m.awayTeam.name} (${m.league.name}${m.odds ? `, H=${m.odds.home} D=${m.odds.draw} A=${m.odds.away}` : ''})`
-        ).join('\n');
+        .map((m: { homeTeam: { name: string }; awayTeam: { name: string }; league: { name: string }; odds?: { home: number; draw: number; away: number } }) => {
+          let oddsStr = '';
+          if (m.odds) {
+            const { home, draw, away } = m.odds;
+            const implH = home > 0 ? Math.round(100 / home) : 0;
+            const implD = draw > 0 ? Math.round(100 / draw) : 0;
+            const implA = away > 0 ? Math.round(100 / away) : 0;
+            oddsStr = `, H=${home}(${implH}%) D=${draw}(${implD}%) A=${away}(${implA}%)`;
+          }
+          return `${m.homeTeam.name} vs ${m.awayTeam.name} (${m.league.name}${oddsStr})`;
+        }).join('\n');
 
       const prompt = `You are a professional football analyst and betting strategist for the Betcheza "3 Daily Odds" Strategy.
 
 Date: ${today.toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
 Day ${dayNumber} — stake KES ${plan.stake.toLocaleString()}, target win KES ${plan.targetWin.toLocaleString()}.
-Goal: select 1–5 picks with COMBINED (multiplied) odds between 3.00 and 4.00.
+Goal: select 1–10 picks (quality over quantity) with COMBINED (multiplied) odds between 3.00 and 4.00.
 
 ═══════════════════════════════════════════
 DEEP INVESTIGATION — for EACH match in the list
@@ -452,7 +460,7 @@ ${matchList}`;
           result: 'pending' as const,
         }));
         const combined = picks.reduce((acc, p) => acc * p.odds, 1);
-        if (combined >= 2.5 && combined <= 5.5) return picks;
+        if (combined >= 3.0 && combined <= 4.0) return picks;
       }
     }
 
