@@ -181,9 +181,9 @@ function buildManualAllWinsWeek(weekId: string): WeeklyStrategy {
 async function loadPastWeeksFromDb(): Promise<WeeklyStrategy[]> {
   const weeks: WeeklyStrategy[] = [];
   try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const cutoff = thirtyDaysAgo.toISOString().slice(0, 10);
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const cutoff = ninetyDaysAgo.toISOString().slice(0, 10);
 
     const result = await query<DbRow>(
       'SELECT * FROM daily_strategy WHERE date >= ? AND date < ? ORDER BY date DESC',
@@ -836,9 +836,9 @@ async function loadPastWeeks(): Promise<WeeklyStrategy[]> {
   const dbWeeks = await loadPastWeeksFromDb();
   if (dbWeeks.length > 0) return dbWeeks;
 
-  // File store fallback
+  // File store fallback — scan same 90-day window as the history endpoint
   const weeks: WeeklyStrategy[] = [];
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 13; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i * 7);
     const weekId = getWeekId(d);
@@ -855,7 +855,7 @@ async function loadPastWeeks(): Promise<WeeklyStrategy[]> {
     if (!weeks.find((w) => w.weekId === weekId)) {
       const d = new Date(weekId);
       const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 35);
+      cutoff.setDate(cutoff.getDate() - 91);
       if (d >= cutoff && d < new Date(getWeekId(new Date()))) {
         weeks.push(buildManualAllWinsWeek(weekId));
       }

@@ -1437,8 +1437,8 @@ function CustomPnLTooltip({ active, payload }: { active?: boolean; payload?: Arr
 
 function CumulativePnLChart() {
   const { data, isLoading } = useSWR<HistoryData>('/api/strategy/history', fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 300_000,
+    revalidateOnFocus: true,
+    dedupingInterval: 60_000,
   });
 
   if (isLoading) {
