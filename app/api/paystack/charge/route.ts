@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { chargeCard, isConfigured, PaystackCard } from '@/lib/paystack';
+import { chargeCard, isConfiguredAsync, PaystackCard } from '@/lib/paystack';
 import { credit } from '@/lib/wallet-store';
 import { grantStrategyAccess } from '@/app/api/strategy/access/route';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
@@ -51,9 +51,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
   }
 
-  if (!isConfigured()) {
+  if (!await isConfiguredAsync()) {
     return NextResponse.json(
-      { error: 'Card payments are not available right now. Please use another payment method.' },
+      { error: 'Card payments are not available right now. Please add your Paystack secret key in Admin → Payment Gateways.' },
       { status: 503 },
     );
   }

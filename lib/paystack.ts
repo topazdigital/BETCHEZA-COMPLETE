@@ -1,9 +1,14 @@
 /**
  * Paystack server-side integration.
  * Used for card charges (Direct Charge API) — no Paystack branding shown to users.
+ *
+ * Key resolution order (first non-empty wins):
+ *   1. PAYSTACK_SECRET_KEY env var
+ *   2. secret_key stored in admin payment-gateways panel (file store)
  */
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+import { fileStoreGet } from '@/lib/file-store';
+
 const BASE = 'https://api.paystack.co';
 
 export interface PaystackCard {
@@ -34,8 +39,24 @@ export interface ChargeResponse {
   error?: string;
 }
 
+/** Read the Paystack secret key from env var or admin gateway store. */
+async function getPaystackKey(): Promise<string> {
+  if (process.env.PAYSTACK_SECRET_KEY) return process.env.PAYSTACK_SECRET_KEY;
+  try {
+    const gateways = fileStoreGet<Array<{ id: string; enabled?: boolean; credentials: Record<string, string> }>>('payment-gateways', []);
+    const gw = gateways.find((g) => g.id === 'paystack');
+    return gw?.credentials?.secret_key || '';
+  } catch { return ''; }
+}
+
+/** Sync check — true only when env var is set. Use isConfiguredAsync() for full check. */
 export function isConfigured(): boolean {
-  return Boolean(PAYSTACK_SECRET_KEY);
+  return Boolean(process.env.PAYSTACK_SECRET_KEY);
+}
+
+/** Async check — also looks in the admin gateway store. */
+export async function isConfiguredAsync(): Promise<boolean> {
+  return Boolean(await getPaystackKey());
 }
 
 /** Charge a card directly via Paystack Direct Charge API. */
@@ -45,7 +66,8 @@ export async function chargeCard(
   card: PaystackCard,
   metadata?: Record<string, unknown>,
 ): Promise<ChargeResponse> {
-  if (!PAYSTACK_SECRET_KEY) {
+  const key = await getPaystackKey();
+  if (!key) {
     return { ok: false, error: 'Card payments are not configured.' };
   }
 
@@ -56,7 +78,7 @@ export async function chargeCard(
     const res = await fetch(`${BASE}/charge`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -111,7 +133,8 @@ export async function submitOtp(
   otp: string,
   reference: string,
 ): Promise<ChargeResponse> {
-  if (!PAYSTACK_SECRET_KEY) {
+  const key = await getPaystackKey();
+  if (!key) {
     return { ok: false, error: 'Card payments are not configured.' };
   }
 
@@ -119,7 +142,7 @@ export async function submitOtp(
     const res = await fetch(`${BASE}/charge/submit_otp`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ otp, reference }),
@@ -158,12 +181,13 @@ export async function submitOtp(
 export async function verifyTransaction(
   reference: string,
 ): Promise<{ ok: boolean; status?: string; error?: string }> {
-  if (!PAYSTACK_SECRET_KEY) return { ok: false, error: 'Not configured.' };
+  const key = await getPaystackKey();
+  if (!key) return { ok: false, error: 'Not configured.' };
 
   try {
     const res = await fetch(
       `${BASE}/transaction/verify/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } },
+      { headers: { Authorization: `Bearer ${key}` } },
     );
     const data = (await res.json()) as {
       status: boolean;

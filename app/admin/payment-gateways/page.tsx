@@ -128,7 +128,9 @@ function GatewayCard({
 
   const handleSave = async () => {
     setSaving(true)
-    await onSave(draft)
+    // Always use gateway.enabled from props — the toggle (PATCH) saves independently.
+    // If we use draft.enabled it can overwrite a toggle the user set before clicking Save.
+    await onSave({ ...draft, enabled: gateway.enabled })
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
