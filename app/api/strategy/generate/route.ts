@@ -177,15 +177,50 @@ export async function POST(req: NextRequest) {
 
     const matchList = extendedPool
       .map((m) => {
+        // 1X2 odds with implied probability
         let oddsStr = '';
         if (m.odds) {
           const { home, draw, away } = m.odds;
           const implH = home > 0 ? Math.round(100 / home) : 0;
           const implD = draw > 0 ? Math.round(100 / draw) : 0;
           const implA = away > 0 ? Math.round(100 / away) : 0;
-          oddsStr = ` | Odds: H=${home}(${implH}%) D=${draw}(${implD}%) A=${away}(${implA}%)`;
+          oddsStr = ` | 1X2: H=${home}(${implH}%) D=${draw}(${implD}%) A=${away}(${implA}%)`;
         }
-        return `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Sport: ${m.sport.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${oddsStr}`;
+        // Extract key alternative markets so the AI can price non-1X2 picks
+        const mkParts: string[] = [];
+        if (m.markets?.length) {
+          const find = (key: string) => m.markets!.find(mk => mk.key === key);
+          const btts = find('btts');
+          if (btts) {
+            const y = btts.outcomes.find(o => o.name === 'Yes');
+            const n = btts.outcomes.find(o => o.name === 'No');
+            if (y && n) mkParts.push(`BTTS Yes=${y.price} No=${n.price}`);
+          }
+          const ou25 = find('totals_2_5');
+          if (ou25) {
+            const ov = ou25.outcomes.find(o => (o.name as string).startsWith('Over'));
+            const un = ou25.outcomes.find(o => (o.name as string).startsWith('Under'));
+            if (ov && un) mkParts.push(`O/U2.5: Ov=${ov.price} Un=${un.price}`);
+          }
+          const ou15 = find('totals_1_5');
+          if (ou15) {
+            const ov = ou15.outcomes.find(o => (o.name as string).startsWith('Over'));
+            if (ov) mkParts.push(`O1.5=${ov.price}`);
+          }
+          const dc = find('double_chance');
+          if (dc) {
+            const oneX = dc.outcomes.find(o => o.name === '1X');
+            const x2  = dc.outcomes.find(o => o.name === 'X2');
+            const both = dc.outcomes.find(o => o.name === '12');
+            if (oneX && x2) mkParts.push(`DC: 1X=${oneX.price} X2=${x2.price}${both ? ` 12=${both.price}` : ''}`);
+          }
+          const dnb = find('draw_no_bet');
+          if (dnb && dnb.outcomes.length >= 2) {
+            mkParts.push(`DNB: H=${dnb.outcomes[0].price} A=${dnb.outcomes[1].price}`);
+          }
+        }
+        const marketsStr = mkParts.length ? ` | ${mkParts.join(' | ')}` : '';
+        return `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${oddsStr}${marketsStr}`;
       })
       .join('\n');
 

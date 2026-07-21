@@ -1320,7 +1320,7 @@ function leagueNameFromSeasonSlug(slug?: string): string | null {
 async function resolveGlobalLeagueInfo(
   sport: string,
   espnLeagueId: string,
-  hint?: { seasonSlug?: string; teamSlug?: string },
+  hint?: { seasonSlug?: string; teamSlug?: string; espnName?: string },
 ): Promise<GlobalLeagueInfo> {
   const ck = `${sport}_${espnLeagueId}`;
   const cached = globalLeagueInfoCache.get(ck);
@@ -1340,11 +1340,27 @@ async function resolveGlobalLeagueInfo(
   // 2. Try the season slug (e.g. "2025-26-saudi-pro-league" → "Saudi Pro League").
   const fromSlug = leagueNameFromSeasonSlug(hint?.seasonSlug);
   if (fromSlug) {
-    const info: GlobalLeagueInfo = { name: fromSlug, slug: fromSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-'), country: 'World', countryCode: 'WO' };
+    const country2 = hint?.teamSlug?.split('.')[0]?.toUpperCase();
+    const info: GlobalLeagueInfo = { name: fromSlug, slug: fromSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-'), country: country2 || 'World', countryCode: 'WO' };
     globalLeagueInfoCache.set(ck, info);
     return info;
   }
-  // 3. Fallback: derive country from team slug ("ksa.1" → KSA).
+  // 3. Use ESPN's own league name from the scoreboard response — always accurate,
+  //    covers every league ESPN tracks, prevents "League XXXXX" fallback names.
+  if (hint?.espnName && hint.espnName.trim().length > 2) {
+    const name = hint.espnName.trim();
+    const country3 = hint?.teamSlug?.split('.')[0]?.toUpperCase();
+    const info: GlobalLeagueInfo = {
+      name,
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      country: country3 || 'World',
+      countryCode: 'WO',
+    };
+    globalLeagueInfoCache.set(ck, info);
+    return info;
+  }
+  // 4. Fallback: derive country from team slug ("ksa.1" → KSA).
+  //    At worst shows "KSA League" instead of "League 19874".
   const country = hint?.teamSlug?.split('.')[0]?.toUpperCase();
   const info: GlobalLeagueInfo = {
     name: country ? `${country} League` : `League ${espnLeagueId}`,
@@ -1541,18 +1557,33 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   const hasDraw = !noDrawSports.includes(sportType);
 
   const matches: UnifiedMatch[] = [];
-  // Build per-league hint (use the season slug from the first event of each
-  // league — usually contains the league name like "2025-26-saudi-pro-league")
-  // so resolveGlobalLeagueInfo can derive friendly names without expensive
-  // per-event lookups.
-  const leagueHints = new Map<string, { seasonSlug?: string; teamSlug?: string }>();
+  // Build per-league hint.  ESPN's scoreboard response always includes a
+  // top-level "leagues" array with the real display name for every league in
+  // the payload.  Extracting those names here means resolveGlobalLeagueInfo
+  // can use the ESPN-provided name as a reliable fallback, eliminating generic
+  // "League XXXXX" placeholders for leagues not in KNOWN_GLOBAL_LEAGUES.
+  type ESPNLeagueMeta = { id?: string; name?: string; displayName?: string; abbreviation?: string };
+  const espnLeagueNames = new Map<string, string>();
+  const dataWithLeagues = data as unknown as { leagues?: ESPNLeagueMeta[] };
+  if (dataWithLeagues.leagues?.length) {
+    for (const lg of dataWithLeagues.leagues) {
+      if (lg.id) {
+        const bestName = lg.displayName || lg.name;
+        if (bestName) espnLeagueNames.set(lg.id, bestName);
+      }
+    }
+  }
+
+  const leagueHints = new Map<string, { seasonSlug?: string; teamSlug?: string; espnName?: string }>();
   for (const ev of data.events) {
-    const evExt = ev as ESPNEvent & { uid?: string; season?: { slug?: string } };
+    const evExt = ev as ESPNEvent & { uid?: string; season?: { slug?: string; name?: string } };
     const m = evExt.uid?.match(/l:(\d+)/);
     if (!m) continue;
     if (!leagueHints.has(m[1])) {
       const homeSlug = (ev.competitions?.[0]?.competitors?.[0]?.team as { slug?: string } | undefined)?.slug;
-      leagueHints.set(m[1], { seasonSlug: evExt.season?.slug, teamSlug: homeSlug });
+      // Prefer top-level leagues[] name; fall back to season.name on the event itself.
+      const espnName = espnLeagueNames.get(m[1]) || evExt.season?.name;
+      leagueHints.set(m[1], { seasonSlug: evExt.season?.slug, teamSlug: homeSlug, espnName });
     }
   }
   const leagueInfoMap = new Map<string, GlobalLeagueInfo>();
