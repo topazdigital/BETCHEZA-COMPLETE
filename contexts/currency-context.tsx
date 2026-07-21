@@ -20,7 +20,7 @@ import {
 } from '@/lib/geo-currency';
 
 const CACHE_KEY = 'bz_geo_cc';
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — short enough that VPN switches don't persist
 
 interface CurrencyContextValue {
   /** ISO-3166-1 alpha-2 country code, e.g. "KE", "NG", "FR" */
@@ -52,42 +52,47 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
+    function applyCode(cc: string) {
+      setCountryCode(cc);
+      setCurrency(getCurrencyForCountry(cc));
+      setReady(true);
+    }
+
     async function detect() {
-      // 1. Try localStorage cache (24 h TTL)
+      // 1. Apply cached value immediately for fast first render (if fresh)
+      let cachedCc = '';
       try {
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached) {
           const { cc, ts } = JSON.parse(cached) as { cc: string; ts: number };
           if (cc && Date.now() - ts < CACHE_TTL_MS) {
+            cachedCc = cc;
             if (!cancelled) applyCode(cc);
-            return;
           }
         }
       } catch {}
 
-      // 2. Try IP-based geo from our backend endpoint
-      let cc = '';
+      // 2. Always fetch fresh from API to validate (handles VPN switches)
+      let freshCc = '';
       try {
-        const res = await fetch('/api/geo', { credentials: 'omit' });
+        const res = await fetch('/api/geo', { credentials: 'omit', cache: 'no-store' });
         if (res.ok) {
           const data = await res.json().catch(() => ({})) as { country?: string };
-          cc = data.country ?? '';
+          freshCc = data.country ?? '';
         }
       } catch {}
 
-      // 3. Fall back to timezone detection
-      if (!cc) cc = detectCountryCode();
+      // 3. Fall back to timezone if API failed
+      if (!freshCc) freshCc = detectCountryCode();
 
-      // 4. Cache it
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ cc, ts: Date.now() })); } catch {}
+      // 4. Update state + cache if different from what we already applied
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ cc: freshCc, ts: Date.now() })); } catch {}
 
-      if (!cancelled) applyCode(cc);
-    }
-
-    function applyCode(cc: string) {
-      setCountryCode(cc);
-      setCurrency(getCurrencyForCountry(cc));
-      setReady(true);
+      if (!cancelled && freshCc !== cachedCc) {
+        applyCode(freshCc);
+      } else if (!cancelled && !cachedCc) {
+        applyCode(freshCc);
+      }
     }
 
     detect();
