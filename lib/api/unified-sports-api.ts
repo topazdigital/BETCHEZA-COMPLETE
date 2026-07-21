@@ -13,6 +13,8 @@ import { fetchSofaScoreMatches } from './sofascore';
 import { fetchApiSportsMatches } from './api-sports';
 import { fetchAllSportsMatches } from './allsports';
 import { directFetch } from './proxy-fetch';
+import fs from 'fs';
+import path from 'path';
 
 // ============================================
 // Types
@@ -1096,6 +1098,42 @@ const GLOBAL_SPORT_TYPES: Array<{ sport: string; sportType: ESPNLeagueConfig['sp
 interface GlobalLeagueInfo { name: string; slug: string; country: string; countryCode: string; }
 const globalLeagueInfoCache = new Map<string, GlobalLeagueInfo>();
 
+// ---------------------------------------------------------------------------
+// Persistent ESPN league name store
+// ---------------------------------------------------------------------------
+// Stores ESPN-provided displayNames for any league numeric ID ever seen.
+// Survives server restarts — so any league ESPN has named even once is
+// remembered forever, eliminating perpetual "League XXXXX" placeholders.
+// Format: { "<espnLeagueId>": "<displayName>", ... }
+// ---------------------------------------------------------------------------
+const ESPN_NAMES_CACHE_PATH = path.join(process.cwd(), '.local', 'data', 'espn-league-names-cache.json');
+const persistedESPNLeagueNames = new Map<string, string>();
+
+// Load persisted names at module init (sync, runs once at startup)
+try {
+  if (fs.existsSync(ESPN_NAMES_CACHE_PATH)) {
+    const raw = JSON.parse(fs.readFileSync(ESPN_NAMES_CACHE_PATH, 'utf-8'));
+    for (const [id, name] of Object.entries(raw)) {
+      if (typeof name === 'string') persistedESPNLeagueNames.set(id, name);
+    }
+  }
+} catch { /* non-fatal */ }
+
+let _espnNamesSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleESPNNamesSave() {
+  if (_espnNamesSaveTimer) return;
+  _espnNamesSaveTimer = setTimeout(() => {
+    _espnNamesSaveTimer = null;
+    try {
+      const dir = path.dirname(ESPN_NAMES_CACHE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const obj: Record<string, string> = {};
+      for (const [id, name] of persistedESPNLeagueNames.entries()) obj[id] = name;
+      fs.writeFileSync(ESPN_NAMES_CACHE_PATH, JSON.stringify(obj, null, 2), 'utf-8');
+    } catch { /* non-fatal */ }
+  }, 5000); // debounce: write at most once per 5 s
+}
+
 // Comprehensive map of ESPN's 2-3 letter country slug prefixes → {country, countryCode}.
 // ESPN encodes the country in team slugs: e.g. "sco.alloa-athletic" → prefix "sco" → Scotland.
 // Used as a fallback when a league isn't in KNOWN_GLOBAL_LEAGUES and ESPN doesn't supply a name.
@@ -1616,7 +1654,20 @@ async function resolveGlobalLeagueInfo(
     return info;
   }
 
-  // 4. Fallback: derive country from team slug (e.g. "sco.alloa-athletic" → Scotland).
+  // 4. Check persistent ESPN name cache — names ESPN has returned in any prior
+  //    fetch and saved to disk.  Covers leagues that ESPN knows but aren't in
+  //    KNOWN_GLOBAL_LEAGUES and weren't in the top-level leagues[] this fetch.
+  const persistedName = persistedESPNLeagueNames.get(espnLeagueId);
+  if (persistedName && persistedName.trim().length > 2) {
+    const name = persistedName.trim();
+    const continental = inferContinentalCountry(name);
+    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
+    const info: GlobalLeagueInfo = { name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...loc };
+    globalLeagueInfoCache.set(ck, info);
+    return info;
+  }
+
+  // 5. Fallback: derive country from team slug (e.g. "sco.alloa-athletic" → Scotland).
   //    Uses the comprehensive ESPN_SLUG_TO_COUNTRY map for proper names and ISO codes.
   const loc = countryFromSlugPrefix(hint?.teamSlug);
   const info: GlobalLeagueInfo = {
@@ -1823,14 +1874,39 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   type ESPNLeagueMeta = { id?: string; name?: string; displayName?: string; abbreviation?: string };
   const espnLeagueNames = new Map<string, string>();
   const dataWithLeagues = data as unknown as { leagues?: ESPNLeagueMeta[] };
+  let newNamesFound = false;
   if (dataWithLeagues.leagues?.length) {
     for (const lg of dataWithLeagues.leagues) {
       if (lg.id) {
         const bestName = lg.displayName || lg.name;
-        if (bestName) espnLeagueNames.set(lg.id, bestName);
+        if (bestName) {
+          espnLeagueNames.set(lg.id, bestName);
+          // Persist: if not already stored (or name changed), add to persistent cache
+          if (persistedESPNLeagueNames.get(lg.id) !== bestName) {
+            persistedESPNLeagueNames.set(lg.id, bestName);
+            newNamesFound = true;
+          }
+        }
       }
     }
   }
+  // Also scan event-level season names for leagues not in top-level leagues[]
+  // (ESPN sometimes omits leagues from the top-level array but has season.name on events)
+  for (const ev of data.events) {
+    const evExt2 = ev as ESPNEvent & { uid?: string; season?: { name?: string } };
+    const mEv = evExt2.uid?.match(/l:(\d+)/);
+    if (mEv && evExt2.season?.name && !espnLeagueNames.has(mEv[1])) {
+      const sName = evExt2.season.name.trim();
+      if (sName.length > 2) {
+        espnLeagueNames.set(mEv[1], sName);
+        if (persistedESPNLeagueNames.get(mEv[1]) !== sName) {
+          persistedESPNLeagueNames.set(mEv[1], sName);
+          newNamesFound = true;
+        }
+      }
+    }
+  }
+  if (newNamesFound) scheduleESPNNamesSave();
 
   const leagueHints = new Map<string, { seasonSlug?: string; teamSlug?: string; espnName?: string }>();
   for (const ev of data.events) {
