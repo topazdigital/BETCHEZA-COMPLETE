@@ -323,6 +323,10 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'pending'; msg: string } | null>(null);
   const [pendingRef, setPendingRef] = useState<string | null>(null);
+  const [cardOtpRef, setCardOtpRef] = useState<string | null>(null);
+  const [cardOtp, setCardOtp] = useState('');
+  const [cardOtpPrompt, setCardOtpPrompt] = useState('');
+  const [submittingOtp, setSubmittingOtp] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto-detect country on mount — IP-based first, timezone fallback
@@ -425,6 +429,35 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
 
     setSubmitting(true);
     try {
+      // ── Paystack card — route through real charge API ──
+      if (method === 'paystack' && card.number) {
+        const rawNum = card.number.replace(/\s/g, '');
+        const [expM, expY] = (card.exp || '').split('/');
+        const res = await fetch('/api/paystack/charge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            card: { number: rawNum, cvv: card.cvc, expiry_month: expM || '', expiry_year: (expY || '').slice(-2) },
+            amount: kesAmount,
+            purpose: 'wallet',
+            currency: 'KES',
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || (!data.success && !data.needsOtp)) {
+          setStatus({ kind: 'err', msg: data.error || 'Card payment failed.' });
+        } else if (data.needsOtp && data.reference) {
+          setCardOtpRef(data.reference);
+          setCardOtpPrompt(data.displayText || 'Enter the OTP sent to your phone or email.');
+          setStatus({ kind: 'pending', msg: data.displayText || 'Enter the OTP code to complete payment.' });
+        } else {
+          setStatus({ kind: 'ok', msg: `Deposited ${kesAmount.toLocaleString()} KES — balance updated.` });
+          await onDone();
+        }
+        return;
+      }
+
+      // ── All other methods ──
       const res = await fetch('/api/wallet/deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -435,7 +468,7 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           localCurrency: currency.code,
           method,
           phone: (method === 'mpesa' || method === 'mobile_money') ? phone : undefined,
-          cardLast4: (method === 'card' || method === 'paystack') ? card.number.replace(/\s/g, '').slice(-4) : undefined,
+          cardLast4: method === 'card' ? card.number.replace(/\s/g, '').slice(-4) : undefined,
           reference: method === 'bank' ? bank : method === 'crypto' ? crypto : method === 'mpesa_till' ? tillRef.trim() : undefined,
         }),
       });
@@ -444,12 +477,9 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
         setStatus({ kind: 'err', msg: data.error || 'Deposit failed.' });
       } else if (data.pending) {
         if (method === 'mpesa') {
-          // Real STK push — poll for confirmation
           setPendingRef(data.reference);
           setStatus({ kind: 'pending', msg: `M-Pesa prompt sent to ${phone}. Enter your PIN on your phone to complete.` });
         } else {
-          // All other pending methods (mpesa_till, mobile_money, paystack, bank, crypto)
-          // are admin-confirmed; no polling needed
           setStatus({ kind: 'pending', msg: data.message || 'Payment request received. Your wallet will be credited after confirmation (usually within 15 minutes).' });
         }
       } else {
@@ -701,7 +731,56 @@ function DepositForm({ onDone }: { onDone: () => void | Promise<void> }) {
           </div>
         )}
 
-        <Button onClick={submit} disabled={submitting || !!pendingRef} className="w-full h-9 text-xs">
+        {/* OTP input for Paystack card charge */}
+        {cardOtpRef && (
+          <div className="space-y-2">
+            <Label className="text-[10px] uppercase tracking-wide">OTP Code</Label>
+            <p className="text-[11px] text-muted-foreground">{cardOtpPrompt}</p>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={cardOtp}
+                onChange={e => setCardOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="Enter code"
+                className="h-9 font-mono text-center tracking-widest"
+                autoFocus
+              />
+              <Button
+                onClick={async () => {
+                  if (!cardOtp.trim()) return;
+                  setSubmittingOtp(true);
+                  try {
+                    const res = await fetch('/api/paystack/submit-otp', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ otp: cardOtp.trim(), reference: cardOtpRef }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (data.success) {
+                      setCardOtpRef(null);
+                      setCardOtp('');
+                      setStatus({ kind: 'ok', msg: `Deposited ${kesAmount.toLocaleString()} KES — balance updated.` });
+                      await onDone();
+                    } else {
+                      setStatus({ kind: 'err', msg: data.error || 'OTP verification failed.' });
+                    }
+                  } catch {
+                    setStatus({ kind: 'err', msg: 'Network error.' });
+                  } finally {
+                    setSubmittingOtp(false);
+                  }
+                }}
+                disabled={submittingOtp || !cardOtp.trim()}
+                className="h-9 px-4 shrink-0"
+              >
+                {submittingOtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Verify'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <Button onClick={submit} disabled={submitting || !!pendingRef || !!cardOtpRef} className="w-full h-9 text-xs">
           {submitting
             ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Processing…</>
             : <>Deposit {fmtLocalCurrency(parseFloat(localAmount) || 0, currency)}{isNonKES ? ` (≈ KES ${kesAmount.toLocaleString()})` : ''}</>}

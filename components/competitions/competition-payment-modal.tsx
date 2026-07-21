@@ -16,7 +16,7 @@ interface Props {
   onSuccess: (paymentRef: string) => void;
 }
 
-type Step = 'choose' | 'mpesa-form' | 'topup-form' | 'pending';
+type Step = 'choose' | 'mpesa-form' | 'topup-form' | 'pending' | 'card-form' | 'card-otp';
 
 export function CompetitionPaymentModal({
   open,
@@ -40,6 +40,12 @@ export function CompetitionPaymentModal({
   const [topUpAmount, setTopUpAmount] = useState<number | null>(null);
   const [walletContrib, setWalletContrib] = useState(0);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardOtp, setCardOtp] = useState('');
+  const [cardRef, setCardRef] = useState<string | null>(null);
+  const [cardOtpPrompt, setCardOtpPrompt] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canPayFull = walletBalance !== null && walletBalance >= amount;
@@ -75,6 +81,12 @@ export function CompetitionPaymentModal({
       setTopUpAmount(null);
       setWalletContrib(0);
       setPhone('');
+      setCardNumber('');
+      setCardExpiry('');
+      setCardCvv('');
+      setCardOtp('');
+      setCardRef(null);
+      setCardOtpPrompt('');
       autoAdvancedRef.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
     }
@@ -151,6 +163,71 @@ export function CompetitionPaymentModal({
       } else {
         setError(data.error || 'Could not calculate top-up amount. Please try again.');
       }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Card payment (Paystack Direct Charge — no branding shown)
+  const handleCardPay = async () => {
+    const rawNum = cardNumber.replace(/\s/g, '');
+    if (rawNum.length < 13) { setError('Enter a valid card number.'); return; }
+    const [expM, expY] = cardExpiry.split('/');
+    if (!expM || !expY || expM.length !== 2 || expY.length < 2) { setError('Enter expiry as MM/YY.'); return; }
+    if (!cardCvv || cardCvv.length < 3) { setError('Enter your card security code.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/paystack/charge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          card: { number: rawNum, cvv: cardCvv, expiry_month: expM, expiry_year: expY.slice(-2) },
+          amount,
+          purpose: 'competition',
+          currency,
+          competitionName,
+          competitionSlug,
+        }),
+      });
+      const data = await res.json() as { success?: boolean; needsOtp?: boolean; reference?: string; displayText?: string; error?: string };
+      if (data.success && data.reference) {
+        onSuccess(data.reference);
+        return;
+      }
+      if (data.needsOtp && data.reference) {
+        setCardRef(data.reference);
+        setCardOtpPrompt(data.displayText || 'Enter the OTP sent to your phone or email.');
+        setStep('card-otp');
+        return;
+      }
+      setError(data.error || 'Card payment failed. Please try again.');
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // OTP submission for card payment
+  const handleCardOtpSubmit = async () => {
+    if (!cardOtp.trim() || !cardRef) { setError('Enter the OTP code.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/paystack/submit-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp: cardOtp.trim(), reference: cardRef }),
+      });
+      const data = await res.json() as { success?: boolean; reference?: string; error?: string };
+      if (data.success && data.reference) {
+        onSuccess(data.reference);
+        return;
+      }
+      setError(data.error || 'OTP verification failed. Please try again.');
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -323,18 +400,13 @@ export function CompetitionPaymentModal({
                 </button>
               )}
 
-              {/* Paystack card — non-KE/TZ (coming soon) */}
-              {!isMpesaCountry && (
-                <button
-                  disabled
-                  title="Card payments coming soon — use wallet for now"
-                  className="w-full rounded-xl bg-muted border border-border py-3 text-sm font-bold text-muted-foreground flex items-center justify-center gap-2 cursor-not-allowed relative"
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Pay {fmt(amount)} via Card
-                  <span className="absolute top-1.5 right-2.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 uppercase tracking-wide">Soon</span>
-                </button>
-              )}
+              {/* Card payment — available everywhere */}
+              <button
+                onClick={() => { setStep('card-form'); setError(''); }}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+              >
+                <CreditCard className="h-4 w-4" /> Pay {fmt(amount)} via Card
+              </button>
             </div>
 
           /* ── Full M-Pesa form ── */
@@ -403,6 +475,100 @@ export function CompetitionPaymentModal({
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
                 Send STK Push — {fmt(topUpAmount ?? (amount - walletContrib))}
+              </button>
+            </div>
+
+          /* ── Card form ── */
+          ) : step === 'card-form' ? (
+            <div className="space-y-3">
+              <button onClick={() => { setStep('choose'); setError(''); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                ← Back
+              </button>
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1.5">Card Number</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="1234 5678 9012 3456"
+                  value={cardNumber}
+                  onChange={e => {
+                    let v = e.target.value.replace(/\D/g, '').slice(0, 16);
+                    v = v.replace(/(.{4})/g, '$1 ').trim();
+                    setCardNumber(v);
+                  }}
+                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block">Expiry</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="MM/YY"
+                    value={cardExpiry}
+                    onChange={e => {
+                      let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      if (v.length > 2) v = `${v.slice(0, 2)}/${v.slice(2)}`;
+                      setCardExpiry(v);
+                    }}
+                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block">Security Code</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="•••"
+                    value={cardCvv}
+                    onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                </div>
+              </div>
+              {error && <p className="text-xs text-red-500">{error}</p>}
+              <button
+                onClick={handleCardPay}
+                disabled={loading}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                Pay {fmt(amount)} via Card
+              </button>
+            </div>
+
+          /* ── Card OTP ── */
+          ) : step === 'card-otp' ? (
+            <div className="space-y-3">
+              <button onClick={() => { setStep('card-form'); setError(''); setCardOtp(''); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                ← Back
+              </button>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-center space-y-1">
+                <p className="font-semibold text-primary">Verification Required</p>
+                <p className="text-muted-foreground">{cardOtpPrompt}</p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block">OTP Code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Enter code"
+                  value={cardOtp}
+                  onChange={e => setCardOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  onKeyDown={e => e.key === 'Enter' && handleCardOtpSubmit()}
+                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono text-center tracking-widest"
+                  autoFocus
+                />
+              </div>
+              {error && <p className="text-xs text-red-500">{error}</p>}
+              <button
+                onClick={handleCardOtpSubmit}
+                disabled={loading}
+                className="w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {loading ? 'Verifying…' : 'Confirm Payment'}
               </button>
             </div>
 
