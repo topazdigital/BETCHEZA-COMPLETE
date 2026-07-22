@@ -301,20 +301,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Helper: format a single Market into a compact string for the AI prompt
-    function formatMarket(mk: Market): string {
-      const outcomes = mk.outcomes
-        .map(o => `${o.name}=${o.price}`)
-        .join(' ');
-      return `[${mk.name}: ${outcomes}]`;
-    }
+    // Keys we actually send to the AI — only the markets useful for game reasoning.
+    // Exotic markets (Correct Score, HT/FT, Exact Goals, Odd/Even) balloon the prompt
+    // without helping the AI reason about how the match will play out.
+    const AI_MARKET_KEYS = [
+      'double_chance',    // 1X / X2 / 12
+      'draw_no_bet',      // DNB
+      'btts',             // Both Teams to Score
+      'totals_1_5',       // Over/Under 1.5 Goals
+      'totals_2_5',       // Over/Under 2.5 Goals
+      'totals_3_5',       // Over/Under 3.5 Goals
+      'asian_handicap',   // AH line
+      'win_to_nil',       // Win to Nil
+    ];
 
     const matchList = extendedPool
       .map((m) => {
         const isSoccer = m.sport.slug === 'soccer' || m.sport.slug === 'football';
-        let oddsStr = '';
 
-        // ── Step 1: 1X2 base odds ────────────────────────────────────────────
+        // ── 1X2 base odds with implied probabilities ─────────────────────────
+        let oddsStr = '';
         if (m.odds) {
           const { home, draw, away } = m.odds;
           const implH = home > 0 ? Math.round(100 / home) : 0;
@@ -324,42 +330,35 @@ export async function POST(req: NextRequest) {
           oddsStr = ` | 1X2: H=${home}(${implH}%)${drawPart} A=${away}(${implA}%)`;
         }
 
-        // ── Step 2: Build the full market list ───────────────────────────────
-        // Start with Poisson-derived markets for soccer (20+ markets from just 1X2)
-        let allMarkets: Market[] = [];
+        // ── Derive useful markets (soccer only) ──────────────────────────────
+        const mkParts: string[] = [];
         if (isSoccer && m.odds) {
-          const { home, draw, away } = m.odds;
+          const { home, away } = m.odds;
+          const draw = m.odds.draw ?? 3.5;
           if (home > 1 && away > 1) {
-            allMarkets = deriveSoccerMarkets(
-              home,
-              draw ?? 3.5,   // fallback draw odds for two-outcome sports
-              away,
-              m.homeTeam.name,
-              m.awayTeam.name,
-            );
-          }
-        }
+            const derived = deriveSoccerMarkets(home, draw, away, m.homeTeam.name, m.awayTeam.name);
 
-        // ── Step 3: Merge/override with real bookmaker markets ───────────────
-        // Real odds take priority over Poisson estimates for matching keys
-        if (m.markets?.length) {
-          for (const bkMk of m.markets) {
-            const existingIdx = allMarkets.findIndex(dm => dm.key === bkMk.key);
-            if (existingIdx >= 0) {
-              // Real bookmaker data overrides derived estimate
-              allMarkets[existingIdx] = bkMk;
-            } else {
-              allMarkets.push(bkMk);
+            // Merge bookmaker markets over derived ones
+            const merged = [...derived];
+            if (m.markets?.length) {
+              for (const bk of m.markets) {
+                const idx = merged.findIndex(d => d.key === bk.key);
+                if (idx >= 0) merged[idx] = bk; else merged.push(bk);
+              }
+            }
+
+            // Only output the AI-useful keys, compact format
+            for (const key of AI_MARKET_KEYS) {
+              const mk = merged.find(x => x.key === key);
+              if (!mk) continue;
+              const outcomes = mk.outcomes.map(o => `${o.name}=${o.price}`).join(' ');
+              mkParts.push(`${mk.name}: ${outcomes}`);
             }
           }
         }
 
-        // ── Step 4: Format all markets for the AI ───────────────────────────
-        const marketsStr = allMarkets.length
-          ? '\n  Markets: ' + allMarkets.map(formatMarket).join(' ')
-          : '';
-
-        return `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${oddsStr}${marketsStr}`;
+        const marketsStr = mkParts.length ? `\n  ↳ ${mkParts.join(' | ')}` : '';
+        return `- ${m.homeTeam.name} vs ${m.awayTeam.name} [${m.league.name}] ${new Date(m.kickoffTime).toUTCString()}${oddsStr}${marketsStr}`;
       })
       .join('\n');
 
@@ -367,114 +366,54 @@ export async function POST(req: NextRequest) {
 
     const providers = await getStrategyProviders();
     if (providers.length > 0 && matchList) {
-      const prompt = `You are an elite football intelligence analyst for Betcheza Daily Strategy — a real-money subscription service in Kenya. Subscribers stake serious money every day. Losses cost them real cash and cost us their trust. Your one job is to find the most predictable outcomes and combine them so the accumulator odds land between 3.00 and 4.00.
+      const prompt = `You are a sharp football betting analyst for Betcheza Daily Strategy, a real-money service in Kenya. Your job: study the matches below and build a 2–4 pick accumulator with combined odds between 3.00 and 4.00.
 
-Today: ${today} | Strategy Day ${targetDay} | Stake: KES ${dayData.stake.toLocaleString()} | Target: KES ${dayData.targetWin.toLocaleString()}
+Today: ${today} | Day ${targetDay} | Stake: KES ${dayData.stake.toLocaleString()} | Target: KES ${dayData.targetWin.toLocaleString()}
 
-════════════════════════════════════════════════════
-THE ONLY FIXED RULE: COMBINED ODDS = 3.00 to 4.00
-════════════════════════════════════════════════════
+━━━ THE CONSTRAINT ━━━
+Combined odds of ALL your picks multiplied together must land between 3.00 and 4.00.
+• 2 picks at 1.75 × 1.90 = 3.33 ✓
+• 3 picks at 1.50 × 1.45 × 1.40 = 3.05 ✓
+• 2 picks at 2.20 × 2.00 = 4.40 ✗ (too high)
+Keep it to 2–4 picks. More picks = more single points of failure.
 
-You may select 1 pick or up to 10 picks — the NUMBER does not matter at all.
-What matters is that all picks multiplied together land STRICTLY between 3.00 and 4.00.
+━━━ HOW TO ANALYSE EACH MATCH ━━━
+For every match, ask: "How will THIS game actually play out?"
 
-Examples:
-- 1 pick with odds 3.50 = valid (3.50 is within 3.00–4.00)
-- 2 picks: 1.80 × 1.90 = 3.42 = valid
-- 3 picks: 1.50 × 1.40 × 1.55 = 3.26 = valid
-- 4 picks: 1.30 × 1.30 × 1.30 × 1.45 = 3.20 = valid
-- 5 picks: 1.20 × 1.20 × 1.20 × 1.20 × 1.45 = 2.99 = INVALID (below 3.00)
-- 2 picks: 2.50 × 1.80 = 4.50 = INVALID (above 4.00)
+Think about:
+- MOTIVATION: Does each team need points urgently, or is pressure off? A side with nothing to play for is unpredictable.
+- FORM: Not just wins/losses — quality of opposition matters. Five wins against bottom-half sides means little.
+- ATTACKING vs DEFENSIVE STYLE: Some teams are set up to grind 1-0 wins. Others always trade goals. This shapes whether to back goals or results.
+- HEAD-TO-HEAD PATTERNS: Some fixtures are historically tight and end in draws regardless of form.
+- ODDS SIGNAL: When bookmakers price a Draw at 3.20 or higher, they believe it is unlikely. When it is 2.80 or lower, they see it as very possible. Use this.
 
-Adjust the number of picks and which markets you use until the product is between 3.00 and 4.00.
+━━━ PICK THE RIGHT OUTCOME FOR EACH MATCH ━━━
+Do NOT default to the lowest odds just because it is the "safest" number. A short-priced favourite can easily lose or draw. Pick what the MATCH CONTEXT points to:
 
-════════════════════════════════════════════════════
-STEP 1: INVESTIGATE EVERY MATCH (do this before selecting)
-════════════════════════════════════════════════════
+- If two evenly-matched teams with defensive setups face each other → Draw or Under 2.5 may be the right call, even at 2.80–3.40.
+- If the away team has won 4 of their last 5 away games → Away win is valid, even at 2.50+.
+- If both teams have been conceding and scoring freely → BTTS Yes or Over 2.5 Goals.
+- If a dominant home side is facing a weak away attack → Win to Nil or Draw No Bet.
+- Use Double Chance (1X or X2) to protect against a single uncertain outcome, not as a default for every match.
 
-For each match consider:
+Any outcome is valid: Home Win, Draw, Away Win, BTTS, Over/Under, Draw No Bet, Asian Handicap, Win to Nil. Pick what the game context actually supports.
 
-A. MOTIVATION — What does each team actually need?
-   - Already won the title / already relegated? They will rest players — avoid backing them as favourites.
-   - Cup Final or European fixture within 4 days? Rotation is near-certain — massive upset risk.
-   - Underdog fighting for survival vs complacent champion? Red flag on the favourite.
+━━━ AVAILABLE MATCHES ━━━
+${matchList}
 
-B. SQUAD RISK — Rotation, suspensions, injury to key players.
-
-C. FORM IN CONTEXT — Home form vs away form. Weak opposition in recent run?
-
-D. HEAD-TO-HEAD — Does the underdog historically perform well here? Derby factor?
-
-E. MARKET SIGNALS — Where are bookmakers uncertain? Implied probability (shown in brackets) close to 50% = uncertain match — pick the safer market, not the team.
-
-════════════════════════════════════════════════════
-STEP 2: ELIMINATE RED FLAGS
-════════════════════════════════════════════════════
-
-DISCARD any match where:
-- The favourite has secured everything (title/promotion/safety) and the game is meaningless
-- Rotation risk is near-certain (upcoming big fixture)
-- You cannot construct a clear evidence-based reason for the outcome
-- The only reason is "they are the bigger club" with no context
-
-════════════════════════════════════════════════════
-STEP 3: CHOOSE THE BEST MARKET FOR EACH MATCH
-════════════════════════════════════════════════════
-
-Any market is valid. Use whichever gives the HIGHEST probability for that specific match:
-
-- 1X2 (Home/Draw/Away) — when one outcome is clearly more likely
-- Double Chance (1X, X2, 12) — covers two of three outcomes; odds pre-calculated above
-- Draw No Bet — removes draw risk on a strong favourite; odds pre-calculated above
-- Both Teams to Score Yes/No — based on defensive records
-- Over/Under Goals (0.5, 1.5, 2.5, 3.5, 4.5) — based on scoring patterns
-- Asian Handicap — when margin of victory is predictable
-- Win to Nil — dominant team vs toothless attack
-- Correct Score — only with unusually high conviction
-- Half-time/Full-time — when half-time trajectory is clear
-- Any other market — if it is the most logical given the context
-
-Pick the market with the HIGHEST actual probability, not the best-looking odds.
-
-⚠️ MANDATORY MARKET DIVERSITY RULE:
-- You MUST NOT select "Home Win (1X2)" for more than 1 pick in your entire slip.
-- If the best pick for a match is a home win, use Double Chance (1X) or Draw No Bet instead — they cover the same outcome at slightly lower odds but with far higher probability.
-- At least ONE pick in the slip must be from a non-1X2 market (Double Chance, Draw No Bet, BTTS, Over/Under, or similar).
-- Reason: A slip of all home wins is the most common single reason punters lose — one unexpected draw kills the whole ticket. Diversifying markets protects the stake.
-
-════════════════════════════════════════════════════
-STEP 4: BUILD THE ACCUMULATOR TO HIT 3.00–4.00
-════════════════════════════════════════════════════
-
-- Start with your highest-confidence picks.
-- Multiply odds as you add picks.
-- Stop adding picks once the product is in the 3.00–4.00 window.
-- If a single match has odds between 3.00 and 4.00, that alone is a valid selection.
-- If you are at 3.80 and the next pick would push to 5.20 — stop at the current picks.
-- NEVER go below 3.00 combined. NEVER go above 4.00 combined.
-- Quality over quantity: 3 confident picks at 3.20 combined beats 7 guesses at 3.80.
-- For confidence: "High" = 3+ strong contextual reasons; "Medium" = 1–2 solid reasons.
-
-════════════════════════════════════════════════════
-AVAILABLE MATCHES — ${today}
-(Odds shown as decimal. Implied probability in brackets = 100/odds.)
-════════════════════════════════════════════════════
-${matchList || 'No match data available — use your football knowledge for this date'}
-
-════════════════════════════════════════════════════
-OUTPUT — Return ONLY valid JSON. No markdown. No text outside the JSON array.
-════════════════════════════════════════════════════
+━━━ OUTPUT ━━━
+Return ONLY a valid JSON array. No markdown, no explanation outside the array.
 [
   {
     "homeTeam": "exact name from match list",
     "awayTeam": "exact name from match list",
     "league": "league name",
-    "matchTime": "ISO 8601 datetime string",
-    "pick": "e.g. Over 2.5 Goals | Manchester City | Draw No Bet | Home or Draw",
-    "market": "1X2 | Double Chance | Over/Under | BTTS | Draw No Bet | Asian Handicap | ...",
-    "odds": 1.75,
+    "matchTime": "ISO 8601 datetime",
+    "pick": "specific outcome e.g. Draw | Away Win | Over 2.5 Goals | BTTS Yes | Home or Draw",
+    "market": "1X2 | Draw | Double Chance | Over/Under | BTTS | Draw No Bet | Win to Nil | Asian Handicap",
+    "odds": 1.85,
     "confidence": "High | Medium",
-    "reasoning": "What each team needs, form context, why THIS market and THIS outcome. Minimum 2 sentences."
+    "reasoning": "2–3 sentences: what the match context tells you and why this specific outcome makes sense for THIS game — not just 'low odds'."
   }
 ]`;
 
