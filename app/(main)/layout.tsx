@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen, Megaphone,
+  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen, Megaphone, Briefcase,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -161,6 +161,7 @@ const mainNavItems: NavItem[] = [
   { href: "/become-tipster", label: "Become a Tipster", icon: UserPlus, color: "text-indigo-500", activeColor: "bg-indigo-500" },
   { href: "/how-it-works", label: "How It Works", icon: BookOpen, color: "text-cyan-500", activeColor: "bg-cyan-500" },
   { href: "/advertise", label: "Advertise", icon: Megaphone, color: "text-rose-500", activeColor: "bg-rose-500" },
+  { href: "/careers", label: "Careers", icon: Briefcase, color: "text-emerald-600", activeColor: "bg-emerald-600" },
 ]
 
 // Popular bookmakers for the sidebar — colours only, no external logo requests
