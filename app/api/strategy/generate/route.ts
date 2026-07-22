@@ -374,8 +374,14 @@ Today: ${today} | Day ${targetDay} | Stake: KES ${dayData.stake.toLocaleString()
 Combined odds of ALL your picks multiplied together must land between 3.00 and 4.00.
 • 2 picks at 1.75 × 1.90 = 3.33 ✓
 • 3 picks at 1.50 × 1.45 × 1.40 = 3.05 ✓
+• 2 picks at 1.80 × 1.80 = 3.24 ✓
 • 2 picks at 2.20 × 2.00 = 4.40 ✗ (too high)
-Keep it to 2–4 picks. More picks = more single points of failure.
+• 4 picks at 1.10 × 1.14 × 1.16 × 1.78 = 2.59 ✗ (too low)
+
+MINIMUM ODDS PER PICK: Each individual pick must have odds of at least 1.40.
+• Do NOT pick anything priced at 1.10, 1.15, 1.20, 1.25, 1.30 — these are bookmaker traps. A single upset destroys the slip, and the return on a correct pick is negligible.
+• Prefer 2–3 picks with odds between 1.50 and 2.20 each. This naturally hits 3.00–4.00 combined.
+• If a match has no outcome worth at least 1.40, skip it and pick a different match.
 
 ━━━ HOW TO ANALYSE EACH MATCH ━━━
 For every match, ask: "How will THIS game actually play out?"
@@ -443,14 +449,14 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
               result: 'pending' as const,
             }));
             const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
-            // Accept if the AI hit the target window (3.00–4.00).
-            // Also accept a "near-miss" (2.50–5.00) — better than the dumb fallback.
-            if (combined >= 2.5 && combined <= 5.0) {
+            // Accept if combined odds land in 2.90–4.50 (target 3.00–4.00, small buffer for rounding).
+            // 2.59 and below is too low — reject and fall through to rules-based.
+            if (combined >= 2.9 && combined <= 4.5) {
               picks = candidates;
-              console.log(`[strategy/generate] picks via ${provider.name}, combined=${combined.toFixed(2)}`);
+              console.log(`[strategy/generate] ✓ Groq picks via ${provider.name}, combined=${combined.toFixed(2)}`);
               break;
             }
-            console.warn(`[strategy/generate] ${provider.name} combined=${combined.toFixed(2)} outside 2.50–5.00 — trying next`);
+            console.warn(`[strategy/generate] ✗ ${provider.name} combined=${combined.toFixed(2)} outside 2.90–4.50 — trying next`);
           }
         } catch (provErr) {
           console.warn(`[strategy/generate] ${provider.name} failed:`, provErr instanceof Error ? provErr.message : provErr);
