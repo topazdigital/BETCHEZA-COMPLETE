@@ -382,10 +382,14 @@ export async function generateMetadata({
       `${home} vs ${away} odds`,
       `${home} vs ${away} betting tips`,
       `${home} vs ${away} preview`,
+      `${home} vs ${away} prediction betcheza`,
+      `${home} vs ${away} tips betcheza`,
       league ? `${league} predictions` : '',
       league ? `${league} tips` : '',
+      league ? `${league} betting tips betcheza` : '',
       dateStr ? `${home} vs ${away} ${dateStr}` : '',
       'football tips Kenya', 'match prediction', 'sports betting tips', 'AI football predictor',
+      'betcheza prediction', 'betcheza tips today',
     ].filter(Boolean);
   }
 

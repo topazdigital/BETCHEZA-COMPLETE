@@ -179,15 +179,30 @@ export async function POST(req: NextRequest) {
       .map((m) => {
         // 1X2 odds with implied probability
         let oddsStr = '';
+        const mkParts: string[] = [];
         if (m.odds) {
           const { home, draw, away } = m.odds;
           const implH = home > 0 ? Math.round(100 / home) : 0;
           const implD = draw > 0 ? Math.round(100 / draw) : 0;
           const implA = away > 0 ? Math.round(100 / away) : 0;
           oddsStr = ` | 1X2: H=${home}(${implH}%) D=${draw}(${implD}%) A=${away}(${implA}%)`;
+
+          // Pre-calculate alternative markets from 1X2 so the AI always has
+          // non-home-win options even when no external market data is available.
+          if (home > 1 && draw > 1 && away > 1) {
+            // Double Chance — approximated from 1X2 implied probabilities
+            const pH = 1 / home, pD = 1 / draw, pA = 1 / away;
+            const dc1X = parseFloat((1 / (pH + pD)).toFixed(2));
+            const dcX2 = parseFloat((1 / (pD + pA)).toFixed(2));
+            const dc12 = parseFloat((1 / (pH + pA)).toFixed(2));
+            mkParts.push(`DC: 1X=${dc1X} X2=${dcX2} 12=${dc12}`);
+            // Draw No Bet — removes draw from 1X2
+            const dnbH = parseFloat((1 / (pH / (pH + pA))).toFixed(2));
+            const dnbA = parseFloat((1 / (pA / (pH + pA))).toFixed(2));
+            mkParts.push(`DNB: H=${dnbH} A=${dnbA}`);
+          }
         }
-        // Extract key alternative markets so the AI can price non-1X2 picks
-        const mkParts: string[] = [];
+        // Supplement with bookmaker-sourced market data when available
         if (m.markets?.length) {
           const find = (key: string) => m.markets!.find(mk => mk.key === key);
           const btts = find('btts');
@@ -207,16 +222,21 @@ export async function POST(req: NextRequest) {
             const ov = ou15.outcomes.find(o => (o.name as string).startsWith('Over'));
             if (ov) mkParts.push(`O1.5=${ov.price}`);
           }
-          const dc = find('double_chance');
-          if (dc) {
-            const oneX = dc.outcomes.find(o => o.name === '1X');
-            const x2  = dc.outcomes.find(o => o.name === 'X2');
-            const both = dc.outcomes.find(o => o.name === '12');
-            if (oneX && x2) mkParts.push(`DC: 1X=${oneX.price} X2=${x2.price}${both ? ` 12=${both.price}` : ''}`);
+          // Only add DC/DNB from bookmaker if not already calculated from 1X2
+          if (!mkParts.some(p => p.startsWith('DC:'))) {
+            const dc = find('double_chance');
+            if (dc) {
+              const oneX = dc.outcomes.find(o => o.name === '1X');
+              const x2  = dc.outcomes.find(o => o.name === 'X2');
+              const both = dc.outcomes.find(o => o.name === '12');
+              if (oneX && x2) mkParts.push(`DC: 1X=${oneX.price} X2=${x2.price}${both ? ` 12=${both.price}` : ''}`);
+            }
           }
-          const dnb = find('draw_no_bet');
-          if (dnb && dnb.outcomes.length >= 2) {
-            mkParts.push(`DNB: H=${dnb.outcomes[0].price} A=${dnb.outcomes[1].price}`);
+          if (!mkParts.some(p => p.startsWith('DNB:'))) {
+            const dnb = find('draw_no_bet');
+            if (dnb && dnb.outcomes.length >= 2) {
+              mkParts.push(`DNB: H=${dnb.outcomes[0].price} A=${dnb.outcomes[1].price}`);
+            }
           }
         }
         const marketsStr = mkParts.length ? ` | ${mkParts.join(' | ')}` : '';
@@ -285,18 +305,23 @@ STEP 3: CHOOSE THE BEST MARKET FOR EACH MATCH
 Any market is valid. Use whichever gives the HIGHEST probability for that specific match:
 
 - 1X2 (Home/Draw/Away) — when one outcome is clearly more likely
-- Double Chance (1X, X2, 12) — covers two of three outcomes
-- Draw No Bet — removes draw risk on a strong favourite
+- Double Chance (1X, X2, 12) — covers two of three outcomes; odds pre-calculated above
+- Draw No Bet — removes draw risk on a strong favourite; odds pre-calculated above
 - Both Teams to Score Yes/No — based on defensive records
 - Over/Under Goals (0.5, 1.5, 2.5, 3.5, 4.5) — based on scoring patterns
 - Asian Handicap — when margin of victory is predictable
 - Win to Nil — dominant team vs toothless attack
 - Correct Score — only with unusually high conviction
 - Half-time/Full-time — when half-time trajectory is clear
-- Anytime Goalscorer — when a specific player is almost certain to score
 - Any other market — if it is the most logical given the context
 
 Pick the market with the HIGHEST actual probability, not the best-looking odds.
+
+⚠️ MANDATORY MARKET DIVERSITY RULE:
+- You MUST NOT select "Home Win (1X2)" for more than 1 pick in your entire slip.
+- If the best pick for a match is a home win, use Double Chance (1X) or Draw No Bet instead — they cover the same outcome at slightly lower odds but with far higher probability.
+- At least ONE pick in the slip must be from a non-1X2 market (Double Chance, Draw No Bet, BTTS, Over/Under, or similar).
+- Reason: A slip of all home wins is the most common single reason punters lose — one unexpected draw kills the whole ticket. Diversifying markets protects the stake.
 
 ════════════════════════════════════════════════════
 STEP 4: BUILD THE ACCUMULATOR TO HIT 3.00–4.00
