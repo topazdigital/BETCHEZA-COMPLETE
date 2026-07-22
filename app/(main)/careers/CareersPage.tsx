@@ -399,7 +399,7 @@ export default function CareersPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
-        setResult({ ok: true, msg: "Application received! We'll WhatsApp you within 24 hours." });
+        setResult({ ok: true, msg: "Application received! We'll WhatsApp you within 24 hours. Create or sign into your Betcheza account to track your application and see your referrals in your Agent Dashboard." });
         setForm(EMPTY);
       } else {
         // Fallback to WhatsApp if API not set up
@@ -781,13 +781,35 @@ export default function CareersPage() {
 
                 {result && (
                   <div className={cn(
-                    'rounded-lg border px-3 py-2 text-xs leading-relaxed',
+                    'rounded-lg border px-3 py-3 text-xs leading-relaxed space-y-2',
                     result.ok
                       ? 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400'
                       : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
                   )}>
-                    {result.ok ? <CheckCircle2 className="inline h-3.5 w-3.5 mr-1" /> : null}
-                    {result.msg}
+                    <div className="flex items-start gap-1.5">
+                      {result.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> : null}
+                      <span>{result.msg}</span>
+                    </div>
+                    {result.ok && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <Link
+                          href="/dashboard/agent"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-green-700 dark:bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 transition-opacity"
+                        >
+                          <BarChart3 className="h-3.5 w-3.5" />
+                          View Agent Dashboard
+                        </Link>
+                        <a
+                          href="https://wa.me/254113226240?text=Hi%20Betcheza%2C%20I%20just%20submitted%20my%20agent%20application!"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-current px-3 py-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          WhatsApp us
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
 

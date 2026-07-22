@@ -254,6 +254,30 @@ export async function register() {
       await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`).catch(() => {});
       await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS is_verified TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
 
+      // ── career_applications: applications from the /careers page ──────────
+      await query(`
+        CREATE TABLE IF NOT EXISTS career_applications (
+          id           INT(11) NOT NULL AUTO_INCREMENT,
+          name         VARCHAR(200) NOT NULL,
+          phone        VARCHAR(30)  NOT NULL,
+          email        VARCHAR(200) DEFAULT NULL,
+          role         VARCHAR(100) NOT NULL,
+          location     VARCHAR(200) DEFAULT NULL,
+          network      VARCHAR(500) DEFAULT NULL,
+          message      TEXT         DEFAULT NULL,
+          status       ENUM('pending','approved','rejected','contacted') NOT NULL DEFAULT 'pending',
+          notes        TEXT         DEFAULT NULL COMMENT 'Internal admin notes',
+          reviewed_by  INT          DEFAULT NULL,
+          reviewed_at  DATETIME     DEFAULT NULL,
+          created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_ca_status (status),
+          KEY idx_ca_created (created_at),
+          KEY idx_ca_role (role(30))
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+          COMMENT='Agent/career applications from /careers page'
+      `).catch(() => {});
+
       // ── Backfill: ensure every user with role='tipster' has a profile row ──
       // This auto-fixes any user that was approved while the INSERT was broken
       // (missing columns caused a silent failure). Safe to run every restart.

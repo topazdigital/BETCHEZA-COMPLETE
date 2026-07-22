@@ -544,6 +544,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
                     <Link href="/dashboard/referral">Refer &amp; Earn</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
+                    <Link href="/dashboard/agent">Agent Dashboard</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link href="/settings">
                       <Settings className="mr-2 h-4 w-4" />
                       Settings
