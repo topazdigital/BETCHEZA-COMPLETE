@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
-import { getAllMatches } from '@/lib/api/unified-sports-api';
+import { getAllMatches, deriveSoccerMarkets } from '@/lib/api/unified-sports-api';
+import type { Market } from '@/lib/api/unified-sports-api';
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/api-keys';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '../predictions/route';
@@ -175,71 +176,64 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Helper: format a single Market into a compact string for the AI prompt
+    function formatMarket(mk: Market): string {
+      const outcomes = mk.outcomes
+        .map(o => `${o.name}=${o.price}`)
+        .join(' ');
+      return `[${mk.name}: ${outcomes}]`;
+    }
+
     const matchList = extendedPool
       .map((m) => {
-        // 1X2 odds with implied probability
+        const isSoccer = m.sport.slug === 'soccer' || m.sport.slug === 'football';
         let oddsStr = '';
-        const mkParts: string[] = [];
+
+        // ── Step 1: 1X2 base odds ────────────────────────────────────────────
         if (m.odds) {
           const { home, draw, away } = m.odds;
           const implH = home > 0 ? Math.round(100 / home) : 0;
-          const implD = draw > 0 ? Math.round(100 / draw) : 0;
+          const implD = draw && draw > 0 ? Math.round(100 / draw) : 0;
           const implA = away > 0 ? Math.round(100 / away) : 0;
-          oddsStr = ` | 1X2: H=${home}(${implH}%) D=${draw}(${implD}%) A=${away}(${implA}%)`;
+          const drawPart = draw ? ` D=${draw}(${implD}%)` : '';
+          oddsStr = ` | 1X2: H=${home}(${implH}%)${drawPart} A=${away}(${implA}%)`;
+        }
 
-          // Pre-calculate alternative markets from 1X2 so the AI always has
-          // non-home-win options even when no external market data is available.
-          if (home > 1 && draw > 1 && away > 1) {
-            // Double Chance — approximated from 1X2 implied probabilities
-            const pH = 1 / home, pD = 1 / draw, pA = 1 / away;
-            const dc1X = parseFloat((1 / (pH + pD)).toFixed(2));
-            const dcX2 = parseFloat((1 / (pD + pA)).toFixed(2));
-            const dc12 = parseFloat((1 / (pH + pA)).toFixed(2));
-            mkParts.push(`DC: 1X=${dc1X} X2=${dcX2} 12=${dc12}`);
-            // Draw No Bet — removes draw from 1X2
-            const dnbH = parseFloat((1 / (pH / (pH + pA))).toFixed(2));
-            const dnbA = parseFloat((1 / (pA / (pH + pA))).toFixed(2));
-            mkParts.push(`DNB: H=${dnbH} A=${dnbA}`);
+        // ── Step 2: Build the full market list ───────────────────────────────
+        // Start with Poisson-derived markets for soccer (20+ markets from just 1X2)
+        let allMarkets: Market[] = [];
+        if (isSoccer && m.odds) {
+          const { home, draw, away } = m.odds;
+          if (home > 1 && away > 1) {
+            allMarkets = deriveSoccerMarkets(
+              home,
+              draw ?? 3.5,   // fallback draw odds for two-outcome sports
+              away,
+              m.homeTeam.name,
+              m.awayTeam.name,
+            );
           }
         }
-        // Supplement with bookmaker-sourced market data when available
+
+        // ── Step 3: Merge/override with real bookmaker markets ───────────────
+        // Real odds take priority over Poisson estimates for matching keys
         if (m.markets?.length) {
-          const find = (key: string) => m.markets!.find(mk => mk.key === key);
-          const btts = find('btts');
-          if (btts) {
-            const y = btts.outcomes.find(o => o.name === 'Yes');
-            const n = btts.outcomes.find(o => o.name === 'No');
-            if (y && n) mkParts.push(`BTTS Yes=${y.price} No=${n.price}`);
-          }
-          const ou25 = find('totals_2_5');
-          if (ou25) {
-            const ov = ou25.outcomes.find(o => (o.name as string).startsWith('Over'));
-            const un = ou25.outcomes.find(o => (o.name as string).startsWith('Under'));
-            if (ov && un) mkParts.push(`O/U2.5: Ov=${ov.price} Un=${un.price}`);
-          }
-          const ou15 = find('totals_1_5');
-          if (ou15) {
-            const ov = ou15.outcomes.find(o => (o.name as string).startsWith('Over'));
-            if (ov) mkParts.push(`O1.5=${ov.price}`);
-          }
-          // Only add DC/DNB from bookmaker if not already calculated from 1X2
-          if (!mkParts.some(p => p.startsWith('DC:'))) {
-            const dc = find('double_chance');
-            if (dc) {
-              const oneX = dc.outcomes.find(o => o.name === '1X');
-              const x2  = dc.outcomes.find(o => o.name === 'X2');
-              const both = dc.outcomes.find(o => o.name === '12');
-              if (oneX && x2) mkParts.push(`DC: 1X=${oneX.price} X2=${x2.price}${both ? ` 12=${both.price}` : ''}`);
-            }
-          }
-          if (!mkParts.some(p => p.startsWith('DNB:'))) {
-            const dnb = find('draw_no_bet');
-            if (dnb && dnb.outcomes.length >= 2) {
-              mkParts.push(`DNB: H=${dnb.outcomes[0].price} A=${dnb.outcomes[1].price}`);
+          for (const bkMk of m.markets) {
+            const existingIdx = allMarkets.findIndex(dm => dm.key === bkMk.key);
+            if (existingIdx >= 0) {
+              // Real bookmaker data overrides derived estimate
+              allMarkets[existingIdx] = bkMk;
+            } else {
+              allMarkets.push(bkMk);
             }
           }
         }
-        const marketsStr = mkParts.length ? ` | ${mkParts.join(' | ')}` : '';
+
+        // ── Step 4: Format all markets for the AI ───────────────────────────
+        const marketsStr = allMarkets.length
+          ? '\n  Markets: ' + allMarkets.map(formatMarket).join(' ')
+          : '';
+
         return `- ${m.homeTeam.name} vs ${m.awayTeam.name} | League: ${m.league.name} | Kickoff: ${new Date(m.kickoffTime).toUTCString()}${oddsStr}${marketsStr}`;
       })
       .join('\n');
@@ -402,7 +396,13 @@ OUTPUT — Return ONLY valid JSON. No markdown. No text outside the JSON array.
       // Non-AI fallback: pick first 2 real matches from the pool using rules-based selection.
       // extendedPool is guaranteed non-empty (we returned 404 above if it was empty).
       picks = extendedPool.slice(0, 2).map((m, i) => ({
-        ...fallbackPick(m),
+        ...fallbackPick({
+          homeTeam: { name: m.homeTeam.name },
+          awayTeam: { name: m.awayTeam.name },
+          league: { name: m.league.name },
+          kickoffTime: new Date(m.kickoffTime),
+          odds: m.odds ? { home: m.odds.home, draw: m.odds.draw ?? 3.5, away: m.odds.away } : null,
+        }),
         id: `${weekId}-d${targetDay}-${i}`,
       }));
     }
