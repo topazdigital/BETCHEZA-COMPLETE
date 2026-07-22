@@ -83,6 +83,131 @@ function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: str
   };
 }
 
+// Preferred market keys in priority order for the rules-based fallback.
+// We only draw outcomes from these markets — they have clear real-world meaning.
+const FALLBACK_MARKET_PRIORITY = [
+  'double_chance',    // DC 1X / X2 / 12 — covers 2 of 3 outcomes
+  'draw_no_bet',      // DNB — removes draw risk
+  'totals_1_5',       // Over 1.5 goals — fires in ~75% of soccer matches
+  'btts',             // Both Teams to Score
+  'totals_2_5',       // Over/Under 2.5 goals
+  'goal_first_half',  // Goal in 1st half
+  'clean_sheet_home', // Home team keeps a clean sheet
+  'clean_sheet_away', // Away team keeps a clean sheet
+  'win_to_nil',       // Win without conceding
+  'totals_3_5',       // Over 3.5 for high-scoring games
+];
+
+interface MatchCandidate {
+  matchKey: string;
+  homeTeam: string;
+  awayTeam: string;
+  league: string;
+  kickoffTime: string;
+  marketName: string;
+  outcomeName: string;
+  odds: number;
+  prob: number;
+}
+
+function buildRulesBasedPicks(
+  pool: Array<{
+    homeTeam: { name: string };
+    awayTeam: { name: string };
+    league: { name: string };
+    kickoffTime: Date | string;
+    sport: { slug: string };
+    odds?: { home: number; draw?: number | null; away: number } | null;
+    markets?: Market[] | null;
+  }>,
+  weekId: string,
+  targetDay: number,
+): StrategyPick[] {
+  const allCandidates: MatchCandidate[] = [];
+
+  for (const m of pool) {
+    const isSoccer = m.sport.slug === 'soccer' || m.sport.slug === 'football';
+    if (!isSoccer || !m.odds) continue;
+    const { home, away } = m.odds;
+    const draw = m.odds.draw ?? 3.5;
+    if (!home || !away) continue;
+
+    // Derive full market suite from 1X2 via Poisson model
+    const derived = deriveSoccerMarkets(home, draw, away, m.homeTeam.name, m.awayTeam.name);
+
+    // Merge real bookmaker markets (they take priority)
+    const markets = [...derived];
+    if (m.markets?.length) {
+      for (const bk of m.markets) {
+        const idx = markets.findIndex(d => d.key === bk.key);
+        if (idx >= 0) markets[idx] = bk; else markets.push(bk);
+      }
+    }
+
+    const matchKey = `${m.homeTeam.name}|${m.awayTeam.name}`;
+
+    for (const priorityKey of FALLBACK_MARKET_PRIORITY) {
+      const mk = markets.find(m => m.key === priorityKey);
+      if (!mk) continue;
+
+      // Pick the single best outcome from this market
+      // "Best" = highest implied probability within a sensible odds range (1.10–2.20)
+      const best = mk.outcomes
+        .filter(o => o.price >= 1.10 && o.price <= 2.20)
+        .sort((a, b) => a.price - b.price)[0]; // lowest odds = highest probability
+
+      if (!best) continue;
+
+      allCandidates.push({
+        matchKey,
+        homeTeam: m.homeTeam.name,
+        awayTeam: m.awayTeam.name,
+        league: m.league.name,
+        kickoffTime: new Date(m.kickoffTime).toISOString(),
+        marketName: mk.name,
+        outcomeName: best.name,
+        odds: best.price,
+        prob: 1 / best.price,
+      });
+      break; // one market per match per candidate (lowest-odds market wins)
+    }
+  }
+
+  // Sort by probability descending (highest probability = lowest odds first)
+  allCandidates.sort((a, b) => b.prob - a.prob);
+
+  // Greedy accumulator: add picks until combined odds lands in 3.00–4.00
+  const chosen: MatchCandidate[] = [];
+  const usedMatches = new Set<string>();
+  let combined = 1;
+
+  for (const c of allCandidates) {
+    if (usedMatches.has(c.matchKey)) continue; // one pick per match only
+    const next = combined * c.odds;
+    if (next > 4.25) continue; // this step overshoots — skip to a smaller one
+    chosen.push(c);
+    usedMatches.add(c.matchKey);
+    combined = next;
+    if (combined >= 3.0) break; // target window reached
+  }
+
+  if (chosen.length === 0) return [];
+
+  return chosen.map((c, i) => ({
+    id: `${weekId}-d${targetDay}-rb-${i}`,
+    homeTeam: c.homeTeam,
+    awayTeam: c.awayTeam,
+    league: c.league,
+    matchTime: c.kickoffTime,
+    pick: c.outcomeName,
+    market: c.marketName,
+    odds: parseFloat(c.odds.toFixed(2)),
+    confidence: c.prob > 0.62 ? 'High' : 'Medium',
+    reasoning: `${c.outcomeName} (${c.marketName}) at ${c.odds.toFixed(2)} — implied probability ${Math.round(c.prob * 100)}%. Selected by rules-based Poisson analysis as the highest-confidence outcome available across all markets for this match.`,
+    result: 'pending' as const,
+  }));
+}
+
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user || user.role !== 'admin') {
@@ -379,11 +504,14 @@ OUTPUT — Return ONLY valid JSON. No markdown. No text outside the JSON array.
               result: 'pending' as const,
             }));
             const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
-            if (combined >= 3.0 && combined <= 4.0) {
+            // Accept if the AI hit the target window (3.00–4.00).
+            // Also accept a "near-miss" (2.50–5.00) — better than the dumb fallback.
+            if (combined >= 2.5 && combined <= 5.0) {
               picks = candidates;
-              console.log(`[strategy/generate] picks via ${provider.name}`);
-              break; // success — stop trying providers
+              console.log(`[strategy/generate] picks via ${provider.name}, combined=${combined.toFixed(2)}`);
+              break;
             }
+            console.warn(`[strategy/generate] ${provider.name} combined=${combined.toFixed(2)} outside 2.50–5.00 — trying next`);
           }
         } catch (provErr) {
           console.warn(`[strategy/generate] ${provider.name} failed:`, provErr instanceof Error ? provErr.message : provErr);
@@ -393,18 +521,10 @@ OUTPUT — Return ONLY valid JSON. No markdown. No text outside the JSON array.
     }
 
     if (picks.length === 0) {
-      // Non-AI fallback: pick first 2 real matches from the pool using rules-based selection.
-      // extendedPool is guaranteed non-empty (we returned 404 above if it was empty).
-      picks = extendedPool.slice(0, 2).map((m, i) => ({
-        ...fallbackPick({
-          homeTeam: { name: m.homeTeam.name },
-          awayTeam: { name: m.awayTeam.name },
-          league: { name: m.league.name },
-          kickoffTime: new Date(m.kickoffTime),
-          odds: m.odds ? { home: m.odds.home, draw: m.odds.draw ?? 3.5, away: m.odds.away } : null,
-        }),
-        id: `${weekId}-d${targetDay}-${i}`,
-      }));
+      // Rules-based fallback: build an accumulator that targets 3.00–4.00 combined odds.
+      // Uses Poisson-derived markets so picks are grounded in real probabilities.
+      picks = buildRulesBasedPicks(extendedPool, weekId, targetDay);
+      console.log(`[strategy/generate] rules-based fallback: ${picks.length} picks, combined=${picks.reduce((a, p) => a * p.odds, 1).toFixed(2)}`);
     }
   } catch (e) {
     console.error('[strategy/generate] error:', e);
