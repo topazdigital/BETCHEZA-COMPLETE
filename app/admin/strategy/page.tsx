@@ -317,6 +317,17 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
             <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">{msg}</div>
           )}
 
+          {/* Pending approval banner */}
+          {day.picks.length > 0 && !isApproved && day.status === 'active' && mode === 'view' && (
+            <div className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 flex items-start gap-2">
+              <span className="text-amber-600 text-base leading-none mt-0.5">⚠️</span>
+              <div>
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Awaiting your approval — picks are hidden from subscribers</p>
+                <p className="text-[11px] text-amber-600/80 dark:text-amber-500/80 mt-0.5">Review the picks below, then click <strong>Approve &amp; Send to Users</strong> when you&apos;re happy with them.</p>
+              </div>
+            </div>
+          )}
+
           {/* Action buttons */}
           {mode === 'view' && (
             <div className="flex flex-wrap gap-2">

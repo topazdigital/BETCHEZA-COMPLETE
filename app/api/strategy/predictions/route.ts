@@ -715,7 +715,9 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
     });
 
     // Auto-generate today's picks if today is active but has no picks (or only
-    // placeholder picks from an early cron run) AND not manually posted
+    // placeholder picks from an early cron run) AND not manually posted.
+    // Picks are saved with is_approved = 0 — they are NOT shown on the frontend
+    // until an admin explicitly approves them via the admin panel.
     const todayIdx = merged.findIndex((d) => d.date === todayStr);
     if (todayIdx >= 0 && !merged[todayIdx].isManual &&
         (merged[todayIdx].picks.length === 0 || isPlaceholderPicks(merged[todayIdx].picks))) {
@@ -725,12 +727,12 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
         merged[todayIdx].picks = autoPicks;
         merged[todayIdx].combinedOdds = parseFloat(combined.toFixed(2));
         merged[todayIdx].status = 'active';
-        // Persist to DB
-        // Only overwrite picks if the DB row is currently empty/placeholder —
-        // never clobber real picks that were set by a previous cron or manual post.
+        merged[todayIdx].isApproved = false;
+        // Persist to DB with is_approved = 0 — admin must approve before these
+        // picks are visible to subscribers on the frontend.
         await execute(
-          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, posted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), NOW())
+          `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, is_approved, generated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, 0, NOW())
            ON DUPLICATE KEY UPDATE
              picks         = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(picks), picks),
              combined_odds = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(combined_odds), combined_odds),
@@ -749,7 +751,8 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
   // File store fallback
   const stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
   if (stored && stored.weekId === weekId) {
-    // Auto-generate for today if empty or only has placeholder picks
+    // Auto-generate for today if empty or only has placeholder picks.
+    // isApproved stays false — admin must approve before frontend shows picks.
     const todayIdx = stored.days.findIndex((d) => d.date === todayStr);
     if (todayIdx >= 0 && (stored.days[todayIdx].picks.length === 0 || isPlaceholderPicks(stored.days[todayIdx].picks))) {
       try {
@@ -758,13 +761,16 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
         stored.days[todayIdx].picks = autoPicks;
         stored.days[todayIdx].combinedOdds = parseFloat(combined.toFixed(2));
         stored.days[todayIdx].status = 'active';
+        stored.days[todayIdx].isApproved = false;
         fileStoreSet(`strategy-week-${weekId}`, stored);
       } catch { /* non-fatal */ }
     }
     return stored;
   }
 
-  // Build empty week and auto-generate today
+  // Build empty week and auto-generate today.
+  // Picks are saved with is_approved = 0 — admin must approve before they
+  // appear on the frontend.
   const empty = buildEmptyWeek(weekId);
   const todayIdx = empty.days.findIndex((d) => d.date === todayStr);
   if (todayIdx >= 0) {
@@ -774,11 +780,12 @@ async function loadCurrentWeek(): Promise<WeeklyStrategy> {
       empty.days[todayIdx].picks = autoPicks;
       empty.days[todayIdx].combinedOdds = parseFloat(combined.toFixed(2));
       empty.days[todayIdx].status = 'active';
-      // Persist to DB
+      empty.days[todayIdx].isApproved = false;
+      // Persist to DB with is_approved = 0
       await ensureTableExists();
       await execute(
-        `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())
+        `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_approved, generated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW())
          ON DUPLICATE KEY UPDATE
            picks         = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(picks), picks),
            combined_odds = IF(picks IS NULL OR picks = '' OR picks = '[]', VALUES(combined_odds), combined_odds),
@@ -1213,9 +1220,9 @@ export async function GET() {
     current.days = await overlayLiveScores(current.days);
     const past = await loadPastWeeks();
 
-    // Admin approval gate: hide unapproved today's picks from non-admin users.
-    // If the earliest match kickoff is ≤60 minutes away and picks exist,
-    // auto-approve as a fallback so users are never left without picks.
+    // Admin approval gate: hide unapproved picks from non-admin users.
+    // Picks are ONLY shown on the frontend after an admin explicitly clicks
+    // "Approve & Send to Users" in the admin panel. There is no auto-approve.
     const user = await getCurrentUser().catch(() => null);
     const isAdmin = user?.role === 'admin';
     if (!isAdmin) {
@@ -1223,23 +1230,7 @@ export async function GET() {
       current.days = current.days.map(day => {
         if (day.date !== todayStr) return day;
         if (day.isApproved) return day;
-        if (day.picks.length === 0) return day;
-        // Check auto-approve deadline: if first match ≤60 min away, auto-approve
-        const now = Date.now();
-        const firstMatchMs = day.picks.reduce((min, p) => {
-          const t = p.matchTime ? new Date(p.matchTime).getTime() : Infinity;
-          return t < min ? t : min;
-        }, Infinity);
-        const minsUntil = isFinite(firstMatchMs) ? (firstMatchMs - now) / 60000 : Infinity;
-        if (minsUntil <= 60) {
-          // Auto-approve: admin missed the window — release picks to users
-          execute(
-            `UPDATE daily_strategy SET is_approved = 1, approved_at = NOW() WHERE date = ? AND is_approved = 0`,
-            [todayStr]
-          ).catch(() => undefined);
-          return { ...day, isApproved: true };
-        }
-        // Still awaiting admin review — hide picks
+        // Picks not yet approved — hide them entirely from the frontend
         return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
       });
     }

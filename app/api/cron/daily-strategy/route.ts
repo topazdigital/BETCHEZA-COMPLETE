@@ -5,9 +5,6 @@ import { query, execute } from '@/lib/db';
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/api-keys';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '@/app/api/strategy/predictions/route';
-import type { AccessRecord } from '@/app/api/strategy/access/route';
-import { sendMail } from '@/lib/mailer';
-import { strategyPicksEmail } from '@/lib/email-templates';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -323,6 +320,8 @@ async function ensureTable(): Promise<void> {
         result enum('win','loss') DEFAULT NULL,
         actual_return decimal(12,2) DEFAULT NULL,
         picks longtext DEFAULT NULL,
+        is_approved tinyint(1) NOT NULL DEFAULT 0,
+        approved_at datetime DEFAULT NULL,
         generated_at timestamp NULL DEFAULT NULL,
         posted_at timestamp NULL DEFAULT NULL,
         settled_at timestamp NULL DEFAULT NULL,
@@ -334,6 +333,9 @@ async function ensureTable(): Promise<void> {
         KEY idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    // Add columns if table already existed without them
+    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS is_approved tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
+    await query(`ALTER TABLE daily_strategy ADD COLUMN IF NOT EXISTS approved_at datetime DEFAULT NULL`).catch(() => {});
   } catch { }
 }
 
@@ -425,65 +427,66 @@ async function generatePicksForDate(
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
 
-      const prompt = `You are the head football analyst at Betcheza — Kenya's #1 tipster platform. Paying subscribers trust this "3 Daily Sure Odds" strategy completely. Getting the picks wrong damages trust, costs people money, and harms the brand. Be extremely careful and accurate.
+      const prompt = `You are a sharp football betting analyst for Betcheza Daily Strategy, a real-money service in Kenya. Paying subscribers trust this "3 Daily Sure Odds" strategy completely. Getting picks wrong damages trust and costs people money — be accurate and precise.
 
 Date: ${dateDisplay} — Day ${dayNumber} of 7 | Stake: KES ${dayPlan.stake.toLocaleString()} → Target: KES ${dayPlan.targetWin.toLocaleString()}
 
-═══════════════════════════════════════════
-OBJECTIVE
-═══════════════════════════════════════════
-Select EXACTLY 2–3 football picks whose combined accumulator odds multiply to between 2.90 and 4.20. Fewer picks = fewer chances to fail. Only add a 3rd pick if it genuinely improves safety — never add legs just to inflate odds.
+━━━ THE CONSTRAINT ━━━
+Select 2–3 picks. Combined accumulator odds (multiply all picks) MUST land between 2.90 and 4.20.
+• 2 picks: 1.70 × 2.00 = 3.40 ✓
+• 3 picks: 1.50 × 1.45 × 1.40 = 3.05 ✓
+• Too high: 2 picks × 2.20 × 2.00 = 4.40 ✗
+Recalculate before finalising.
 
-═══════════════════════════════════════════
-STRICT RULES — MUST FOLLOW
-═══════════════════════════════════════════
+━━━ MINIMUM ODDS PER PICK ━━━
+Each pick must have odds of at least 1.40. Do NOT pick anything at 1.10–1.30 — these rarely justify the risk and destroy the slip on a single upset.
+
+━━━ HOW TO CHOOSE THE RIGHT MARKET ━━━
+Do NOT default to Double Chance for every pick. Choose the market that best fits the MATCH CONTEXT:
+
+- Strong favourite (odds ≤ 1.60) against a much weaker opponent → Home Win or Away Win (1X2) is fine
+- Evenly matched teams (odds close, e.g. 1.80 vs 2.00) → Double Chance protects against the uncertain outcome
+- Both teams score freely → BTTS Yes or Over 2.5 Goals
+- Defensive match with tight teams → Under 2.5 Goals or Draw
+- Dominant home side vs weak away attack → Win to Nil or Draw No Bet
+- Away team on outstanding form → Away Win is valid even at 2.00–2.50
+
+Double Chance is ONE option, not the default. Use it only when a match genuinely has an uncertain result that needs cover.
+
+━━━ STRICT RULES ━━━
 1. ONLY use matches from the list below. Never invent matches or teams.
-2. ONLY use the bookmaker odds shown (Home=/Draw=/Away=). If no odds are shown, DO NOT include that match.
-3. PREFER top-tier leagues (5-star ★★★★★ and 4-star ★★★★ ratings). Avoid 2-star leagues unless no better option exists.
-4. NEVER pick an outright winner unless their odds are ≤ 1.50. Otherwise MUST use Double Chance.
-5. ALWAYS use Double Chance (1X or X2) instead of straight win unless odds ≤ 1.50 — it covers two of three outcomes and is the single biggest safety lever available.
-6. AVOID coin-flip matches where home and away odds are within 0.30 of each other (balanced match, too risky).
-7. Combined odds MUST land in [2.90 – 4.20]. Recalculate before finalising.
-8. KICK-OFF TIME: Picks can come from ANY time of day — midnight games, 10pm games, early morning, and afternoon matches are all equally acceptable as long as they fall on the correct date in EAT. Do NOT filter or deprioritise matches based on kick-off hour. Focus entirely on odds quality and league tier.
-9. Confidence must be "High" (odds ≤ 1.45), "Medium" (1.46–1.75), or "Low" (1.76+).
-10. The "reasoning" field MUST include: (a) why this team is favoured, (b) what the odds tell you, (c) which market you chose and why.
+2. ONLY use odds shown (Home=/Draw=/Away=). If no odds are shown, skip that match.
+3. PREFER top-tier leagues (★★★★★ and ★★★★). Avoid ★★ leagues unless no better option exists.
+4. AVOID pure coin-flip matches where home and away odds are within 0.20 of each other.
+5. Picks can come from ANY time of day as long as they fall on ${dateDisplay} in East Africa Time.
+6. Confidence: "High" (odds ≤ 1.45), "Medium" (1.46–1.75), "Low" (1.76+).
 
-═══════════════════════════════════════════
-DEEP ANALYSIS CHECKLIST (for each pick)
-═══════════════════════════════════════════
-Consider and mention in reasoning where relevant:
-• Home vs away record (home advantage is real in football)
-• Recent form — are they on a winning streak or struggling?
-• Head-to-head pattern — who dominates historically?
-• Bookmaker implied probability — does the price reflect the true risk?
-• League position / stakes — is this a must-win? End of season pressure?
-• Squad strength — is this a top-tier team vs a weaker opponent?
-• Market selection — why Double Chance over 1X2? Why this side and not the other?
+━━━ FOR EACH PICK, REASON ABOUT ━━━
+• Is one team clearly stronger, or is this a 50/50?
+• What does the home/away record tell you?
+• What market fits this specific game — result, goals, or both teams scoring?
+• Why is this pick value vs the bookmaker price?
 
-═══════════════════════════════════════════
-AVAILABLE MATCHES
-═══════════════════════════════════════════
+━━━ AVAILABLE MATCHES ━━━
 ${matchList}
 
-═══════════════════════════════════════════
-OUTPUT FORMAT
-═══════════════════════════════════════════
-Return ONLY a valid JSON array. No markdown, no commentary, just the JSON:
+━━━ OUTPUT FORMAT ━━━
+Return ONLY a valid JSON array. No markdown, no commentary:
 [
   {
-    "homeTeam": "...",
-    "awayTeam": "...",
-    "league": "...",
+    "homeTeam": "exact name from list",
+    "awayTeam": "exact name from list",
+    "league": "league name",
     "matchTime": "ISO-8601 string",
-    "pick": "Team Name or Draw",
-    "market": "Double Chance",
-    "odds": 1.45,
-    "confidence": "High",
-    "reasoning": "Detailed 2-3 sentence analysis covering form, odds value, and market choice..."
+    "pick": "specific outcome e.g. Away Win | Over 2.5 Goals | BTTS Yes | Home or Draw",
+    "market": "1X2 | Double Chance | Over/Under | BTTS | Draw No Bet | Win to Nil",
+    "odds": 1.75,
+    "confidence": "High | Medium | Low",
+    "reasoning": "2–3 sentences: what the match context tells you and why this specific outcome and market makes sense."
   }
 ]
 
-Double-check: multiply all odds together. Result MUST be between 2.90 and 4.20.`;
+Final check: multiply all odds. Result MUST be between 2.90 and 4.20.`;
 
       let raw = '';
       for (const provider of providers) {
@@ -615,13 +618,13 @@ export async function GET(req: NextRequest) {
 
     if (existing.rows.length > 0) {
       await execute(
-        `UPDATE daily_strategy SET picks = ?, combined_odds = ?, generated_at = NOW(), posted_at = NOW(), status = 'active' WHERE date = ?`,
+        `UPDATE daily_strategy SET picks = ?, combined_odds = ?, generated_at = NOW(), status = 'active', is_approved = 0, approved_at = NULL WHERE date = ?`,
         [JSON.stringify(picks), parseFloat(combinedOdds.toFixed(2)), todayStr]
       );
     } else {
       await execute(
-        `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, generated_at, posted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NOW(), NOW())`,
+        `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_approved, generated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW())`,
         [todayStr, weekId, dayNumber, plan.stake, plan.save, plan.targetWin, parseFloat(combinedOdds.toFixed(2)), JSON.stringify(picks)]
       );
     }
@@ -637,42 +640,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Email all active strategy subscribers (non-blocking)
-    setImmediate(async () => {
-      try {
-        const accessRecords = fileStoreGet<AccessRecord[]>('strategy-access', []);
-        const now = Date.now();
-        const activeUserIds = accessRecords
-          .filter(r => new Date(r.expiresAt).getTime() > now)
-          .map(r => r.userId);
-        if (activeUserIds.length === 0) return;
-        const placeholders = activeUserIds.map(() => '?').join(',');
-        const usersRes = await query<{ id: number; email: string; username: string; display_name: string | null }>(
-          `SELECT u.id, u.email, u.username, COALESCE(up.display_name, u.username) AS display_name
-           FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
-           WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
-          activeUserIds
-        );
-        for (const u of usersRes.rows) {
-          try {
-            const tpl = strategyPicksEmail({
-              subscriberName: u.display_name || u.username,
-              day: dayNumber,
-              date: todayStr,
-              stake: plan.stake,
-              targetWin: plan.targetWin,
-              picks,
-              combinedOdds: parseFloat(combinedOdds.toFixed(2)),
-            });
-            await sendMail({ to: u.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
-          } catch { /* skip one failed recipient */ }
-        }
-      } catch (e) {
-        console.error('[daily-strategy] picks email blast failed:', e);
-      }
-    });
+    // Picks are saved but NOT sent — admin must approve via the admin panel
+    // before subscribers receive their daily email.
+    console.log(`[daily-strategy] Picks ready for admin approval (date=${todayStr}, picks=${picks.length}, combined=${combinedOdds.toFixed(2)})`);
 
-    return NextResponse.json({ success: true, date: todayStr, picks, combinedOdds: parseFloat(combinedOdds.toFixed(2)) });
+    return NextResponse.json({ success: true, date: todayStr, picks, combinedOdds: parseFloat(combinedOdds.toFixed(2)), pendingApproval: true });
   } catch (e: unknown) {
     const err = e as { message?: string };
     console.error('[daily-strategy] cron error:', err?.message ?? e);
