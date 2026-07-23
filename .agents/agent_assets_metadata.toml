@@ -6,3 +6,9 @@ id = "DbvLNsnwoBJM3fecpdqJI"
 uri = "file://attached_assets/linebet-reply.html"
 type = "unspecified"
 title = "Linebet Reply Email (HTML)"
+
+[[outputs]]
+id = "W0077nHWeJXhu0uPTCaM4"
+uri = "file://attached_assets/linebet-reply2.html"
+type = "unspecified"
+title = "Linebet Reply 2 (HTML)"
