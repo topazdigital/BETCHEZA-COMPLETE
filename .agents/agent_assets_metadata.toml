@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "DbvLNsnwoBJM3fecpdqJI"
+uri = "file://attached_assets/linebet-reply.html"
+type = "unspecified"
+title = "Linebet Reply Email (HTML)"
