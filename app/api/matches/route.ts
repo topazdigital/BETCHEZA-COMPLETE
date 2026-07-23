@@ -323,9 +323,11 @@ async function getProcessedMatches(): Promise<RouteCacheEntry> {
     let matches = apiMatches.map(convertToMatchData);
     matches = matches.filter(m => !isStaleLive(m));
     // Filter out matches whose league name is a raw ESPN fallback like
-    // "League 23286" or "World League 3321" — these have no useful identity
-    // and confuse users. Only real named leagues should appear.
-    matches = matches.filter(m => !/^(World\s+)?League\s+\d+$/i.test(m.league.name));
+    // "League 23286", "World League 3321", or "Unknown League".
+    // resolveGlobalLeagueInfo now prevents these from forming, but this guard
+    // is a belt-and-suspenders last line of defence at the API boundary.
+    matches = matches.filter(m => !/^(World\s+)?League\s+\d+$/i.test(m.league.name)
+      && !/^Unknown\s+League$/i.test(m.league.name));
 
     // Server-side time-based status inference for stale 'scheduled' matches.
     // We use a generous buffer (durationMs × 1.5) beyond the normal match length

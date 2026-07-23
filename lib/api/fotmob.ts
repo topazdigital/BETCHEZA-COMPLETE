@@ -97,7 +97,7 @@ function mapEvent(m: FMMatch, league: FMLeagueGroup): UnifiedMatch | null {
   const country = COUNTRY_NAMES[ccode] || league.ccode || 'International';
   // Internal league id range: 8000-8999 for FotMob.
   const leagueIdInternal = league.primaryId ? 8000 + (league.primaryId % 1000) : 8999;
-  const leagueName = league.name || 'Unknown League';
+  const leagueName = league.name || `${country} League`;
   return {
     id: `fm_${m.id ?? `${m.home.name}-${m.away.name}-${parseKickoff(m).getTime()}`}`,
     externalId: m.id ? String(m.id) : undefined,

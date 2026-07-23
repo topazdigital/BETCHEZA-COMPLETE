@@ -263,7 +263,7 @@ function mapEvent(e: SSEvent, sport: SportConfig): UnifiedMatch | null {
   const category    = unique?.category;
   const country     = category?.name || 'International';
   const countryCode = (category?.alpha2 || 'INT').toUpperCase().slice(0, 2);
-  const leagueName  = unique?.name || tournament?.name || 'Unknown League';
+  const leagueName  = unique?.name || tournament?.name || `${country} League`;
   const leagueId    = leagueIdFromSSId(unique?.id ?? tournament?.id ?? 0);
 
   const kickoff   = new Date(e.startTimestamp * 1000);

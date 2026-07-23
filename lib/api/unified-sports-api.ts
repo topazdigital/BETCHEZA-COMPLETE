@@ -2106,18 +2106,23 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     const annotatedCricketLeagueName = (event as unknown as { _cricketLeagueName?: string })._cricketLeagueName;
     const fallbackLeagueName = eventName
       ? (groupingName ? `${eventName} — ${groupingName}` : eventName)
-      : (annotatedCricketLeagueName || 'Unknown League');
+      : (annotatedCricketLeagueName || null);
     const resolvedLeagueInfo = leagueInfoMap.get(espnLeagueId);
-    // If the resolved name is a generic placeholder (e.g. "League 851") AND
+    // If the resolved name is a generic placeholder (e.g. "League 851", "Unknown League") AND
     // we have a better name from the event/grouping metadata, prefer that.
-    const isGenericName = !resolvedLeagueInfo || /^League \d+$/.test(resolvedLeagueInfo.name);
+    // NOTE: resolveGlobalLeagueInfo now always returns "International Competition" or a
+    // country-derived name as its last resort, so "League \d+" should no longer appear —
+    // but we keep this guard in case ESPN returns an unexpected raw-ID name.
+    const isGenericName = !resolvedLeagueInfo
+      || /^(League\s+\d+|Unknown\s+League)$/i.test(resolvedLeagueInfo.name);
     const friendlyOverrideGlobal = detectFriendlyOverride(event, competition as unknown as { notes?: Array<{ type?: string; headline?: string }>; season?: { slug?: string }; type?: { abbreviation?: string } });
     const leagueInfo = friendlyOverrideGlobal
       ? { name: friendlyOverrideGlobal.name, slug: friendlyOverrideGlobal.slug, country: friendlyOverrideGlobal.country, countryCode: friendlyOverrideGlobal.countryCode }
       : (!isGenericName && resolvedLeagueInfo)
       ? resolvedLeagueInfo
       : (() => {
-          const fbName = fallbackLeagueName !== 'Unknown League' ? fallbackLeagueName : (resolvedLeagueInfo?.name || 'Unknown League');
+          // Prefer event-derived name, then resolved league name, never a raw ID or "Unknown".
+          const fbName = fallbackLeagueName || resolvedLeagueInfo?.name || 'International Competition';
           const fbLoc = inferContinentalCountry(fbName) ?? countryFromSlugPrefix(
             (competition?.competitors?.[0]?.team as { slug?: string } | undefined)?.slug
           );

@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
 
     const results = matches
       .map(m => {
-        const leagueName = typeof m.league === 'string' ? m.league : (m.league as { name?: string })?.name || 'Unknown League';
+        const leagueName = typeof m.league === 'string' ? m.league : (m.league as { name?: string })?.name || 'International Competition';
         const sportObj = typeof m.sport === 'object' ? m.sport as { name?: string; slug?: string } : null;
         const sportSlug = sportObj?.slug || String(m.sport || 'football').toLowerCase();
         const sportName = sportObj?.name || 'Football';

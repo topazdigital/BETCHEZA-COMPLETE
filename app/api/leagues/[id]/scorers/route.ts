@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({
       leagueId,
-      leagueName: league?.name || 'Unknown League',
+      leagueName: league?.name || 'International Competition',
       country: league?.country || 'Unknown',
       season,
       scorers,

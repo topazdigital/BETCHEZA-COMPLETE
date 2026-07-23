@@ -1194,7 +1194,7 @@ export async function GET(
   // like "League 8301" or "World League 23286" — these have no useful identity.
   const isKnownCompetition = (e: EventOut) => {
     const name = e.competitionFull || e.competition || '';
-    return !(/^(World\s+)?League\s+\d+$/i.test(name));
+    return !(/^(World\s+)?League\s+\d+$/i.test(name)) && !(/^Unknown\s+League$/i.test(name));
   };
   const past = events
     .filter((e: EventOut) => e.status === 'finished')
