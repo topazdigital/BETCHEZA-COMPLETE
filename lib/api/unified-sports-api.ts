@@ -1532,8 +1532,11 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '20400': { name: 'USL League One',                country: 'USA',              countryCode: 'US' },
   '20401': { name: 'USL League One',                country: 'USA',              countryCode: 'US' },
   '20402': { name: 'USL League One',                country: 'USA',              countryCode: 'US' },
-  // UEFA qualifying — 19870–19880 block (observed: 19874 = UEFA Conf/EL qualifying 2025/26)
-  // These IDs are assigned per qualifying round per season and increment year-on-year.
+  // UEFA qualifying — 19870–19895 block.
+  // 19870–19880: confirmed 2025/26 qualifying rounds.
+  // 19881–19895: 2026/27 season qualifying rounds (IDs increment year-on-year).
+  // 19887 confirmed via live scoreboard (2nd qualifying round, Jul 2026) —
+  // ESPN groups UCL + UEL + UECL qualifying participants under a single round ID.
   '19870': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
   '19871': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
   '19872': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
@@ -1545,6 +1548,50 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '19878': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
   '19879': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
   '19880': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  // 2026/27 UEFA qualifying block — confirmed via live scoreboard Jul 2026
+  '19881': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19882': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19883': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19884': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19885': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19886': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19887': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19888': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19889': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19890': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19891': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19892': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19893': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19894': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19895': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  // Canadian Premier League — confirmed via live scoreboard Jul 2026
+  // ESPN groups CPL under 23286 (Calgary, Ottawa, Montreal, Toronto, Vancouver, Halifax)
+  '23286': { name: 'Canadian Premier League',           country: 'Canada',       countryCode: 'CA' },
+  '23287': { name: 'Canadian Premier League',           country: 'Canada',       countryCode: 'CA' },
+  '23288': { name: 'Canadian Premier League',           country: 'Canada',       countryCode: 'CA' },
+  // CAF/AFCON qualifying — confirmed via live scoreboard Jul 2026
+  // ESPN groups Africa national team group-stage qualifiers under 23523
+  '23523': { name: 'CAF Qualifying',                    country: 'Africa',       countryCode: 'AF' },
+  '23524': { name: 'CAF Qualifying',                    country: 'Africa',       countryCode: 'AF' },
+  '23525': { name: 'CAF Qualifying',                    country: 'Africa',       countryCode: 'AF' },
+  // UEFA Conference League Qualifying first round — confirmed Jul 2026
+  // 24458 observed: Neftchi, Buducnost, Flora, Klaksvik etc. (first-round/semifinals slug)
+  '24450': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24451': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24452': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24453': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24454': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24455': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24456': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24457': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24458': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24459': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24460': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24461': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24462': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24463': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24464': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24465': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
   // Wider UEFA qualifying sweep — 20200–20240 block (complements 20215–20225 above)
   '20200': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
   '20201': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
@@ -1722,14 +1769,32 @@ async function resolveGlobalLeagueInfo(
 
   // 5. Fallback: derive country from team slug (e.g. "sco.alloa-athletic" → Scotland).
   //    Uses the comprehensive ESPN_SLUG_TO_COUNTRY map for proper names and ISO codes.
+  //    When the country cannot be identified either, use "International Competition"
+  //    rather than the raw numeric ID so the UI never shows "League XXXXX".
   const loc = countryFromSlugPrefix(hint?.teamSlug);
   const info: GlobalLeagueInfo = {
     name: loc.country !== 'World'
       ? `${loc.country} League`
-      : `League ${espnLeagueId}`,
+      : 'International Competition',
     slug: `espn-${espnLeagueId}`,
     ...loc,
   };
+  // Log unrecognised league IDs so they can be added to KNOWN_GLOBAL_LEAGUES.
+  // Only log soccer — other sports frequently reuse numeric IDs with no overlap.
+  if (sport === 'soccer') {
+    try {
+      const logPath = path.join(process.cwd(), '.local', 'data', 'unknown-league-ids.json');
+      const existing: Record<string, string> = (() => {
+        try { return JSON.parse(fs.readFileSync(logPath, 'utf-8')); } catch { return {}; }
+      })();
+      if (!existing[espnLeagueId]) {
+        existing[espnLeagueId] = new Date().toISOString();
+        const dir = path.dirname(logPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(logPath, JSON.stringify(existing, null, 2), 'utf-8');
+      }
+    } catch { /* non-fatal */ }
+  }
   globalLeagueInfoCache.set(ck, info);
   return info;
 }
