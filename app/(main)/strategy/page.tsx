@@ -205,10 +205,11 @@ function DayCard({
   const isCompleted = day.status === 'completed';
 
   // Detect picks whose match dates don't belong to this strategy day.
-  // Uses the browser's own timezone so a user in EAT (UTC+3) gets the correct
-  // local date — catches the edge case where the server stored tomorrow's games
-  // in today's slot (e.g. at 23:xx EAT when UTC has already rolled over).
-  const picksDateMismatch = day.picks.length > 0 && day.picks.every(pick => {
+  // Uses EAT (UTC+3) — the same timezone the server uses for day.date — so South
+  // American evening games (stored as late UTC) aren't misidentified as the next day.
+  // Skip entirely when admin has explicitly approved or manually posted the picks:
+  // in that case we trust the admin's intent regardless of match timestamps.
+  const picksDateMismatch = !day.isApproved && !day.isManual && day.picks.length > 0 && day.picks.every(pick => {
     if (!pick.matchTime) return false;
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1997,7 +1998,7 @@ export default function StrategyPage() {
                   const eatHour = Math.floor(((nowUTC % 86400000) + 3 * 3600000) / 3600000) % 24;
                   const pastEveningCutoff = eatHour >= 21;
                   const todayFreeAfterCutoff = isToday && pastEveningCutoff;
-                  const isLocked = !isSettled && !hasAccess && !isYesterday &&
+                  const isLocked = !isSettled && !day.resultPublished && !hasAccess && !isYesterday &&
                     !todayFreeAfterCutoff && (day.status === 'upcoming' || isToday);
 
                   return (

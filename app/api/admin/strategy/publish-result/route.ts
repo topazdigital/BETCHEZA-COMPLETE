@@ -40,14 +40,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No strategy entry found for that date' }, { status: 404 });
   }
 
-  if (!dayRow.result) {
-    return NextResponse.json({ error: 'No result recorded yet for that date — settle picks first' }, { status: 400 });
-  }
-
-  // Mark result as published
+  // Mark picks/result as published publicly.
+  // If no result is recorded yet that's fine — publishing makes the picks
+  // visible to all users now; the result badge will appear once settled/saved.
   try {
     await execute(
-      `UPDATE daily_strategy SET result_published = 1 WHERE date = ?`,
+      `UPDATE daily_strategy SET result_published = 1, is_approved = 1 WHERE date = ?`,
       [date]
     );
   } catch (e) {

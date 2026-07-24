@@ -1233,8 +1233,9 @@ export async function GET() {
     if (!isAdmin) {
       const todayStr = getTodayStrEAT(new Date());
       current.days = current.days.map(day => {
-        // Gate 1: hide unapproved picks for today
-        if (day.date === todayStr && !day.isApproved) {
+        // Gate 1: hide unapproved picks for today — unless admin has already
+        // published picks publicly (resultPublished=1), in which case everyone sees them.
+        if (day.date === todayStr && !day.isApproved && !day.resultPublished) {
           return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
         }
         // Gate 2: hide result until admin publishes it — show picks as still active/pending

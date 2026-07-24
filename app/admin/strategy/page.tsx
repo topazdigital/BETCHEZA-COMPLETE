@@ -178,10 +178,12 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
       const d = await res.json();
       if (d.success) {
         setResultPublished(true);
-        setMsg(`Result published! Users can now see the ${d.result} for Day ${day.day}.`);
+        setMsg(d.result
+          ? `Published for all! Everyone can now see the ${d.result} for Day ${day.day}.`
+          : `Published for all! Picks for Day ${day.day} are now visible to all users.`);
         onRefresh();
       } else {
-        setMsg(d.error || 'Failed to publish result');
+        setMsg(d.error || 'Failed to publish');
       }
     } catch {
       setMsg('Network error');
@@ -354,14 +356,18 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
             </div>
           )}
 
-          {/* Unpublished result banner — result settled but not shown to users yet */}
-          {(dayResult || day.result) && !resultPublished && mode === 'view' && (
+          {/* Unpublished banner — approved picks not yet published for everyone */}
+          {isApproved && day.picks.length > 0 && !resultPublished && mode === 'view' && (
             <div className="rounded-lg border border-blue-400/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 flex items-start gap-2">
               <span className="text-blue-600 text-base leading-none mt-0.5">🔒</span>
               <div>
-                <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">Result settled but not yet visible to users</p>
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+                  {(dayResult || day.result) ? 'Result settled — not yet visible to everyone' : 'Picks sent to subscribers — not yet public'}
+                </p>
                 <p className="text-[11px] text-blue-600/80 dark:text-blue-500/80 mt-0.5">
-                  The day has been marked as <strong>{dayResult || day.result}</strong> internally. Review and correct any picks if needed, then click <strong>Publish Result</strong> to make it visible publicly.
+                  {(dayResult || day.result)
+                    ? <>Day marked as <strong>{dayResult || day.result}</strong>. Click <strong>Publish for All</strong> to make picks &amp; result visible to all users (including non-subscribers).</>
+                    : <>Subscribers received these picks. Once matches finish, click <strong>Publish for All</strong> to open picks to everyone.</>}
                 </p>
               </div>
             </div>
@@ -396,22 +402,22 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
                   <CheckCircle2 className="h-3 w-3" /> Approved &amp; Sent
                 </span>
               )}
-              {/* Publish Result button — shows once a result is recorded but not yet published */}
-              {(dayResult || day.result) && !resultPublished && (
+              {/* Publish for All — shows once picks are approved but not yet published publicly */}
+              {isApproved && day.picks.length > 0 && !resultPublished && (
                 <Button
                   size="sm"
                   onClick={handlePublishResult}
                   disabled={publishingResult}
                   className="gap-1 text-xs h-7 bg-blue-600 hover:bg-blue-700 text-white"
-                  title="Make the win/loss result visible to all users"
+                  title={(dayResult || day.result) ? 'Publish picks + result for all users (including non-subscribers)' : 'Make picks visible to all users including non-subscribers'}
                 >
                   {publishingResult ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                  Publish Result
+                  {(dayResult || day.result) ? 'Publish for All' : 'Publish for All'}
                 </Button>
               )}
-              {resultPublished && (dayResult || day.result) && (
+              {resultPublished && (
                 <span className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold bg-blue-500/15 text-blue-700 dark:text-blue-400">
-                  <CheckCircle2 className="h-3 w-3" /> Result Published
+                  <CheckCircle2 className="h-3 w-3" /> Published for All
                 </span>
               )}
             </div>
