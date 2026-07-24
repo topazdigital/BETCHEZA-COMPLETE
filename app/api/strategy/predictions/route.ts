@@ -38,6 +38,8 @@ export interface DayPrediction {
   scheduledFor?: string | null;
   isApproved?: boolean;
   pendingApproval?: boolean;
+  /** Admin must explicitly publish result before non-admins see win/loss outcome */
+  resultPublished?: boolean;
 }
 
 export interface WeeklyStrategy {
@@ -98,6 +100,7 @@ interface DbRow {
   is_manual: number | null;
   scheduled_for: string | null;
   is_approved: number | null;
+  result_published: number | null;
 }
 
 async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
@@ -128,6 +131,7 @@ async function loadFromDb(weekId: string): Promise<DayPrediction[] | null> {
       isManual: row.is_manual === 1,
       scheduledFor: row.scheduled_for || null,
       isApproved: row.is_approved === 1,
+      resultPublished: row.result_published === 1,
     }));
 
     return days;
@@ -835,6 +839,7 @@ async function ensureTableExists(): Promise<void> {
     await query(`ALTER TABLE daily_strategy ADD COLUMN scheduled_for date DEFAULT NULL`).catch(() => {});
     await query(`ALTER TABLE daily_strategy ADD COLUMN is_approved tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
     await query(`ALTER TABLE daily_strategy ADD COLUMN approved_at datetime DEFAULT NULL`).catch(() => {});
+    await query(`ALTER TABLE daily_strategy ADD COLUMN result_published tinyint(1) NOT NULL DEFAULT 0`).catch(() => {});
   } catch { }
 }
 
@@ -1220,18 +1225,33 @@ export async function GET() {
     current.days = await overlayLiveScores(current.days);
     const past = await loadPastWeeks();
 
-    // Admin approval gate: hide unapproved picks from non-admin users.
-    // Picks are ONLY shown on the frontend after an admin explicitly clicks
-    // "Approve & Send to Users" in the admin panel. There is no auto-approve.
+    // Admin approval gates — non-admin users only see what admin has explicitly published.
+    // Gate 1: Picks are hidden until admin clicks "Approve & Send to Users".
+    // Gate 2: Results (win/loss) are hidden until admin clicks "Publish Result".
     const user = await getCurrentUser().catch(() => null);
     const isAdmin = user?.role === 'admin';
     if (!isAdmin) {
       const todayStr = getTodayStrEAT(new Date());
       current.days = current.days.map(day => {
-        if (day.date !== todayStr) return day;
-        if (day.isApproved) return day;
-        // Picks not yet approved — hide them entirely from the frontend
-        return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
+        // Gate 1: hide unapproved picks for today
+        if (day.date === todayStr && !day.isApproved) {
+          return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
+        }
+        // Gate 2: hide result until admin publishes it — show picks as still active/pending
+        if (day.result && !day.resultPublished) {
+          return {
+            ...day,
+            result: undefined,
+            status: day.picks.length > 0 ? 'active' as const : day.status,
+            picks: day.picks.map(p => ({
+              ...p,
+              result: (p.result === 'win' || p.result === 'loss') ? 'pending' as const : p.result,
+              actualScore: undefined,
+              liveScore: undefined,
+            })),
+          };
+        }
+        return day;
       });
     }
 

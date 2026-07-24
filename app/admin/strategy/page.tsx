@@ -163,6 +163,32 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
   const [msg, setMsg] = useState('');
   const [approving, setApproving] = useState(false);
   const [isApproved, setIsApproved] = useState(!!day.isApproved);
+  const [publishingResult, setPublishingResult] = useState(false);
+  const [resultPublished, setResultPublished] = useState(!!day.resultPublished);
+
+  const handlePublishResult = async () => {
+    setPublishingResult(true);
+    setMsg('');
+    try {
+      const res = await fetch('/api/admin/strategy/publish-result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: day.date }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setResultPublished(true);
+        setMsg(`Result published! Users can now see the ${d.result} for Day ${day.day}.`);
+        onRefresh();
+      } else {
+        setMsg(d.error || 'Failed to publish result');
+      }
+    } catch {
+      setMsg('Network error');
+    } finally {
+      setPublishingResult(false);
+    }
+  };
 
   const handleApprove = async () => {
     setApproving(true);
@@ -317,13 +343,26 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
             <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">{msg}</div>
           )}
 
-          {/* Pending approval banner */}
+          {/* Pending approval banner — new picks not yet sent */}
           {day.picks.length > 0 && !isApproved && day.status === 'active' && mode === 'view' && (
             <div className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 flex items-start gap-2">
               <span className="text-amber-600 text-base leading-none mt-0.5">⚠️</span>
               <div>
                 <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Awaiting your approval — picks are hidden from subscribers</p>
                 <p className="text-[11px] text-amber-600/80 dark:text-amber-500/80 mt-0.5">Review the picks below, then click <strong>Approve &amp; Send to Users</strong> when you&apos;re happy with them.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Unpublished result banner — result settled but not shown to users yet */}
+          {(dayResult || day.result) && !resultPublished && mode === 'view' && (
+            <div className="rounded-lg border border-blue-400/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 flex items-start gap-2">
+              <span className="text-blue-600 text-base leading-none mt-0.5">🔒</span>
+              <div>
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">Result settled but not yet visible to users</p>
+                <p className="text-[11px] text-blue-600/80 dark:text-blue-500/80 mt-0.5">
+                  The day has been marked as <strong>{dayResult || day.result}</strong> internally. Review and correct any picks if needed, then click <strong>Publish Result</strong> to make it visible publicly.
+                </p>
               </div>
             </div>
           )}
@@ -355,6 +394,24 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
               {isApproved && day.picks.length > 0 && (
                 <span className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold bg-emerald-500/15 text-emerald-700">
                   <CheckCircle2 className="h-3 w-3" /> Approved &amp; Sent
+                </span>
+              )}
+              {/* Publish Result button — shows once a result is recorded but not yet published */}
+              {(dayResult || day.result) && !resultPublished && (
+                <Button
+                  size="sm"
+                  onClick={handlePublishResult}
+                  disabled={publishingResult}
+                  className="gap-1 text-xs h-7 bg-blue-600 hover:bg-blue-700 text-white"
+                  title="Make the win/loss result visible to all users"
+                >
+                  {publishingResult ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Publish Result
+                </Button>
+              )}
+              {resultPublished && (dayResult || day.result) && (
+                <span className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold bg-blue-500/15 text-blue-700 dark:text-blue-400">
+                  <CheckCircle2 className="h-3 w-3" /> Result Published
                 </span>
               )}
             </div>
