@@ -1243,7 +1243,7 @@ export async function GET() {
           return {
             ...day,
             result: undefined,
-            status: day.picks.length > 0 ? 'active' as const : day.status,
+            status: day.date === todayStr ? 'active' as const : day.status,
             picks: day.picks.map(p => ({
               ...p,
               result: (p.result === 'win' || p.result === 'loss') ? 'pending' as const : p.result,
