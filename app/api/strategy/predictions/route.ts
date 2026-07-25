@@ -1238,8 +1238,11 @@ export async function GET() {
         if (day.date === todayStr && !day.isApproved && !day.resultPublished) {
           return { ...day, picks: [], combinedOdds: 0, pendingApproval: true };
         }
-        // Gate 2: hide result until admin publishes it — show picks as still active/pending
-        if (day.result && !day.resultPublished) {
+        // Gate 2: hide result until admin publishes it — only applies to today and future days.
+        // Past completed days always show their result once recorded; only today's result
+        // is held back until admin explicitly clicks "Publish for All".
+        const isPastDay = day.date < todayStr;
+        if (day.result && !day.resultPublished && !isPastDay) {
           return {
             ...day,
             result: undefined,
