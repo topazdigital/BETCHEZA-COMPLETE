@@ -4,7 +4,9 @@ import { matchToSlug } from '@/lib/utils/match-url';
 
 export const revalidate = 60;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+// Ensure www prefix so sitemap URLs match the canonical domain Apache redirects to.
+const _rawSiteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.betcheza.co.ke').replace(/\/$/, '');
+const SITE_URL = _rawSiteUrl.replace(/^https?:\/\/(?!www\.)/, m => m + 'www.');
 const SITE_NAME = 'Betcheza';
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
