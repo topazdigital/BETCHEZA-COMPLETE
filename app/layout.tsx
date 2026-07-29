@@ -32,6 +32,22 @@ const DEFAULT_KEYWORDS = [
   'Betcheza', 'betcheza.co.ke', 'Betcheza tips', 'Betcheza predictions',
   'Betcheza Kenya', 'Betcheza jackpot', 'Betcheza AI predictor',
   'Betcheza free tips', 'Betcheza betting community', 'Betcheza strategy',
+  'Betcheza Aviator', 'aviator.betcheza.co.ke',
+
+  // ── Aviator & Crash Games ───────────────────────────────────────────────
+  'aviator game Kenya', 'aviator betting Kenya', 'aviator game tricks Kenya',
+  'aviator predictor Kenya', 'best aviator platform Kenya',
+  'aviator crash game Kenya', 'how to play aviator Kenya',
+  'aviator game strategy Kenya', 'aviator cash out strategy',
+  'aviator multiplier tricks', 'aviator game SportPesa',
+  'aviator game Betika', 'aviator 1xBet Kenya', 'aviator Betway Kenya',
+  'aviator Odibets Kenya', 'aviator game how to win Kenya',
+  'aviator tips and tricks', 'aviator signal Kenya',
+  'crash game Kenya', 'Spribe aviator Kenya',
+  'aviator game deposit Mpesa', 'aviator game withdrawal Mpesa',
+  'aviator game provably fair', 'best crash game Kenya',
+  'aviator 2x strategy', 'aviator bankroll management Kenya',
+  'aviator auto cashout strategy', 'aviator 1.5x strategy',
 
   // ── Primary target keywords ─────────────────────────────────────────────
   'best betting tips in Kenya', 'best betting tips Kenya',

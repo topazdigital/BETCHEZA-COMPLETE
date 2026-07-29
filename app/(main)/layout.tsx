@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation"
 import { 
   Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
   Menu, X, LogIn, LogOut, ChevronDown,
-  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen, Megaphone, Briefcase,
+  Star, Wallet, User, Sparkles, UserPlus, MessageSquare, Settings, Swords, TrendingUp, BookOpen, Megaphone, Briefcase, Plane,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -151,6 +151,7 @@ const mainNavItems: NavItem[] = [
   { href: "/feed", label: "Community Feed", icon: MessageSquare, color: "text-teal-500", activeColor: "bg-teal-500" },
   { href: "/tipsters", label: "Tipsters", icon: Users, color: "text-orange-500", activeColor: "bg-orange-500" },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-yellow-500", activeColor: "bg-yellow-500" },
+  { href: "/aviator", label: "Aviator", icon: Plane, color: "text-orange-500", activeColor: "bg-orange-500" },
   { href: "/challenges", label: "Challenges", icon: Swords, color: "text-red-500", activeColor: "bg-red-500" },
   { href: "/strategy", label: "3 Daily Odds Strategy", icon: TrendingUp, hot: true, color: "text-emerald-500", activeColor: "bg-emerald-500" },
   { href: "/specials", label: "Betting Markets", icon: Star, color: "text-rose-500", activeColor: "bg-rose-500" },
