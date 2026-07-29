@@ -3,6 +3,7 @@ import {
   getJackpots,
   getActiveJackpots,
   getActiveJackpotsByBookmaker,
+  getSettledJackpots,
   createJackpot,
   updateJackpot,
   deleteJackpot,
@@ -30,7 +31,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ byBookmaker: grouped });
     }
 
-    const jackpots = activeOnly ? getActiveJackpots(bookmaker) : getJackpots();
+    const settledOnly = searchParams.get('settled') === 'true';
+    const jackpots = settledOnly
+      ? getSettledJackpots(bookmaker)
+      : activeOnly
+        ? getActiveJackpots(bookmaker)
+        : getJackpots();
     return NextResponse.json({ jackpots });
   } catch (e) {
     console.error('[api/jackpot] GET error:', e);

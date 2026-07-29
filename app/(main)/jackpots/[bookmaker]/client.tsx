@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Brain, Trophy, Clock, Copy, Check, AlertCircle, TrendingUp, Shield, Star, ExternalLink, RefreshCw, Zap, ArrowLeft } from 'lucide-react';
+import { Brain, Trophy, Clock, Copy, Check, AlertCircle, TrendingUp, Shield, Star, ExternalLink, RefreshCw, Zap, ArrowLeft, CheckCircle2, XCircle, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { Jackpot, Bookmaker } from '@/lib/jackpot-types';
+import type { Jackpot, JackpotGame, Bookmaker } from '@/lib/jackpot-types';
 import { SUPPORTED_BOOKMAKERS } from '@/lib/jackpot-types';
 
 const PICK_COLORS: Record<string, string> = {
@@ -140,16 +140,185 @@ function JackpotCard({ jackpot, bookmakerColor }: { jackpot: Jackpot; bookmakerC
   );
 }
 
+// ── Settled jackpot result helpers ────────────────────────────────────────────
+
+function FtBadge({ result }: { result?: '1' | 'X' | '2' }) {
+  if (!result) return null;
+  const colors: Record<string, string> = {
+    '1': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 border-green-200 dark:border-green-800',
+    'X': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800',
+    '2': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+  };
+  return (
+    <span className={cn('inline-flex items-center justify-center w-6 h-6 rounded border text-[10px] font-bold shrink-0', colors[result])}>
+      {result}
+    </span>
+  );
+}
+
+function OutcomePill({ game }: { game: JackpotGame }) {
+  const pick = game.aiPrediction || game.prediction;
+  if (!game.result) {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
+        PPD
+      </span>
+    );
+  }
+  if (!pick) return null;
+  const won = pick.length === 1 ? pick === game.result : pick.includes(game.result);
+  return won ? (
+    <span className="inline-flex items-center gap-0.5 rounded-full border border-green-300 dark:border-green-700 bg-green-100 dark:bg-green-900/40 px-1.5 py-0.5 text-[9px] font-bold text-green-700 dark:text-green-400 shrink-0">
+      <CheckCircle2 className="h-2.5 w-2.5" />WON
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-0.5 rounded-full border border-red-300 dark:border-red-800 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:text-red-400 shrink-0">
+      <XCircle className="h-2.5 w-2.5" />LOST
+    </span>
+  );
+}
+
+function SettledJackpotCard({ jackpot, bookmakerColor }: { jackpot: Jackpot; bookmakerColor: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const gamesWithResult = jackpot.games.filter(g => g.result);
+  const pick = (g: JackpotGame) => g.aiPrediction || g.prediction;
+  const correct = gamesWithResult.filter(g => {
+    const p = pick(g);
+    if (!p || !g.result) return false;
+    return p.length === 1 ? p === g.result : p.includes(g.result);
+  }).length;
+  const postponed = jackpot.games.filter(g => !g.result).length;
+  const settledAt = jackpot.result?.settledAt
+    ? new Date(jackpot.result.settledAt).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })
+    : new Date(jackpot.updatedAt).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  return (
+    <Card className="overflow-hidden border-border/50 opacity-90 hover:opacity-100 transition-opacity">
+      <CardContent className="p-0">
+        <div className="h-0.5 w-full" style={{ background: bookmakerColor }} />
+        <div className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-sm text-muted-foreground">{jackpot.title}</h3>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">Settled</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Settled {settledAt} · {jackpot.currency} {parseInt(jackpot.jackpotAmount).toLocaleString()} pool
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+              {gamesWithResult.length > 0 && (
+                <span className="font-semibold" style={{ color: bookmakerColor }}>
+                  {correct}/{gamesWithResult.length} correct
+                </span>
+              )}
+              {postponed > 0 && <span className="text-slate-400">{postponed} ppd</span>}
+            </div>
+          </div>
+
+          {/* Winning combination strip */}
+          {jackpot.result?.winningCombination && (
+            <div className="flex flex-wrap gap-1">
+              {jackpot.result.winningCombination.split(/\s+/).map((pick, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    'inline-flex items-center justify-center w-7 h-7 rounded text-[10px] font-bold border',
+                    pick === '1' ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300' :
+                    pick === 'X' ? 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                    pick === '2' ? 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300' :
+                    'bg-muted text-muted-foreground border-border'
+                  )}
+                >
+                  {pick}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Toggle game rows */}
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+          >
+            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {expanded ? 'Hide' : 'Show'} all {jackpot.games.length} match results
+          </button>
+
+          {expanded && (
+            <div className="rounded-lg border border-border/40 bg-muted/20 p-3 space-y-0">
+              {/* Column headers */}
+              <div className="flex items-center gap-2 mb-2 text-[9px] uppercase tracking-wide text-muted-foreground font-medium">
+                <span className="w-4" />
+                <span className="flex-1">Match · Pick</span>
+                <span className="w-10 text-right">Score</span>
+                <span className="w-5 text-center">FT</span>
+                <span className="w-10 text-right">Result</span>
+              </div>
+              {jackpot.games.map((game, i) => {
+                const p = pick(game);
+                const isPostponed = !game.result;
+                return (
+                  <div
+                    key={game.id || i}
+                    className={cn('flex items-center gap-2 py-1.5 border-b border-border/30 last:border-0 text-xs', isPostponed && 'opacity-50')}
+                  >
+                    <span className="w-4 text-[10px] font-mono text-muted-foreground shrink-0">{i + 1}.</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium truncate">{game.home}</span>
+                      <span className="text-muted-foreground mx-1">vs</span>
+                      <span className="font-medium truncate">{game.away}</span>
+                      {p && (
+                        <span className="ml-1.5 text-[10px] text-muted-foreground">
+                          (<span className="font-bold text-foreground">{p}</span>)
+                        </span>
+                      )}
+                    </div>
+                    {game.homeScore !== undefined && game.awayScore !== undefined ? (
+                      <span className="w-10 text-right font-mono font-semibold text-[11px] shrink-0">
+                        {game.homeScore}–{game.awayScore}
+                      </span>
+                    ) : (
+                      <span className="w-10 text-right text-[10px] text-muted-foreground italic shrink-0">
+                        {isPostponed ? 'ppd' : '—'}
+                      </span>
+                    )}
+                    <div className="w-5 flex justify-center shrink-0">
+                      <FtBadge result={game.result} />
+                    </div>
+                    <div className="w-10 flex justify-end shrink-0">
+                      <OutcomePill game={game} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main client ───────────────────────────────────────────────────────────────
+
 export default function BookmakerJackpotClient({ bookmaker }: { bookmaker: Bookmaker }) {
   const [jackpots, setJackpots] = useState<Jackpot[]>([]);
+  const [settled, setSettled] = useState<Jackpot[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function fetchData() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/jackpot?active=true&bookmaker=${bookmaker.slug}`);
-      const data = await res.json() as { jackpots: Jackpot[] };
-      setJackpots(data.jackpots || []);
+      const [activeRes, settledRes] = await Promise.all([
+        fetch(`/api/jackpot?active=true&bookmaker=${bookmaker.slug}`),
+        fetch(`/api/jackpot?settled=true&bookmaker=${bookmaker.slug}`),
+      ]);
+      const activeData = await activeRes.json() as { jackpots: Jackpot[] };
+      const settledData = await settledRes.json() as { jackpots: Jackpot[] };
+      setJackpots(activeData.jackpots || []);
+      setSettled(settledData.jackpots || []);
     } catch {}
     setLoading(false);
   }
@@ -206,6 +375,25 @@ export default function BookmakerJackpotClient({ bookmaker }: { bookmaker: Bookm
           {hasPredictions && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Zap className="h-3.5 w-3.5 text-amber-500" /> Predictions by Betcheza AI</div>}
         </div>
       )}
+      {/* ── Previous / Settled Jackpots ── */}
+      {!loading && settled.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wide">Previous Jackpots</h2>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{settled.length}</span>
+          </div>
+          <div className="space-y-3">
+            {settled.map(j => (
+              <SettledJackpotCard key={j.id} jackpot={j} bookmakerColor={bookmaker.color} />
+            ))}
+          </div>
+          <Link href="/jackpots/results" className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium">
+            <Trophy className="h-3.5 w-3.5" /> View full results history →
+          </Link>
+        </div>
+      )}
+
       <div className="pt-4 border-t">
         <h3 className="text-xs font-semibold text-muted-foreground mb-2">Other Bookmakers</h3>
         <div className="flex flex-wrap gap-2">
