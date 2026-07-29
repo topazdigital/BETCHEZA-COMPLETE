@@ -49,6 +49,17 @@ const DEFAULT_KEYWORDS = [
   'aviator 2x strategy', 'aviator bankroll management Kenya',
   'aviator auto cashout strategy', 'aviator 1.5x strategy',
 
+  // ── Crash Games ──────────────────────────────────────────────────────────
+  'crash game Kenya', 'crash betting game Kenya', 'best crash game Kenya',
+  'crash game M-Pesa Kenya', 'crash betting site Kenya',
+  'crash multiplier game Kenya', 'online crash game Kenya',
+  'crash game how to win Kenya', 'PantaneAX', 'PantaneAX crash game',
+  'crash game tips Kenya', 'crash game tricks Kenya',
+  'crash game predictor Kenya', 'crash game signal Kenya',
+  'crash gambling Kenya', 'crash game withdraw M-Pesa',
+  'crash game 2x strategy Kenya', 'crash game provably fair Kenya',
+  'best crash betting platform Kenya', 'crash game strategy Kenya',
+
   // ── Primary target keywords ─────────────────────────────────────────────
   'best betting tips in Kenya', 'best betting tips Kenya',
   'best football tips in Kenya', 'best football predictions in Kenya',

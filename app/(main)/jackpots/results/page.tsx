@@ -55,43 +55,88 @@ function formatDate(iso: string): string {
 }
 
 function ResultBadge({ result }: { result?: '1' | 'X' | '2' }) {
-  if (!result) return <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-muted text-muted-foreground text-xs font-mono">?</span>;
+  if (!result) return null;
   const colors: Record<string, string> = {
-    '1': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    'X': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-    '2': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+    '1': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 border-green-200 dark:border-green-800',
+    'X': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800',
+    '2': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800',
   };
   return (
-    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${colors[result]}`}>
+    <span className={`inline-flex items-center justify-center w-6 h-6 rounded border text-[10px] font-bold shrink-0 ${colors[result]}`}>
       {result}
     </span>
   );
 }
 
-function PredictionMatchBadge({ predicted, actual }: { predicted?: string; actual?: string }) {
-  if (!predicted || !actual) return null;
-  return predicted === actual
-    ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-    : <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />;
+/** Shows WON / LOST / POSTPONED outcome relative to the prediction used */
+function OutcomeBadge({ game, isSettled }: { game: JackpotGame; isSettled: boolean }) {
+  const pick = game.aiPrediction || game.prediction;
+  if (!isSettled) return null;
+
+  // No result recorded → game was postponed / voided
+  if (!game.result) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
+        PPD
+      </span>
+    );
+  }
+
+  if (!pick) return null;
+
+  // For double-chance picks (1X, X2, 12) check if result is within the pick
+  const won = pick.length === 1
+    ? pick === game.result
+    : pick.includes(game.result);
+
+  return won ? (
+    <span className="inline-flex items-center gap-1 rounded-full border border-green-300 dark:border-green-700 bg-green-100 dark:bg-green-900/40 px-2 py-0.5 text-[10px] font-bold text-green-700 dark:text-green-400 shrink-0">
+      <CheckCircle2 className="h-2.5 w-2.5" />WON
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full border border-red-300 dark:border-red-800 bg-red-100 dark:bg-red-900/40 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:text-red-400 shrink-0">
+      <XCircle className="h-2.5 w-2.5" />LOST
+    </span>
+  );
 }
 
-function GameResultRow({ game, index }: { game: JackpotGame; index: number }) {
+function GameResultRow({ game, index, isSettled }: { game: JackpotGame; index: number; isSettled: boolean }) {
+  const pick = game.aiPrediction || game.prediction;
+  const isPostponed = isSettled && !game.result;
+
   return (
-    <div className="flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0 text-sm">
+    <div className={`flex items-center gap-2 py-2 border-b border-border/40 last:border-0 text-sm ${isPostponed ? 'opacity-60' : ''}`}>
       <span className="w-5 text-[10px] font-mono text-muted-foreground shrink-0">{index + 1}.</span>
       <div className="flex-1 min-w-0">
-        <span className="font-medium truncate">{game.home}</span>
-        <span className="text-muted-foreground mx-1">vs</span>
-        <span className="font-medium truncate">{game.away}</span>
-        {game.league && <span className="text-[10px] text-muted-foreground ml-1.5">· {game.league}</span>}
+        <div className="flex items-baseline gap-1 flex-wrap">
+          <span className="font-medium">{game.home}</span>
+          <span className="text-muted-foreground text-xs">vs</span>
+          <span className="font-medium">{game.away}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          {game.league && <span className="text-[10px] text-muted-foreground">{game.league}</span>}
+          {pick && (
+            <span className="text-[10px] text-muted-foreground">
+              Picked: <span className="font-bold text-foreground">{pick}</span>
+            </span>
+          )}
+        </div>
       </div>
-      {(game.homeScore !== undefined && game.awayScore !== undefined) && (
+
+      {/* Score */}
+      {game.homeScore !== undefined && game.awayScore !== undefined ? (
         <span className="text-xs font-mono font-semibold bg-muted px-1.5 py-0.5 rounded shrink-0">
           {game.homeScore}–{game.awayScore}
         </span>
-      )}
+      ) : isPostponed ? (
+        <span className="text-[10px] text-muted-foreground italic shrink-0">Postponed</span>
+      ) : null}
+
+      {/* Actual result chip */}
       <ResultBadge result={game.result} />
-      <PredictionMatchBadge predicted={game.aiPrediction} actual={game.result} />
+
+      {/* WON / LOST / PPD outcome badge */}
+      <OutcomeBadge game={game} isSettled={isSettled} />
     </div>
   );
 }
@@ -192,13 +237,13 @@ function JackpotResultCard({ jackpot }: { jackpot: Jackpot }) {
             </summary>
             <div className="mt-3 rounded-lg border border-border/40 bg-muted/20 p-3">
               <div className="flex items-center gap-4 mb-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
-                <span className="flex-1">Match</span>
+                <span className="flex-1">Match · Pick</span>
                 <span>Score</span>
-                <span>Result</span>
-                <span className="w-4">AI</span>
+                <span>FT</span>
+                <span>Outcome</span>
               </div>
               {jackpot.games.map((game, idx) => (
-                <GameResultRow key={game.id || idx} game={game} index={idx} />
+                <GameResultRow key={game.id || idx} game={game} index={idx} isSettled={jackpot.status === 'settled'} />
               ))}
             </div>
           </details>
