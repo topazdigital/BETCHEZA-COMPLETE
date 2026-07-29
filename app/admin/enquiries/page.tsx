@@ -370,14 +370,18 @@ export default function InboxPage() {
               {/* Email body — scrollable */}
               <div className="flex-1 overflow-y-auto p-3 sm:p-4">
                 <EmailBody email={selected} />
-                {replying && (
+              </div>
+
+              {/* Reply composer — sticky at bottom, always visible */}
+              {replying && (
+                <div className="shrink-0 border-t bg-background p-3 sm:p-4">
                   <ReplyComposer
                     email={selected}
                     onSent={() => setReplying(false)}
                     onCancel={() => setReplying(false)}
                   />
-                )}
-              </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="hidden lg:flex flex-1 items-center justify-center text-muted-foreground text-sm border-dashed">
