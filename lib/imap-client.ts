@@ -32,7 +32,6 @@ const FALLBACK_IMAP_HOST = 'mail.betcheza.co.ke';
 const IMAP_PORT = 993;
 
 const ACCOUNTS = [
-  { name: 'admin',        email: 'admin@betcheza.co.ke' },
   { name: 'support',      email: 'support@betcheza.co.ke' },
   { name: 'partnerships', email: 'partnerships@betcheza.co.ke' },
   { name: 'info',         email: 'info@betcheza.co.ke' },
