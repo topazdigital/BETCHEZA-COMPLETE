@@ -114,15 +114,13 @@ async function fetchAccountEmails(
 
           let bodyText = '', bodyHtml = '';
           if (msg.source) {
-            const raw = msg.source.toString('utf-8');
-            // \z is invalid in JS — use (?=\r?\n--|$) instead
-            const textMatch = raw.match(/Content-Type: text\/plain[^\r\n]*(?:\r?\n[^\r\n]+)*\r?\n\r?\n([\s\S]*?)(?=\r?\n--|$)/i);
-            const htmlMatch = raw.match(/Content-Type: text\/html[^\r\n]*(?:\r?\n[^\r\n]+)*\r?\n\r?\n([\s\S]*?)(?=\r?\n--|$)/i);
-            if (textMatch) bodyText = decodeBody(textMatch[1]);
-            if (htmlMatch) bodyHtml = decodeBody(htmlMatch[1]);
+            // Use binary (Latin-1) to preserve raw bytes — do NOT assume UTF-8
+            const raw = msg.source.toString('binary');
+            bodyText = extractMimePart(raw, 'text/plain');
+            bodyHtml = extractMimePart(raw, 'text/html');
             if (!bodyText && !bodyHtml) {
               const bodyStart = raw.indexOf('\r\n\r\n');
-              if (bodyStart !== -1) bodyText = decodeBody(raw.slice(bodyStart + 4));
+              if (bodyStart !== -1) bodyText = decodePart(raw.slice(bodyStart + 4), '7bit', 'utf-8');
             }
           }
 
@@ -201,8 +199,70 @@ export async function markEmailSeen(uid: number, account: string): Promise<void>
   invalidateImapCache(account);
 }
 
-function decodeBody(raw: string): string {
-  return raw
-    .replace(/=\r?\n/g, '')
-    .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+/**
+ * Extract a text/plain or text/html part from a raw binary RFC2822 message,
+ * respecting its Content-Transfer-Encoding and charset.
+ */
+function extractMimePart(raw: string, mimeType: string): string {
+  // Match the part header + body. We look for the Content-Type line followed
+  // by optional folded header lines, then a blank line, then the body.
+  const partRe = new RegExp(
+    `Content-Type:\\s*${mimeType.replace('/', '\\/')}[^\\r\\n]*(?:\\r?\\n[ \\t][^\\r\\n]*)*\\r?\\n` +
+    `([\\s\\S]*?\\r?\\n)?\\r?\\n` +   // remaining part headers (e.g. CTE)
+    `([\\s\\S]*?)(?=\\r?\\n--|$)`,
+    'i'
+  );
+  const m = raw.match(partRe);
+  if (!m) return '';
+
+  // Re-capture the full block so we can find headers before the body
+  const blockStart = m.index!;
+  const blankLine = raw.indexOf('\r\n\r\n', blockStart);
+  if (blankLine === -1) return '';
+
+  const headerBlock = raw.slice(blockStart, blankLine);
+  const body = raw.slice(blankLine + 4);
+  // Trim at the next MIME boundary
+  const bodyContent = body.split(/\r?\n--/)[0];
+
+  // Extract Content-Transfer-Encoding
+  const cteMatch = headerBlock.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+  const encoding = cteMatch ? cteMatch[1].replace(/[";]/g, '').trim() : '7bit';
+
+  // Extract charset (may span a folded line)
+  const charsetMatch = headerBlock.replace(/\r?\n[ \t]/g, ' ').match(/charset=["']?([^"'\s;]+)/i);
+  const charset = charsetMatch ? charsetMatch[1] : 'utf-8';
+
+  return decodePart(bodyContent, encoding, charset);
+}
+
+/**
+ * Decode a MIME body part given its transfer encoding and charset.
+ * `raw` must be a binary (Latin-1) string — one char per byte.
+ */
+function decodePart(raw: string, encoding: string, charset: string): string {
+  let bytes: Buffer;
+  const enc = (encoding || '7bit').toLowerCase().trim();
+
+  if (enc === 'base64') {
+    bytes = Buffer.from(raw.replace(/\s/g, ''), 'base64');
+  } else if (enc === 'quoted-printable') {
+    const qp = raw
+      .replace(/=\r?\n/g, '')                                          // soft line breaks
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+    bytes = Buffer.from(qp, 'binary');
+  } else {
+    // 7bit / 8bit / binary
+    bytes = Buffer.from(raw, 'binary');
+  }
+
+  // Normalise charset name for TextDecoder
+  const cs = (charset || 'utf-8').toLowerCase()
+    .replace(/^utf8$/, 'utf-8')
+    .replace(/^latin[-_]?1$/i, 'iso-8859-1');
+  try {
+    return new TextDecoder(cs, { fatal: false }).decode(bytes);
+  } catch {
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  }
 }
