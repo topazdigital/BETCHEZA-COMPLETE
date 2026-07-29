@@ -48,7 +48,7 @@ function EmailBody({ email }: { email: InboxEmail }) {
     return (
       <div>
         <div
-          className="rounded-lg bg-white border p-4 text-sm overflow-auto max-h-[400px]"
+          className="rounded-lg bg-white border p-4 text-sm overflow-auto"
           dangerouslySetInnerHTML={{ __html: email.bodyHtml }}
         />
         <button onClick={() => setShowHtml(false)} className="text-xs text-muted-foreground hover:underline mt-1">
@@ -59,7 +59,7 @@ function EmailBody({ email }: { email: InboxEmail }) {
   }
   return (
     <div>
-      <div className="rounded-lg bg-muted/40 p-4 text-sm whitespace-pre-wrap leading-relaxed font-mono max-h-[400px] overflow-auto">
+      <div className="rounded-lg bg-muted/40 p-4 text-sm whitespace-pre-wrap leading-relaxed font-mono overflow-auto">
         {body}
       </div>
       {email.bodyHtml && (
@@ -272,8 +272,8 @@ export default function InboxPage() {
       {/* Split view */}
       {filtered.length > 0 && (
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          {/* Email list */}
-          <div className="space-y-1 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+          {/* Email list — hidden on mobile when an email is open */}
+          <div className={cn("space-y-1 max-h-[calc(100vh-220px)] overflow-y-auto pr-1", selected && "hidden lg:block")}>
             {filtered.map(email => (
               <button
                 key={`${email.account}-${email.uid}`}

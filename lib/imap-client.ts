@@ -115,8 +115,9 @@ async function fetchAccountEmails(
           let bodyText = '', bodyHtml = '';
           if (msg.source) {
             const raw = msg.source.toString('utf-8');
-            const textMatch = raw.match(/Content-Type: text\/plain[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--|\z)/i);
-            const htmlMatch = raw.match(/Content-Type: text\/html[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--|\z)/i);
+            // \z is invalid in JS — use (?=\r?\n--|$) instead
+            const textMatch = raw.match(/Content-Type: text\/plain[^\r\n]*(?:\r?\n[^\r\n]+)*\r?\n\r?\n([\s\S]*?)(?=\r?\n--|$)/i);
+            const htmlMatch = raw.match(/Content-Type: text\/html[^\r\n]*(?:\r?\n[^\r\n]+)*\r?\n\r?\n([\s\S]*?)(?=\r?\n--|$)/i);
             if (textMatch) bodyText = decodeBody(textMatch[1]);
             if (htmlMatch) bodyHtml = decodeBody(htmlMatch[1]);
             if (!bodyText && !bodyHtml) {
