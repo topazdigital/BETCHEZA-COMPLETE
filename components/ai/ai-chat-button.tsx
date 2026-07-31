@@ -306,7 +306,7 @@ export function AIChatButton() {
       {open && (
         <div
           className={cn(
-            "fixed z-40 right-3 md:right-6 bottom-36 md:bottom-24",
+            "fixed z-40 right-3 md:right-6 bottom-[13rem] md:bottom-24",
             "w-[calc(100vw-1.5rem)] max-w-sm md:max-w-md",
             "h-[70vh] max-h-[600px]",
             "rounded-2xl border border-violet-500/30 bg-background/95 backdrop-blur-xl shadow-2xl",

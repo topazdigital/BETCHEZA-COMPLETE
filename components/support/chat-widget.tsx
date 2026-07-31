@@ -176,10 +176,11 @@ export function SupportChatWidget() {
     }
   }
 
-  // Determine bottom offset: AI chat button is also bottom-right,
-  // so stack the support widget above it (the AI button is ~bottom-6 right-6 / bottom-24 on mobile)
-  const btnBottom = "bottom-[5.5rem] md:bottom-24"
-  const panelBottom = "bottom-[5.5rem] md:bottom-24"
+  // Stack above the AI chat button on all screen sizes.
+  // Mobile: AI button is h-12 at bottom-20 (80px) → top edge 128px → Support sits at bottom-[9rem] (144px), 16px gap.
+  // Desktop (md): keep original md:bottom-24 — user confirmed desktop was fine.
+  const btnBottom = "bottom-[9rem] md:bottom-24"
+  const panelBottom = "bottom-[9rem] md:bottom-24"
 
   return (
     <>
