@@ -1,0 +1,24 @@
+{
+  "name": "Betcheza",
+  "short_name": "Betcheza",
+  "description": "Live sports betting tips, predictions, odds and AI insights from real expert tipsters.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1E7DC0",
+  "theme_color": "#3BAEE8",
+  "categories": ["sports", "lifestyle", "entertainment"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/apple-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "shortcuts": [
+    { "name": "Live Matches", "url": "/live", "description": "Watch all matches happening right now" },
+    { "name": "Top Tipsters", "url": "/tipsters", "description": "See today's hottest tipsters" },
+    { "name": "Leaderboard", "url": "/leaderboard", "description": "Top performers this week" }
+  ],
+  "prefer_related_applications": false
+}

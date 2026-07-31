@@ -1,0 +1,302 @@
+[root@mail betcheza]# cd /home/admin/apps/betcheza
+[root@mail betcheza]# git pull origin main
+eploy.shremote: Enumerating objects: 36, done.
+remote: Counting objects: 100% (36/36), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 19 (delta 13), reused 18 (delta 12), pack-reused 0 (from 0)
+Unpacking objects: 100% (19/19), 154.92 KiB | 2.72 MiB/s, done.
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+   c53ca55..19434e2  main       -> origin/main
+Updating c53ca55..19434e2
+Fast-forward
+ app/(main)/feed/page.tsx                   |  27 +++++--
+ app/api/cron/fake-activity/route.ts        | 276 +++++++++++++++++++++++++++++++--------------------------------------
+ app/api/feed/recommended-tipsters/route.ts |  47 +++++++-----
+ app/api/feed/trending/route.ts             |   2 +-
+ attached_assets/image_1777959308133.png    | Bin 0 -> 173846 bytes
+ lib/fake-tipsters.ts                       | 124 +++++++++++++++++++++++++++++++
+ 6 files changed, 299 insertions(+), 177 deletions(-)
+ create mode 100644 attached_assets/image_1777959308133.png
+[root@mail betcheza]# bash deploy.sh
+Betcheza Deploy
+[1/4] Pulling latest changes...
+From https://github.com/topazdigital/BETCHEZA-COMPLETE
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+[2/4] Installing dependencies...
+
+up to date, audited 280 packages in 6s
+
+37 packages are looking for funding
+  run `npm fund` for details
+
+3 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+[3/4] Building...
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.4 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.0min
+  Skipping validation of types
+✓ Finished TypeScript config validation in 78ms
+  Collecting page data using 1 worker  .[feed] db insert failed Error: Incorrect string value: '\xF0\x9F\x94\xAE L...' for column `admin_betcheza`.`feed_posts`.`content` at row 1
+    at R (.next/server/chunks/_0po4.pc._.js:5:269345)
+    at l (.next/server/chunks/_0zxbfx2._.js:5:1029) {
+  code: 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD',
+  errno: 1366,
+  sqlState: '22007',
+  sqlMessage: "Incorrect string value: '\\xF0\\x9F\\x94\\xAE L...' for column `admin_betcheza`.`feed_posts`.`content` at row 1",
+  sql: 'INSERT INTO feed_posts\n' +
+    '          (id, user_id, author_name, author_avatar, content, match_id, match_title,\n' +
+    '           pick, odds, image_url, likes, comment_count, created_at)\n' +
+    '         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NOW())'
+}
+  Collecting page data using 1 worker  .[feed] db addComment failed Error: Incorrect string value: '\xF0\x9F\x92\xAF' for column `admin_betcheza`.`feed_comments`.`content` at row 1
+    at R (.next/server/chunks/_0po4.pc._.js:5:269345)
+    at p (.next/server/chunks/_0zxbfx2._.js:9:530) {
+  code: 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD',
+  errno: 1366,
+  sqlState: '22007',
+  sqlMessage: "Incorrect string value: '\\xF0\\x9F\\x92\\xAF' for column `admin_betcheza`.`feed_comments`.`content` at row 1",
+  sql: 'INSERT INTO feed_comments (id, post_id, user_id, author_name, author_avatar, content, created_at)\n' +
+    '         VALUES (?, ?, ?, ?, ?, ?, NOW())'
+}
+✓ Collecting page data using 1 worker in 19.2s
+✓ Generating static pages using 1 worker (69/69) in 4.7s
+✓ Finalizing page optimization in 91ms
+
+Route (app)                                Revalidate  Expire
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /about
+├ ƒ /admin
+├ ƒ /admin/affiliate-clicks
+├ ƒ /admin/auto-tips
+├ ƒ /admin/bookmakers
+├ ƒ /admin/comments
+├ ƒ /admin/competitions
+├ ƒ /admin/database
+├ ƒ /admin/email-config
+├ ƒ /admin/email-templates
+├ ƒ /admin/featured
+├ ƒ /admin/feed
+├ ƒ /admin/jackpots
+├ ƒ /admin/matches
+├ ƒ /admin/news
+├ ƒ /admin/notifications
+├ ƒ /admin/payment-gateways
+├ ƒ /admin/payments
+├ ƒ /admin/predictions
+├ ƒ /admin/settings
+├ ƒ /admin/social-login
+├ ƒ /admin/static-pages
+├ ƒ /admin/subscribers
+├ ƒ /admin/tipster-applications
+├ ƒ /admin/tipsters
+├ ƒ /admin/transactions
+├ ƒ /admin/users
+├ ƒ /api/account/2fa
+├ ƒ /api/admin/affiliate-clicks
+├ ƒ /api/admin/auto-tips
+├ ƒ /api/admin/auto-tips/generate
+├ ƒ /api/admin/auto-tips/settle
+├ ƒ /api/admin/bookmakers
+├ ƒ /api/admin/bookmakers/[id]
+├ ƒ /api/admin/comments
+├ ƒ /api/admin/competitions
+├ ƒ /api/admin/competitions/[slug]/settle
+├ ƒ /api/admin/dashboard
+├ ƒ /api/admin/db-config
+├ ƒ /api/admin/email-config
+├ ƒ /api/admin/email-templates
+├ ƒ /api/admin/featured
+├ ƒ /api/admin/featured/tips
+├ ƒ /api/admin/feed/[id]
+├ ƒ /api/admin/jackpot/notify
+├ ƒ /api/admin/matches
+├ ƒ /api/admin/news
+├ ƒ /api/admin/notifications/broadcast
+├ ƒ /api/admin/payment-gateways
+├ ƒ /api/admin/predictions
+├ ƒ /api/admin/seo
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/social-login
+├ ƒ /api/admin/static-pages
+├ ƒ /api/admin/subscribers
+├ ƒ /api/admin/teams
+├ ƒ /api/admin/tipster-applications
+├ ƒ /api/admin/tipster-applications/[id]
+├ ƒ /api/admin/tipsters
+├ ƒ /api/admin/transactions
+├ ƒ /api/admin/upload
+├ ƒ /api/admin/users
+├ ƒ /api/ai/chat
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/check-availability
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/google-client-id
+├ ƒ /api/auth/google-one-tap
+├ ƒ /api/auth/login
+├ ƒ /api/auth/login/verify-2fa
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/oauth/[provider]/callback
+├ ƒ /api/auth/oauth/[provider]/start
+├ ƒ /api/auth/register
+├ ƒ /api/auth/resend-verification
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/verify-email
+├ ƒ /api/bookmakers
+├ ƒ /api/bookmarks
+├ ƒ /api/captcha/challenge
+├ ƒ /api/challenges
+├ ƒ /api/challenges/[id]
+├ ƒ /api/challenges/[id]/watch
+├ ƒ /api/competitions
+├ ƒ /api/competitions/[slug]
+├ ƒ /api/competitions/[slug]/join
+├ ƒ /api/cron/auto-tips
+├ ƒ /api/cron/fake-activity
+├ ƒ /api/cron/fake-votes
+├ ƒ /api/cron/jackpot-sync
+├ ƒ /api/cron/match-reminders
+├ ƒ /api/dashboard
+├ ƒ /api/email/subscribe
+├ ƒ /api/email/unsubscribe
+├ ƒ /api/featured
+├ ƒ /api/feed/posts
+├ ƒ /api/feed/posts/[id]/comments
+├ ƒ /api/feed/posts/[id]/like
+├ ƒ /api/feed/recommended-tipsters
+├ ƒ /api/feed/trending
+├ ƒ /api/health
+├ ƒ /api/jackpot
+├ ƒ /api/jackpot/predict
+├ ƒ /api/jackpot/results
+├ ƒ /api/jackpot/scrape
+├ ○ /api/leagues
+├ ƒ /api/leagues/[id]/bracket
+├ ƒ /api/leagues/[id]/outrights
+├ ƒ /api/leagues/[id]/scorers
+├ ƒ /api/leagues/[id]/standings
+├ ƒ /api/matches
+├ ƒ /api/matches/[id]
+├ ƒ /api/matches/[id]/details
+├ ƒ /api/matches/[id]/tips
+├ ƒ /api/matches/[id]/vote
+├ ƒ /api/news/article
+├ ƒ /api/notifications
+├ ƒ /api/notifications/mark-read
+├ ƒ /api/notifications/preferences
+├ ƒ /api/notifications/subscribe
+├ ƒ /api/notifications/vapid-public-key
+├ ƒ /api/payments/competition-entry
+├ ƒ /api/players/[id]
+├ ƒ /api/players/[id]/follow
+├ ƒ /api/players/search
+├ ƒ /api/predictor
+├ ƒ /api/predictor/recent
+├ ƒ /api/predictor/upcoming
+├ ƒ /api/r/bookmaker/[slug]
+├ ƒ /api/search
+├ ƒ /api/site-settings
+├ ƒ /api/site-settings/maintenance
+├ ƒ /api/site-settings/rewrites
+├ ○ /api/sports
+├ ƒ /api/static-pages/[slug]
+├ ƒ /api/teams/[id]
+├ ƒ /api/teams/[id]/follow
+├ ƒ /api/tips/[id]/comments
+├ ƒ /api/tips/[id]/like
+├ ƒ /api/tips/my
+├ ƒ /api/tipster-applications
+├ ƒ /api/tipsters
+├ ƒ /api/tipsters/[id]
+├ ƒ /api/tipsters/[id]/follow
+├ ƒ /api/users/me
+├ ƒ /api/users/me/follows
+├ ƒ /api/wallet
+├ ƒ /api/wallet/deposit
+├ ƒ /api/wallet/methods
+├ ƒ /api/wallet/withdraw
+├ ƒ /become-tipster
+├ ƒ /bookmakers
+├ ƒ /bookmarks
+├ ƒ /challenges
+├ ƒ /competitions
+├ ƒ /competitions/[slug]
+├ ƒ /contact
+├ ƒ /cookies
+├ ƒ /dashboard
+├ ƒ /dashboard/payment-settings
+├ ƒ /dashboard/tips
+├ ƒ /dashboard/wallet
+├ ƒ /faq
+├ ƒ /feed
+├ ƒ /help
+├ ƒ /jackpots
+├ ƒ /jackpots/[bookmaker]
+├ ƒ /jackpots/results
+├ ƒ /leaderboard
+├ ƒ /leagues/[slug]
+├ ƒ /live
+├ ƒ /login
+├ ƒ /maintenance
+├ ƒ /matches
+├ ƒ /matches/[id]
+├ ƒ /news/article
+├ ƒ /notifications
+├ ƒ /players/[id]
+├ ƒ /players/compare
+├ ƒ /predictor
+├ ƒ /predictor/h2h
+├ ƒ /privacy
+├ ƒ /register
+├ ƒ /responsible-gambling
+├ ƒ /results
+├ ○ /robots.txt
+├ ƒ /settings
+├ ○ /sitemap.xml                                   1h      1y
+├ ƒ /stats
+├ ƒ /teams/[id]
+├ ƒ /terms
+├ ƒ /tipsters
+├ ƒ /tipsters/[id]
+├ ƒ /tipsters/compare
+└ ƒ /verify-email
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+[4/4] Restarting server...
+ 3543472[PM2] Applying action restartProcessId on app [betcheza](ids: [ 4 ])
+[PM2] [betcheza](4) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 4  │ betcheza           │ fork     │ 684… │ online    │ 0%       │ 18.0mb   │
+│ 0  │ dossy              │ fork     │ 7    │ online    │ 0%       │ 59.9mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+Deploy complete! betcheza.co.ke is live.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 4  │ betcheza           │ fork     │ 684… │ online    │ 0%       │ 59.5mb   │
+│ 0  │ dossy              │ fork     │ 7    │ online    │ 0%       │ 59.6mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@mail betcheza]#

@@ -1,0 +1,69 @@
+[root@server betcheza]# pm2 delete 1 2>/dev/null; pm2 delete betcheza 2>/dev/null; cd /home/admin/apps/betcheza && pm2 start npm --name betcheza -- start && pm2 save && sleep 3 && pm2 list && pm2 logs betcheza --lines 40 --nostream
+[PM2] Applying action deleteProcessId on app [1](ids: [ '1' ])
+[PM2] [dossy](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.4mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Starting /usr/bin/npm in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ betcheza           │ fork     │ 0    │ online    │ 0%       │ 3.8mb    │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.1mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ betcheza           │ fork     │ 2    │ online    │ 0%       │ 60.6mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 59.8mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[TAILING] Tailing last 40 lines for [betcheza] process (change the value with --lines option)
+/root/.pm2/logs/betcheza-out.log last 40 lines:
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5001 -H 127.0.0.1
+2|betcheza |
+
+/root/.pm2/logs/betcheza-error.log last 40 lines:
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '127.0.0.1',
+2|betcheza |   port: 5001
+2|betcheza | }
+
+[root@server betcheza]#

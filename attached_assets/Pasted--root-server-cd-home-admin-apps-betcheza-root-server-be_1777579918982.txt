@@ -1,0 +1,264 @@
+[root@server ~]# cd /home/admin/apps/betcheza
+[root@server betcheza]#
+[root@server betcheza]# # Sanity check — should print the SQL file size
+[root@server betcheza]# ls -lh scripts/setup-database-consolidated.sql
+-rw-r--r-- 1 admin admin 34K Apr 30  2026 scripts/setup-database-consolidated.sql
+[root@server betcheza]#
+[root@server betcheza]# # Import the schema (you'll be prompted for the MySQL password: dj@Topaz2016)
+[root@server betcheza]# mysql -u admin_betcheza -p admin_betcheza < scripts/setup-database-consolidated.sql
+ipe anyEnter password:
+ERROR 1045 (28000): Access denied for user 'admin_betcheza'@'localhost' (using password: YES)
+[root@server betcheza]# i '/^DATABASE_URL=/d' .env.local
+-bash: i: command not found
+[root@server betcheza]#
+[root@server betcheza]# # Add the correct one (note %40 = URL-encoded @)
+[root@server betcheza]# echo 'DATABASE_URL=mysql://admin_betcheza:dj%40Topaz2016@127.0.0.1:3306/admin_betcheza' >> .env.local
+[root@server betcheza]#
+[root@server betcheza]# # Verify
+[root@server betcheza]# grep DATABASE_URL .env.local
+DATABASE_URL=mysql://admin_betcheza:dj@Topaz2016@localhost:3306/admin_betcheza
+NEXT_PUBLIC_SITE_URL=https://betcheza.co.keDATABASE_URL=mysql://admin_betcheza:dj%40Topaz2016@127.0.0.1:3306/admin_betcheza
+[root@server betcheza]#
+[root@server betcheza]# # Restart by ID (change 1 to 0 if betcheza is id 0)
+[root@server betcheza]# pm2 restart 1 --update-env
+
+# Watch the logs — Ctrl+C to exit
+pm2 logs 1 --lines 50[PM2] Applying action restartProcessId on app [1](ids: [ '1' ])
+[PM2] [dossy](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.0mb   │
+│ 1  │ dossy              │ fork     │ 30   │ online    │ 0%       │ 19.1mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]#
+[root@server betcheza]# # Watch the logs — Ctrl+C to exit
+[root@server betcheza]# pm2 logs 1 --lines 50
+[TAILING] Tailing last 50 lines for [1] process (change the value with --lines option)
+/root/.pm2/logs/dossy-error.log last 50 lines:
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+
+/root/.pm2/logs/dossy-out.log last 50 lines:
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    | ▲ Next.js 16.2.0
+1|dossy    | - Local:         http://localhost:5000
+1|dossy    | - Network:       http://0.0.0.0:5000
+1|dossy    | ✓ Ready in 432ms
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    | ▲ Next.js 16.2.0
+1|dossy    | - Local:         http://localhost:5000
+1|dossy    | - Network:       http://0.0.0.0:5000
+1|dossy    | ✓ Ready in 612ms
+
+^C
+[root@server betcheza]# ls -lh scripts/setup-database-consolidated.sql
+-rw-r--r-- 1 admin admin 34K Apr 30  2026 scripts/setup-database-consolidated.sql
+[root@server betcheza]# sed -i '/^DATABASE_URL=/d' .env.local
+[root@server betcheza]# echo 'DATABASE_URL=mysql://admin_betcheza:dj@Topaz2016@127.0.0.1:3306/admin_betcheza' >> .env.lo
+cal
+[root@server betcheza]# grep DATABASE_URL .env.local
+NEXT_PUBLIC_SITE_URL=https://betcheza.co.keDATABASE_URL=mysql://admin_betcheza:dj%40Topaz2016@127.0.0.1:3306/admin_betcheza
+DATABASE_URL=mysql://admin_betcheza:dj@Topaz2016@127.0.0.1:3306/admin_betcheza
+[root@server betcheza]# pm2 restart 1 --update-env
+[PM2] Applying action restartProcessId on app [1](ids: [ '1' ])
+[PM2] [dossy](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.0mb   │
+│ 1  │ dossy              │ fork     │ 31   │ online    │ 0%       │ 19.4mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]# pm2 logs 1 --lines 50
+[TAILING] Tailing last 50 lines for [1] process (change the value with --lines option)
+/root/.pm2/logs/dossy-error.log last 50 lines:
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+1|dossy    | ⨯ Failed to start server
+1|dossy    | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+1|dossy    |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+1|dossy    |   code: 'EADDRINUSE',
+1|dossy    |   errno: -98,
+1|dossy    |   syscall: 'listen',
+1|dossy    |   address: '0.0.0.0',
+1|dossy    |   port: 5000
+1|dossy    | }
+
+/root/.pm2/logs/dossy-out.log last 50 lines:
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    | ▲ Next.js 16.2.0
+1|dossy    | - Local:         http://localhost:5000
+1|dossy    | - Network:       http://0.0.0.0:5000
+1|dossy    | ✓ Ready in 432ms
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    | ▲ Next.js 16.2.0
+1|dossy    | - Local:         http://localhost:5000
+1|dossy    | - Network:       http://0.0.0.0:5000
+1|dossy    | ✓ Ready in 612ms
+1|dossy    |
+1|dossy    | > my-project@0.1.0 start
+1|dossy    | > next start -p 5000 -H 0.0.0.0
+1|dossy    |
+1|dossy    | ▲ Next.js 16.2.0
+1|dossy    | - Local:         http://localhost:5000
+1|dossy    | - Network:       http://0.0.0.0:5000
+1|dossy    | ✓ Ready in 450ms

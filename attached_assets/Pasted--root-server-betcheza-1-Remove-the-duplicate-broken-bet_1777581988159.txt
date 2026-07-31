@@ -1,0 +1,129 @@
+[root@server betcheza]# # 1. Remove the duplicate broken betcheza from ROOT's pm2 (this is OUR ghost)
+[root@server betcheza]# pm2 delete betcheza
+ 2. Save root's pm2 (only dossy stays now)
+pm2 save
+
+# 3. Restart ADMIN's real betcheza WITH the new env vars (picks up DATABASE_URL)
+sudo -u admin -i pm2 restart betcheza --update-env
+
+# 4. Verify admi[PM2] Applying action deleteProcessId on app [betcheza](ids: [ 3 ])n's pm2
++ tail logs to confirm DB is connecte[PM2] [betcheza](3) ✓
+d
+sudo -┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.4mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]#
+[root@server betcheza]# # 2. Save root's pm2 (only dossy stays now)
+[root@server betcheza]# pm2 save
+u admin -i pm2 list
+sudo -u admin -i pm2 logs betcheza --lines 40 --nostream[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+[root@server betcheza]#
+[root@server betcheza]# # 3. Restart ADMIN's real betcheza WITH the new env vars (picks up DATABASE_URL)
+[root@server betcheza]# sudo -u admin -i pm2 restart betcheza --update-env
+[PM2] Applying action restartProcessId on app [betcheza](ids: [ 1 ])
+[PM2] [betcheza](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 3    │ online    │ 0%       │ 19.3mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 56.5mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]#
+[root@server betcheza]# # 4. Verify admin's pm2 + tail logs to confirm DB is connected
+[root@server betcheza]# sudo -u admin -i pm2 list
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 3    │ online    │ 0%       │ 60.6mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 56.6mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]# sudo -u admin -i pm2 logs betcheza --lines 40 --nostream
+[TAILING] Tailing last 40 lines for [betcheza] process (change the value with --lines option)
+/home/admin/.pm2/logs/betcheza-error.log last 40 lines:
+1|betcheza | [votes-store] getVoteTotals failed: Error: Table 'admin_betcheza.match_votes' doesn't exist
+1|betcheza |     at n.query (.next/server/chunks/_075nkjf._.js:5:259384)
+1|betcheza |     at R (.next/server/chunks/_075nkjf._.js:5:269109)
+1|betcheza |     at C (.next/server/chunks/[root-of-the-server]__02w.ko8._.js:10:190)
+1|betcheza |     at async P (.next/server/chunks/[root-of-the-server]__02w.ko8._.js:10:1645)
+1|betcheza |     at async l (.next/server/chunks/[root-of-the-server]__02w.ko8._.js:10:6002) {
+1|betcheza |   code: 'ER_NO_SUCH_TABLE',
+1|betcheza |   errno: 1146,
+1|betcheza |   sql: "SELECT pick, COUNT(*) AS c FROM match_votes WHERE match_id = 'espn_uefa.europa_401862908' GROUP BY pick",
+1|betcheza |   sqlState: '42S02',
+1|betcheza |   sqlMessage: "Table 'admin_betcheza.match_votes' doesn't exist"
+1|betcheza | }
+1|betcheza | [votes-store] getUserVote failed: Error: Table 'admin_betcheza.match_votes' doesn't exist
+1|betcheza |     at n.query (.next/server/chunks/_075nkjf._.js:5:259384)
+1|betcheza |     at R (.next/server/chunks/_075nkjf._.js:5:269109)
+1|betcheza |     at b (.next/server/chunks/[root-of-the-server]__02w.ko8._.js:10:645)
+1|betcheza |     at async P (.next/server/chunks/[root-of-the-server]__02w.ko8._.js:10:1645)
+1|betcheza |     at async l (.next/server/chunks/[root-of-the-server]__02w.ko8._.js:10:6002) {
+1|betcheza |   code: 'ER_NO_SUCH_TABLE',
+1|betcheza |   errno: 1146,
+1|betcheza |   sql: "SELECT pick FROM match_votes WHERE match_id = 'espn_uefa.europa_401862908' AND voter_id = '3382c515-9251-4bf4-bf7f-aaec478174ed' LIMIT 1",
+1|betcheza |   sqlState: '42S02',
+1|betcheza |   sqlMessage: "Table 'admin_betcheza.match_votes' doesn't exist"
+1|betcheza | }
+1|betcheza | [cron] match-reminders failed: 404
+1|betcheza | [cron] match-reminders failed: 404
+1|betcheza | [cron] match-reminders failed: 404
+1|betcheza | [cron] match-reminders failed: 404
+1|betcheza | Failed to set Next.js data cache for https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/8/schedule?season=2026, items over 2MB can not be cached (2489721 bytes)
+1|betcheza | Failed to set Next.js data cache for https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/29/schedule?season=2026, items over 2MB can not be cached (2479518 bytes)
+1|betcheza | Failed to set Next.js data cache for https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/29/schedule?season=2024, items over 2MB can not be cached (3301838 bytes)
+1|betcheza | Failed to set Next.js data cache for https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/8/schedule?season=2025, items over 2MB can not be cached (3421061 bytes)
+1|betcheza | Failed to set Next.js data cache for https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/8/schedule?season=2024, items over 2MB can not be cached (3359377 bytes)
+1|betcheza | Failed to set Next.js data cache for https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/29/schedule?season=2025, items over 2MB can not be cached (3374682 bytes)
+1|betcheza | [cron] match-reminders error fetch failed
+1|betcheza | [db-sync] write skipped: Data too long for column 'short_name' at row 1
+1|betcheza | [cron] match-reminders error fetch failed
+1|betcheza | [mailer] SMTP not configured — skipping send to patrickndungu.pnn@gmail.com
+1|betcheza | [db-sync] write skipped: Data too long for column 'short_name' at row 1
+1|betcheza | [cron] match-reminders error fetch failed
+
+/home/admin/.pm2/logs/betcheza-out.log last 40 lines:
+1|betcheza |
+1|betcheza | > my-project@0.1.0 start
+1|betcheza | > next start -p 5000 -H 0.0.0.0
+1|betcheza |
+1|betcheza |
+1|betcheza | > my-project@0.1.0 start
+1|betcheza | > next start -p 5001 -H 127.0.0.1
+1|betcheza |
+1|betcheza | ▲ Next.js 16.2.0
+1|betcheza | - Local:         http://127.0.0.1:5001
+1|betcheza | - Network:       http://127.0.0.1:5001
+1|betcheza | ✓ Ready in 290ms
+1|betcheza | [cron] started match-reminders interval (5 min)
+1|betcheza |
+1|betcheza | > my-project@0.1.0 start
+1|betcheza | > next start -p 5001 -H 127.0.0.1
+1|betcheza |
+1|betcheza | ▲ Next.js 16.2.0
+1|betcheza | - Local:         http://127.0.0.1:5001
+1|betcheza | - Network:       http://127.0.0.1:5001
+1|betcheza | ✓ Ready in 318ms
+1|betcheza | [cron] started match-reminders interval (5 min)
+1|betcheza |
+1|betcheza | > my-project@0.1.0 start
+1|betcheza | > next start -p 5001 -H 127.0.0.1
+1|betcheza |
+1|betcheza | ▲ Next.js 16.2.0
+1|betcheza | - Local:         http://127.0.0.1:5001
+1|betcheza | - Network:       http://127.0.0.1:5001
+1|betcheza | ✓ Ready in 273ms
+1|betcheza | [cron] started match-reminders interval (5 min)
+1|betcheza |
+1|betcheza | > my-project@0.1.0 start
+1|betcheza | > next start -p 5001 -H 127.0.0.1
+1|betcheza |
+1|betcheza | ▲ Next.js 16.2.0
+1|betcheza | - Local:         http://127.0.0.1:5001
+1|betcheza | - Network:       http://127.0.0.1:5001
+1|betcheza | ✓ Ready in 280ms
+1|betcheza | [cron] started match-reminders interval (5 min)
+
+[root@server betcheza]#

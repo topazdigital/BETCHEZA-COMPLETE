@@ -1,0 +1,131 @@
+[root@server betcheza]# # 1. Completely remove betcheza from PM2 (kills ALL its children including orphans)
+[root@server betcheza]# pm2 delete betcheza
+Kill anything still squatting port 5001 (safe — surgical, kills only the listener)
+fuser -k -[PM2] Applying action deleteProcessId on app [betcheza](ids: [ 2 ])
+n tcp 5001 2>/dev/null
+[PM2] [betcheza](2) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 59.9mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+sleep 2
+[root@server betcheza]#
+[root@server betcheza]# # 2. Kill anything still squatting port 5001 (safe — surgical, kills only the listener)
+[root@server betcheza]# fuser -k -n tcp 5001 2>/dev/null
+
+# 3. Verify port 5001 is free 1211183[root@server betcheza]# sleep 2
+ (should output NOTHING)
+ss -tlnp | grep :5001
+echo "↑ if nothing above, port is free"
+
+# 4. Start betcheza launching the next binary DIRECTLY (no npm wrapper = no orphans)
+cd /home/admin/apps/betcheza
+pm2 start node_modules/next/dist/bin/next --name betcheza --interpreter node -- start -p 5001 -H 127.0.0.1
+
+# 5. Save so it survives reboot
+pm2 save
+
+# 6. Wait, then check
+sleep 5
+pm2 list
+pm2 logs betcheza --lines 30 --nostream[root@server betcheza]#
+[root@server betcheza]# # 3. Verify port 5001 is free (should output NOTHING)
+[root@server betcheza]# ss -tlnp | grep :5001
+LISTEN 2      511                               127.0.0.1:5001      0.0.0.0:*    users:(("next-server (v1",pid=1215006,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+[root@server betcheza]# echo "↑ if nothing above, port is free"
+↑ if nothing above, port is free
+[root@server betcheza]#
+[root@server betcheza]# # 4. Start betcheza launching the next binary DIRECTLY (no npm wrapper = no orphans)
+[root@server betcheza]# cd /home/admin/apps/betcheza
+[root@server betcheza]# pm2 start node_modules/next/dist/bin/next --name betcheza --interpreter node -- start -p 5001 -H 127.0.0.1
+[PM2] Starting /home/admin/apps/betcheza/node_modules/next/dist/bin/next in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 3  │ betcheza           │ fork     │ 0    │ online    │ 0%       │ 23.6mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 59.7mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]#
+[root@server betcheza]# # 5. Save so it survives reboot
+[root@server betcheza]# pm2 save
+[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+[root@server betcheza]#
+[root@server betcheza]# # 6. Wait, then check
+[root@server betcheza]# sleep 5
+[root@server betcheza]# pm2 list
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 3  │ betcheza           │ fork     │ 5    │ online    │ 0%       │ 58.9mb   │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 59.5mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]# pm2 logs betcheza --lines 30 --nostream
+[TAILING] Tailing last 30 lines for [betcheza] process (change the value with --lines option)
+/root/.pm2/logs/betcheza-out.log last 30 lines:
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+3|betcheza |
+3|betcheza | > my-project@0.1.0 start
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+3|betcheza |
+3|betcheza | > my-project@0.1.0 start
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+3|betcheza |
+3|betcheza | > my-project@0.1.0 start
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+3|betcheza |
+3|betcheza | > my-project@0.1.0 start
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+3|betcheza |
+3|betcheza | > my-project@0.1.0 start
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+3|betcheza |
+3|betcheza | > my-project@0.1.0 start
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+3|betcheza |
+3|betcheza | > my-project@0.1.0 start
+3|betcheza | > next start -p 5001 -H 127.0.0.1
+3|betcheza |
+
+/root/.pm2/logs/betcheza-error.log last 30 lines:
+3|betcheza |   address: '127.0.0.1',
+3|betcheza |   port: 5001
+3|betcheza | }
+3|betcheza | ⨯ Failed to start server
+3|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+3|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+3|betcheza |   code: 'EADDRINUSE',
+3|betcheza |   errno: -98,
+3|betcheza |   syscall: 'listen',
+3|betcheza |   address: '127.0.0.1',
+3|betcheza |   port: 5001
+3|betcheza | }
+3|betcheza | ⨯ Failed to start server
+3|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+3|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+3|betcheza |   code: 'EADDRINUSE',
+3|betcheza |   errno: -98,
+3|betcheza |   syscall: 'listen',
+3|betcheza |   address: '127.0.0.1',
+3|betcheza |   port: 5001
+3|betcheza | }
+3|betcheza | ⨯ Failed to start server
+3|betcheza | Error: listen EADDRINUSE: address already in use 127.0.0.1:5001
+3|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 127.0.0.1:5001) {
+3|betcheza |   code: 'EADDRINUSE',
+3|betcheza |   errno: -98,
+3|betcheza |   syscall: 'listen',
+3|betcheza |   address: '127.0.0.1',
+3|betcheza |   port: 5001
+3|betcheza | }
+
+[root@server betcheza]#

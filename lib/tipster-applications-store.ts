@@ -1,0 +1,294 @@
+// ─────────────────────────────────────────────────────────────────────
+// Tipster application store.
+//
+// Anyone with a regular `user` account can apply to become a tipster.
+// Applications land in this in-memory queue, surface in the admin panel
+// at /admin/tipster-applications, and on approval the user's role is
+// promoted to `tipster` (with optional verification badge).
+//
+// Persistence: JSON file at .local/state/tipster-applications.json so
+// the queue survives a dev-server restart. No PostgreSQL — the dev
+// environment is file-backed; in production this would migrate to a
+// MySQL `tipster_applications` table.
+// ─────────────────────────────────────────────────────────────────────
+
+import { promises as fs } from 'fs';
+import path from 'path';
+import { directExecute, directQuery } from './db';
+
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface TipsterApplication {
+  id: string;
+  userId: number;
+  username: string;
+  displayName: string;
+  email?: string;
+  /** Tipster's pitch — why they should be approved. */
+  pitch: string;
+  /** Sports / leagues they specialise in (free-text). */
+  specialties: string;
+  /** Optional past performance / proof links. */
+  experience?: string;
+  /** Optional social handles or proof URL. */
+  socialProof?: string;
+  /** Whether the applicant is asking for the verified badge from day one. */
+  requestVerified: boolean;
+  status: ApplicationStatus;
+  createdAt: string;
+  reviewedAt?: string;
+  reviewedBy?: number;
+  /** Admin's note on rejection (or approval). */
+  reviewerNote?: string;
+  /** True when admin approved AND granted the verified badge. */
+  verifiedGranted?: boolean;
+  /** True when the DB role UPDATE actually succeeded. */
+  dbUpdated?: boolean;
+  /** True when the approval notification email was successfully sent. */
+  emailSent?: boolean;
+}
+
+const STORE_DIR = path.join(process.cwd(), '.local', 'state');
+const STORE_PATH = path.join(STORE_DIR, 'tipster-applications.json');
+
+interface StoreShape {
+  applications: TipsterApplication[];
+}
+
+const g = globalThis as { __tipsterAppsStore?: StoreShape; __tipsterAppsLoaded?: boolean };
+if (!g.__tipsterAppsStore) g.__tipsterAppsStore = { applications: [] };
+
+function store(): StoreShape {
+  return g.__tipsterAppsStore!;
+}
+
+async function ensureLoaded(): Promise<void> {
+  if (g.__tipsterAppsLoaded) return;
+  g.__tipsterAppsLoaded = true;
+  try {
+    const raw = await fs.readFile(STORE_PATH, 'utf8');
+    const data = JSON.parse(raw) as StoreShape;
+    if (Array.isArray(data?.applications)) {
+      store().applications = data.applications;
+    }
+  } catch {
+    // No file yet — that's fine. We'll create one on first write.
+  }
+}
+
+async function persist(): Promise<void> {
+  try {
+    await fs.mkdir(STORE_DIR, { recursive: true });
+    await fs.writeFile(STORE_PATH, JSON.stringify(store(), null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[tipster-applications] persist failed', e);
+  }
+}
+
+function newId(): string {
+  return `app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export interface CreateApplicationInput {
+  userId: number;
+  username: string;
+  displayName: string;
+  email?: string;
+  pitch: string;
+  specialties: string;
+  experience?: string;
+  socialProof?: string;
+  requestVerified?: boolean;
+}
+
+/** Create a pending application. Returns the new row. */
+export async function createApplication(input: CreateApplicationInput): Promise<TipsterApplication> {
+  await ensureLoaded();
+  const row: TipsterApplication = {
+    id: newId(),
+    userId: input.userId,
+    username: input.username,
+    displayName: input.displayName,
+    email: input.email,
+    pitch: input.pitch.trim(),
+    specialties: input.specialties.trim(),
+    experience: input.experience?.trim() || undefined,
+    socialProof: input.socialProof?.trim() || undefined,
+    requestVerified: !!input.requestVerified,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  };
+  store().applications.unshift(row);
+  await persist();
+  return row;
+}
+
+/** All applications, newest-first. Admin queue. */
+export async function listApplications(opts?: { status?: ApplicationStatus }): Promise<TipsterApplication[]> {
+  await ensureLoaded();
+  const all = store().applications;
+  return opts?.status ? all.filter(a => a.status === opts.status) : all;
+}
+
+/** A user's own applications (so they see "pending" / "approved" status on /become-tipster). */
+export async function listApplicationsForUser(userId: number): Promise<TipsterApplication[]> {
+  await ensureLoaded();
+  return store().applications.filter(a => a.userId === userId);
+}
+
+export async function getApplication(id: string): Promise<TipsterApplication | undefined> {
+  await ensureLoaded();
+  return store().applications.find(a => a.id === id);
+}
+
+export interface ReviewInput {
+  reviewerId: number;
+  decision: 'approve' | 'reject';
+  note?: string;
+  /** When approving, also grant the verified badge. */
+  grantVerified?: boolean;
+}
+
+export async function reviewApplication(id: string, input: ReviewInput): Promise<TipsterApplication | undefined> {
+  await ensureLoaded();
+  const row = store().applications.find(a => a.id === id);
+  if (!row) return undefined;
+  row.status = input.decision === 'approve' ? 'approved' : 'rejected';
+  row.reviewedAt = new Date().toISOString();
+  row.reviewedBy = input.reviewerId;
+  row.reviewerNote = input.note?.trim() || undefined;
+  row.verifiedGranted = input.decision === 'approve' && !!input.grantVerified;
+  await persist();
+
+  if (input.decision === 'approve') {
+    let dbOk = false;
+    try {
+      const verifiedSql = input.grantVerified ? ', is_verified = 1' : '';
+
+      // directExecute() creates a fresh connection bypassing the circuit breaker.
+      // query()/execute() can silently no-op when the circuit is open due to earlier
+      // transient DB errors, causing the UPDATE to be discarded with no error thrown.
+      const r1 = await directExecute(
+        `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
+        [row.userId]
+      );
+
+      if (r1.affectedRows > 0) {
+        dbOk = true;
+      } else {
+        // Stored userId may be stale — fall back to username lookup
+        console.warn(`[tipster-applications] approve: userId ${row.userId} matched 0 rows, trying username "${row.username}"`);
+        const found = (await directQuery<{ id: number }>(
+          'SELECT id FROM users WHERE username = ? LIMIT 1',
+          [row.username]
+        ))[0] ?? null;
+        if (found) {
+          const r2 = await directExecute(
+            `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
+            [found.id]
+          );
+          if (r2.affectedRows > 0) {
+            row.userId = found.id;
+            dbOk = true;
+          }
+        }
+      }
+
+      if (dbOk) {
+        await directExecute(
+          `INSERT INTO tipster_profiles (user_id, updated_at)
+           VALUES (?, NOW())
+           ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+          [row.userId]
+        );
+      }
+    } catch (e) {
+      console.warn('[tipster-applications] DB role update failed (in-memory/file state still applied):', e instanceof Error ? e.message : e);
+    }
+    row.dbUpdated = dbOk;
+    await persist();
+  }
+
+  return row;
+}
+
+/** Re-apply the DB role update for an already-approved application. Returns true if successful. */
+export async function reapplyDbRole(id: string): Promise<boolean> {
+  await ensureLoaded();
+  const row = store().applications.find(a => a.id === id);
+  if (!row || row.status !== 'approved') return false;
+  let dbOk = false;
+  try {
+    const verifiedSql = row.verifiedGranted ? ', is_verified = 1' : '';
+
+    // directExecute() opens a fresh connection, bypassing the circuit breaker entirely.
+    // This guarantees the SQL actually reaches the DB even if the pool is closed/tripped.
+    const r1 = await directExecute(
+      `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
+      [row.userId]
+    );
+
+    if (r1.affectedRows > 0) {
+      dbOk = true;
+    } else {
+      // Stored userId didn't match — fall back to looking up by username
+      console.warn(`[tipster-applications] reapply: userId ${row.userId} matched 0 rows, trying username "${row.username}"`);
+      const rows = await directQuery<{ id: number }>(
+        'SELECT id FROM users WHERE username = ? LIMIT 1',
+        [row.username]
+      );
+      const found = rows[0] ?? null;
+      if (found) {
+        const r2 = await directExecute(
+          `UPDATE users SET role = 'tipster'${verifiedSql} WHERE id = ?`,
+          [found.id]
+        );
+        if (r2.affectedRows > 0) {
+          row.userId = found.id; // correct the stale userId in the store
+          dbOk = true;
+        } else {
+          console.warn(`[tipster-applications] reapply: username "${row.username}" (id=${found.id}) also matched 0 rows — check DB enum values`);
+        }
+      } else {
+        console.warn(`[tipster-applications] reapply: no user found with username "${row.username}"`);
+      }
+    }
+
+    if (dbOk) {
+      // Ensure tipster_profiles row exists
+      await directExecute(
+        `INSERT INTO tipster_profiles (user_id, updated_at)
+         VALUES (?, NOW())
+         ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+        [row.userId]
+      );
+    }
+  } catch (e) {
+    console.warn('[tipster-applications] reapply DB role failed:', e instanceof Error ? e.message : e);
+  }
+  row.dbUpdated = dbOk;
+  await persist();
+  return dbOk;
+}
+
+/** Mark whether the notification email was successfully sent (called from route handler). */
+export async function markApplicationEmailSent(id: string, sent: boolean): Promise<void> {
+  await ensureLoaded();
+  const row = store().applications.find(a => a.id === id);
+  if (row) {
+    row.emailSent = sent;
+    await persist();
+  }
+}
+
+/** Stats for the admin dashboard widget. */
+export async function applicationStats(): Promise<{ pending: number; approved: number; rejected: number; total: number }> {
+  await ensureLoaded();
+  const all = store().applications;
+  return {
+    total: all.length,
+    pending: all.filter(a => a.status === 'pending').length,
+    approved: all.filter(a => a.status === 'approved').length,
+    rejected: all.filter(a => a.status === 'rejected').length,
+  };
+}

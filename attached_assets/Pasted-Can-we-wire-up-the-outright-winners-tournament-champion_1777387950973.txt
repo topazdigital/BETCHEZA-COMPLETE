@@ -1,0 +1,14 @@
+Can we wire up the outright winners (tournament champion odds) endpoint so leagues like the Premier League and Champions League show "Winner" markets on the league page and add more sports like eSPorts etc...and then we have issues with teams for example look at this screenshot e.g I searched Arsenal and it gave two teams no problem with that...when I click the women's team see the results on second screenshot like there are no upcoming games etc..when I click the Arsenal second team I get invalid no data...we need to fix every team on the site with correct details etc..do everything thoroughly and fix all these issues even in lineups in the formation make playe names clickable plus the list of the player names under the formation should be clickable as well and add player faces all over the website where there is players please add their correct faces and improve the player pages with more data etc...check the screenshot it is just too simple for the player data...improve the whole website, improve speed of the site etc...do it all and don't ignore anything I asked
+Usage
+549 / 500 (109.8%)
+Monthly plans reset on the 1st of each month at 12AM UTC
+
+That is the meassage I have on the odds api account page...is there anywhere else we can get a free key for this?? Also don't forget to do everything like I asked..don't skip anything
+
+That was the incomplete message..also add push notifications to the web app so users receive notifications on their mobile even wehn not logged in to the ap..that is for both web and mobile devices..arsenal now doesn't show or are you not done with the team's part?? matches in the search bar should only show upcoming and not match that have ended..live can show and notify the user it's live...also the results on a single team page should show all results not just league results....search should display all teams with that name starting by popularity of the team also everywhere on the website specify if it's women's team or u19 or any other...main team remains same name for example Arsenal we have Arsenal, Arsenal Women, Arsenal U19 etc....but in search it shows teams that are on the website that have been crawled on the site already..injuries to also show properly the injured players and maybe lenght of the injury etc..we may add more payment gateways for specific country so only user of that country can see the payment mode e.g in Kenya only Kenyan users see Mpesa etc and etc....I have the api here received on my email Thanks for subscribing to the SportsGameOdds API
+
+Below is your API key:
+
+56b729df59f151a4c45c15059c5ba402
+
+Fix everything wrong on the site please and complete all my previous requests that were not done

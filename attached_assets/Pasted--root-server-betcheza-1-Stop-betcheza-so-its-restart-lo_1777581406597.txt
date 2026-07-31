@@ -1,0 +1,71 @@
+[root@server betcheza]# # 1. Stop betcheza so its restart-loop doesn't interfere with our diagnosis
+[root@server betcheza]# pm2 stop betcheza
+
+# 2. Find what's actually holding port 5001
+ss -tlnp | grep :5001
+# fallback if `ss` shows nothing useful:
+lsof -i :5001 -P -n
+
+# 3. Also list all running node processes (so we can spot orphans)
+ps -ef | grep -E "node|next" | gre[PM2] Applying action stopProcessId on app [betcheza](ids: [ 2 ])
+p -v grep[PM2] [betcheza](2) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ betcheza           │ fork     │ 68   │ stopped   │ 0%       │ 0b       │
+│ 0  │ dossy              │ fork     │ 1    │ online    │ 0%       │ 60.4mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[root@server betcheza]#
+[root@server betcheza]# # 2. Find what's actually holding port 5001
+[root@server betcheza]# ss -tlnp | grep :5001
+LISTEN 0      511                               127.0.0.1:5001      0.0.0.0:*    users:(("next-server (v1",pid=1203413,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+[root@server betcheza]# # fallback if `ss` shows nothing useful:
+[root@server betcheza]# lsof -i :5001 -P -n
+COMMAND     PID   USER   FD   TYPE   DEVICE SIZE/OFF NODE NAME
+httpd   1204562 apache   70u  IPv4 15529443      0t0  TCP 127.0.0.1:43276->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   71u  IPv4 15533570      0t0  TCP 127.0.0.1:42758->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   72u  IPv4 15529442      0t0  TCP 127.0.0.1:43282->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   74u  IPv4 15522693      0t0  TCP 127.0.0.1:57404->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   75u  IPv4 15523980      0t0  TCP 127.0.0.1:59466->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   76u  IPv4 15521072      0t0  TCP 127.0.0.1:57342->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   77u  IPv4 15523982      0t0  TCP 127.0.0.1:59478->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   78u  IPv4 15529444      0t0  TCP 127.0.0.1:43286->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   79u  IPv4 15523981      0t0  TCP 127.0.0.1:59472->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   80u  IPv4 15523834      0t0  TCP 127.0.0.1:59376->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   81u  IPv4 15531332      0t0  TCP 127.0.0.1:43310->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   82u  IPv4 15523979      0t0  TCP 127.0.0.1:59456->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   83u  IPv4 15523972      0t0  TCP 127.0.0.1:59416->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   85u  IPv4 15523977      0t0  TCP 127.0.0.1:59424->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   87u  IPv4 15352153      0t0  TCP 127.0.0.1:43026->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   89u  IPv4 15352156      0t0  TCP 127.0.0.1:43072->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   90u  IPv4 15352155      0t0  TCP 127.0.0.1:43050->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   91u  IPv4 15530824      0t0  TCP 127.0.0.1:43266->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   92u  IPv4 15524870      0t0  TCP 127.0.0.1:59434->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   93u  IPv4 15521067      0t0  TCP 127.0.0.1:57274->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204562 apache   94u  IPv4 15533571      0t0  TCP 127.0.0.1:42770->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   70u  IPv4 15298979      0t0  TCP 127.0.0.1:36908->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   71u  IPv4 15528451      0t0  TCP 127.0.0.1:38326->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   72u  IPv4 15534236      0t0  TCP 127.0.0.1:38234->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   73u  IPv4 15535544      0t0  TCP 127.0.0.1:38270->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   74u  IPv4 15298977      0t0  TCP 127.0.0.1:36892->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   75u  IPv4 15531858      0t0  TCP 127.0.0.1:52468->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   76u  IPv4 15262550      0t0  TCP 127.0.0.1:38878->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   77u  IPv4 15537040      0t0  TCP 127.0.0.1:60748->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   78u  IPv4 15298989      0t0  TCP 127.0.0.1:36950->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   79u  IPv4 15298431      0t0  TCP 127.0.0.1:36910->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   80u  IPv4 15533063      0t0  TCP 127.0.0.1:52492->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   81u  IPv4 15531857      0t0  TCP 127.0.0.1:52458->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   82u  IPv4 15537041      0t0  TCP 127.0.0.1:60762->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   83u  IPv4 15535540      0t0  TCP 127.0.0.1:38248->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   87u  IPv4 15535539      0t0  TCP 127.0.0.1:38244->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   88u  IPv4 15262554      0t0  TCP 127.0.0.1:38900->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   89u  IPv4 15298985      0t0  TCP 127.0.0.1:36944->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   91u  IPv4 15535541      0t0  TCP 127.0.0.1:38258->127.0.0.1:5001 (CLOSE_WAIT)
+httpd   1204610 apache   92u  IPv4 15536029      0t0  TCP 127.0.0.1:38292->127.0.0.1:5001 (CLOSE_WAIT)
+[root@server betcheza]#
+[root@server betcheza]# # 3. Also list all running node processes (so we can spot orphans)
+[root@server betcheza]# ps -ef | grep -E "node|next" | grep -v grep
+root      356879  356868  0 Apr24 ?        00:35:55 next-server (v16.2.0)
+admin    1203351 1203340  0 15:22 ?        00:00:06 next-server (v16.2.0)
+admin    1203413 1203401 66 15:22 ?        00:49:26 next-server (v16.2.0)
+[root@server betcheza]#

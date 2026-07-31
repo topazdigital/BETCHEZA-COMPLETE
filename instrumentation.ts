@@ -1,0 +1,475 @@
+// Next.js calls this once when the server process starts (both `next dev`
+// and `next start`). We use it to kick off our background cron loop for
+// match-kickoff reminders and to seed env-backed API keys into the memory store.
+
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
+  // Prevent unhandled promise rejections and uncaught exceptions from
+  // crashing the Node.js process (which would cause Apache 503 errors).
+  // Log them instead so we can diagnose the root cause without downtime.
+  // Guard: process.on is Node.js-only; not available in Edge Runtime.
+  if (typeof process !== 'undefined' && typeof process.on === 'function') {
+    process.on('unhandledRejection', (reason: unknown) => {
+      console.error('[process] unhandledRejection — process kept alive:', reason);
+    });
+    process.on('uncaughtException', (err: Error) => {
+      console.error('[process] uncaughtException — process kept alive:', err?.message, err?.stack);
+    });
+  }
+
+  // Seed env-backed API keys + SMTP into the shared memory settings store so
+  // getApiKey() and getSiteSettings() can resolve them immediately — without
+  // requiring the admin to open Settings and click Save first.
+  try {
+    const { fileStoreGet, fileStoreSet } = await import('./lib/file-store');
+    const ENV_BACKED: Record<string, string> = {
+      the_odds_api_key: 'THE_ODDS_API_KEY',
+      sportsgameodds_api_key: 'SPORTSGAMEODDS_API_KEY',
+      openai_api_key: 'OPENAI_API_KEY',
+      football_data_api_key: 'FOOTBALL_DATA_API_KEY',
+      vapid_public_key: 'VAPID_PUBLIC_KEY',
+      vapid_private_key: 'VAPID_PRIVATE_KEY',
+      vapid_subject: 'VAPID_SUBJECT',
+      google_analytics_id: 'GOOGLE_ANALYTICS_ID',
+      facebook_pixel_id: 'FACEBOOK_PIXEL_ID',
+      sharp_api_key: 'SHARP_API_KEY',
+    };
+    const g = globalThis as { __memorySettings?: Record<string, string> };
+    if (!g.__memorySettings) {
+      g.__memorySettings = { ...fileStoreGet<Record<string, string>>('site-settings', {}) };
+    }
+    let didFill = false;
+    for (const [key, envName] of Object.entries(ENV_BACKED)) {
+      if (!g.__memorySettings[key] || !String(g.__memorySettings[key]).trim()) {
+        const val = (process.env[envName] || '').trim();
+        if (val) { g.__memorySettings[key] = val; didFill = true; }
+      }
+    }
+    // Always inject the new logo — overrides any stale DB/file value so the
+    // Betcheza crown-B logo is shown in header, dark mode and footer.
+    g.__memorySettings['logo_url'] = '/betcheza-logo.png';
+    g.__memorySettings['logo_dark_url'] = '/betcheza-logo.png';
+    g.__memorySettings['footer_logo_url'] = '/betcheza-logo.png';
+    didFill = true;
+    if (didFill) fileStoreSet('site-settings', g.__memorySettings);
+  } catch (e) {
+    console.warn('[instrumentation] env seed failed:', e);
+  }
+
+  // Seed PayHero credentials from env vars into the file store so M-Pesa
+  // payments work immediately without the admin needing to re-enter credentials.
+  try {
+    const phToken = (process.env.PAYHERO_BASIC_TOKEN || '').trim();
+    const phAccountId = (process.env.PAYHERO_ACCOUNT_ID || '').trim();
+    if (phToken && phAccountId) {
+      const { fileStoreGet, fileStoreSet } = await import('./lib/file-store');
+      type GW = { id: string; enabled: boolean; credentials: Record<string, string> };
+      const gateways = fileStoreGet<GW[] | null>('payment-gateways', null);
+      const gw = gateways?.find((g: GW) => g.id === 'payhero');
+      // Only seed if credentials are empty — don't overwrite admin-saved values
+      if (!gw?.credentials?.basic_token || gw.credentials.basic_token.length < 10) {
+        const { DEFAULT_GATEWAYS } = await import('./app/api/admin/payment-gateways/route').catch(() => ({ DEFAULT_GATEWAYS: null }));
+        const base = (DEFAULT_GATEWAYS || gateways || []) as GW[];
+        const updated = base.map((g: GW) =>
+          g.id === 'payhero'
+            ? { ...g, enabled: true, credentials: { ...g.credentials, basic_token: phToken, account_id: phAccountId } }
+            : g
+        );
+        const g2 = globalThis as { __gwStore?: GW[] };
+        g2.__gwStore = updated;
+        fileStoreSet('payment-gateways', updated);
+        console.log('[instrumentation] PayHero credentials seeded from environment variables');
+      }
+    }
+  } catch (e) {
+    console.warn('[instrumentation] PayHero seed failed:', e);
+  }
+
+  // Seed SMTP env vars into the email config file store so sendMail() works
+  // immediately without the admin needing to open Email Setup and click Save.
+  try {
+    const smtpHost = (process.env.SMTP_HOST || '').trim();
+    const smtpUser = (process.env.SMTP_USERNAME || '').trim();
+    if (smtpHost && smtpUser) {
+      const { fileStoreGet, fileStoreSet } = await import('./lib/file-store');
+      const existing = fileStoreGet<Record<string, unknown> | null>('email-config', null);
+      // Only seed if no host is already stored (so admin overrides aren't clobbered)
+      if (!existing || !existing.host) {
+        const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+        const smtpSecure = (process.env.SMTP_SECURE || '').toLowerCase() === 'true' || smtpPort === 465;
+        fileStoreSet('email-config', {
+          enabled: true,
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpSecure,
+          username: smtpUser,
+          password: (process.env.SMTP_PASSWORD || '').trim(),
+          fromEmail: (process.env.SMTP_FROM_EMAIL || smtpUser).trim(),
+          fromName: (process.env.SMTP_FROM_NAME || 'Betcheza').trim(),
+          replyTo: (process.env.SMTP_REPLY_TO || '').trim(),
+        });
+        console.log('[instrumentation] SMTP config seeded from environment variables');
+      }
+    }
+  } catch (e) {
+    console.warn('[instrumentation] SMTP seed failed:', e);
+  }
+
+  // ── DB migrations: run on every server start ────────────────────────────
+  // This ensures tables/columns exist on the production server the moment
+  // the app restarts after a GitHub deploy — no manual phpMyAdmin needed.
+  setTimeout(async () => {
+    try {
+      const { query, execute, getPool } = await import('./lib/db');
+      if (!getPool()) return; // no DB configured — skip silently
+
+      // 0. Site pageview counter (for real advertising stats)
+      await query(`
+        CREATE TABLE IF NOT EXISTS site_pageviews (
+          id         INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          date       DATE NOT NULL,
+          path       VARCHAR(255) NOT NULL DEFAULT '/',
+          count      INT NOT NULL DEFAULT 0,
+          UNIQUE KEY uq_date_path (date, path)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      // 1. community_rooms table
+      await query(`
+        CREATE TABLE IF NOT EXISTS community_rooms (
+          id          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          name        VARCHAR(80) NOT NULL,
+          slug        VARCHAR(80) NOT NULL,
+          description TEXT DEFAULT NULL,
+          icon        VARCHAR(10) DEFAULT NULL,
+          color       VARCHAR(80) DEFAULT NULL,
+          post_count  INT NOT NULL DEFAULT 0,
+          sort_order  INT NOT NULL DEFAULT 0,
+          is_active   TINYINT(1) NOT NULL DEFAULT 1,
+          created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_room_slug (slug)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      // 2. Seed default rooms (INSERT IGNORE = skip if already present)
+      await query(`
+        INSERT IGNORE INTO community_rooms (name, slug, description, icon, color, sort_order) VALUES
+          ('General',       'general',    'General betting chat',                 '💬', 'bg-blue-500/15 text-blue-500 border-blue-500/30',         1),
+          ('Football Tips', 'football',   'Football predictions & analysis',      '⚽', 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30', 2),
+          ('Value Bets',    'value-bets', 'High value picks & odds hunting',      '🎯', 'bg-amber-500/15 text-amber-600 border-amber-500/30',      3),
+          ('Live Chat',     'live-chat',  'Chat during live matches',             '🔴', 'bg-rose-500/15 text-rose-500 border-rose-500/30',         4),
+          ('Analysis',      'analysis',   'Deep dives, stats and breakdowns',     '📊', 'bg-purple-500/15 text-purple-600 border-purple-500/30',   5),
+          ('Basketball',    'basketball', 'NBA, EuroLeague & more',               '🏀', 'bg-orange-500/15 text-orange-600 border-orange-500/30',   6),
+          ('Premium Picks', 'premium',    'Top tipster premium predictions',      '👑', 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',   7)
+      `);
+
+      // 3. Add room_id column to feed_posts if not already there
+      await query(`ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS room_id INT DEFAULT NULL`).catch(() => {});
+      await query(`ALTER TABLE feed_posts ADD INDEX IF NOT EXISTS idx_fp_room_id (room_id)`).catch(() => {});
+
+      // Widen teams.short_name to avoid "Data too long" errors from ESPN abbreviations
+      await query(`ALTER TABLE teams MODIFY COLUMN short_name VARCHAR(100) DEFAULT NULL`).catch(() => {});
+      // Widen api_id columns to avoid "Data too long" errors from long ESPN event IDs
+      await query(`ALTER TABLE teams MODIFY COLUMN api_id VARCHAR(255) DEFAULT NULL`).catch(() => {});
+      await query(`ALTER TABLE leagues MODIFY COLUMN api_id VARCHAR(255) DEFAULT NULL`).catch(() => {});
+
+      // ── Challenges table — create + add all columns ──────────────────────────
+      await query(`
+        CREATE TABLE IF NOT EXISTS challenges (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          match_id VARCHAR(200) NOT NULL DEFAULT '',
+          match_home_team VARCHAR(150) NOT NULL DEFAULT '',
+          match_away_team VARCHAR(150) NOT NULL DEFAULT '',
+          match_home_logo TEXT NULL,
+          match_away_logo TEXT NULL,
+          match_league VARCHAR(200) NOT NULL DEFAULT '',
+          match_sport VARCHAR(60) NOT NULL DEFAULT 'football',
+          match_kickoff DATETIME NULL,
+          match_status VARCHAR(30) NOT NULL DEFAULT 'scheduled',
+          challenger_id INT NOT NULL,
+          challenged_id INT NULL,
+          challenger_pick VARCHAR(500) NOT NULL DEFAULT '',
+          challenged_pick VARCHAR(500) NULL,
+          stake_kes INT NOT NULL DEFAULT 0,
+          platform_fee_pct INT NOT NULL DEFAULT 10,
+          status VARCHAR(30) NOT NULL DEFAULT 'pending',
+          escrow_status VARCHAR(30) NOT NULL DEFAULT 'none',
+          is_fake TINYINT(1) NOT NULL DEFAULT 0,
+          winner_id INT NULL,
+          draw_refunded TINYINT(1) NOT NULL DEFAULT 0,
+          is_public TINYINT(1) NOT NULL DEFAULT 1,
+          watchers INT NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_status (status),
+          INDEX idx_match_id (match_id),
+          INDEX idx_challenger (challenger_id),
+          INDEX idx_fake (is_fake)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `).catch(() => {});
+      // Add any missing columns to existing challenges table (idempotent)
+      const challengeAlters = [
+        `ALTER TABLE challenges ADD COLUMN match_home_logo TEXT NULL`,
+        `ALTER TABLE challenges ADD COLUMN match_away_logo TEXT NULL`,
+        `ALTER TABLE challenges ADD COLUMN match_home_team VARCHAR(150) NOT NULL DEFAULT ''`,
+        `ALTER TABLE challenges ADD COLUMN match_away_team VARCHAR(150) NOT NULL DEFAULT ''`,
+        `ALTER TABLE challenges ADD COLUMN match_league VARCHAR(200) NOT NULL DEFAULT ''`,
+        `ALTER TABLE challenges ADD COLUMN match_sport VARCHAR(60) NOT NULL DEFAULT 'football'`,
+        `ALTER TABLE challenges ADD COLUMN match_kickoff DATETIME NULL`,
+        `ALTER TABLE challenges ADD COLUMN match_status VARCHAR(30) NOT NULL DEFAULT 'scheduled'`,
+        `ALTER TABLE challenges ADD COLUMN challenged_pick VARCHAR(500) NULL`,
+        `ALTER TABLE challenges MODIFY COLUMN challenger_pick TEXT NOT NULL`,
+        `ALTER TABLE challenges MODIFY COLUMN challenged_pick TEXT NULL`,
+        `ALTER TABLE challenges ADD COLUMN stake_kes INT NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN platform_fee_pct INT NOT NULL DEFAULT 10`,
+        `ALTER TABLE challenges ADD COLUMN escrow_status VARCHAR(30) NOT NULL DEFAULT 'none'`,
+        `ALTER TABLE challenges ADD COLUMN is_fake TINYINT(1) NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN winner_id INT NULL`,
+        `ALTER TABLE challenges ADD COLUMN draw_refunded TINYINT(1) NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 1`,
+        `ALTER TABLE challenges ADD COLUMN watchers INT NOT NULL DEFAULT 0`,
+        `ALTER TABLE challenges ADD COLUMN challenged_id INT NULL`,
+      ];
+      for (const sql of challengeAlters) {
+        await query(sql, []).catch(() => {});
+      }
+      // Community votes table for challenge voting
+      await query(`
+        CREATE TABLE IF NOT EXISTS community_votes (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          challenge_id INT NOT NULL,
+          user_id INT NOT NULL,
+          side VARCHAR(20) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_vote (challenge_id, user_id),
+          INDEX idx_cv_challenge (challenge_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `).catch(() => {});
+
+      // ── tipster_profiles: add missing columns that the schema omitted ────────
+      // The base dump doesn't include bio, created_at, or is_verified.
+      // These are added idempotently so re-running is always safe.
+      await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT NULL`).catch(() => {});
+      await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`).catch(() => {});
+      await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS is_verified TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+
+      // ── support_chat_sessions + support_chat_messages ─────────────────────
+      await query(`
+        CREATE TABLE IF NOT EXISTS support_chat_sessions (
+          id               INT AUTO_INCREMENT PRIMARY KEY,
+          session_token    VARCHAR(64) NOT NULL,
+          user_id          INT DEFAULT NULL,
+          visitor_name     VARCHAR(100) DEFAULT NULL,
+          visitor_email    VARCHAR(200) DEFAULT NULL,
+          status           ENUM('open','closed') NOT NULL DEFAULT 'open',
+          last_message_at  TIMESTAMP NULL DEFAULT NULL,
+          created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_scs_token  (session_token),
+          INDEX idx_scs_user   (user_id),
+          INDEX idx_scs_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `).catch(() => {});
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS support_chat_messages (
+          id          INT AUTO_INCREMENT PRIMARY KEY,
+          session_id  INT NOT NULL,
+          sender      ENUM('user','admin') NOT NULL,
+          body        TEXT NOT NULL,
+          created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_scm_session    (session_id),
+          INDEX idx_scm_session_id (session_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `).catch(() => {});
+
+      // ── career_applications: applications from the /careers page ──────────
+      await query(`
+        CREATE TABLE IF NOT EXISTS career_applications (
+          id           INT(11) NOT NULL AUTO_INCREMENT,
+          name         VARCHAR(200) NOT NULL,
+          phone        VARCHAR(30)  NOT NULL,
+          email        VARCHAR(200) DEFAULT NULL,
+          role         VARCHAR(100) NOT NULL,
+          location     VARCHAR(200) DEFAULT NULL,
+          network      VARCHAR(500) DEFAULT NULL,
+          message      TEXT         DEFAULT NULL,
+          status       ENUM('pending','approved','rejected','contacted') NOT NULL DEFAULT 'pending',
+          notes        TEXT         DEFAULT NULL COMMENT 'Internal admin notes',
+          reviewed_by  INT          DEFAULT NULL,
+          reviewed_at  DATETIME     DEFAULT NULL,
+          created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_ca_status (status),
+          KEY idx_ca_created (created_at),
+          KEY idx_ca_role (role(30))
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+          COMMENT='Agent/career applications from /careers page'
+      `).catch(() => {});
+
+      // ── Backfill: ensure every user with role='tipster' has a profile row ──
+      // This auto-fixes any user that was approved while the INSERT was broken
+      // (missing columns caused a silent failure). Safe to run every restart.
+      await query(`
+        INSERT IGNORE INTO tipster_profiles (user_id, updated_at)
+        SELECT id, NOW() FROM users WHERE role = 'tipster'
+      `).catch(() => {});
+
+      // ── Sync is_verified on tipster_profiles from users table ────────────
+      await query(`
+        UPDATE tipster_profiles tp
+        JOIN users u ON u.id = tp.user_id
+        SET tp.is_verified = u.is_verified
+        WHERE u.role = 'tipster'
+      `).catch(() => {});
+
+      // ── Performance indexes — speed up the most common queries ─────────────
+      // These use CREATE INDEX IF NOT EXISTS (MariaDB 10.1+) so they're idempotent.
+      const indexMigrations = [
+        // auto_tips: tipster_id is the most-queried column (per-tipster stats)
+        `CREATE INDEX IF NOT EXISTS idx_at_tipster ON auto_tips (tipster_id)`,
+        // auto_tips: status filtering for pending/won/lost settlement queries
+        `CREATE INDEX IF NOT EXISTS idx_at_status ON auto_tips (status)`,
+        // auto_tips: kickoff for time-windowed queries
+        `CREATE INDEX IF NOT EXISTS idx_at_kickoff ON auto_tips (kickoff)`,
+        // auto_tips: composite for the most common "tipster + status" filter
+        `CREATE INDEX IF NOT EXISTS idx_at_tipster_status ON auto_tips (tipster_id, status)`,
+        // users: role is used in every tipster listing query
+        `CREATE INDEX IF NOT EXISTS idx_users_role ON users (role)`,
+        // users: email lookups (login, verification)
+        `CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)`,
+        // feed_posts: user_id for per-tipster feed queries
+        `CREATE INDEX IF NOT EXISTS idx_fp_user_id ON feed_posts (user_id)`,
+        // feed_posts: created_at for chronological feed ordering
+        `CREATE INDEX IF NOT EXISTS idx_fp_created_at ON feed_posts (created_at)`,
+        // api_cache: expires_at for cache eviction queries
+        `CREATE INDEX IF NOT EXISTS idx_ac_expires ON api_cache (expires_at)`,
+        // tipster_profiles: win_rate + roi for leaderboard ordering
+        `CREATE INDEX IF NOT EXISTS idx_tp_winrate ON tipster_profiles (win_rate DESC, roi DESC)`,
+      ];
+      for (const sql of indexMigrations) {
+        await query(sql).catch(() => {}); // silently skip if already exists or no privilege
+      }
+
+      console.log('[instrumentation] DB migrations applied (community_rooms + room_id + challenges + indexes)');
+
+      // 4b. Backfill room_id on existing fake-tipster posts (user_id >= 1000)
+      //     that were created before rooms existed. Match rules:
+      //       - basketball sport mention  → basketball room
+      //       - live match posts          → live-chat room (no easy way to detect; skip)
+      //       - has pick + match_title    → football room
+      //       - has match_title, no pick  → analysis room
+      //       - value/odds keywords       → value-bets room
+      //       - analysis keywords         → analysis room
+      //       - everything else           → general room
+      const roomRows = await query<{ id: number; slug: string }>(
+        `SELECT id, slug FROM community_rooms WHERE is_active = 1`, []
+      ).catch(() => ({ rows: [] as Array<{ id: number; slug: string }> }));
+      const roomMap = new Map(roomRows.rows.map(r => [r.slug, r.id]));
+
+      if (roomMap.size > 0) {
+        const bball  = roomMap.get('basketball');
+        const ftball = roomMap.get('football');
+        const val    = roomMap.get('value-bets');
+        const anal   = roomMap.get('analysis');
+        const gen    = roomMap.get('general');
+
+        if (bball)  await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND (LOWER(content) LIKE '%nba%' OR LOWER(content) LIKE '%basketball%' OR LOWER(content) LIKE '%euroleague%')`, [bball]).catch(() => {});
+        if (ftball) await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NOT NULL AND pick IS NOT NULL`, [ftball]).catch(() => {});
+        if (anal)   await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NOT NULL AND pick IS NULL`, [anal]).catch(() => {});
+        if (val)    await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NULL AND (LOWER(content) LIKE '%value%' OR LOWER(content) LIKE '%odds%' OR LOWER(content) LIKE '%line%' OR LOWER(content) LIKE '%market%')`, [val]).catch(() => {});
+        if (anal)   await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000 AND match_title IS NULL AND (LOWER(content) LIKE '%xg%' OR LOWER(content) LIKE '%h2h%' OR LOWER(content) LIKE '%stats%' OR LOWER(content) LIKE '%analysis%' OR LOWER(content) LIKE '%research%')`, [anal]).catch(() => {});
+        if (gen)    await query(`UPDATE feed_posts SET room_id = ? WHERE room_id IS NULL AND user_id >= 1000`, [gen]).catch(() => {});
+        // Sync post_count in community_rooms to match actual rows
+        await query(`UPDATE community_rooms cr SET post_count = (SELECT COUNT(*) FROM feed_posts fp WHERE fp.room_id = cr.id)`).catch(() => {});
+        console.log('[instrumentation] Backfilled room_id on existing fake-tipster posts');
+      }
+
+      // 4. Fix known data corrections that were only applied in code (MANUAL_DAY_OVERRIDES)
+      //    These rows exist in DB with wrong results; correct them once here.
+      const corrections: Array<{ date: string; result: 'win' | 'loss'; picksResult: 'win' | 'loss' }> = [
+        // Week 18 Day 4 (Thu 21 May 2026): Both corners picks were wins
+        // Inter Kashi 4 + East Bengal 10 = 14 corners → Over 9.5 ✓
+        // Jamshedpur 11 + Odisha 1 = 12 corners → Over 9.5 ✓
+        { date: '2026-05-21', result: 'win', picksResult: 'win' },
+      ];
+
+      for (const fix of corrections) {
+        const rows = await query<{ id: number; picks: string | null; result: string | null }>(
+          `SELECT id, picks, result FROM daily_strategy WHERE date = ? LIMIT 1`,
+          [fix.date],
+        );
+        if (!rows.rows.length) continue;
+        const row = rows.rows[0];
+        if (row.result === fix.result) continue; // already correct
+
+        let picks: Array<{ result?: string }> = [];
+        try { picks = JSON.parse(row.picks || '[]'); } catch { picks = []; }
+        const updatedPicks = picks.map(p => ({ ...p, result: fix.picksResult }));
+
+        await execute(
+          `UPDATE daily_strategy SET result = ?, picks = ?, status = 'completed', settled_at = NOW() WHERE id = ?`,
+          [fix.result, JSON.stringify(updatedPicks), row.id],
+        );
+        console.log(`[instrumentation] Fixed daily_strategy result for ${fix.date}: ${row.result} → ${fix.result}`);
+      }
+    } catch (e) {
+      console.warn('[instrumentation] DB migration error:', e);
+    }
+  }, 2000); // 2s delay — let the pool fully initialise first
+
+  // Seed the World Cup 2026 competition (no-op if already exists)
+  setTimeout(async () => {
+    try {
+      const { seedWorldCupCompetition } = await import('./lib/competitions-store');
+      await seedWorldCupCompetition();
+    } catch (e) {
+      console.warn('[instrumentation] World Cup competition seed failed:', e);
+    }
+  }, 3000);
+
+  const { startCron } = await import('./lib/cron');
+  startCron();
+
+  // Ensure the .local/state directory exists so the file cache can be written.
+  // Without this, the first ESPN fetch result is lost and every PM2 restart
+  // causes a cold-start delay for real users.
+  // Note: fs/promises is Node.js-only — guard is already at top of register()
+  // but we use a runtime check here to satisfy Turbopack's static analysis.
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    try {
+      const fs = require('fs') as typeof import('fs');
+      fs.mkdirSync(`${process.cwd()}/.local/state`, { recursive: true });
+    } catch { /* directory already exists — safe to ignore */ }
+  }
+
+  // Pre-warm the matches cache on startup so the very first user request is
+  // served from cache instead of waiting for the full ESPN fetch.
+  // Delay 1500 ms (was 500 ms) so the module-init file-cache read completes
+  // first — this prevents the background refresh from racing the init and
+  // wasting a full ESPN round-trip when the file cache is already valid.
+  setTimeout(async () => {
+    try {
+      const { getAllMatches } = await import('./lib/api/unified-sports-api');
+      await getAllMatches();
+      console.log('[instrumentation] matches cache warmed on startup');
+    } catch (e) {
+      console.warn('[instrumentation] matches cache warm-up failed:', e);
+    }
+  }, 1500);
+
+  // Deferred settle-tips run: fires 15s after startup so that:
+  //   1. The in-memory auto-tips store has had time to load from DB
+  //   2. The matches cache is warm with real scores
+  // This ensures tips from past matches are settled correctly immediately
+  // on restart, without waiting up to 30 minutes for the cron cycle.
+  setTimeout(async () => {
+    try {
+      const base = process.env.INTERNAL_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      await fetch(`${base}/api/cron/settle-tips`, { signal: AbortSignal.timeout(30_000) });
+      console.log('[instrumentation] startup settle-tips triggered');
+    } catch (e) {
+      console.warn('[instrumentation] startup settle-tips failed:', e);
+    }
+  }, 15_000);
+}

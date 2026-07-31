@@ -1,0 +1,125 @@
+import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
+import {
+  getCompetitionBySlugAsync,
+  settleCompetition,
+  getSettlement,
+  computePayouts,
+} from '@/lib/competitions-store';
+import { credit } from '@/lib/wallet-store';
+import { getTemplate } from '@/lib/email-templates-store';
+import { queryOne } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+function renderTpl(s: string, vars: Record<string, string | number>): string {
+  return s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => String(vars[k] ?? ''));
+}
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const { slug } = await params;
+  const comp = await getCompetitionBySlugAsync(slug);
+  if (!comp) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  return NextResponse.json({
+    competition: { id: comp.id, slug: comp.slug, name: comp.name, status: comp.status },
+    payouts: computePayouts(comp.id),
+    settled: getSettlement(comp.id),
+  });
+}
+
+export async function POST(
+  _req: Request,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { slug } = await params;
+  const comp = await getCompetitionBySlugAsync(slug);
+  if (!comp) return NextResponse.json({ error: 'Competition not found' }, { status: 404 });
+
+  const result = await settleCompetition(comp.id);
+  if (!result.ok) {
+    return NextResponse.json({ error: 'Settle failed' }, { status: 400 });
+  }
+  if (result.alreadySettled) {
+    return NextResponse.json({
+      success: true,
+      alreadySettled: true,
+      settlement: getSettlement(comp.id),
+    });
+  }
+
+  const tpl = getTemplate('prize_payout');
+  const credited: Array<{
+    userId: number;
+    username: string;
+    amount: number;
+    txnId: number | string;
+    emailSubject?: string;
+  }> = [];
+
+  for (const p of result.toCredit) {
+    const txn = credit(p.userId, p.amount, {
+      type: 'prize_payout',
+      currency: comp.currency || 'KES',
+      method: 'system',
+      reference: `comp-${comp.id}-rank-${p.rank}`,
+      description: `Prize payout — ${comp.name} (${p.place})`,
+      meta: {
+        competitionId: comp.id,
+        competitionSlug: comp.slug,
+        competitionName: comp.name,
+        place: p.place,
+        rank: p.rank,
+      },
+    });
+
+    let emailSubject: string | undefined;
+    try {
+      const user = await queryOne<{ username: string; display_name: string }>(
+        'SELECT username, display_name FROM users WHERE id = ? LIMIT 1', [p.userId]
+      );
+      if (user) {
+        const vars = {
+          username: user.username,
+          displayName: user.display_name || user.username,
+          amount: p.amount,
+          currency: comp.currency || 'KES',
+          competitionName: comp.name,
+          place: p.place,
+          rank: p.rank,
+        };
+        emailSubject = renderTpl(tpl.subject, vars);
+      }
+    } catch { /* non-critical */ }
+
+    credited.push({
+      userId: p.userId,
+      username: p.username,
+      amount: p.amount,
+      txnId: txn.id,
+      emailSubject,
+    });
+  }
+
+  return NextResponse.json({
+    success: true,
+    alreadySettled: false,
+    competition: {
+      id: comp.id,
+      slug: comp.slug,
+      name: comp.name,
+      status: comp.status,
+    },
+    payouts: result.toCredit,
+    credited,
+    settlement: getSettlement(comp.id),
+  });
+}

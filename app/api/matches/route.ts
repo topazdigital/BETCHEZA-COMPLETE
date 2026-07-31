@@ -1,0 +1,514 @@
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  getAllMatches,
+  getMatchesBySport,
+  getMatchesByLeague,
+  getMatchById,
+  matchesCacheVersion,
+  type UnifiedMatch,
+} from '@/lib/api/unified-sports-api';
+
+export const dynamic = 'force-dynamic';
+// No revalidate — force-dynamic already disables Next.js data cache.
+// Cache-Control is set per-response below.
+
+// Sport priority - Football always first
+const SPORT_PRIORITY: Record<number, number> = {
+  1: 0,   // Football (soccer)
+  2: 1,   // Basketball
+  3: 2,   // Tennis
+  4: 3,   // Cricket
+  5: 4,   // American Football
+  6: 5,   // Baseball
+  7: 6,   // Ice Hockey
+  8: 7,   // Rugby
+  17: 8,  // Golf
+  27: 9,  // MMA
+  26: 10, // Boxing
+  29: 11, // Formula 1
+  31: 12, // NASCAR
+  32: 13, // IndyCar
+  33: 14, // Esports
+};
+
+const EUROPEAN_TOP_5_LEAGUES = [1, 2, 3, 4, 5];
+
+// Country -> league priority order (geo aware)
+const COUNTRY_LEAGUES: Record<string, number[]> = {
+  // Africa
+  'KE': [24, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'NG': [24, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'GH': [24, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'EG': [24, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'ZA': [24, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'TZ': [24, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'UG': [24, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  // Europe
+  'GB': [1, 8, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'ES': [2, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'DE': [3, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'IT': [4, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'FR': [5, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'NL': [6, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'PT': [7, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'BE': [16, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'TR': [15, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  // Americas
+  'US': [11, 401, 101, 501, 601, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'BR': [12, 25, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'AR': [13, 25, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'MX': [27, 11, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  // Asia / Oceania
+  'JP': [18, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'AU': [20, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'IN': [301, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'SA': [14, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+  'CN': [28, 9, 10, ...EUROPEAN_TOP_5_LEAGUES],
+};
+
+export interface MatchData {
+  id: string;
+  sportId: number;
+  leagueId: number;
+  homeTeam: { id: number | string; name: string; shortName: string; logo?: string; form?: string; record?: string };
+  awayTeam: { id: number | string; name: string; shortName: string; logo?: string; form?: string; record?: string };
+  kickoffTime: string;
+  status: 'scheduled' | 'live' | 'halftime' | 'finished' | 'postponed' | 'cancelled' | 'extra_time' | 'penalties';
+  homeScore: number | null;
+  awayScore: number | null;
+  minute?: number;
+  period?: string;
+  league: {
+    id: number;
+    name: string;
+    slug: string;
+    country: string;
+    countryCode: string;
+    tier: number;
+    logo?: string;
+  };
+  sport: { id: number; name: string; slug: string; icon: string };
+  odds?: { home: number; draw?: number; away: number; bookmaker?: string };
+  markets?: MarketOdds[];
+  tipsCount: number;
+  source?: string;
+  venue?: string;
+}
+
+export interface MarketOdds {
+  key: string;
+  name: string;
+  outcomes: Array<{ name: string; price: number; point?: number }>;
+}
+
+function convertToMatchData(match: UnifiedMatch): MatchData {
+  return {
+    id: match.id,
+    sportId: match.sportId,
+    leagueId: match.leagueId,
+    homeTeam: {
+      id: match.homeTeam.id,
+      name: match.homeTeam.name,
+      shortName: match.homeTeam.shortName,
+      logo: match.homeTeam.logo,
+      form: match.homeTeam.form,
+      record: match.homeTeam.record,
+    },
+    awayTeam: {
+      id: match.awayTeam.id,
+      name: match.awayTeam.name,
+      shortName: match.awayTeam.shortName,
+      logo: match.awayTeam.logo,
+      form: match.awayTeam.form,
+      record: match.awayTeam.record,
+    },
+    kickoffTime: new Date(match.kickoffTime).toISOString(),
+    status: match.status as MatchData['status'],
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    minute: match.minute,
+    period: match.period,
+    league: match.league,
+    sport: match.sport,
+    odds: match.odds
+      ? { home: match.odds.home, draw: match.odds.draw, away: match.odds.away, bookmaker: match.odds.bookmaker }
+      : undefined,
+    markets: match.markets,
+    tipsCount: match.tipsCount,
+    source: match.source,
+    venue: match.venue,
+  };
+}
+
+// Day bucket for a kickoff timestamp (ms) relative to the user's timezone.
+// Returns 0=today, 1=tomorrow, 2+=future, negative=past.
+// Uses only arithmetic — no Date object construction — for maximum speed.
+function getDayBucketMs(kickoffMs: number, tzOffsetMs: number, nowMs: number): number {
+  const DAY = 86_400_000;
+  const localNow  = nowMs     + tzOffsetMs;
+  const localKick = kickoffMs + tzOffsetMs;
+  const todayStart = localNow  - (localNow  % DAY);
+  const kickStart  = localKick - (localKick % DAY);
+  return Math.round((kickStart - todayStart) / DAY);
+}
+
+// Legacy overload used by status-filter helper below.
+function getDayBucket(kickoff: Date, tzOffsetMin: number): number {
+  return getDayBucketMs(kickoff.getTime(), tzOffsetMin * 60_000, Date.now());
+}
+
+// Sort: today first → live first → sport priority → league priority → time asc.
+// Sort keys are pre-computed once (O(n)) to avoid repeated Date work inside
+// the O(n log n) comparator.
+function sortMatches(matches: MatchData[], userCountryCode: string, tzOffsetMin: number): MatchData[] {
+  const leaguePriority = COUNTRY_LEAGUES[userCountryCode.toUpperCase()] || EUROPEAN_TOP_5_LEAGUES;
+  const liveStatuses   = new Set(['live', 'halftime', 'extra_time', 'penalties']);
+  const tzOffsetMs     = tzOffsetMin * 60_000;
+  const nowMs          = Date.now();
+
+  type Tagged = {
+    m: MatchData;
+    isLive: boolean;
+    bucket: number;
+    sportP: number;
+    leagueP: number;
+    kickMs: number;
+  };
+
+  const tagged: Tagged[] = matches.map(m => {
+    const kickMs  = new Date(m.kickoffTime).getTime();
+    const raw     = getDayBucketMs(kickMs, tzOffsetMs, nowMs);
+    const bucket  = raw < 0 ? 9999 + Math.abs(raw) : raw;
+    const idxL    = leaguePriority.indexOf(m.leagueId);
+    return {
+      m,
+      isLive:  liveStatuses.has(m.status),
+      bucket,
+      sportP:  SPORT_PRIORITY[m.sportId] ?? 99,
+      leagueP: idxL === -1 ? 999 : idxL,
+      kickMs,
+    };
+  });
+
+  tagged.sort((a, b) => {
+    if (a.isLive !== b.isLive)      return a.isLive ? -1 : 1;
+    if (a.bucket  !== b.bucket)     return a.bucket  - b.bucket;
+    if (a.sportP  !== b.sportP)     return a.sportP  - b.sportP;
+    if (a.leagueP !== b.leagueP)    return a.leagueP - b.leagueP;
+    return a.kickMs - b.kickMs;
+  });
+
+  return tagged.map(t => t.m);
+}
+
+// ── Stale-live detection constants (used in route cache + per-request) ────────
+const STALE_LIVE_HOURS: Record<string, number> = {
+  soccer: 3, football: 3, basketball: 3,
+  americanfootball: 4, baseball: 4, hockey: 3.5, icehockey: 3.5,
+  tennis: 7, cricket: 12, rugby: 3, mma: 3.5, boxing: 3.5,
+  golf: 12, racing: 5,
+};
+
+// Period strings that indicate a game has actually finished regardless of API status.
+// IMPORTANT: Do NOT include bare "end" (matches "End of Set 1" in tennis mid-match)
+// or bare "over" (matches cricket over-count strings like "35.4 Overs" during play).
+// Tennis between-set periods use "End of Set N" — those matches are still live.
+// Cricket uses "X.X Overs" throughout the innings — the match is still in progress.
+// The time-based fallback (tennis: 5h, cricket: 10h) handles genuinely stale matches.
+const FINAL_PERIOD_PATTERNS = /\b(ft|final|full.?time|game.?over|finished)\b/i;
+
+function isStaleLive(m: MatchData): boolean {
+  const live = m.status === 'live' || m.status === 'halftime' ||
+    m.status === 'extra_time' || m.status === 'penalties';
+  if (!live) return false;
+
+  const slug = m.sport.slug;
+  const period = m.period ?? '';
+
+  // ── Period-string final detection (works across all sports) ──────────────
+  // ESPN sometimes keeps status='live' for a moment after the game ends.
+  // If the period field says "Final", "FT", "F", "End", etc. → definitely over.
+  if (FINAL_PERIOD_PATTERNS.test(period)) return true;
+
+  // ── Sport-specific period/inning checks ──────────────────────────────────
+  // Baseball: "Inn N" where N > 9 and the game has been running a while
+  if (slug === 'baseball') {
+    const innMatch = period.match(/inn(?:ing)?\s*(\d+)/i);
+    if (innMatch) {
+      const inning = parseInt(innMatch[1], 10);
+      // Past the 9th inning with age >3h is almost certainly finished
+      const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
+      if (inning >= 9 && ageHours > 3) return true;
+      if (inning > 12) return true; // extra innings well past normal duration
+    }
+  }
+
+  // Soccer/football: ONLY filter on minute if past extra time entirely.
+  // Regular play runs to ~90+6 min, extra time adds 30 min + stoppage = ~130 min.
+  // Penalties can add another 30+ min. We only short-circuit on genuinely
+  // impossible values (≥145) to avoid killing a real extra-time match.
+  if (slug === 'soccer' || slug === 'football') {
+    const minute = m.minute;
+    if (typeof minute === 'number' && minute >= 145) return true;
+  }
+
+  // Basketball: NBA game = ~2.5h, college = ~2h; OT rare. Filter at 3.5h.
+  if (slug === 'basketball') {
+    const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
+    if (ageHours > 3.5) return true;
+  }
+
+  // ── Time-based fallback ───────────────────────────────────────────────────
+  const maxHours = STALE_LIVE_HOURS[slug] ?? 4;
+  const ageHours = (Date.now() - new Date(m.kickoffTime).getTime()) / 3_600_000;
+  return ageHours > maxHours;
+}
+
+// ── Route-level in-process cache ──────────────────────────────────────────────
+// Caches the processed MatchData[] (post getAllMatches + convertToMatchData +
+// stale-live filter) so per-request work is only geo-sort + status filter
+// (<2 ms). Promise dedup prevents stampedes when the cache is cold.
+//
+// TTL: 30 s — reduced from 90s so live-score patches propagate faster.
+// Also invalidated immediately when matchesCacheVersion changes (i.e. when
+// patchLiveScoresInMainCache or a full background refresh updates the cache).
+const ROUTE_CACHE_TTL = 30_000;
+
+// Sport-specific expected match durations in ms (including HT/breaks) for
+// server-side time-based status inference on stale 'scheduled' matches.
+const SERVER_SPORT_DURATION_MS: Record<string, number> = {
+  soccer: 115 * 60 * 1000,
+  football: 115 * 60 * 1000,
+  rugby: 115 * 60 * 1000,
+  basketball: 150 * 60 * 1000,
+  'ice-hockey': 140 * 60 * 1000,
+  hockey: 140 * 60 * 1000,
+  tennis: 240 * 60 * 1000,
+  baseball: 240 * 60 * 1000,
+  cricket: 600 * 60 * 1000,
+  'american-football': 240 * 60 * 1000,
+  mma: 90 * 60 * 1000,
+  boxing: 90 * 60 * 1000,
+};
+
+interface RouteCacheEntry {
+  data: MatchData[];
+  source: string;
+  ts: number;
+  version: number;
+}
+
+let g_routeCache: RouteCacheEntry | null = null;
+let g_routePromise: Promise<RouteCacheEntry> | null = null;
+
+async function getProcessedMatches(): Promise<RouteCacheEntry> {
+  // Serve from in-process cache if fresh AND the underlying cache hasn't changed
+  if (
+    g_routeCache &&
+    Date.now() - g_routeCache.ts < ROUTE_CACHE_TTL &&
+    g_routeCache.version === matchesCacheVersion
+  ) {
+    return g_routeCache;
+  }
+
+  // Deduplicate concurrent requests — all share the same promise
+  if (g_routePromise) return g_routePromise;
+
+  g_routePromise = (async (): Promise<RouteCacheEntry> => {
+    const apiMatches = await getAllMatches();
+    const sources = new Set(apiMatches.map(m => m.source));
+    const source = Array.from(sources).join('+') || 'espn';
+    const now = Date.now();
+
+    let matches = apiMatches.map(convertToMatchData);
+    matches = matches.filter(m => !isStaleLive(m));
+    // Filter out matches whose league name is a raw ESPN fallback like
+    // "League 23286", "World League 3321", or "Unknown League".
+    // resolveGlobalLeagueInfo now prevents these from forming, but this guard
+    // is a belt-and-suspenders last line of defence at the API boundary.
+    matches = matches.filter(m => !/^(World\s+)?League\s+\d+$/i.test(m.league.name)
+      && !/^Unknown\s+League$/i.test(m.league.name));
+
+    // Server-side time-based status inference for stale 'scheduled' matches.
+    // We use a generous buffer (durationMs × 1.5) beyond the normal match length
+    // to account for extra time, penalties, and injury time — a match at minute
+    // 105 or 120 (AET) must NOT be wrongly promoted to 'finished' and removed
+    // from the live feed. Only truly over matches (well past their extended
+    // possible duration) are promoted.
+    matches = matches.map(m => {
+      if (m.status !== 'scheduled') return m;
+      const kickoffMs = new Date(m.kickoffTime).getTime();
+      if (kickoffMs > now) return m; // hasn't kicked off yet
+      const baseDurationMs = SERVER_SPORT_DURATION_MS[m.sport.slug] ?? 130 * 60 * 1000;
+      // Use 1.6× buffer: soccer 115min × 1.6 = 184min, covers regulation + ET + pens
+      const thresholdMs = baseDurationMs * 1.6;
+      const ageMs = now - kickoffMs;
+      if (ageMs >= thresholdMs) {
+        // Clearly over — mark as finished (score shown when ESPN catches up)
+        return { ...m, status: 'finished' as const };
+      }
+      return m;
+    });
+
+    const entry: RouteCacheEntry = { data: matches, source, ts: now, version: matchesCacheVersion };
+    g_routeCache = entry;
+    return entry;
+  })().finally(() => {
+    g_routePromise = null;
+  });
+
+  return g_routePromise;
+}
+
+// International competition league IDs
+const INTL_LEAGUE_IDS = new Set([9, 10, 26, 102, 24, 29, 30, 31, 104, 111, 109, 80, 25]);
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const sportId = searchParams.get('sportId');
+  const leagueId = searchParams.get('leagueId');
+  const status = searchParams.get('status');
+  const countryCode = searchParams.get('countryCode') || 'GB';
+  const tzOffsetMin = parseInt(searchParams.get('tzOffsetMin') || '0', 10);
+  const matchId = searchParams.get('matchId');
+  const category = searchParams.get('category');
+  const limit = searchParams.get('limit');
+
+  try {
+    let matches: MatchData[] = [];
+    let apiSource = 'espn';
+
+    if (matchId) {
+      const match = await getMatchById(matchId);
+      if (match) {
+        return NextResponse.json({
+          match: convertToMatchData(match),
+          source: match.source,
+        });
+      }
+      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    }
+
+    if (leagueId) {
+      // League-specific is most specific — always takes priority over sportId.
+      // Previously sportId was checked first, which caused ALL soccer matches to
+      // appear under every league page (e.g. Chinese teams in Premier League).
+      const apiMatches = await getMatchesByLeague(parseInt(leagueId));
+      matches = apiMatches.map(convertToMatchData).filter(m => !isStaleLive(m));
+      const sources = new Set(apiMatches.map(m => m.source));
+      apiSource = Array.from(sources).join('+') || 'espn';
+    } else if (sportId) {
+      // Sport-specific (no league filter): return all matches for this sport
+      const apiMatches = await getMatchesBySport(parseInt(sportId));
+      matches = apiMatches.map(convertToMatchData).filter(m => !isStaleLive(m));
+      const sources = new Set(apiMatches.map(m => m.source));
+      apiSource = Array.from(sources).join('+') || 'espn';
+    } else if (status === 'live') {
+      // Live: lightweight filter on top of getProcessedMatches() (fast path)
+      const cached = await getProcessedMatches();
+      apiSource = cached.source;
+      matches = cached.data.filter(m =>
+        m.status === 'live' || m.status === 'halftime' ||
+        m.status === 'extra_time' || m.status === 'penalties'
+      );
+    } else {
+      // ALL other cases (including status=upcoming, status=finished, status=today,
+      // category=international, etc.) — serve from the route-level cache.
+      const cached = await getProcessedMatches();
+      apiSource = cached.source;
+      matches = cached.data;
+    }
+
+    // Category filter
+    if (category === 'international') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(today);
+      todayEnd.setHours(23, 59, 59, 999);
+      matches = matches.filter(m => {
+        const t = new Date(m.kickoffTime).getTime();
+        return INTL_LEAGUE_IDS.has(m.leagueId) && t >= today.getTime() && t <= todayEnd.getTime();
+      });
+    }
+
+    // Limit (applied before status filter so we don't over-trim)
+    if (limit && !status) {
+      matches = matches.slice(0, parseInt(limit, 10));
+    }
+
+    // Status filter
+    if (status === 'upcoming') {
+      matches = matches.filter(m =>
+        m.status === 'scheduled' || m.status === 'live' ||
+        m.status === 'halftime' || m.status === 'extra_time' || m.status === 'penalties'
+      );
+    } else if (status === 'finished' || status === 'results') {
+      matches = matches.filter(m => m.status === 'finished');
+    } else if (status === 'today') {
+      matches = matches.filter(m => getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0);
+    } else if (status && status !== 'all' && status !== 'live') {
+      matches = matches.filter(m => m.status === status);
+    } else if (!status || status === 'all') {
+      // Default: keep today's matches even if finished; drop finished from other days.
+      // For scheduled matches that are past their kickoff: only prune matches from
+      // OTHER days (not today) whose kickoff was >6 hours ago. Today's matches that
+      // ESPN hasn't updated yet should always stay visible — hiding them caused the
+      // "No matches today" problem when the feed was slow to update.
+      const nowMs = Date.now();
+      const STALE_SCHEDULED_OTHER_DAY_MS = 6 * 60 * 60 * 1000; // 6 hours for non-today
+      matches = matches.filter(m => {
+        if (m.status === 'cancelled') return false;
+        // Postponed: only show today's postponed matches (labeled as Postponed)
+        if (m.status === 'postponed') {
+          return getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
+        }
+        if (m.status === 'finished') {
+          // Keep finished matches only if they kicked off today
+          return getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
+        }
+        if (m.status === 'scheduled') {
+          const isToday = getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0;
+          // Never prune today's scheduled matches — ESPN updates can be slow
+          if (isToday) return true;
+          // For past/other days: discard if kickoff was more than 6 hours ago
+          return new Date(m.kickoffTime).getTime() >= nowMs - STALE_SCHEDULED_OTHER_DAY_MS;
+        }
+        return true;
+      });
+    }
+
+    // Post-status limit (for ?status=live&limit=20 style requests)
+    if (limit && status) {
+      matches = matches.slice(0, parseInt(limit, 10));
+    }
+
+    // Geo sort
+    matches = sortMatches(matches, countryCode, tzOffsetMin);
+
+    const stats = {
+      total: matches.length,
+      live: matches.filter(m =>
+        m.status === 'live' || m.status === 'halftime' ||
+        m.status === 'extra_time' || m.status === 'penalties'
+      ).length,
+      today: matches.filter(m => getDayBucket(new Date(m.kickoffTime), tzOffsetMin) === 0).length,
+      upcoming: matches.filter(m => m.status === 'scheduled').length,
+      finished: 0,
+    };
+
+    const res = NextResponse.json({
+      matches,
+      stats,
+      source: apiSource,
+      timestamp: new Date().toISOString(),
+    });
+    res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    return res;
+  } catch (error) {
+    console.error('[Matches API] Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch matches' },
+      { status: 500 }
+    );
+  }
+}

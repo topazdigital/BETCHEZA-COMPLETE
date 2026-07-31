@@ -1,0 +1,1368 @@
+PS C:\Users\Topaz Digital Server> ssh root@157.250.205.180
+root@157.250.205.180's password:
+
+--
+The default directadmin username is admin
+Directadmin defaults to installing CSF firewall - failed logins may be temp blocked in /etc/csf/csf.deny
+--
+Last failed login: Thu Apr 30 07:14:05 EDT 2026 from 20.193.171.57 on ssh:notty
+There were 72 failed login attempts since the last successful login.
+Last login: Tue Apr 28 09:47:03 2026 from 66.45.228.251
+[root@server ~]# cat /etc/os-release | head -n 3
+NAME="AlmaLinux"
+VERSION="9.7 (Moss Jungle Cat)"
+ID="almalinux"
+[root@server ~]# node -v 2>/dev/null || echo "no node"
+v20.20.2
+[root@server ~]# npm -v 2>/dev/null || echo "no npm"
+10.8.2
+[root@server ~]# which nginx apache2 httpd 2>/dev/null
+/usr/sbin/httpd
+[root@server ~]# mysql --version
+mysql  Ver 15.1 Distrib 10.6.25-MariaDB, for linux-systemd (x86_64) using readline 5.1
+[root@server ~]# nslookup betcheza.co.ke
+Server:         69.10.54.252
+Address:        69.10.54.252#53
+
+Non-authoritative answer:
+Name:   betcheza.co.ke
+Address: 157.250.205.180
+
+[root@server ~]# npm install -g pm2
+
+changed 134 packages in 10s
+
+13 packages are looking for funding
+  run `npm fund` for details
+[root@server ~]# pm2 -v
+6.0.14
+[root@server ~]# mkdir -p /home/admin/apps/betcheza
+[root@server ~]# chown -R admin:admin /home/admin/apps
+[root@server ~]# ls -la /home/admin/apps
+total 12
+drwxr-xr-x   3 admin admin 4096 Apr 30 11:08 .
+drwx--x--x. 17 admin admin 4096 Apr 30 11:08 ..
+drwxr-xr-x   2 admin admin 4096 Apr 30 11:08 betcheza
+[root@server ~]# cd /home/admin/apps/betcheza
+[root@server betcheza]# ls -la
+total 44268
+drwxr-xr-x 2 admin admin     4096 Apr 30 11:26 .
+drwxr-xr-x 3 admin admin     4096 Apr 30 11:08 ..
+-rw-r--r-- 1 root  root  45316486 Apr 30 11:27 betcheza.zip
+[root@server betcheza]# dnf install -y unzip 2>/dev/null || yum
+Last metadata expiration check: 3:34:51 ago on Thu 30 Apr 2026 07:54:23 AM EDT.
+Package unzip-6.0-59.el9.x86_64 is already installed.
+Dependencies resolved.
+Nothing to do.
+Complete!
+[root@server betcheza]# install -y unzip
+install: invalid option -- 'y'
+Try 'install --help' for more information.
+[root@server betcheza]# unzip -q betcheza.zip
+warning:  betcheza.zip appears to use backslashes as path separators
+[root@server betcheza]# cd /home/admin/apps/betcheza
+[root@server betcheza]# ls -la
+total 45072
+drwxr-xr-x 12 admin admin     4096 Apr 30 11:31 .
+drwxr-xr-x  3 admin admin     4096 Apr 30 11:08 ..
+drwxr-xr-x  7 root  root      4096 Apr 30 11:31 app
+drwxr-xr-x  3 root  root      4096 Apr 30 11:31 attached_assets
+-rw-r--r--  1 root  root  45316486 Apr 30 11:27 betcheza.zip
+drwxr-xr-x 16 root  root      4096 Apr 30 11:31 components
+-rw-r--r--  1 root  root       427 Apr 30  2026 components.json
+drwxr-xr-x  2 root  root      4096 Apr 30 11:31 contexts
+-rw-r--r--  1 root  root       244 Apr 30  2026 .gitignore
+drwxr-xr-x  2 root  root      4096 Apr 30 11:31 hooks
+-rw-r--r--  1 root  root       334 Apr 30  2026 instrumentation.ts
+drwxr-xr-x  8 root  root      4096 Apr 30 11:31 lib
+-rw-r--r--  1 root  root      4379 Apr 30  2026 middleware.ts
+-rw-r--r--  1 root  root       432 Apr 30  2026 next.config.mjs
+-rw-r--r--  1 root  root       251 Apr 30  2026 next-env.d.ts
+-rw-r--r--  1 root  root      2872 Apr 30  2026 package.json
+-rw-r--r--  1 root  root    183773 Apr 30  2026 package-lock.json
+-rw-r--r--  1 root  root    142509 Apr 30  2026 pnpm-lock.yaml
+-rw-r--r--  1 root  root       144 Apr 30  2026 postcss.config.mjs
+drwxr-xr-x  2 root  root      4096 Apr 30 11:31 public
+-rw-r--r--  1 root  root      1329 Apr 30  2026 README.md
+-rw-r--r--  1 root  root       902 Apr 30  2026 .replit
+drwxr-xr-x  5 root  root      4096 Apr 30 11:31 .replit_integration_files
+-rw-r--r--  1 root  root     30987 Apr 30  2026 replit.md
+drwxr-xr-x  2 root  root      4096 Apr 30 11:31 scripts
+drwxr-xr-x  2 root  root      4096 Apr 30 11:31 styles
+-rw-r--r--  1 root  root       695 Apr 30  2026 tsconfig.json
+-rw-r--r--  1 root  root    369845 Apr 30  2026 tsconfig.tsbuildinfo
+[root@server betcheza]# cd /home/admin/apps/betcheza
+[root@server betcheza]# rm -f betcheza.zip
+[root@server betcheza]# chown -R admin:admin /home/admin/apps/betcheza
+[root@server betcheza]# ls -la | head -5
+total 812
+drwxr-xr-x 12 admin admin   4096 Apr 30 11:33 .
+drwxr-xr-x  3 admin admin   4096 Apr 30 11:08 ..
+drwxr-xr-x  7 admin admin   4096 Apr 30 11:31 app
+drwxr-xr-x  3 admin admin   4096 Apr 30 11:31 attached_assets
+[root@server betcheza]# su - admin
+Last login: Fri Apr 24 10:08:51 EDT 2026 from 102.207.191.80 on pts/0
+Last failed login: Thu Apr 30 01:08:07 EDT 2026 from 156.227.232.198 on ssh:notty
+There were 44 failed login attempts since the last successful login.
+[admin@server ~]$ cd ~/apps/betcheza
+[admin@server betcheza]$ npm install --omit=dev=false
+npm warn invalid config omit="dev=false" set in command line options
+npm warn invalid config Must be one or more of: dev, optional, peer
+npm warn deprecated @types/bcryptjs@3.0.0: This is a stub types definition. bcryptjs provides its own type definitions, so you do not need this installed.
+
+added 267 packages, and audited 268 packages in 35s
+
+36 packages are looking for funding
+  run `npm fund` for details
+
+2 vulnerabilities (1 moderate, 1 high)
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+[admin@server betcheza]$ npm run build
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+> Build error occurred
+Error: EACCES: permission denied, scandir '/home/admin/apps/betcheza/app/(auth)/login'
+    at ignore-listed frames {
+  errno: -13,
+  code: 'EACCES',
+  syscall: 'scandir',
+  path: '/home/admin/apps/betcheza/app/(auth)/login'
+}
+[admin@server betcheza]$ exit
+logout
+[root@server betcheza]# chown -R admin:admin /home/admin/apps/betcheza
+[root@server betcheza]# find /home/admin/apps/betcheza -type d -exec
+find: missing argument to `-exec'
+[root@server betcheza]# chmod 755 {} \;
+chmod: cannot access '{}': No such file or directory
+chmod: cannot access ';': No such file or directory
+[root@server betcheza]# ls -la /home/admin/apps/betcheza/app
+total 52
+drwxr-xr-x  7 admin admin 4096 Apr 30 11:31  .
+drwxr-xr-x 14 admin admin 4096 Apr 30 11:38  ..
+drwxr-xr-x 25 admin admin 4096 Apr 30 11:31  admin
+drw-r--r-- 33 admin admin 4096 Apr 30  2026  api
+drw-r--r--  4 admin admin 4096 Apr 30  2026 '(auth)'
+-rw-r--r--  1 admin admin 6678 Apr 30  2026  globals.css
+-rw-r--r--  1 admin admin 4399 Apr 30  2026  layout.tsx
+drwxr-xr-x 30 admin admin 4096 Apr 30 11:31 '(main)'
+drwxr-xr-x  2 admin admin 4096 Apr 30 11:31  maintenance
+-rw-r--r--  1 admin admin  904 Apr 30  2026  robots.ts
+-rw-r--r--  1 admin admin 2064 Apr 30  2026  sitemap.ts
+[root@server betcheza]# chmod -R u+rwX,go+rX /home/admin/apps/betcheza
+[root@server betcheza]# ls -la /home/admin/apps/betcheza/app
+total 52
+drwxr-xr-x  7 admin admin 4096 Apr 30 11:31  .
+drwxr-xr-x 14 admin admin 4096 Apr 30 11:38  ..
+drwxr-xr-x 25 admin admin 4096 Apr 30 11:31  admin
+drwxr-xr-x 33 admin admin 4096 Apr 30  2026  api
+drwxr-xr-x  4 admin admin 4096 Apr 30  2026 '(auth)'
+-rw-r--r--  1 admin admin 6678 Apr 30  2026  globals.css
+-rw-r--r--  1 admin admin 4399 Apr 30  2026  layout.tsx
+drwxr-xr-x 30 admin admin 4096 Apr 30 11:31 '(main)'
+drwxr-xr-x  2 admin admin 4096 Apr 30 11:31  maintenance
+-rw-r--r--  1 admin admin  904 Apr 30  2026  robots.ts
+-rw-r--r--  1 admin admin 2064 Apr 30  2026  sitemap.ts
+[root@server betcheza]# su - admin
+Last login: Thu Apr 30 11:34:25 EDT 2026 on pts/0
+[admin@server ~]$ cd ~/apps/betcheza
+[admin@server betcheza]$ rm -rf .next
+[admin@server betcheza]$ npm run build
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 49s
+  Skipping validation of types
+✓ Finished TypeScript config validation in 54ms
+✓ Collecting page data using 1 worker in 4.4s
+⨯ useSearchParams() should be wrapped in a suspense boundary at page "/bookmakers". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at S (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:2:2692)
+    at r (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:4:6760)
+    at /home/admin/apps/betcheza/.next/server/chunks/ssr/components_layout_sidebar-new_tsx_0.1brh9._.js:1:13856
+    at an (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:84267)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:86086)
+    at al (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:107860)
+    at ao (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:105275)
+    at am (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:112789)
+    at au (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:109892)
+    at al (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:108138)
+Error occurred prerendering page "/bookmakers". Read more: https://nextjs.org/docs/messages/prerender-error
+Export encountered an error on /(main)/bookmakers/page: /bookmakers, exiting the build.
+⨯ Next.js build worker exited with code: 1 and signal: null
+[admin@server betcheza]$ sed -i "s|'use client';|'use
+> ^C
+[admin@server betcheza]$ sed -i "2i export const dynamic = 'force-
+
+
+[admin@server betcheza]$ head -5 'app/(main)/bookmakers/page.tsx
+> '
+head: cannot open 'app/(main)/bookmakers/page.tsx'$'\n' for reading: No such file or directory
+[admin@server betcheza]$ head -5 app/\(main\)/bookmakers/page.tsx
+'use client';
+export const dynamic = 'force-dynamic';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Search,
+[admin@server betcheza]$ rm -rf .next
+[admin@server betcheza]$ npm run build
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 43s
+  Skipping validation of types
+✓ Finished TypeScript config validation in 29ms
+✓ Collecting page data using 1 worker in 4.5s
+⨯ useSearchParams() should be wrapped in a suspense boundary at page "/bookmakers". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at S (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:2:2692)
+    at r (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:4:6760)
+    at /home/admin/apps/betcheza/.next/server/chunks/ssr/components_layout_sidebar-new_tsx_0.1brh9._.js:1:13856
+    at an (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:84267)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:86086)
+    at al (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:107860)
+    at ao (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:105275)
+    at am (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:112789)
+    at au (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:109892)
+    at al (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:108138)
+Error occurred prerendering page "/bookmakers". Read more: https://nextjs.org/docs/messages/prerender-error
+Export encountered an error on /(main)/bookmakers/page: /bookmakers, exiting the build.
+
+
+[admin@server betcheza]$ nano app/\(main\)/bookmakers/page.tsx
+[admin@server betcheza]$ rm -rf .next
+[admin@server betcheza]$ npm run build
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 47s
+  Skipping validation of types
+✓ Finished TypeScript config validation in 51ms
+✓ Collecting page data using 1 worker in 5.3s
+⨯ useSearchParams() should be wrapped in a suspense boundary at page "/players/compare". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at S (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:2:2692)
+    at r (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:4:6760)
+    at /home/admin/apps/betcheza/.next/server/chunks/ssr/_0_op8zl._.js:1:8302
+    at an (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:84267)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:86086)
+    at al (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:107860)
+    at ao (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:105275)
+    at aa (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:84619)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:86135)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:104615)
+Error occurred prerendering page "/players/compare". Read more: https://nextjs.org/docs/messages/prerender-error
+Export encountered an error on /(main)/players/compare/page: /players/compare, exiting the build.
+
+
+[admin@server betcheza]$ bash /tmp/fix.sh
+/tmp/fix.sh: line 3: syntax error near unexpected token `'app/(main)/players/compare/page.tsx''
+/tmp/fix.sh: line 3: `'app/(main)/players/compare/page.tsx''
+[admin@server betcheza]$ head -3 app/\(main\)/players/compare/page.tsx
+'use client';
+
+import { useState, useMemo } from 'react';
+[admin@server betcheza]$ sed -i "2i export const dynamic = 'force-dynamic';"
+sed: no input files
+[admin@server betcheza]$ "app/(main)/players/compare/page.tsx"
+-bash: app/(main)/players/compare/page.tsx: Permission denied
+[admin@server betcheza]$ rm -rf .next
+[admin@server betcheza]$ npm run build
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 42s
+  Skipping validation of types
+✓ Finished TypeScript config validation in 53ms
+✓ Collecting page data using 1 worker in 5.5s
+⨯ useSearchParams() should be wrapped in a suspense boundary at page "/players/compare". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at S (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:2:2692)
+    at r (/home/admin/apps/betcheza/.next/server/chunks/ssr/node_modules_next_0w2y7fz._.js:4:6760)
+    at /home/admin/apps/betcheza/.next/server/chunks/ssr/_0_op8zl._.js:1:8302
+    at an (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:84267)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:86086)
+    at al (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:107860)
+    at ao (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:105275)
+    at aa (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:84619)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:86135)
+    at ai (/home/admin/apps/betcheza/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:104615)
+Error occurred prerendering page "/players/compare". Read more: https://nextjs.org/docs/messages/prerender-error
+Export encountered an error on /(main)/players/compare/page: /players/compare, exiting the build.
+⨯ Next.js build worker exited with code: 1 and signal: null
+[admin@server betcheza]$ rm -rf .next
+[admin@server betcheza]$ npm run build
+
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 41s
+  Skipping validation of types
+✓ Finished TypeScript config validation in 24ms
+✓ Collecting page data using 1 worker in 4.1s
+✓ Generating static pages using 1 worker (59/59) in 2.5s
+✓ Finalizing page optimization in 12ms
+
+Route (app)                                Revalidate  Expire
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /about
+├ ƒ /admin
+├ ƒ /admin/affiliate-clicks
+├ ƒ /admin/auto-tips
+├ ƒ /admin/bookmakers
+├ ƒ /admin/comments
+├ ƒ /admin/competitions
+├ ƒ /admin/database
+├ ƒ /admin/email-config
+├ ƒ /admin/email-templates
+├ ƒ /admin/featured
+├ ƒ /admin/feed
+├ ƒ /admin/matches
+├ ƒ /admin/news
+├ ƒ /admin/notifications
+├ ƒ /admin/payment-gateways
+├ ƒ /admin/payments
+├ ƒ /admin/predictions
+├ ƒ /admin/settings
+├ ƒ /admin/social-login
+├ ƒ /admin/static-pages
+├ ƒ /admin/subscribers
+├ ƒ /admin/tipster-applications
+├ ƒ /admin/tipsters
+├ ƒ /admin/users
+├ ƒ /api/account/2fa
+├ ƒ /api/admin/affiliate-clicks
+├ ƒ /api/admin/auto-tips
+├ ƒ /api/admin/auto-tips/generate
+├ ƒ /api/admin/auto-tips/settle
+├ ƒ /api/admin/bookmakers
+├ ƒ /api/admin/bookmakers/[id]
+├ ƒ /api/admin/comments
+├ ƒ /api/admin/competitions
+├ ƒ /api/admin/competitions/[slug]/settle
+├ ƒ /api/admin/dashboard
+├ ƒ /api/admin/db-config
+├ ƒ /api/admin/email-config
+├ ƒ /api/admin/email-templates
+├ ƒ /api/admin/featured
+├ ƒ /api/admin/featured/tips
+├ ƒ /api/admin/feed/[id]
+├ ƒ /api/admin/matches
+├ ƒ /api/admin/news
+├ ƒ /api/admin/notifications/broadcast
+├ ƒ /api/admin/payment-gateways
+├ ƒ /api/admin/predictions
+├ ƒ /api/admin/seo
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/social-login
+├ ƒ /api/admin/static-pages
+├ ƒ /api/admin/subscribers
+├ ƒ /api/admin/teams
+├ ƒ /api/admin/tipster-applications
+├ ƒ /api/admin/tipster-applications/[id]
+├ ƒ /api/admin/tipsters
+├ ƒ /api/admin/upload
+├ ƒ /api/admin/users
+├ ƒ /api/ai/chat
+├ ƒ /api/auth/check-availability
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/login/verify-2fa
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/oauth/[provider]/callback
+├ ƒ /api/auth/oauth/[provider]/start
+├ ƒ /api/auth/register
+├ ƒ /api/auth/resend-verification
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/verify-email
+├ ƒ /api/bookmakers
+├ ƒ /api/bookmarks
+├ ƒ /api/captcha/challenge
+├ ƒ /api/competitions
+├ ƒ /api/competitions/[slug]
+├ ƒ /api/competitions/[slug]/join
+├ ƒ /api/cron/auto-tips
+├ ƒ /api/cron/match-reminders
+├ ƒ /api/dashboard
+├ ƒ /api/email/subscribe
+├ ƒ /api/email/unsubscribe
+├ ƒ /api/featured
+├ ƒ /api/feed/posts
+├ ƒ /api/feed/posts/[id]/comments
+├ ƒ /api/feed/posts/[id]/like
+├ ƒ /api/feed/recommended-tipsters
+├ ƒ /api/feed/trending
+├ ○ /api/leagues
+├ ƒ /api/leagues/[id]/bracket
+├ ƒ /api/leagues/[id]/outrights
+├ ƒ /api/leagues/[id]/scorers
+├ ƒ /api/leagues/[id]/standings
+├ ƒ /api/matches
+├ ƒ /api/matches/[id]
+├ ƒ /api/matches/[id]/details
+├ ƒ /api/matches/[id]/tips
+├ ƒ /api/matches/[id]/vote
+├ ƒ /api/news/article
+├ ƒ /api/notifications
+├ ƒ /api/notifications/mark-read
+├ ƒ /api/notifications/preferences
+├ ƒ /api/notifications/subscribe
+├ ƒ /api/payments/competition-entry
+├ ƒ /api/players/[id]
+├ ƒ /api/players/search
+├ ƒ /api/predictor
+├ ƒ /api/predictor/recent
+├ ƒ /api/predictor/upcoming
+├ ƒ /api/r/bookmaker/[slug]
+├ ƒ /api/search
+├ ƒ /api/site-settings
+├ ƒ /api/site-settings/maintenance
+├ ƒ /api/site-settings/rewrites
+├ ○ /api/sports
+├ ƒ /api/static-pages/[slug]
+├ ƒ /api/teams/[id]
+├ ƒ /api/teams/[id]/follow
+├ ƒ /api/tips/[id]/comments
+├ ƒ /api/tips/[id]/like
+├ ƒ /api/tipster-applications
+├ ƒ /api/tipsters
+├ ƒ /api/tipsters/[id]
+├ ƒ /api/tipsters/[id]/follow
+├ ƒ /api/users/me/follows
+├ ƒ /api/wallet
+├ ƒ /api/wallet/deposit
+├ ƒ /api/wallet/withdraw
+├ ƒ /become-tipster
+├ ƒ /bookmakers
+├ ƒ /bookmarks
+├ ƒ /competitions
+├ ƒ /competitions/[slug]
+├ ƒ /contact
+├ ƒ /cookies
+├ ƒ /dashboard
+├ ƒ /dashboard/payment-settings
+├ ƒ /dashboard/tips
+├ ƒ /dashboard/wallet
+├ ƒ /faq
+├ ƒ /feed
+├ ƒ /help
+├ ƒ /leaderboard
+├ ƒ /leagues/[slug]
+├ ƒ /live
+├ ƒ /login
+├ ƒ /maintenance
+├ ƒ /matches
+├ ƒ /matches/[id]
+├ ƒ /news/article
+├ ƒ /notifications
+├ ƒ /players/[id]
+├ ƒ /players/compare
+├ ƒ /predictor
+├ ƒ /privacy
+├ ƒ /register
+├ ƒ /responsible-gambling
+├ ƒ /results
+├ ○ /robots.txt
+├ ƒ /settings
+├ ○ /sitemap.xml                                   1h      1y
+├ ƒ /stats
+├ ƒ /teams/[id]
+├ ƒ /terms
+├ ƒ /tipsters
+├ ƒ /tipsters/[id]
+├ ƒ /tipsters/compare
+└ ƒ /verify-email
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+[admin@server betcheza]$ PORT=3000 pm2 start npm --name betcheza -- start
+[PM2] Starting /usr/bin/npm in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 0    │ online    │ 0%       │ 18.4mb   │
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 61.9mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[admin@server betcheza]$ pm2 status
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ betcheza           │ fork     │ 13   │ online    │ 0%       │ 49.6mb   │
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 62.2mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[admin@server betcheza]$ curl -I http://127.0.0.1:3000
+HTTP/1.1 200 OK
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+x-nextjs-cache: HIT
+x-nextjs-prerender: 1
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+X-Powered-By: Next.js
+Cache-Control: s-maxage=31536000
+ETag: "w2iks7juaihqb"
+Content-Type: text/html; charset=utf-8
+Content-Length: 22982
+Date: Thu, 30 Apr 2026 16:53:55 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+[admin@server betcheza]$ pm2 save
+[PM2] Saving current process list...
+[PM2] Successfully saved in /home/admin/.pm2/dump.pm2
+[admin@server betcheza]$ exit
+logout
+[root@server betcheza]# env PATH=$PATH:/usr/bin pm2 startup systemd -u admin --hp /home/admin
+[PM2] Init System found: systemd
+Platform systemd
+Template
+[Unit]
+Description=PM2 process manager
+Documentation=https://pm2.keymetrics.io/
+After=network.target
+
+[Service]
+Type=forking
+User=admin
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+Environment=PATH=/root/.local/bin:/root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+Environment=PM2_HOME=/home/admin/.pm2
+PIDFile=/home/admin/.pm2/pm2.pid
+Restart=on-failure
+
+ExecStart=/usr/lib/node_modules/pm2/bin/pm2 resurrect
+ExecReload=/usr/lib/node_modules/pm2/bin/pm2 reload all
+ExecStop=/usr/lib/node_modules/pm2/bin/pm2 kill
+
+[Install]
+WantedBy=multi-user.target
+
+Target path
+/etc/systemd/system/pm2-admin.service
+Command list
+[ 'systemctl enable pm2-admin' ]
+[PM2] Writing init configuration in /etc/systemd/system/pm2-admin.service
+[PM2] Making script booting at startup...
+[PM2] [-] Executing: systemctl enable pm2-admin...
+Created symlink /etc/systemd/system/multi-user.target.wants/pm2-admin.service → /etc/systemd/system/pm2-admin.service.
+[PM2] [v] Command successfully executed.
++---------------------------------------+
+[PM2] Freeze a process list on reboot via:
+$ pm2 save
+
+[PM2] Remove init script via:
+$ pm2 unstartup systemd
+[root@server betcheza]# cat >
+-bash: syntax error near unexpected token `newline'
+[root@server betcheza]# cat > /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd <<'EOF'
+> |?CUSTOM=`
+> ProxyPreserveHost On
+> ProxyRequests Off
+> ProxyPass /.well-known !
+> ProxyPass / http://127.0.0.1:3000/
+> ProxyPassReverse / http://127.0.0.1:3000/
+> RequestHeader set X-Forwarded-Proto "http"
+> `|
+>
+> |?CUSTOM2=`
+> ProxyPreserveHost On
+> ProxyRequests Off
+> ProxyPass /.well-known !
+> ProxyPass / http://127.0.0.1:3000/
+> ProxyPassReverse / http://127.0.0.1:3000/
+> RequestHeader set X-Forwarded-Proto "https"
+> RequestHeader set X-Forwarded-Port "443"
+> `|
+> EOF
+[root@server betcheza]# chown admin:admin /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpdecho "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue
+chown: cannot access '/usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpdecho': No such file or directory
+chown: cannot access 'action=rewrite&value=httpd': No such file or directory
+[root@server betcheza]# /usr/local/directadmin/dataskq d
+[root@server betcheza]# systemctl restart httpd
+kI https://www.betcheza.co.ke
+curl -I http://www.betcheza.co.ke[root@server betcheza]# curl -kI https://www.betcheza.co.ke
+HTTP/2 403
+content-type: text/html; charset=iso-8859-1
+date: Thu, 30 Apr 2026 17:08:46 GMT
+server: Apache/2
+
+[root@server betcheza]# curl -I http://www.betcheza.co.kechown admin:admin /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpdls -la /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpdecho "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue/usr/local/directadmin/dataskq dsystemctl restart httpdcurl -kI https://www.betcheza.co.ke^C
+[root@server betcheza]# chown admin:admin /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && ls -la /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue && /usr/local/directadmin/dataskq d && systemctl restart httpd && curl -kI https://www.betcheza.co.ke
+-rw-r--r-- 1 admin admin 440 Apr 30 13:07 /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd
+2026/04/30 13:14:06  info executing task            task=action=rewrite&value=httpd
+dataskq: command: action=rewrite&value=httpd
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+2026/04/30 13:14:07  info finished task             duration=703.290686ms task=action=rewrite&value=httpd
+Job for httpd.service failed because the control process exited with error code.
+See "systemctl status httpd.service" and "journalctl -xeu httpd.service" for details.
+[root@server betcheza]# httpd -t 2>&1 | tail -20 && echo "---LOG---" && journalctl -xeu httpd.service --no-pager | tail -30
+AH00112: Warning: DocumentRoot [/home/admin/domains/dossy.world/public_html/test] does not exist
+AH00112: Warning: DocumentRoot [/home/admin/domains/dossy.world/public_html/test] does not exist
+AH00526: Syntax error on line 143 of /usr/local/directadmin/data/users/admin/httpd.conf:
+Invalid command '|?CUSTOM=`', perhaps misspelled or defined by a module not included in the server configuration
+---LOG---
+░░
+░░ A start job for unit httpd.service has begun execution.
+░░
+░░ The job identifier is 2601352.
+Apr 30 13:14:09 server httpd[1023596]: AH00112: Warning: DocumentRoot [/home/admin/domains/dossy.world/public_html/test] does not exist
+Apr 30 13:14:09 server httpd[1023596]: AH00112: Warning: DocumentRoot [/home/admin/domains/dossy.world/public_html/test] does not exist
+Apr 30 13:14:09 server httpd[1023596]: AH00526: Syntax error on line 143 of /usr/local/directadmin/data/users/admin/httpd.conf:
+Apr 30 13:14:09 server httpd[1023596]: Invalid command '|?CUSTOM=`', perhaps misspelled or defined by a module not included in the server configuration
+Apr 30 13:14:09 server systemd[1]: httpd.service: Main process exited, code=exited, status=1/FAILURE
+░░ Subject: Unit process exited
+░░ Defined-By: systemd
+░░ Support: https://wiki.almalinux.org/Help-and-Support
+░░
+░░ An ExecStart= process belonging to unit httpd.service has exited.
+░░
+░░ The process' exit code is 'exited' and its exit status is 1.
+Apr 30 13:14:09 server systemd[1]: httpd.service: Failed with result 'exit-code'.
+░░ Subject: Unit failed
+░░ Defined-By: systemd
+░░ Support: https://wiki.almalinux.org/Help-and-Support
+░░
+░░ The unit httpd.service has entered the 'failed' state with result 'exit-code'.
+Apr 30 13:14:09 server systemd[1]: Failed to start The Apache HTTP Server.
+░░ Subject: A start job for unit httpd.service has failed
+░░ Defined-By: systemd
+░░ Support: https://wiki.almalinux.org/Help-and-Support
+░░
+░░ A start job for unit httpd.service has finished with a failure.
+░░
+░░ The job identifier is 2601352 and the job result is failed.
+[root@server betcheza]# rm -f /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd
+[root@server betcheza]# cat > /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd_CUSTOM <<'EOF'
+> ProxyPreserveHost On
+> ProxyRequests Off
+> ProxyPass /.well-known !
+> ProxyPass / http://127.0.0.1:3000/
+> ProxyPassReverse / http://127.0.0.1:3000/
+> RequestHeader set X-Forwarded-Proto "http"
+> rm -f /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd
+> cat > /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd_CUSTOM2 <<'EOF'
+> ProxyPreserveHost On
+> ProxyRequests Off
+> ProxyPass /.well-known !
+> ProxyPass / http://127.0.0.1:3000/
+> ProxyPassReverse / http://127.0.0.1:3000/
+> RequestHeader set X-Forwarded-Proto "https"
+> RequestHeader set X-Forwarded-Port "443"
+> EOF
+[root@server betcheza]# chown admin:admin /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd_CUSTOM* && echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue && /usr/local/directadmin/dataskq d && systemctl restart httpd && echo "---HTTPD UP---" && curl -kI https://www.betcheza.co.ke
+2026/04/30 13:17:27  info executing task            task=action=rewrite&value=httpd
+dataskq: command: action=rewrite&value=httpd
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+2026/04/30 13:17:27  info finished task             duration=690.279122ms task=action=rewrite&value=httpd
+---HTTPD UP---
+HTTP/2 403
+content-type: text/html; charset=iso-8859-1
+date: Thu, 30 Apr 2026 17:17:28 GMT
+server: Apache/2
+
+[root@server betcheza]# printf 'ProxyPreserveHost On\nProxyRequests Off\nProxyPass /.well-known !\nProxyPass / http://127.0.0.1:3000/\nProxyPassReverse / http://127.0.0.1:3000/\nRequestHeader set X-Forwarded-Proto "https"\nRequestHeader set X-Forwarded-Port "443"\n' > /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && rm -f /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd_CUSTOM /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd_CUSTOM2 && chown admin:admin /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && echo "---FILE---" && cat /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && echo "---REBUILD---" && echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue && /usr/local/directadmin/dataskq d && systemctl restart httpd && echo "---TEST---" && curl -kI https://www.betcheza.co.ke
+---FILE---
+ProxyPreserveHost On
+ProxyRequests Off
+ProxyPass /.well-known !
+ProxyPass / http://127.0.0.1:3000/
+ProxyPassReverse / http://127.0.0.1:3000/
+RequestHeader set X-Forwarded-Proto "https"
+RequestHeader set X-Forwarded-Port "443"
+---REBUILD---
+2026/04/30 13:20:31  info executing task            task=action=rewrite&value=httpd
+dataskq: command: action=rewrite&value=httpd
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+2026/04/30 13:20:32  info finished task             duration=1.055519997s task=action=rewrite&value=httpd
+---TEST---
+HTTP/2 200
+vary: rsc,next-router-state-tree,next-router-prefetch,next-router-segment-prefetch,Accept-Encoding,User-Agent
+x-nextjs-cache: HIT
+x-nextjs-prerender: 1
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+x-powered-by: Next.js
+cache-control: s-maxage=31536000
+etag: "w2iks7juaihqb"
+content-type: text/html; charset=utf-8
+content-length: 22982
+date: Thu, 30 Apr 2026 17:20:38 GMT
+server: Apache/2
+
+[root@server betcheza]# su - admin
+Last login: Thu Apr 30 11:43:45 EDT 2026 on pts/0
+[admin@server ~]$ ss -tlnp | grep -E ':(3000|3001|5000)' ; pm2 delete betcheza ; cd ~/apps/betcheza && PORT=3001 pm2 start npm --name betcheza -- start && sleep 5 && pm2 save && curl -I http://127.0.0.1:3001
+LISTEN 0      511                                 0.0.0.0:3000      0.0.0.0:*    users:(("next-server (v1",pid=387109,fd=18))
+LISTEN 0      511                                 0.0.0.0:5000      0.0.0.0:*                                           
+[PM2] Applying action deleteProcessId on app [betcheza](ids: [ 1 ])
+[PM2] [betcheza](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 62.1mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Starting /usr/bin/npm in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ betcheza           │ fork     │ 0    │ online    │ 0%       │ 18.4mb   │
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 62.1mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /home/admin/.pm2/dump.pm2
+curl: (7) Failed to connect to 127.0.0.1 port 3001: Connection refused
+[admin@server betcheza]$ exit
+logout
+[root@server betcheza]# sed -i 's|127.0.0.1:3000|127.0.0.1:3001|g' /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && cat /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue && /usr/local/directadmin/dataskq d && systemctl restart httpd && curl -kI https://www.betcheza.co.ke
+ProxyPreserveHost On
+ProxyRequests Off
+ProxyPass /.well-known !
+ProxyPass / http://127.0.0.1:3001/
+ProxyPassReverse / http://127.0.0.1:3001/
+RequestHeader set X-Forwarded-Proto "https"
+RequestHeader set X-Forwarded-Port "443"
+2026/04/30 13:24:48  info executing task            task=action=rewrite&value=httpd
+dataskq: command: action=rewrite&value=httpd
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+2026/04/30 13:24:49  info finished task             duration=767.663686ms task=action=rewrite&value=httpd
+HTTP/2 503
+content-type: text/html; charset=iso-8859-1
+date: Thu, 30 Apr 2026 17:24:51 GMT
+server: Apache/2
+
+[root@server betcheza]# su - admin
+Last login: Thu Apr 30 13:23:35 EDT 2026 on pts/0
+[admin@server ~]$ ss -tlnp | grep -E ':(3000|3001|5000)' && pm2 logs betcheza --lines 20 --nostream && curl -I http://127.0.0.1:5000
+LISTEN 0      511                                 0.0.0.0:3000      0.0.0.0:*    users:(("next-server (v1",pid=387109,fd=18))
+LISTEN 0      511                                 0.0.0.0:5000      0.0.0.0:*                                           
+[TAILING] Tailing last 20 lines for [betcheza] process (change the value with --lines option)
+/home/admin/.pm2/logs/betcheza-out.log last 20 lines:
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5000 -H 0.0.0.0
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5000 -H 0.0.0.0
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5000 -H 0.0.0.0
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5000 -H 0.0.0.0
+2|betcheza |
+2|betcheza |
+2|betcheza | > my-project@0.1.0 start
+2|betcheza | > next start -p 5000 -H 0.0.0.0
+2|betcheza |
+
+/home/admin/.pm2/logs/betcheza-error.log last 20 lines:
+2|betcheza |   port: 5000
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '0.0.0.0',
+2|betcheza |   port: 5000
+2|betcheza | }
+2|betcheza | ⨯ Failed to start server
+2|betcheza | Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+2|betcheza |     at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:5000) {
+2|betcheza |   code: 'EADDRINUSE',
+2|betcheza |   errno: -98,
+2|betcheza |   syscall: 'listen',
+2|betcheza |   address: '0.0.0.0',
+2|betcheza |   port: 5000
+2|betcheza | }
+
+HTTP/1.1 200 OK
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+x-nextjs-cache: HIT
+x-nextjs-prerender: 1
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+X-Powered-By: Next.js
+Cache-Control: s-maxage=31536000
+ETag: "wulox8bv5fhqb"
+Content-Type: text/html; charset=utf-8
+Content-Length: 22982
+Date: Thu, 30 Apr 2026 17:26:38 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+[admin@server ~]$ sed -i 's|127.0.0.1:3001|127.0.0.1:5000|g' /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && cat /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue && /usr/local/directadmin/dataskq d && systemctl restart httpd && curl -kI https://www.betcheza.co.ke
+sed: couldn't open temporary file /usr/local/directadmin/data/users/admin/domains/sedZ0m6vx: Permission denied
+[admin@server ~]$ exit
+logout
+[root@server betcheza]# fuser -k 5000/tcp ; sleep 2 ; ss -tlnp | grep -E ':(3000|5000)'
+5000/tcp:            368965
+LISTEN 0      511                                 0.0.0.0:3000      0.0.0.0:*    users:(("next-server (v1",pid=387109,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+LISTEN 0      511                                 0.0.0.0:5000      0.0.0.0:*    users:(("next-server (v1",pid=1049825,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+[root@server betcheza]# su - admin
+Last login: Thu Apr 30 13:26:25 EDT 2026 on pts/0
+[admin@server ~]$ cd ~/apps/betcheza && pm2 delete betcheza 2>/dev/null ; pm2 start npm --name betcheza -- start && sleep 6 && pm2 save && curl -I http://127.0.0.1:5000
+[PM2] Applying action deleteProcessId on app [betcheza](ids: [ 2 ])
+[PM2] [betcheza](2) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 61.9mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Starting /usr/bin/npm in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 3  │ betcheza           │ fork     │ 0    │ online    │ 0%       │ 25.0mb   │
+│ 0  │ dossy              │ fork     │ 0    │ online    │ 0%       │ 62.3mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /home/admin/.pm2/dump.pm2
+HTTP/1.1 200 OK
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+x-nextjs-cache: HIT
+x-nextjs-prerender: 1
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+X-Powered-By: Next.js
+Cache-Control: s-maxage=31536000
+ETag: "wulox8bv5fhqb"
+Content-Type: text/html; charset=utf-8
+Content-Length: 22982
+Date: Thu, 30 Apr 2026 17:29:39 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+[admin@server betcheza]$ exit
+logout
+[root@server betcheza]# sed -i 's|127.0.0.1:3001|127.0.0.1:5000|g' /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && cat /usr/local/directadmin/data/users/admin/domains/betcheza.co.ke.cust_httpd && echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue && /usr/local/directadmin/dataskq d && systemctl restart httpd && curl -kI https://www.betcheza.co.ke
+ProxyPreserveHost On
+ProxyRequests Off
+ProxyPass /.well-known !
+ProxyPass / http://127.0.0.1:5000/
+ProxyPassReverse / http://127.0.0.1:5000/
+RequestHeader set X-Forwarded-Proto "https"
+RequestHeader set X-Forwarded-Port "443"
+2026/04/30 13:30:17  info executing task            task=action=rewrite&value=httpd
+dataskq: command: action=rewrite&value=httpd
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+Apache::addVirtualhost:subdomain test override: /home/admin/domains/test.dossy.world/public_html : path does not exist
+2026/04/30 13:30:18  info finished task             duration=673.449284ms task=action=rewrite&value=httpd
+HTTP/2 200
+vary: rsc,next-router-state-tree,next-router-prefetch,next-router-segment-prefetch,Accept-Encoding,User-Agent
+x-nextjs-cache: HIT
+x-nextjs-prerender: 1
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+x-powered-by: Next.js
+cache-control: s-maxage=31536000
+etag: "wulox8bv5fhqb"
+content-type: text/html; charset=utf-8
+content-length: 22982
+date: Thu, 30 Apr 2026 17:30:20 GMT
+server: Apache/2
+
+[root@server betcheza]# echo "=== DNS ===" && dig +short www.betcheza.co.ke ; echo "=== PORT 5000 (should be BETCHEZA) ===" && curl -s http://127.0.0.1:5000/ | grep -iE 'title|<h1|dossy|betcheza' | head -5 ; echo "=== PORT 3000 (should be DOSSY) ===" && curl -s http://127.0.0.1:3000/ | grep -iE 'title|<h1|dossy|betcheza' | head -5 ; echo "=== APACHE TO BETCHEZA ===" && curl -ks https://www.betcheza.co.ke/ | grep -iE 'title|<h1|dossy|betcheza' | head -5 ; echo "=== EXTERNAL VIEW ===" && curl -sI https://www.betcheza.co.ke/ -H "Cache-Control: no-cache" -H "Pragma: no-cache" | head -15
+=== DNS ===
+157.250.205.180
+=== PORT 5000 (should be BETCHEZA) ===
+<!DOCTYPE html><html lang="en" class="geist_dd5f33c6-module__WggDGG__variable geist_mono_d6617093-module__z61v7q__variable bg-background"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/><link rel="preload" href="/_next/static/media/797e433ab948586e-s.p.0.q-h669a_dqa.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="preload" href="/_next/static/media/caa3a2e1cccd8315-s.p.16t1db8_9y2o~.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="stylesheet" href="/_next/static/chunks/0r.mdywrpnqca.css" data-precedence="next"/><link rel="stylesheet" href="/_next/static/chunks/0gibmznekx9sk.css" data-precedence="next"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/0ze4gu236oq96.js"/><script src="/_next/static/chunks/08k6.ytz680jc.js" async=""></script><script src="/_next/static/chunks/0jkregp-3c6d9.js" async=""></script><script src="/_next/static/chunks/0qtz4meecy2cb.js" async=""></script><script src="/_next/static/chunks/0pqt~8bl3ukh4.js" async=""></script><script src="/_next/static/chunks/turbopack-17xb4m.1iey~t.js" async=""></script><script src="/_next/static/chunks/0h3t27dsyriqm.js" async=""></script><script src="/_next/static/chunks/0d3shmwh5_nmn.js" async=""></script><script src="/_next/static/chunks/0wnks51lysjmt.js" async=""></script><script src="/_next/static/chunks/0t3f_l_w535ek.js" async=""></script><script src="/_next/static/chunks/0iowwzad37p64.js" async=""></script><script src="/_next/static/chunks/06ipk54nzi664.js" async=""></script><script src="/_next/static/chunks/03-phn28r.nqf.js" async=""></script><meta name="next-size-adjust" content=""/><meta name="theme-color" content="#0a0a0f"/><title>Dossy World - Fill the Vault. Share the Profit.</title><meta name="description" content="Join the most exciting vault-filling game. Buy in, fill the vault, and share the profits with fellow players at Dossy World."/><meta name="author" content="Dossy World"/><meta name="keywords" content="dossy world,vault game,multiplayer game,kenya,mpesa"/><meta property="og:title" content="Dossy World"/><meta property="og:description" content="Fill the Vault. Share the Profit."/><meta property="og:site_name" content="Dossy World"/><meta property="og:locale" content="en_KE"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="Dossy World"/><meta name="twitter:description" content="Fill the Vault. Share the Profit."/><link rel="icon" href="/icon-light-32x32.png" media="(prefers-color-scheme: light)"/><link rel="icon" href="/icon-dark-32x32.png" media="(prefers-color-scheme: dark)"/><link rel="icon" href="/icon.svg" type="image/svg+xml"/><link rel="apple-touch-icon" href="/apple-icon.png"/><script src="/_next/static/chunks/03~yq9q893hmn.js" noModule=""></script></head><body class="font-sans antialiased"><div hidden=""><!--$--><!--/$--></div><div class="relative min-h-screen overflow-hidden"><div class="pointer-events-none fixed inset-0"><div class="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-[var(--neon-cyan)]/10 blur-3xl"></div><div class="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-[var(--neon-purple)]/10 blur-3xl"></div><div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-transparent to-background"></div></div><header class="relative z-10 border-b border-[var(--border)]/50 bg-[var(--background)]/80 backdrop-blur-lg"><div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4"><div class="flex items-center gap-3"><div class="flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--neon-cyan)] to-[var(--neon-purple)]" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles text-primary-foreground size-5" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><path d="M20 2v4"></path><path d="M22 4h-4"></path><circle cx="4" cy="20" r="2"></circle></svg></div><div><h1 class="neon-text text-lg font-bold tracking-tight sm:text-xl">Dossy World</h1><p class="text-muted-foreground hidden text-xs sm:block">Fill the Vault. Share the Profit.</p></div></div><div class="flex items-center gap-3"><button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent dark:hover:bg-accent/50 size-9 text-muted-foreground hover:text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw size-4" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></button><div class="bg-card/50 h-10 w-32 animate-pulse rounded-lg"></div></div></div></header><main class="relative z-10 mx-auto max-w-7xl px-4 py-8"><div class="flex flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center lg:gap-12"><div class="flex flex-col items-center" style="opacity:0;transform:scale(0.9)"><div class="flex size-72 items-center justify-center rounded-full border-2 border-dashed border-[var(--border)]"><p class="text-muted-foreground">Loading…</p></div></div><div class="flex w-full max-w-md flex-col gap-6"><div style="opacity:0;transform:translateX(20px)"><div class="bg-card/50 w-full max-w-md rounded-2xl border border-[var(--border)] p-6 backdrop-blur-sm"><div class="mb-4 flex items-center justify-between"><h3 class="flex items-center gap-2 text-lg font-semibold"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-5 text-[var(--neon-cyan)]" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>Buy In</h3></div><div class="mb-4 flex flex-wrap gap-2"><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">100</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">200</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">500</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">1,000</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">2,000</button></div><div class="relative mb-4"><span class="text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium">KES</span><input type="number" data-slot="input" class="file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 w-full min-w-0 rounded-md border px-3 py-1 shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border-border/50 bg-background/50 h-12 pl-12 text-lg font-semibold" placeholder="50 - 5,000" min="50" max="5000" value=""/></div><button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive text-primary-foreground hover:bg-primary/90 h-9 px-4 has-[&gt;svg]:px-3 w-full bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-purple)] py-6 text-lg font-semibold" disabled="">Login to Buy<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-5" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></button><p class="text-muted-foreground mt-3 text-center text-xs">When the vault fills, your buy + <!-- -->30<!-- -->% profit is credited to your balance</p></div></div><div style="opacity:0;transform:translateX(20px)"><div class="bg-card/30 w-full max-w-md rounded-2xl border border-[var(--border)] p-4 backdrop-blur-sm"><div class="mb-3 flex items-center justify-between"><h3 class="flex items-center gap-2 text-sm font-semibold"><span class="relative flex size-2"><span class="absolute inline-flex size-full animate-ping rounded-full bg-[var(--neon-green)] opacity-75"></span><span class="relative inline-flex size-2 rounded-full bg-[var(--neon-green)]"></span></span>Live Activity</h3><span class="text-muted-foreground text-xs">0<!-- --> buys</span></div><div class="space-y-2 overflow-hidden"><div class="text-muted-foreground py-8 text-center text-sm" style="opacity:0">No buys yet. Be the first!</div></div></div></div></div></div></main><footer class="relative z-10 border-t border-[var(--border)]/50 bg-[var(--background)]/80 py-6 backdrop-blur-lg"><div class="mx-auto max-w-7xl px-4 text-center"><p class="text-muted-foreground text-sm">© <!-- -->2026<!-- --> Dossy World. All rights reserved.</p><p class="text-muted-foreground mt-1 text-xs">Play responsibly. Must be 18+ to participate.</p></div></footer></div><!--$--><!--/$--><section aria-label="Notifications alt+T" tabindex="-1" aria-live="polite" aria-relevant="additions text" aria-atomic="false"></section><!--$!--><template data-dgst="BAILOUT_TO_CLIENT_SIDE_RENDERING"></template><!--/$--><script src="/_next/static/chunks/0ze4gu236oq96.js" id="_R_" async=""></script><script>(self.__next_f=self.__next_f||[]).push([0])</script><script>self.__next_f.push([1,"1:\"$Sreact.fragment\"\n2:I[38938,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"AuthProvider\"]\n3:I[39756,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\"]\n4:I[37457,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\"]\n5:I[3484,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"Toaster\"]\n6:I[2355,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"Analytics\"]\n7:I[47257,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"ClientPageRoot\"]\n8:I[31713,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\",\"/_next/static/chunks/0wnks51lysjmt.js\",\"/_next/static/chunks/0t3f_l_w535ek.js\",\"/_next/static/chunks/0iowwzad37p64.js\",\"/_next/static/chunks/06ipk54nzi664.js\",\"/_next/static/chunks/03-phn28r.nqf.js\"],\"default\"]\nb:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"OutletBoundary\"]\nc:\"$Sreact.suspense\"\ne:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"ViewportBoundary\"]\n10:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"MetadataBoundary\"]\n12:I[68027,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\",1]\n:HL[\"/_next/static/chunks/0r.mdywrpnqca.css\",\"style\"]\n:HL[\"/_next/static/chunks/0gibmznekx9sk.css\",\"style\"]\n:HL[\"/_next/static/media/797e433ab948586e-s.p.0.q-h669a_dqa.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n:HL[\"/_next/static/media/caa3a2e1cccd8315-s.p.16t1db8_9y2o~.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n"])</script><script>self.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"__PAGE__\",{}]},\"$undefined\",\"$undefined\",16],[[\"$\",\"$1\",\"c\",{\"children\":[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0r.mdywrpnqca.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0gibmznekx9sk.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/0h3t27dsyriqm.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/0d3shmwh5_nmn.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"html\",null,{\"lang\":\"en\",\"className\":\"geist_dd5f33c6-module__WggDGG__variable geist_mono_d6617093-module__z61v7q__variable bg-background\",\"children\":[\"$\",\"body\",null,{\"className\":\"font-sans antialiased\",\"children\":[[\"$\",\"$L2\",null,{\"children\":[[\"$\",\"$L3\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L4\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":[[[\"$\",\"title\",null,{\"children\":\"404: This page could not be found.\"}],[\"$\",\"div\",null,{\"style\":{\"fontFamily\":\"system-ui,\\\"Segoe UI\\\",Roboto,Helvetica,Arial,sans-serif,\\\"Apple Color Emoji\\\",\\\"Segoe UI Emoji\\\"\",\"height\":\"100vh\",\"textAlign\":\"center\",\"display\":\"flex\",\"flexDirection\":\"column\",\"alignItems\":\"center\",\"justifyContent\":\"center\"},\"children\":[\"$\",\"div\",null,{\"children\":[[\"$\",\"style\",null,{\"dangerouslySetInnerHTML\":{\"__html\":\"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}\"}}],[\"$\",\"h1\",null,{\"className\":\"next-error-h1\",\"style\":{\"display\":\"inline-block\",\"margin\":\"0 20px 0 0\",\"padding\":\"0 23px 0 0\",\"fontSize\":24,\"fontWeight\":500,\"verticalAlign\":\"top\",\"lineHeight\":\"49px\"},\"children\":404}],[\"$\",\"div\",null,{\"style\":{\"display\":\"inline-block\"},\"children\":[\"$\",\"h2\",null,{\"style\":{\"fontSize\":14,\"fontWeight\":400,\"lineHeight\":\"49px\",\"margin\":0},\"children\":\"This page could not be found.\"}]}]]}]}]],[]],\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}],[\"$\",\"$L5\",null,{\"position\":\"top-center\",\"richColors\":true}]]}],[\"$\",\"$L6\",null,{}]]}]}]]}],{\"children\":[[\"$\",\"$1\",\"c\",{\"children\":[[\"$\",\"$L7\",null,{\"Component\":\"$8\",\"serverProvidedParams\":{\"searchParams\":{},\"params\":{},\"promises\":[\"$@9\",\"$@a\"]}}],[[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/0wnks51lysjmt.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/0t3f_l_w535ek.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-2\",{\"src\":\"/_next/static/chunks/0iowwzad37p64.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-3\",{\"src\":\"/_next/static/chunks/06ipk54nzi664.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-4\",{\"src\":\"/_next/static/chunks/03-phn28r.nqf.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"$Lb\",null,{\"children\":[\"$\",\"$c\",null,{\"name\":\"Next.MetadataOutlet\",\"children\":\"$@d\"}]}]]}],{},null,false,null]},null,false,null],[\"$\",\"$1\",\"h\",{\"children\":[null,[\"$\",\"$Le\",null,{\"children\":\"$Lf\"}],[\"$\",\"div\",null,{\"hidden\":true,\"children\":[\"$\",\"$L10\",null,{\"children\":[\"$\",\"$c\",null,{\"name\":\"Next.Metadata\",\"children\":\"$L11\"}]}]}],[\"$\",\"meta\",null,{\"name\":\"next-size-adjust\",\"content\":\"\"}]]}],false]],\"m\":\"$undefined\",\"G\":[\"$12\",[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0r.mdywrpnqca.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0gibmznekx9sk.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}]]],\"S\":true,\"h\":null,\"s\":\"$undefined\",\"l\":\"$undefined\",\"p\":\"$undefined\",\"d\":\"$undefined\",\"b\":\"PDvsmTIVHZ3dccLuRHSon\"}\n"])</script><script>self.__next_f.push([1,"9:{}\na:\"$0:f:0:1:1:children:0:props:children:0:props:serverProvidedParams:params\"\n"])</script><script>self.__next_f.push([1,"f:[[\"$\",\"meta\",\"0\",{\"charSet\":\"utf-8\"}],[\"$\",\"meta\",\"1\",{\"name\":\"viewport\",\"content\":\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\"}],[\"$\",\"meta\",\"2\",{\"name\":\"theme-color\",\"content\":\"#0a0a0f\"}]]\n"])</script><script>self.__next_f.push([1,"13:I[27201,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"IconMark\"]\nd:null\n"])</script><script>self.__next_f.push([1,"11:[[\"$\",\"title\",\"0\",{\"children\":\"Dossy World - Fill the Vault. Share the Profit.\"}],[\"$\",\"meta\",\"1\",{\"name\":\"description\",\"content\":\"Join the most exciting vault-filling game. Buy in, fill the vault, and share the profits with fellow players at Dossy World.\"}],[\"$\",\"meta\",\"2\",{\"name\":\"author\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"3\",{\"name\":\"keywords\",\"content\":\"dossy world,vault game,multiplayer game,kenya,mpesa\"}],[\"$\",\"meta\",\"4\",{\"property\":\"og:title\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"5\",{\"property\":\"og:description\",\"content\":\"Fill the Vault. Share the Profit.\"}],[\"$\",\"meta\",\"6\",{\"property\":\"og:site_name\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"7\",{\"property\":\"og:locale\",\"content\":\"en_KE\"}],[\"$\",\"meta\",\"8\",{\"property\":\"og:type\",\"content\":\"website\"}],[\"$\",\"meta\",\"9\",{\"name\":\"twitter:card\",\"content\":\"summary_large_image\"}],[\"$\",\"meta\",\"10\",{\"name\":\"twitter:title\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"11\",{\"name\":\"twitter:description\",\"content\":\"Fill the Vault. Share the Profit.\"}],[\"$\",\"link\",\"12\",{\"rel\":\"icon\",\"href\":\"/icon-light-32x32.png\",\"media\":\"(prefers-color-scheme: light)\"}],[\"$\",\"link\",\"13\",{\"rel\":\"icon\",\"href\":\"/icon-dark-32x32.png\",\"media\":\"(prefers-color-scheme: dark)\"}],[\"$\",\"link\",\"14\",{\"rel\":\"icon\",\"href\":\"/icon.svg\",\"type\":\"image/svg+xml\"}],[\"$\",\"link\",\"15\",{\"rel\":\"apple-touch-icon\",\"href\":\"/apple-icon.png\"}],[\"$\",\"$L13\",\"16\",{}]]\n"])</script></body></html>
+=== PORT 3000 (should be DOSSY) ===
+<!DOCTYPE html><html lang="en" class="geist_dd5f33c6-module__WggDGG__variable geist_mono_d6617093-module__z61v7q__variable bg-background"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/><link rel="preload" href="/_next/static/media/797e433ab948586e-s.p.0.q-h669a_dqa.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="preload" href="/_next/static/media/caa3a2e1cccd8315-s.p.16t1db8_9y2o~.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="stylesheet" href="/_next/static/chunks/0r.mdywrpnqca.css" data-precedence="next"/><link rel="stylesheet" href="/_next/static/chunks/0gibmznekx9sk.css" data-precedence="next"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/0ze4gu236oq96.js"/><script src="/_next/static/chunks/08k6.ytz680jc.js" async=""></script><script src="/_next/static/chunks/0jkregp-3c6d9.js" async=""></script><script src="/_next/static/chunks/0qtz4meecy2cb.js" async=""></script><script src="/_next/static/chunks/0pqt~8bl3ukh4.js" async=""></script><script src="/_next/static/chunks/turbopack-17xb4m.1iey~t.js" async=""></script><script src="/_next/static/chunks/0h3t27dsyriqm.js" async=""></script><script src="/_next/static/chunks/0d3shmwh5_nmn.js" async=""></script><script src="/_next/static/chunks/0wnks51lysjmt.js" async=""></script><script src="/_next/static/chunks/0t3f_l_w535ek.js" async=""></script><script src="/_next/static/chunks/0iowwzad37p64.js" async=""></script><script src="/_next/static/chunks/06ipk54nzi664.js" async=""></script><script src="/_next/static/chunks/03-phn28r.nqf.js" async=""></script><meta name="next-size-adjust" content=""/><meta name="theme-color" content="#0a0a0f"/><title>Dossy World - Fill the Vault. Share the Profit.</title><meta name="description" content="Join the most exciting vault-filling game. Buy in, fill the vault, and share the profits with fellow players at Dossy World."/><meta name="author" content="Dossy World"/><meta name="keywords" content="dossy world,vault game,multiplayer game,kenya,mpesa"/><meta property="og:title" content="Dossy World"/><meta property="og:description" content="Fill the Vault. Share the Profit."/><meta property="og:site_name" content="Dossy World"/><meta property="og:locale" content="en_KE"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="Dossy World"/><meta name="twitter:description" content="Fill the Vault. Share the Profit."/><link rel="icon" href="/icon-light-32x32.png" media="(prefers-color-scheme: light)"/><link rel="icon" href="/icon-dark-32x32.png" media="(prefers-color-scheme: dark)"/><link rel="icon" href="/icon.svg" type="image/svg+xml"/><link rel="apple-touch-icon" href="/apple-icon.png"/><script src="/_next/static/chunks/03~yq9q893hmn.js" noModule=""></script></head><body class="font-sans antialiased"><div hidden=""><!--$--><!--/$--></div><div class="relative min-h-screen overflow-hidden"><div class="pointer-events-none fixed inset-0"><div class="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-[var(--neon-cyan)]/10 blur-3xl"></div><div class="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-[var(--neon-purple)]/10 blur-3xl"></div><div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-transparent to-background"></div></div><header class="relative z-10 border-b border-[var(--border)]/50 bg-[var(--background)]/80 backdrop-blur-lg"><div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4"><div class="flex items-center gap-3"><div class="flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--neon-cyan)] to-[var(--neon-purple)]" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles text-primary-foreground size-5" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><path d="M20 2v4"></path><path d="M22 4h-4"></path><circle cx="4" cy="20" r="2"></circle></svg></div><div><h1 class="neon-text text-lg font-bold tracking-tight sm:text-xl">Dossy World</h1><p class="text-muted-foreground hidden text-xs sm:block">Fill the Vault. Share the Profit.</p></div></div><div class="flex items-center gap-3"><button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent dark:hover:bg-accent/50 size-9 text-muted-foreground hover:text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw size-4" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></button><div class="bg-card/50 h-10 w-32 animate-pulse rounded-lg"></div></div></div></header><main class="relative z-10 mx-auto max-w-7xl px-4 py-8"><div class="flex flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center lg:gap-12"><div class="flex flex-col items-center" style="opacity:0;transform:scale(0.9)"><div class="flex size-72 items-center justify-center rounded-full border-2 border-dashed border-[var(--border)]"><p class="text-muted-foreground">Loading…</p></div></div><div class="flex w-full max-w-md flex-col gap-6"><div style="opacity:0;transform:translateX(20px)"><div class="bg-card/50 w-full max-w-md rounded-2xl border border-[var(--border)] p-6 backdrop-blur-sm"><div class="mb-4 flex items-center justify-between"><h3 class="flex items-center gap-2 text-lg font-semibold"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-5 text-[var(--neon-cyan)]" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>Buy In</h3></div><div class="mb-4 flex flex-wrap gap-2"><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">100</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">200</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">500</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">1,000</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">2,000</button></div><div class="relative mb-4"><span class="text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium">KES</span><input type="number" data-slot="input" class="file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 w-full min-w-0 rounded-md border px-3 py-1 shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border-border/50 bg-background/50 h-12 pl-12 text-lg font-semibold" placeholder="50 - 5,000" min="50" max="5000" value=""/></div><button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive text-primary-foreground hover:bg-primary/90 h-9 px-4 has-[&gt;svg]:px-3 w-full bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-purple)] py-6 text-lg font-semibold" disabled="">Login to Buy<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-5" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></button><p class="text-muted-foreground mt-3 text-center text-xs">When the vault fills, your buy + <!-- -->30<!-- -->% profit is credited to your balance</p></div></div><div style="opacity:0;transform:translateX(20px)"><div class="bg-card/30 w-full max-w-md rounded-2xl border border-[var(--border)] p-4 backdrop-blur-sm"><div class="mb-3 flex items-center justify-between"><h3 class="flex items-center gap-2 text-sm font-semibold"><span class="relative flex size-2"><span class="absolute inline-flex size-full animate-ping rounded-full bg-[var(--neon-green)] opacity-75"></span><span class="relative inline-flex size-2 rounded-full bg-[var(--neon-green)]"></span></span>Live Activity</h3><span class="text-muted-foreground text-xs">0<!-- --> buys</span></div><div class="space-y-2 overflow-hidden"><div class="text-muted-foreground py-8 text-center text-sm" style="opacity:0">No buys yet. Be the first!</div></div></div></div></div></div></main><footer class="relative z-10 border-t border-[var(--border)]/50 bg-[var(--background)]/80 py-6 backdrop-blur-lg"><div class="mx-auto max-w-7xl px-4 text-center"><p class="text-muted-foreground text-sm">© <!-- -->2026<!-- --> Dossy World. All rights reserved.</p><p class="text-muted-foreground mt-1 text-xs">Play responsibly. Must be 18+ to participate.</p></div></footer></div><!--$--><!--/$--><section aria-label="Notifications alt+T" tabindex="-1" aria-live="polite" aria-relevant="additions text" aria-atomic="false"></section><!--$!--><template data-dgst="BAILOUT_TO_CLIENT_SIDE_RENDERING"></template><!--/$--><script src="/_next/static/chunks/0ze4gu236oq96.js" id="_R_" async=""></script><script>(self.__next_f=self.__next_f||[]).push([0])</script><script>self.__next_f.push([1,"1:\"$Sreact.fragment\"\n2:I[38938,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"AuthProvider\"]\n3:I[39756,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\"]\n4:I[37457,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\"]\n5:I[3484,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"Toaster\"]\n6:I[2355,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"Analytics\"]\n7:I[47257,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"ClientPageRoot\"]\n8:I[31713,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\",\"/_next/static/chunks/0wnks51lysjmt.js\",\"/_next/static/chunks/0t3f_l_w535ek.js\",\"/_next/static/chunks/0iowwzad37p64.js\",\"/_next/static/chunks/06ipk54nzi664.js\",\"/_next/static/chunks/03-phn28r.nqf.js\"],\"default\"]\nb:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"OutletBoundary\"]\nc:\"$Sreact.suspense\"\ne:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"ViewportBoundary\"]\n10:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"MetadataBoundary\"]\n12:I[68027,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\",1]\n:HL[\"/_next/static/chunks/0r.mdywrpnqca.css\",\"style\"]\n:HL[\"/_next/static/chunks/0gibmznekx9sk.css\",\"style\"]\n:HL[\"/_next/static/media/797e433ab948586e-s.p.0.q-h669a_dqa.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n:HL[\"/_next/static/media/caa3a2e1cccd8315-s.p.16t1db8_9y2o~.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n"])</script><script>self.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"__PAGE__\",{}]},\"$undefined\",\"$undefined\",16],[[\"$\",\"$1\",\"c\",{\"children\":[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0r.mdywrpnqca.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0gibmznekx9sk.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/0h3t27dsyriqm.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/0d3shmwh5_nmn.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"html\",null,{\"lang\":\"en\",\"className\":\"geist_dd5f33c6-module__WggDGG__variable geist_mono_d6617093-module__z61v7q__variable bg-background\",\"children\":[\"$\",\"body\",null,{\"className\":\"font-sans antialiased\",\"children\":[[\"$\",\"$L2\",null,{\"children\":[[\"$\",\"$L3\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L4\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":[[[\"$\",\"title\",null,{\"children\":\"404: This page could not be found.\"}],[\"$\",\"div\",null,{\"style\":{\"fontFamily\":\"system-ui,\\\"Segoe UI\\\",Roboto,Helvetica,Arial,sans-serif,\\\"Apple Color Emoji\\\",\\\"Segoe UI Emoji\\\"\",\"height\":\"100vh\",\"textAlign\":\"center\",\"display\":\"flex\",\"flexDirection\":\"column\",\"alignItems\":\"center\",\"justifyContent\":\"center\"},\"children\":[\"$\",\"div\",null,{\"children\":[[\"$\",\"style\",null,{\"dangerouslySetInnerHTML\":{\"__html\":\"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}\"}}],[\"$\",\"h1\",null,{\"className\":\"next-error-h1\",\"style\":{\"display\":\"inline-block\",\"margin\":\"0 20px 0 0\",\"padding\":\"0 23px 0 0\",\"fontSize\":24,\"fontWeight\":500,\"verticalAlign\":\"top\",\"lineHeight\":\"49px\"},\"children\":404}],[\"$\",\"div\",null,{\"style\":{\"display\":\"inline-block\"},\"children\":[\"$\",\"h2\",null,{\"style\":{\"fontSize\":14,\"fontWeight\":400,\"lineHeight\":\"49px\",\"margin\":0},\"children\":\"This page could not be found.\"}]}]]}]}]],[]],\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}],[\"$\",\"$L5\",null,{\"position\":\"top-center\",\"richColors\":true}]]}],[\"$\",\"$L6\",null,{}]]}]}]]}],{\"children\":[[\"$\",\"$1\",\"c\",{\"children\":[[\"$\",\"$L7\",null,{\"Component\":\"$8\",\"serverProvidedParams\":{\"searchParams\":{},\"params\":{},\"promises\":[\"$@9\",\"$@a\"]}}],[[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/0wnks51lysjmt.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/0t3f_l_w535ek.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-2\",{\"src\":\"/_next/static/chunks/0iowwzad37p64.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-3\",{\"src\":\"/_next/static/chunks/06ipk54nzi664.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-4\",{\"src\":\"/_next/static/chunks/03-phn28r.nqf.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"$Lb\",null,{\"children\":[\"$\",\"$c\",null,{\"name\":\"Next.MetadataOutlet\",\"children\":\"$@d\"}]}]]}],{},null,false,null]},null,false,null],[\"$\",\"$1\",\"h\",{\"children\":[null,[\"$\",\"$Le\",null,{\"children\":\"$Lf\"}],[\"$\",\"div\",null,{\"hidden\":true,\"children\":[\"$\",\"$L10\",null,{\"children\":[\"$\",\"$c\",null,{\"name\":\"Next.Metadata\",\"children\":\"$L11\"}]}]}],[\"$\",\"meta\",null,{\"name\":\"next-size-adjust\",\"content\":\"\"}]]}],false]],\"m\":\"$undefined\",\"G\":[\"$12\",[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0r.mdywrpnqca.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0gibmznekx9sk.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}]]],\"S\":true,\"h\":null,\"s\":\"$undefined\",\"l\":\"$undefined\",\"p\":\"$undefined\",\"d\":\"$undefined\",\"b\":\"JtG7Y-1uJjKZ2Sm5vLkvC\"}\n"])</script><script>self.__next_f.push([1,"9:{}\na:\"$0:f:0:1:1:children:0:props:children:0:props:serverProvidedParams:params\"\n"])</script><script>self.__next_f.push([1,"f:[[\"$\",\"meta\",\"0\",{\"charSet\":\"utf-8\"}],[\"$\",\"meta\",\"1\",{\"name\":\"viewport\",\"content\":\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\"}],[\"$\",\"meta\",\"2\",{\"name\":\"theme-color\",\"content\":\"#0a0a0f\"}]]\n"])</script><script>self.__next_f.push([1,"13:I[27201,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"IconMark\"]\nd:null\n"])</script><script>self.__next_f.push([1,"11:[[\"$\",\"title\",\"0\",{\"children\":\"Dossy World - Fill the Vault. Share the Profit.\"}],[\"$\",\"meta\",\"1\",{\"name\":\"description\",\"content\":\"Join the most exciting vault-filling game. Buy in, fill the vault, and share the profits with fellow players at Dossy World.\"}],[\"$\",\"meta\",\"2\",{\"name\":\"author\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"3\",{\"name\":\"keywords\",\"content\":\"dossy world,vault game,multiplayer game,kenya,mpesa\"}],[\"$\",\"meta\",\"4\",{\"property\":\"og:title\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"5\",{\"property\":\"og:description\",\"content\":\"Fill the Vault. Share the Profit.\"}],[\"$\",\"meta\",\"6\",{\"property\":\"og:site_name\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"7\",{\"property\":\"og:locale\",\"content\":\"en_KE\"}],[\"$\",\"meta\",\"8\",{\"property\":\"og:type\",\"content\":\"website\"}],[\"$\",\"meta\",\"9\",{\"name\":\"twitter:card\",\"content\":\"summary_large_image\"}],[\"$\",\"meta\",\"10\",{\"name\":\"twitter:title\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"11\",{\"name\":\"twitter:description\",\"content\":\"Fill the Vault. Share the Profit.\"}],[\"$\",\"link\",\"12\",{\"rel\":\"icon\",\"href\":\"/icon-light-32x32.png\",\"media\":\"(prefers-color-scheme: light)\"}],[\"$\",\"link\",\"13\",{\"rel\":\"icon\",\"href\":\"/icon-dark-32x32.png\",\"media\":\"(prefers-color-scheme: dark)\"}],[\"$\",\"link\",\"14\",{\"rel\":\"icon\",\"href\":\"/icon.svg\",\"type\":\"image/svg+xml\"}],[\"$\",\"link\",\"15\",{\"rel\":\"apple-touch-icon\",\"href\":\"/apple-icon.png\"}],[\"$\",\"$L13\",\"16\",{}]]\n"])</script></body></html>
+=== APACHE TO BETCHEZA ===
+<!DOCTYPE html><html lang="en" class="geist_dd5f33c6-module__WggDGG__variable geist_mono_d6617093-module__z61v7q__variable bg-background"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/><link rel="preload" href="/_next/static/media/797e433ab948586e-s.p.0.q-h669a_dqa.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="preload" href="/_next/static/media/caa3a2e1cccd8315-s.p.16t1db8_9y2o~.woff2" as="font" crossorigin="" type="font/woff2"/><link rel="stylesheet" href="/_next/static/chunks/0r.mdywrpnqca.css" data-precedence="next"/><link rel="stylesheet" href="/_next/static/chunks/0gibmznekx9sk.css" data-precedence="next"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/0ze4gu236oq96.js"/><script src="/_next/static/chunks/08k6.ytz680jc.js" async=""></script><script src="/_next/static/chunks/0jkregp-3c6d9.js" async=""></script><script src="/_next/static/chunks/0qtz4meecy2cb.js" async=""></script><script src="/_next/static/chunks/0pqt~8bl3ukh4.js" async=""></script><script src="/_next/static/chunks/turbopack-17xb4m.1iey~t.js" async=""></script><script src="/_next/static/chunks/0h3t27dsyriqm.js" async=""></script><script src="/_next/static/chunks/0d3shmwh5_nmn.js" async=""></script><script src="/_next/static/chunks/0wnks51lysjmt.js" async=""></script><script src="/_next/static/chunks/0t3f_l_w535ek.js" async=""></script><script src="/_next/static/chunks/0iowwzad37p64.js" async=""></script><script src="/_next/static/chunks/06ipk54nzi664.js" async=""></script><script src="/_next/static/chunks/03-phn28r.nqf.js" async=""></script><meta name="next-size-adjust" content=""/><meta name="theme-color" content="#0a0a0f"/><title>Dossy World - Fill the Vault. Share the Profit.</title><meta name="description" content="Join the most exciting vault-filling game. Buy in, fill the vault, and share the profits with fellow players at Dossy World."/><meta name="author" content="Dossy World"/><meta name="keywords" content="dossy world,vault game,multiplayer game,kenya,mpesa"/><meta property="og:title" content="Dossy World"/><meta property="og:description" content="Fill the Vault. Share the Profit."/><meta property="og:site_name" content="Dossy World"/><meta property="og:locale" content="en_KE"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="Dossy World"/><meta name="twitter:description" content="Fill the Vault. Share the Profit."/><link rel="icon" href="/icon-light-32x32.png" media="(prefers-color-scheme: light)"/><link rel="icon" href="/icon-dark-32x32.png" media="(prefers-color-scheme: dark)"/><link rel="icon" href="/icon.svg" type="image/svg+xml"/><link rel="apple-touch-icon" href="/apple-icon.png"/><script src="/_next/static/chunks/03~yq9q893hmn.js" noModule=""></script></head><body class="font-sans antialiased"><div hidden=""><!--$--><!--/$--></div><div class="relative min-h-screen overflow-hidden"><div class="pointer-events-none fixed inset-0"><div class="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-[var(--neon-cyan)]/10 blur-3xl"></div><div class="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-[var(--neon-purple)]/10 blur-3xl"></div><div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-transparent to-background"></div></div><header class="relative z-10 border-b border-[var(--border)]/50 bg-[var(--background)]/80 backdrop-blur-lg"><div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4"><div class="flex items-center gap-3"><div class="flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--neon-cyan)] to-[var(--neon-purple)]" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles text-primary-foreground size-5" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><path d="M20 2v4"></path><path d="M22 4h-4"></path><circle cx="4" cy="20" r="2"></circle></svg></div><div><h1 class="neon-text text-lg font-bold tracking-tight sm:text-xl">Dossy World</h1><p class="text-muted-foreground hidden text-xs sm:block">Fill the Vault. Share the Profit.</p></div></div><div class="flex items-center gap-3"><button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent dark:hover:bg-accent/50 size-9 text-muted-foreground hover:text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw size-4" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></button><div class="bg-card/50 h-10 w-32 animate-pulse rounded-lg"></div></div></div></header><main class="relative z-10 mx-auto max-w-7xl px-4 py-8"><div class="flex flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center lg:gap-12"><div class="flex flex-col items-center" style="opacity:0;transform:scale(0.9)"><div class="flex size-72 items-center justify-center rounded-full border-2 border-dashed border-[var(--border)]"><p class="text-muted-foreground">Loading…</p></div></div><div class="flex w-full max-w-md flex-col gap-6"><div style="opacity:0;transform:translateX(20px)"><div class="bg-card/50 w-full max-w-md rounded-2xl border border-[var(--border)] p-6 backdrop-blur-sm"><div class="mb-4 flex items-center justify-between"><h3 class="flex items-center gap-2 text-lg font-semibold"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap size-5 text-[var(--neon-cyan)]" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>Buy In</h3></div><div class="mb-4 flex flex-wrap gap-2"><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">100</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">200</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">500</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">1,000</button><button data-slot="button" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 border-border/50 transition-all hover:border-primary/50">2,000</button></div><div class="relative mb-4"><span class="text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium">KES</span><input type="number" data-slot="input" class="file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 w-full min-w-0 rounded-md border px-3 py-1 shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border-border/50 bg-background/50 h-12 pl-12 text-lg font-semibold" placeholder="50 - 5,000" min="50" max="5000" value=""/></div><button data-slot="button" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive text-primary-foreground hover:bg-primary/90 h-9 px-4 has-[&gt;svg]:px-3 w-full bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-purple)] py-6 text-lg font-semibold" disabled="">Login to Buy<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right size-5" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></button><p class="text-muted-foreground mt-3 text-center text-xs">When the vault fills, your buy + <!-- -->30<!-- -->% profit is credited to your balance</p></div></div><div style="opacity:0;transform:translateX(20px)"><div class="bg-card/30 w-full max-w-md rounded-2xl border border-[var(--border)] p-4 backdrop-blur-sm"><div class="mb-3 flex items-center justify-between"><h3 class="flex items-center gap-2 text-sm font-semibold"><span class="relative flex size-2"><span class="absolute inline-flex size-full animate-ping rounded-full bg-[var(--neon-green)] opacity-75"></span><span class="relative inline-flex size-2 rounded-full bg-[var(--neon-green)]"></span></span>Live Activity</h3><span class="text-muted-foreground text-xs">0<!-- --> buys</span></div><div class="space-y-2 overflow-hidden"><div class="text-muted-foreground py-8 text-center text-sm" style="opacity:0">No buys yet. Be the first!</div></div></div></div></div></div></main><footer class="relative z-10 border-t border-[var(--border)]/50 bg-[var(--background)]/80 py-6 backdrop-blur-lg"><div class="mx-auto max-w-7xl px-4 text-center"><p class="text-muted-foreground text-sm">© <!-- -->2026<!-- --> Dossy World. All rights reserved.</p><p class="text-muted-foreground mt-1 text-xs">Play responsibly. Must be 18+ to participate.</p></div></footer></div><!--$--><!--/$--><section aria-label="Notifications alt+T" tabindex="-1" aria-live="polite" aria-relevant="additions text" aria-atomic="false"></section><!--$!--><template data-dgst="BAILOUT_TO_CLIENT_SIDE_RENDERING"></template><!--/$--><script src="/_next/static/chunks/0ze4gu236oq96.js" id="_R_" async=""></script><script>(self.__next_f=self.__next_f||[]).push([0])</script><script>self.__next_f.push([1,"1:\"$Sreact.fragment\"\n2:I[38938,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"AuthProvider\"]\n3:I[39756,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\"]\n4:I[37457,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\"]\n5:I[3484,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"Toaster\"]\n6:I[2355,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"Analytics\"]\n7:I[47257,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"ClientPageRoot\"]\n8:I[31713,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\",\"/_next/static/chunks/0wnks51lysjmt.js\",\"/_next/static/chunks/0t3f_l_w535ek.js\",\"/_next/static/chunks/0iowwzad37p64.js\",\"/_next/static/chunks/06ipk54nzi664.js\",\"/_next/static/chunks/03-phn28r.nqf.js\"],\"default\"]\nb:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"OutletBoundary\"]\nc:\"$Sreact.suspense\"\ne:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"ViewportBoundary\"]\n10:I[97367,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"MetadataBoundary\"]\n12:I[68027,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"default\",1]\n:HL[\"/_next/static/chunks/0r.mdywrpnqca.css\",\"style\"]\n:HL[\"/_next/static/chunks/0gibmznekx9sk.css\",\"style\"]\n:HL[\"/_next/static/media/797e433ab948586e-s.p.0.q-h669a_dqa.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n:HL[\"/_next/static/media/caa3a2e1cccd8315-s.p.16t1db8_9y2o~.woff2\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff2\"}]\n"])</script><script>self.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"__PAGE__\",{}]},\"$undefined\",\"$undefined\",16],[[\"$\",\"$1\",\"c\",{\"children\":[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0r.mdywrpnqca.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0gibmznekx9sk.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/0h3t27dsyriqm.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/0d3shmwh5_nmn.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"html\",null,{\"lang\":\"en\",\"className\":\"geist_dd5f33c6-module__WggDGG__variable geist_mono_d6617093-module__z61v7q__variable bg-background\",\"children\":[\"$\",\"body\",null,{\"className\":\"font-sans antialiased\",\"children\":[[\"$\",\"$L2\",null,{\"children\":[[\"$\",\"$L3\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L4\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":[[[\"$\",\"title\",null,{\"children\":\"404: This page could not be found.\"}],[\"$\",\"div\",null,{\"style\":{\"fontFamily\":\"system-ui,\\\"Segoe UI\\\",Roboto,Helvetica,Arial,sans-serif,\\\"Apple Color Emoji\\\",\\\"Segoe UI Emoji\\\"\",\"height\":\"100vh\",\"textAlign\":\"center\",\"display\":\"flex\",\"flexDirection\":\"column\",\"alignItems\":\"center\",\"justifyContent\":\"center\"},\"children\":[\"$\",\"div\",null,{\"children\":[[\"$\",\"style\",null,{\"dangerouslySetInnerHTML\":{\"__html\":\"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}\"}}],[\"$\",\"h1\",null,{\"className\":\"next-error-h1\",\"style\":{\"display\":\"inline-block\",\"margin\":\"0 20px 0 0\",\"padding\":\"0 23px 0 0\",\"fontSize\":24,\"fontWeight\":500,\"verticalAlign\":\"top\",\"lineHeight\":\"49px\"},\"children\":404}],[\"$\",\"div\",null,{\"style\":{\"display\":\"inline-block\"},\"children\":[\"$\",\"h2\",null,{\"style\":{\"fontSize\":14,\"fontWeight\":400,\"lineHeight\":\"49px\",\"margin\":0},\"children\":\"This page could not be found.\"}]}]]}]}]],[]],\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}],[\"$\",\"$L5\",null,{\"position\":\"top-center\",\"richColors\":true}]]}],[\"$\",\"$L6\",null,{}]]}]}]]}],{\"children\":[[\"$\",\"$1\",\"c\",{\"children\":[[\"$\",\"$L7\",null,{\"Component\":\"$8\",\"serverProvidedParams\":{\"searchParams\":{},\"params\":{},\"promises\":[\"$@9\",\"$@a\"]}}],[[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/0wnks51lysjmt.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/0t3f_l_w535ek.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-2\",{\"src\":\"/_next/static/chunks/0iowwzad37p64.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-3\",{\"src\":\"/_next/static/chunks/06ipk54nzi664.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-4\",{\"src\":\"/_next/static/chunks/03-phn28r.nqf.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"$Lb\",null,{\"children\":[\"$\",\"$c\",null,{\"name\":\"Next.MetadataOutlet\",\"children\":\"$@d\"}]}]]}],{},null,false,null]},null,false,null],[\"$\",\"$1\",\"h\",{\"children\":[null,[\"$\",\"$Le\",null,{\"children\":\"$Lf\"}],[\"$\",\"div\",null,{\"hidden\":true,\"children\":[\"$\",\"$L10\",null,{\"children\":[\"$\",\"$c\",null,{\"name\":\"Next.Metadata\",\"children\":\"$L11\"}]}]}],[\"$\",\"meta\",null,{\"name\":\"next-size-adjust\",\"content\":\"\"}]]}],false]],\"m\":\"$undefined\",\"G\":[\"$12\",[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0r.mdywrpnqca.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"link\",\"1\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/0gibmznekx9sk.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}]]],\"S\":true,\"h\":null,\"s\":\"$undefined\",\"l\":\"$undefined\",\"p\":\"$undefined\",\"d\":\"$undefined\",\"b\":\"PDvsmTIVHZ3dccLuRHSon\"}\n"])</script><script>self.__next_f.push([1,"9:{}\na:\"$0:f:0:1:1:children:0:props:children:0:props:serverProvidedParams:params\"\n"])</script><script>self.__next_f.push([1,"f:[[\"$\",\"meta\",\"0\",{\"charSet\":\"utf-8\"}],[\"$\",\"meta\",\"1\",{\"name\":\"viewport\",\"content\":\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\"}],[\"$\",\"meta\",\"2\",{\"name\":\"theme-color\",\"content\":\"#0a0a0f\"}]]\n"])</script><script>self.__next_f.push([1,"13:I[27201,[\"/_next/static/chunks/0h3t27dsyriqm.js\",\"/_next/static/chunks/0d3shmwh5_nmn.js\"],\"IconMark\"]\nd:null\n"])</script><script>self.__next_f.push([1,"11:[[\"$\",\"title\",\"0\",{\"children\":\"Dossy World - Fill the Vault. Share the Profit.\"}],[\"$\",\"meta\",\"1\",{\"name\":\"description\",\"content\":\"Join the most exciting vault-filling game. Buy in, fill the vault, and share the profits with fellow players at Dossy World.\"}],[\"$\",\"meta\",\"2\",{\"name\":\"author\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"3\",{\"name\":\"keywords\",\"content\":\"dossy world,vault game,multiplayer game,kenya,mpesa\"}],[\"$\",\"meta\",\"4\",{\"property\":\"og:title\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"5\",{\"property\":\"og:description\",\"content\":\"Fill the Vault. Share the Profit.\"}],[\"$\",\"meta\",\"6\",{\"property\":\"og:site_name\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"7\",{\"property\":\"og:locale\",\"content\":\"en_KE\"}],[\"$\",\"meta\",\"8\",{\"property\":\"og:type\",\"content\":\"website\"}],[\"$\",\"meta\",\"9\",{\"name\":\"twitter:card\",\"content\":\"summary_large_image\"}],[\"$\",\"meta\",\"10\",{\"name\":\"twitter:title\",\"content\":\"Dossy World\"}],[\"$\",\"meta\",\"11\",{\"name\":\"twitter:description\",\"content\":\"Fill the Vault. Share the Profit.\"}],[\"$\",\"link\",\"12\",{\"rel\":\"icon\",\"href\":\"/icon-light-32x32.png\",\"media\":\"(prefers-color-scheme: light)\"}],[\"$\",\"link\",\"13\",{\"rel\":\"icon\",\"href\":\"/icon-dark-32x32.png\",\"media\":\"(prefers-color-scheme: dark)\"}],[\"$\",\"link\",\"14\",{\"rel\":\"icon\",\"href\":\"/icon.svg\",\"type\":\"image/svg+xml\"}],[\"$\",\"link\",\"15\",{\"rel\":\"apple-touch-icon\",\"href\":\"/apple-icon.png\"}],[\"$\",\"$L13\",\"16\",{}]]\n"])</script></body></html>
+=== EXTERNAL VIEW ===
+HTTP/2 200
+vary: rsc,next-router-state-tree,next-router-prefetch,next-router-segment-prefetch,Accept-Encoding,User-Agent
+x-nextjs-cache: HIT
+x-nextjs-prerender: 1
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+x-powered-by: Next.js
+cache-control: s-maxage=31536000
+etag: "wulox8bv5fhqb"
+content-type: text/html; charset=utf-8
+content-length: 22982
+date: Thu, 30 Apr 2026 17:38:49 GMT
+server: Apache/2
+
+[root@server betcheza]# su - admin
+Last login: Thu Apr 30 13:29:18 EDT 2026 on pts/0
+[admin@server ~]$ echo "=== BETCHEZA DIR ===" && grep -l -i "Dossy\|betcheza\|tipster" ~/apps/betcheza/app/page.tsx ~/apps/betcheza/package.json 2>/dev/null ; echo "---" ; head -3 ~/apps/betcheza/package.json ; echo "---" ; grep -oE "(Dossy World|betcheza|Tipster)" ~/apps/betcheza/app/page.tsx 2>/dev/null | sort -u ; echo "---" ; ls ~/apps/betcheza/app/ | head -20
+=== BETCHEZA DIR ===
+---
+{
+  "name": "my-project",
+  "version": "0.1.0",
+---
+---
+admin
+api
+(auth)
+globals.css
+layout.tsx
+(main)
+maintenance
+robots.ts
+sitemap.ts
+[admin@server ~]$ pm2 describe betcheza | grep -E "exec cwd|script|args" ; echo "---" ; pm2 describe dossy | grep -E "exec cwd|script|args"
+│ script path       │ /usr/bin/npm                             │
+│ script args       │ start                                    │
+│ interpreter args  │ N/A                                      │
+│ script id         │ 3                                        │
+│ exec cwd          │ /home/admin/apps/betcheza                │
+---
+│ script path       │ /usr/bin/npm                              │
+│ script args       │ run start                                 │
+│ interpreter args  │ N/A                                       │
+│ script id         │ 0                                         │
+│ exec cwd          │ /home/admin/domains/dossy.world/dossy_app │
+[admin@server ~]$ grep -rli "Dossy World\|Live Vault\|Filling now\|Buy In" ~/apps/betcheza/app/ ~/apps/betcheza/components/ 2>/dev/null | head -10 ; echo "---" ; ls -la ~/apps/betcheza/app/'(main)'/page.tsx ~/apps/dossy/app/'(main)'/page.tsx 2>/dev/null ; echo "---" ; find ~/apps/betcheza -maxdepth 2 -name "*.zip" 2>/dev/null
+---
+-rw-r--r-- 1 admin admin 38321 Apr 30  2026 '/home/admin/apps/betcheza/app/(main)/page.tsx'
+---
+[admin@server ~]$ echo "PORT 5000 (should be betcheza):" ; curl -s http://127.0.0.1:5000/ | md5sum ; curl -s http://127.0.0.1:5000/ | grep -oE "(Dossy World|Live Vault|Betcheza|Tipster|Sports|Buy In|Filling now)" | sort -u | head -10 ; echo "---" ; echo "PORT 3000 (dossy):" ; curl -s http://127.0.0.1:3000/ | md5sum ; curl -s http://127.0.0.1:3000/ | grep -oE "(Dossy World|Live Vault|Betcheza|Tipster|Sports|Buy In|Filling now)" | sort -u | head -10 ; echo "---" ; echo "PUBLIC https:" ; curl -ks https://www.betcheza.co.ke/ | md5sum ; curl -ks https://www.betcheza.co.ke/ | grep -oE "(Dossy World|Live Vault|Betcheza|Tipster|Sports|Buy In|Filling now)" | sort -u | head -10
+PORT 5000 (should be betcheza):
+d423e37d3368041ef62ba46928e2ca48  -
+Buy In
+Dossy World
+---
+PORT 3000 (dossy):
+2db5e8ad653078842e82b8671c04422b  -
+Buy In
+Dossy World
+---
+PUBLIC https:
+d423e37d3368041ef62ba46928e2ca48  -
+Buy In
+Dossy World
+[admin@server ~]$ echo "=== BETCHEZA HOMEPAGE SOURCE (first 80 lines) ===" ; head -80 ~/apps/betcheza/app/'(main)'/page.tsx ; echo "=== STRINGS IN RENDERED HTML AROUND 'Dossy' ===" ; curl -s http://127.0.0.1:5000/ | grep -oE '.{60}Dossy World.{60}' | head -3 ; echo "=== ALL FILES MENTIONING DOSSY ANYWHERE IN BETCHEZA ===" ; grep -rl "Dossy" ~/apps/betcheza/ --include="*.tsx" --include="*.ts" --include="*.json" --include="*.js" 2>/dev/null | head -10 ; echo "=== .NEXT BUILD AGE ===" ; ls -la ~/apps/betcheza/.next/BUILD_ID ~/apps/betcheza/.next/server/app/page.* 2>/dev/null | head
+=== BETCHEZA HOMEPAGE SOURCE (first 80 lines) ===
+'use client';
+
+import { useState, useMemo, useEffect } from 'react';
+import Link from 'next/link';
+import useSWR from 'swr';
+import {
+  Flame,
+  TrendingUp,
+  Clock,
+  ChevronRight,
+  Trophy,
+  Target,
+  Users,
+  Star,
+  ArrowRight,
+  Zap,
+  Shield,
+  Sparkles,
+} from 'lucide-react';
+import { SidebarNew } from '@/components/layout/sidebar-new';
+import { BetchezaBackBanner } from '@/components/home/betcheza-back-banner';
+import { SportsFilter } from '@/components/sports/sports-filter';
+import { MatchCardNew } from '@/components/matches/match-card-new';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { useMatches, useLiveMatches, useMatchStats, type Match } from '@/lib/hooks/use-matches';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
+import { ALL_SPORTS, getSportIcon } from '@/lib/sports-data';
+import { BestBetsPanel } from '@/components/home/best-bets-panel';
+import { FavoritedTipsPanel, FavoritedTipMarqueeCard, useFavoritedTips, type FeaturedItem } from '@/components/home/favorited-tips-panel';
+import { useAuthModal } from '@/contexts/auth-modal-context';
+import { matchIdToSlug } from '@/lib/utils/match-url';
+import { liveStatusLabel } from '@/lib/utils/live-status';
+import { tipsterHref } from '@/lib/utils/slug';
+import { NewsletterSection } from '@/components/sections/newsletter';
+
+interface ApiTipster {
+  id: number;
+  username: string;
+  displayName?: string;
+  winRate: number;
+  streak: number;
+  roi: number;
+  totalTips: number;
+  avatar?: string | null;
+}
+
+const tipstersFetcher = (url: string) =>
+  fetch(url)
+    .then((r) => r.json())
+    .then((d) => (Array.isArray(d?.tipsters) ? (d.tipsters as ApiTipster[]) : []));
+
+export default function HomePage() {
+  const [selectedSportId, setSelectedSportId] = useState<number | null>(null);
+  const { open: openAuthModal } = useAuthModal();
+
+  // Real top tipsters (DB-backed; gracefully shows fallback panel when empty)
+  const { data: topTipstersData } = useSWR<ApiTipster[]>(
+    '/api/tipsters?sortBy=winRate&limit=4',
+    tipstersFetcher,
+    { refreshInterval: 5 * 60 * 1000, revalidateOnFocus: false },
+  );
+  const topTipsters = topTipstersData ?? [];
+
+  const { matches, isLoading } = useMatches(
+    selectedSportId ? { sportId: selectedSportId } : undefined
+  );
+  // Always fetch unfiltered set so per-sport counts (Oddspedia-style) stay
+  // accurate regardless of the currently selected sport.
+  const { matches: allMatches } = useMatches();
+  const { matches: liveMatches } = useLiveMatches();
+  const { items: favoritedTips } = useFavoritedTips();
+  // When live action is sparse (1-3 games) we mix featured tips into the live
+  // marquee row instead of showing them in a separate panel below.
+  const liveRowTips = liveMatches.length > 0 && liveMatches.length <= 3
+    ? favoritedTips
+    : [];
+  const stats = useMatchStats();
+=== STRINGS IN RENDERED HTML AROUND 'Dossy' ===
+tent=""/><meta name="theme-color" content="#0a0a0f"/><title>Dossy World - Fill the Vault. Share the Profit.</title><meta name="desc
+ill the vault, and share the profits with fellow players at Dossy World."/><meta name="author" content="Dossy World"/><meta name="k
+layer game,kenya,mpesa"/><meta property="og:title" content="Dossy World"/><meta property="og:description" content="Fill the Vault.
+=== ALL FILES MENTIONING DOSSY ANYWHERE IN BETCHEZA ===
+=== .NEXT BUILD AGE ===
+-rw-r--r-- 1 admin admin 21 Apr 30 12:36 /home/admin/apps/betcheza/.next/BUILD_ID
+[admin@server ~]$ echo "=== app/layout.tsx ===" ; head -60 ~/apps/betcheza/app/layout.tsx ; echo "=== (main)/layout.tsx ===" ; head -40 ~/apps/betcheza/app/'(main)'/layout.tsx 2>/dev/null ; echo "=== DB CONTENT ===" ; mysql -u admin_betcheza -p'dj@Topaz2016' admin_betcheza -e "SHOW TABLES; SELECT * FROM site_settings LIMIT 20;" 2>&1 | head -60
+=== app/layout.tsx ===
+import type { Metadata, Viewport } from 'next'
+import { Geist, Geist_Mono } from 'next/font/google'
+import { headers } from 'next/headers'
+import { Analytics } from '@vercel/analytics/next'
+import { ThemeProvider } from '@/components/theme-provider'
+import { UserSettingsProvider } from '@/contexts/user-settings-context'
+import { AuthProvider } from '@/contexts/auth-context'
+import { AuthModalProvider } from '@/contexts/auth-modal-context'
+import { AuthModal } from '@/components/auth/auth-modal'
+import { AIChatButton } from '@/components/ai/ai-chat-button'
+import { InstallPrompt } from '@/components/install-prompt'
+import { getSiteSettings, parseSeoPages, findSeoForPath } from '@/lib/site-settings'
+import './globals.css'
+
+const geist = Geist({
+  subsets: ["latin"],
+  variable: '--font-geist-sans',
+});
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: '--font-geist-mono',
+});
+
+/**
+ * Build metadata dynamically so admin-managed branding (site name,
+ * description, favicon) and per-page SEO overrides apply automatically.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSiteSettings();
+  const hdrs = await headers();
+  const pathname = hdrs.get('x-pathname') || '/';
+  const seoEntry = findSeoForPath(parseSeoPages(settings.seo_pages), pathname);
+
+  const fallbackTitle = `${settings.site_name} - Betting Tips Community`;
+  const title = seoEntry?.title || fallbackTitle;
+  const description = seoEntry?.description || settings.site_description;
+  const keywords = seoEntry?.keywords
+    ? seoEntry.keywords.split(',').map((k) => k.trim()).filter(Boolean)
+    : ['betting tips', 'sports predictions', 'tipster', 'football tips', 'betting community', 'odds comparison'];
+
+  // Build the icons list. If the admin uploaded a custom favicon, prefer it.
+  const customFavicon = settings.favicon_url?.trim();
+  const icons: Metadata['icons'] = customFavicon
+    ? { icon: customFavicon, apple: customFavicon }
+    : {
+        // SVG-first so the redesigned Betcheza mark renders crisply in modern browsers.
+        // PNGs stay as fallbacks for legacy / RSS readers.
+        icon: [
+          { url: '/icon.svg', type: 'image/svg+xml' },
+          { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)', sizes: '32x32' },
+          { url: '/icon-dark-32x32.png', media: '(prefers-color-scheme: dark)', sizes: '32x32' },
+        ],
+        apple: '/apple-icon.png',
+      };
+
+  return {
+    title: {
+      default: title,
+      template: `%s | ${settings.site_name}`,
+    },
+=== (main)/layout.tsx ===
+"use client"
+
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import {
+  Home, Calendar, Trophy, Users, BarChart3, Radio, Bookmark,
+  Menu, X, Search, Bell, Settings, LogIn, LogOut, ChevronDown,
+  Star, Wallet, User
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { HeaderSearch } from "@/components/layout/header-search"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/auth-context"
+import { useAuthModal } from "@/contexts/auth-modal-context"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { NotificationBell } from "@/components/notifications/notification-bell"
+import { BottomNav } from "@/components/layout/bottom-nav"
+import { Footer } from "@/components/layout/footer"
+import { CookieBanner } from "@/components/layout/cookie-banner"
+import { useMatchStats } from "@/lib/hooks/use-matches"
+
+// ✅ FIX: import correct export and alias it
+import { ALL_SPORTS as SPORTS_LIST, getSportIcon } from "@/lib/sports-data"
+
+const mainNavItems: Array<{ href: string; label: string; icon: typeof Home; badgeKey?: 'live' | 'today' }> = [
+  { href: "/", label: "Home", icon: Home },
+  { href: "/live", label: "Live", icon: Radio, badgeKey: 'live' },
+  { href: "/matches", label: "Matches", icon: Calendar, badgeKey: 'today' },
+  { href: "/tipsters", label: "Tipsters", icon: Users },
+  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/competitions", label: "Competitions", icon: Star },
+  { href: "/bookmakers", label: "Bookmakers", icon: Wallet },
+=== DB CONTENT ===
+--------------
+SELECT * FROM site_settings LIMIT 20
+--------------
+
+ERROR 1146 (42S02) at line 1: Table 'admin_betcheza.site_settings' doesn't exist
+[admin@server ~]$ echo "=== ALL TABLES IN DB ===" ; mysql -u admin_betcheza -p'dj@Topaz2016' admin_betcheza -e "SHOW TABLES;" 2>&1 ; echo "=== lib/site-settings.ts ===" ; cat ~/apps/betcheza/lib/site-settings.ts ; echo "=== EVERY mention of Dossy in source (no filter) ===" ; grep -rln "Dossy" ~/apps/betcheza/ 2>/dev/null | grep -v node_modules | grep -v "\.next" | head -20
+=== ALL TABLES IN DB ===
+=== lib/site-settings.ts ===
+import { query, getPool } from './db';
+
+export interface SiteSettings {
+  site_name: string;
+  site_description: string;
+  logo_url: string;
+  logo_dark_url: string;
+  favicon_url: string;
+  primary_color: string;
+  default_theme: string;
+  google_analytics_id: string;
+  facebook_pixel_id: string;
+  twofa_enabled: string;
+  twofa_method: string;
+  url_rewrites: string;
+  seo_pages: string;
+  maintenance_mode: string;
+  maintenance_message: string;
+  /** JSON-serialised SocialLink[] — managed in /admin/settings → Social tab. */
+  social_links: string;
+  /** "true" / "false" — when true the cookie consent banner shows on first visit. */
+  cookie_banner_enabled: string;
+  /** Customisable banner copy. Falls back to a sensible default. */
+  cookie_banner_message: string;
+  [key: string]: string;
+}
+
+export interface SocialLink {
+  /** Stable platform key (twitter, facebook, instagram, youtube, tiktok, telegram, whatsapp, linkedin, discord). */
+  platform: string;
+  /** Public URL the icon links to. */
+  url: string;
+  /** Optional handle (@betcheza) — purely cosmetic, shown as a tooltip. */
+  handle?: string;
+  /** When false, the icon is hidden from the footer even if a URL is set. */
+  enabled: boolean;
+}
+
+export function parseSocialLinks(raw: string): SocialLink[] {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(
+        (e): e is SocialLink =>
+          typeof e?.platform === 'string' && typeof e?.url === 'string',
+      )
+      .map((e) => ({ enabled: true, ...e }));
+  } catch {
+    return [];
+  }
+}
+
+const DEFAULTS: SiteSettings = {
+  site_name: 'Betcheza',
+  site_description: 'Your trusted betting tips community. Get expert predictions, track your performance, and compete with other tipsters.',
+  logo_url: '/betcheza-logo-light.svg',
+  logo_dark_url: '/betcheza-logo-dark.svg',
+  favicon_url: '/betcheza-favicon.svg',
+  primary_color: '#10B981',
+  default_theme: 'light',
+  google_analytics_id: '',
+  facebook_pixel_id: '',
+  twofa_enabled: 'false',
+  twofa_method: 'email',
+  url_rewrites: '[]',
+  seo_pages: '[]',
+  maintenance_mode: 'false',
+  maintenance_message: '',
+  social_links: '[]',
+  cookie_banner_enabled: 'true',
+  cookie_banner_message:
+    'We use cookies to improve your experience, analyse site traffic and personalise content. By clicking "Accept", you consent to our use of cookies.',
+  // Captcha provider (managed via /admin/settings → Security tab):
+  // 'turnstile' | 'recaptcha' | 'math' | 'none' | '' (auto)
+  captcha_provider: '',
+  turnstile_site_key: '',
+  turnstile_secret_key: '',
+  recaptcha_site_key: '',
+  recaptcha_secret_key: '',
+};
+
+const g = globalThis as { __siteSettingsCache?: { value: SiteSettings; ts: number } };
+const CACHE_TTL_MS = 30_000;
+
+export async function getSiteSettings(): Promise<SiteSettings> {
+  const now = Date.now();
+  if (g.__siteSettingsCache && now - g.__siteSettingsCache.ts < CACHE_TTL_MS) {
+    return g.__siteSettingsCache.value;
+  }
+  const merged: SiteSettings = { ...DEFAULTS };
+  const pool = getPool();
+  if (pool) {
+    try {
+      const result = await query<{ setting_key: string; setting_value: string }>(
+        'SELECT setting_key, setting_value FROM site_settings'
+      );
+      result.rows.forEach((row) => {
+        merged[row.setting_key] = row.setting_value;
+      });
+    } catch {
+      // Table missing — keep defaults / memory.
+    }
+  }
+  // Layer in any in-memory writes from /api/admin/settings (so non-DB
+  // installs still see the latest admin updates).
+  const mem = (globalThis as { __memorySettings?: Record<string, string> }).__memorySettings;
+  if (mem) Object.assign(merged, mem);
+  g.__siteSettingsCache = { value: merged, ts: now };
+  return merged;
+}
+
+export function invalidateSiteSettingsCache(): void {
+  delete g.__siteSettingsCache;
+}
+
+export interface SeoPageEntry {
+  /** Path the rule applies to, e.g. "/", "/matches", "/results" or a glob like "/leagues/*". */
+  path: string;
+  title?: string;
+  description?: string;
+  keywords?: string;
+  ogImage?: string;
+  noIndex?: boolean;
+}
+
+export interface UrlRewriteEntry {
+  /** From path (must start with / and may end with * for prefix matching). */
+  source: string;
+  /** Target path users actually land on. */
+  destination: string;
+  /** Permanent (308) when true, else 307. */
+  permanent?: boolean;
+}
+
+export function parseSeoPages(raw: string): SeoPageEntry[] {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((e): e is SeoPageEntry => typeof e?.path === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function parseRewrites(raw: string): UrlRewriteEntry[] {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (e): e is UrlRewriteEntry =>
+        typeof e?.source === 'string' && typeof e?.destination === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Find the most specific SEO entry matching a pathname. */
+export function findSeoForPath(entries: SeoPageEntry[], pathname: string): SeoPageEntry | undefined {
+  // Exact match wins.
+  const exact = entries.find((e) => e.path === pathname);
+  if (exact) return exact;
+  // Then longest-prefix glob.
+  const globs = entries
+    .filter((e) => e.path.endsWith('/*'))
+    .map((e) => ({ entry: e, prefix: e.path.slice(0, -1) }))
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+  return globs.find((g) => pathname.startsWith(g.prefix))?.entry;
+}
+=== EVERY mention of Dossy in source (no filter) ===
+[admin@server ~]$ exit
+logout
+[root@server betcheza]# pkill -9 -u admin -f "next" ; sleep 2 ; ss -tlnp | grep -E ':(3000|5000|8080)' ; echo "---should be empty above---"
+LISTEN 0      511                                 0.0.0.0:3000      0.0.0.0:*    users:(("next-server (v1",pid=1086466,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+LISTEN 0      511                                 0.0.0.0:5000      0.0.0.0:*    users:(("next-server (v1",pid=1050525,fd=18))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+---should be empty above---
+[root@server betcheza]# su - admin
+Last login: Thu Apr 30 13:40:33 EDT 2026 on pts/0
+[admin@server ~]$ cd ~/apps/betcheza && rm -rf .next && grep -rln "Dossy World" . 2>/dev/null | grep -v node_modules | head -5 && echo "---if anything above, source IS contaminated---" && npm run build 2>&1 | tail -8 && pm2 delete betcheza 2>/dev/null ; pm2 start npm --name betcheza --cwd /home/admin/apps/betcheza -- start && pm2 restart dossy && sleep 10 && pm2 save && echo "---SMOKE TEST---" && curl -s http://127.0.0.1:5000/ | grep -oE '<title[^<]*</title>' | head -1 && curl -s http://127.0.0.1:5000/ | grep -ocE 'Dossy|Betcheza'
+---if anything above, source IS contaminated---

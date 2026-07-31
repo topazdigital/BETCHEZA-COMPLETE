@@ -1,0 +1,82 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { query } from '@/lib/db';
+import { listPosts, listPostsByHashtag, listPostsByRoom, createPost } from '@/lib/feed-store';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest) {
+  try {
+    const user = await getCurrentUser();
+    const limit = Number(req.nextUrl.searchParams.get('limit') || 25);
+    const offset = Number(req.nextUrl.searchParams.get('offset') || 0);
+    const hashtag = req.nextUrl.searchParams.get('hashtag')?.toLowerCase().trim() || null;
+    const room = req.nextUrl.searchParams.get('room')?.toLowerCase().trim() || null;
+
+    const allPosts = hashtag
+      ? await listPostsByHashtag(hashtag, limit + offset, user?.userId ?? null)
+      : room
+        ? await listPostsByRoom(room, limit + offset, user?.userId ?? null)
+        : await listPosts(limit + offset, user?.userId ?? null);
+
+    const posts = allPosts.slice(offset, offset + limit);
+    const hasMore = allPosts.length > offset + limit;
+    return NextResponse.json({ success: true, posts, hasMore, offset, limit });
+  } catch (e) {
+    console.error('[feed/posts] GET error:', e);
+    return NextResponse.json({ success: true, posts: [], hasMore: false });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Sign in to post.' }, { status: 401 });
+  }
+  let body: Record<string, unknown> = {};
+  try { body = await req.json(); } catch {}
+  const content = String(body.content || '').trim();
+  if (!content) return NextResponse.json({ success: false, error: 'Post content required.' }, { status: 400 });
+  if (content.length > 2000) return NextResponse.json({ success: false, error: 'Post too long.' }, { status: 400 });
+
+  let authorName = (user as unknown as { username?: string; email?: string }).username
+    || (user as unknown as { username?: string; email?: string }).email
+    || `user_${user.userId}`;
+  let authorAvatar: string | null = null;
+  try {
+    const r = await query<{ display_name: string | null; avatar_url: string | null }>(
+      `SELECT up.display_name, up.avatar_url
+       FROM user_profiles up WHERE up.user_id = ? LIMIT 1`,
+      [user.userId]
+    );
+    if (r.rows[0]) {
+      if (r.rows[0].display_name) authorName = r.rows[0].display_name;
+      if (r.rows[0].avatar_url) authorAvatar = r.rows[0].avatar_url;
+    }
+  } catch {}
+
+  const roomSlug = typeof body.room === 'string' ? body.room : null;
+  let roomId: number | null = null;
+  if (roomSlug) {
+    try {
+      const rr = await query<{ id: number }>(
+        `SELECT id FROM community_rooms WHERE slug = ? AND is_active = 1 LIMIT 1`, [roomSlug]);
+      roomId = rr.rows[0]?.id ?? null;
+    } catch {}
+  }
+
+  const post = await createPost({
+    userId: user.userId,
+    authorName,
+    authorAvatar,
+    content,
+    matchId: typeof body.matchId === 'string' ? body.matchId : null,
+    matchTitle: typeof body.matchTitle === 'string' ? body.matchTitle : null,
+    pick: typeof body.pick === 'string' ? body.pick : null,
+    odds: typeof body.odds === 'number' ? body.odds : null,
+    imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl : null,
+    roomId,
+  });
+
+  return NextResponse.json({ success: true, post });
+}

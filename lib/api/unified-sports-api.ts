@@ -1,0 +1,7106 @@
+// ============================================
+// Unified Sports API Service - EXPANDED
+// Combines ESPN (FREE), The Odds API, and more
+// ============================================
+
+import { ALL_SPORTS, ALL_LEAGUES, type LeagueConfig } from '@/lib/sports-data';
+import { fetchTSDBMatches } from './the-sports-db';
+import { fetchOpenLigaDBMatches } from './openligadb';
+import { fetchFootballDataOrgMatches } from './football-data-org';
+import { fetchFotMobMatches } from './fotmob';
+import { fetchCamel1Matches } from './camel1';
+import { fetchSofaScoreMatches } from './sofascore';
+import { fetchApiSportsMatches } from './api-sports';
+import { fetchAllSportsMatches } from './allsports';
+import { directFetch } from './proxy-fetch';
+import fs from 'fs';
+import path from 'path';
+
+// ============================================
+// Types
+// ============================================
+
+export interface UnifiedMatch {
+  id: string;
+  externalId?: string;
+  source: 'espn' | 'the-odds-api' | 'sportsdata-io' | 'odds-api-io' | 'fallback';
+  sportId: number;
+  sportKey: string;
+  leagueId: number;
+  leagueKey: string;
+  homeTeam: {
+    id: string;
+    name: string;
+    shortName: string;
+    logo?: string;
+    form?: string;
+    record?: string;
+  };
+  awayTeam: {
+    id: string;
+    name: string;
+    shortName: string;
+    logo?: string;
+    form?: string;
+    record?: string;
+  };
+  kickoffTime: Date;
+  status: 'scheduled' | 'live' | 'halftime' | 'finished' | 'postponed' | 'cancelled';
+  homeScore: number | null;
+  awayScore: number | null;
+  htHomeScore?: number | null; // first-half score (from ESPN linescores[0])
+  htAwayScore?: number | null;
+  minute?: number;
+  period?: string;
+  league: {
+    id: number;
+    name: string;
+    slug: string;
+    country: string;
+    countryCode: string;
+    tier: number;
+  };
+  sport: {
+    id: number;
+    name: string;
+    slug: string;
+    icon: string;
+  };
+  odds?: MatchOdds;
+  markets?: Market[];
+  tipsCount: number;
+  venue?: string;
+  legInfo?: string | null;
+  roundName?: string | null;
+  // Sport-specific statistics
+  sportSpecificData?: SportSpecificData;
+}
+
+// Sport-specific statistics types
+export interface SportSpecificData {
+  // Soccer
+  possession?: { home: number; away: number };
+  shots?: { home: number; away: number };
+  shotsOnTarget?: { home: number; away: number };
+  corners?: { home: number; away: number };
+  fouls?: { home: number; away: number };
+  yellowCards?: { home: number; away: number };
+  redCards?: { home: number; away: number };
+  
+  // Basketball
+  quarters?: { home: number[]; away: number[] };
+  rebounds?: { home: number; away: number };
+  assists?: { home: number; away: number };
+  steals?: { home: number; away: number };
+  blocks?: { home: number; away: number };
+  turnovers?: { home: number; away: number };
+  fieldGoalPct?: { home: number; away: number };
+  threePointPct?: { home: number; away: number };
+  freeThrowPct?: { home: number; away: number };
+  
+  // American Football
+  passingYards?: { home: number; away: number };
+  rushingYards?: { home: number; away: number };
+  totalYards?: { home: number; away: number };
+  firstDowns?: { home: number; away: number };
+  thirdDownConv?: { home: string; away: string };
+  timeOfPossession?: { home: string; away: string };
+  sacks?: { home: number; away: number };
+  interceptions?: { home: number; away: number };
+  fumbles?: { home: number; away: number };
+  
+  // Tennis
+  sets?: { home: number[]; away: number[] };
+  aces?: { home: number; away: number };
+  doubleFaults?: { home: number; away: number };
+  firstServePct?: { home: number; away: number };
+  breakPoints?: { home: string; away: string };
+  winners?: { home: number; away: number };
+  unforcedErrors?: { home: number; away: number };
+  
+  // MMA/Boxing
+  round?: number;
+  totalRounds?: number;
+  method?: string; // KO, Submission, Decision
+  strikes?: { home: number; away: number };
+  takedowns?: { home: number; away: number };
+  significantStrikes?: { home: number; away: number };
+  
+  // Ice Hockey
+  powerPlayGoals?: { home: number; away: number };
+  penaltyMinutes?: { home: number; away: number };
+  faceoffWins?: { home: number; away: number };
+  hitsCount?: { home: number; away: number };
+  blockedShots?: { home: number; away: number };
+  
+  // Baseball
+  hits?: { home: number; away: number };
+  errors?: { home: number; away: number };
+  innings?: { home: number[]; away: number[] };
+  strikeouts?: { home: number; away: number };
+  walks?: { home: number; away: number };
+  homeRuns?: { home: number; away: number };
+  
+  // Cricket
+  overs?: { home: string; away: string };
+  wickets?: { home: number; away: number };
+  runRate?: { home: number; away: number };
+  extras?: { home: number; away: number };
+  
+  // F1/Racing
+  lapTimes?: string[];
+  positions?: { driver: string; position: number; gap: string }[];
+  pitStops?: number;
+  fastestLap?: string;
+  
+  // Golf
+  scores?: { player: string; total: number; today: number; thru: string }[];
+  leaderboard?: boolean;
+}
+
+export interface MatchOdds {
+  home: number;
+  draw?: number;
+  away: number;
+  bookmaker?: string;
+  lastUpdate?: Date;
+}
+
+export interface Market {
+  key: string;
+  name: string;
+  outcomes: Outcome[];
+}
+
+export interface Outcome {
+  name: string;
+  price: number;
+  point?: number;
+}
+
+export interface Standing {
+  position: number;
+  group?: string;
+  team: {
+    id: string;
+    name: string;
+    logo?: string;
+  };
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  form?: string[];
+}
+
+export interface Outright {
+  id: string;
+  name: string;
+  outcomes: {
+    name: string;
+    price: number;
+    /** Optional deeplink to the bookmaker's bet slip (SGO only). */
+    link?: string;
+  }[];
+}
+
+// ============================================
+// ESPN League Configuration - COMPREHENSIVE
+// ============================================
+
+interface ESPNLeagueConfig {
+  sport: string;
+  league: string;
+  sportId: number;
+  leagueId: number;
+  leagueName: string;
+  country: string;
+  countryCode: string;
+  sportType: 'soccer' | 'basketball' | 'football' | 'baseball' | 'hockey' | 'mma' | 'tennis' | 'cricket' | 'rugby' | 'golf' | 'racing';
+}
+
+// ESPN supports these leagues - all FREE, no API key needed
+const ESPN_LEAGUES: ESPNLeagueConfig[] = [
+  // SOCCER - European Top Leagues
+  { sport: 'soccer', league: 'eng.1', sportId: 1, leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'esp.1', sportId: 1, leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ger.1', sportId: 1, leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ita.1', sportId: 1, leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fra.1', sportId: 1, leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ned.1', sportId: 1, leagueId: 6, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'por.1', sportId: 1, leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'sco.1', sportId: 1, leagueId: 8, leagueName: 'Scottish Premiership', country: 'Scotland', countryCode: 'GB-SCT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bel.1', sportId: 1, leagueId: 16, leagueName: 'Belgian Pro League', country: 'Belgium', countryCode: 'BE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tur.1', sportId: 1, leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR', sportType: 'soccer' },
+  
+  // SOCCER - European Competitions
+  { sport: 'soccer', league: 'uefa.champions', sportId: 1, leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.europa', sportId: 1, leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.europa.conf', sportId: 1, leagueId: 26, leagueName: 'Conference League', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  
+  // SOCCER - Americas
+  { sport: 'soccer', league: 'usa.1', sportId: 1, leagueId: 11, leagueName: 'MLS', country: 'USA', countryCode: 'US', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bra.1', sportId: 1, leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'arg.1', sportId: 1, leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'arg.2', sportId: 1, leagueId: 258, leagueName: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mex.1', sportId: 1, leagueId: 27, leagueName: 'Liga MX', country: 'Mexico', countryCode: 'MX', sportType: 'soccer' },
+  { sport: 'soccer', league: 'conmebol.libertadores', sportId: 1, leagueId: 25, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+  
+  // SOCCER - Asia & Others
+  { sport: 'soccer', league: 'aus.1', sportId: 1, leagueId: 20, leagueName: 'A-League', country: 'Australia', countryCode: 'AU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'jpn.1', sportId: 1, leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP', sportType: 'soccer' },
+  { sport: 'soccer', league: 'chn.1', sportId: 1, leagueId: 28, leagueName: 'Chinese Super League', country: 'China', countryCode: 'CN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ksa.1', sportId: 1, leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'kor.1', sportId: 1, leagueId: 32, leagueName: 'K League 1', country: 'South Korea', countryCode: 'KR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'idn.1', sportId: 1, leagueId: 33, leagueName: 'Liga 1 Indonesia', country: 'Indonesia', countryCode: 'ID', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tha.1', sportId: 1, leagueId: 34, leagueName: 'Thai League 1', country: 'Thailand', countryCode: 'TH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mys.1', sportId: 1, leagueId: 35, leagueName: 'Malaysia Super League', country: 'Malaysia', countryCode: 'MY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'are.1', sportId: 1, leagueId: 36, leagueName: 'UAE Pro League', country: 'UAE', countryCode: 'AE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'qat.1', sportId: 1, leagueId: 37, leagueName: 'Qatar Stars League', country: 'Qatar', countryCode: 'QA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'irn.1', sportId: 1, leagueId: 38, leagueName: 'Persian Gulf Pro League', country: 'Iran', countryCode: 'IR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'isr.1', sportId: 1, leagueId: 39, leagueName: 'Israeli Premier League', country: 'Israel', countryCode: 'IL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ind.1', sportId: 1, leagueId: 40, leagueName: 'Indian Super League', country: 'India', countryCode: 'IN', sportType: 'soccer' },
+
+  // SOCCER - Lower European Divisions
+  { sport: 'soccer', league: 'eng.2', sportId: 1, leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eng.3', sportId: 1, leagueId: 42, leagueName: 'EFL League One', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eng.4', sportId: 1, leagueId: 43, leagueName: 'EFL League Two', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eng.fa', sportId: 1, leagueId: 44, leagueName: 'FA Cup', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eng.league_cup', sportId: 1, leagueId: 45, leagueName: 'EFL Cup', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'esp.2', sportId: 1, leagueId: 46, leagueName: 'La Liga 2', country: 'Spain', countryCode: 'ES', sportType: 'soccer' },
+  { sport: 'soccer', league: 'esp.copa_del_rey', sportId: 1, leagueId: 47, leagueName: 'Copa del Rey', country: 'Spain', countryCode: 'ES', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ger.2', sportId: 1, leagueId: 48, leagueName: '2. Bundesliga', country: 'Germany', countryCode: 'DE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ger.dfb_pokal', sportId: 1, leagueId: 49, leagueName: 'DFB Pokal', country: 'Germany', countryCode: 'DE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ita.2', sportId: 1, leagueId: 50, leagueName: 'Serie B', country: 'Italy', countryCode: 'IT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ita.coppa_italia', sportId: 1, leagueId: 51, leagueName: 'Coppa Italia', country: 'Italy', countryCode: 'IT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fra.2', sportId: 1, leagueId: 52, leagueName: 'Ligue 2', country: 'France', countryCode: 'FR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fra.coupe_de_france', sportId: 1, leagueId: 53, leagueName: 'Coupe de France', country: 'France', countryCode: 'FR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ned.2', sportId: 1, leagueId: 54, leagueName: 'Eerste Divisie', country: 'Netherlands', countryCode: 'NL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'por.2', sportId: 1, leagueId: 55, leagueName: 'Liga Portugal 2', country: 'Portugal', countryCode: 'PT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'sui.1', sportId: 1, leagueId: 56, leagueName: 'Swiss Super League', country: 'Switzerland', countryCode: 'CH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'aut.1', sportId: 1, leagueId: 57, leagueName: 'Austrian Bundesliga', country: 'Austria', countryCode: 'AT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'gre.1', sportId: 1, leagueId: 58, leagueName: 'Greek Super League', country: 'Greece', countryCode: 'GR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'rou.1', sportId: 1, leagueId: 59, leagueName: 'Romanian Liga I', country: 'Romania', countryCode: 'RO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'cze.1', sportId: 1, leagueId: 60, leagueName: 'Czech First League', country: 'Czech Republic', countryCode: 'CZ', sportType: 'soccer' },
+  { sport: 'soccer', league: 'pol.1', sportId: 1, leagueId: 61, leagueName: 'Ekstraklasa', country: 'Poland', countryCode: 'PL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ukr.1', sportId: 1, leagueId: 62, leagueName: 'Ukrainian Premier League', country: 'Ukraine', countryCode: 'UA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'rus.1', sportId: 1, leagueId: 63, leagueName: 'Russian Premier League', country: 'Russia', countryCode: 'RU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'den.1', sportId: 1, leagueId: 64, leagueName: 'Danish Superliga', country: 'Denmark', countryCode: 'DK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'swe.1', sportId: 1, leagueId: 65, leagueName: 'Allsvenskan', country: 'Sweden', countryCode: 'SE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'nor.1', sportId: 1, leagueId: 66, leagueName: 'Eliteserien', country: 'Norway', countryCode: 'NO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fin.1', sportId: 1, leagueId: 67, leagueName: 'Veikkausliiga', country: 'Finland', countryCode: 'FI', sportType: 'soccer' },
+  { sport: 'soccer', league: 'isl.1', sportId: 1, leagueId: 68, leagueName: 'Úrvalsdeild', country: 'Iceland', countryCode: 'IS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'irl.1', sportId: 1, leagueId: 69, leagueName: 'League of Ireland', country: 'Ireland', countryCode: 'IE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'wal.1', sportId: 1, leagueId: 70, leagueName: 'Cymru Premier', country: 'Wales', countryCode: 'GB-WLS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'srb.1', sportId: 1, leagueId: 71, leagueName: 'Serbian SuperLiga', country: 'Serbia', countryCode: 'RS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hrv.1', sportId: 1, leagueId: 72, leagueName: 'HNL', country: 'Croatia', countryCode: 'HR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hun.1', sportId: 1, leagueId: 73, leagueName: 'Nemzeti Bajnokság I', country: 'Hungary', countryCode: 'HU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bgr.1', sportId: 1, leagueId: 74, leagueName: 'First Professional League', country: 'Bulgaria', countryCode: 'BG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'svk.1', sportId: 1, leagueId: 75, leagueName: 'Slovak Super Liga', country: 'Slovakia', countryCode: 'SK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'svn.1', sportId: 1, leagueId: 76, leagueName: 'Slovenian PrvaLiga', country: 'Slovenia', countryCode: 'SI', sportType: 'soccer' },
+
+  // SOCCER - Americas (lower & cup)
+  { sport: 'soccer', league: 'usa.open', sportId: 1, leagueId: 77, leagueName: 'US Open Cup', country: 'USA', countryCode: 'US', sportType: 'soccer' },
+  { sport: 'soccer', league: 'usa.2', sportId: 1, leagueId: 78, leagueName: 'USL Championship', country: 'USA', countryCode: 'US', sportType: 'soccer' },
+  { sport: 'soccer', league: 'usa.nwsl', sportId: 1, leagueId: 79, leagueName: 'NWSL', country: 'USA', countryCode: 'US', sportType: 'soccer' },
+  { sport: 'soccer', league: 'usa.usl.1', sportId: 1, leagueId: 178, leagueName: 'USL League One', country: 'USA', countryCode: 'US', sportType: 'soccer' },
+  { sport: 'soccer', league: 'usa.usl.cup', sportId: 1, leagueId: 179, leagueName: 'USL Jägermeister Cup', country: 'USA', countryCode: 'US', sportType: 'soccer' },
+  // Women's leagues — added after users called out missing coverage.
+  { sport: 'soccer', league: 'eng.w.1', sportId: 1, leagueId: 180, leagueName: 'Women\'s Super League', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fra.w.1', sportId: 1, leagueId: 181, leagueName: 'Première Ligue (Women)', country: 'France', countryCode: 'FR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'esp.w.1', sportId: 1, leagueId: 182, leagueName: 'Liga F', country: 'Spain', countryCode: 'ES', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ger.w.1', sportId: 1, leagueId: 183, leagueName: 'Frauen-Bundesliga', country: 'Germany', countryCode: 'DE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ita.w.1', sportId: 1, leagueId: 184, leagueName: 'Serie A Women', country: 'Italy', countryCode: 'IT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.wchampions', sportId: 1, leagueId: 185, leagueName: 'UEFA Women\'s Champions League', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'concacaf.champions_cup', sportId: 1, leagueId: 80, leagueName: 'CONCACAF Champions Cup', country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'concacaf.gold', sportId: 1, leagueId: 81, leagueName: 'CONCACAF Gold Cup', country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'conmebol.sudamericana', sportId: 1, leagueId: 82, leagueName: 'Copa Sudamericana', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'arg.copa', sportId: 1, leagueId: 83, leagueName: 'Copa Argentina', country: 'Argentina', countryCode: 'AR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bra.copa_do_brazil', sportId: 1, leagueId: 84, leagueName: 'Copa do Brasil', country: 'Brazil', countryCode: 'BR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bra.camp.carioca', sportId: 1, leagueId: 85, leagueName: 'Carioca State Championship', country: 'Brazil', countryCode: 'BR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bra.camp.paulista', sportId: 1, leagueId: 86, leagueName: 'Paulista State Championship', country: 'Brazil', countryCode: 'BR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'col.1', sportId: 1, leagueId: 87, leagueName: 'Colombian Primera A', country: 'Colombia', countryCode: 'CO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'chi.1', sportId: 1, leagueId: 88, leagueName: 'Chilean Primera División', country: 'Chile', countryCode: 'CL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'per.1', sportId: 1, leagueId: 89, leagueName: 'Peruvian Liga 1', country: 'Peru', countryCode: 'PE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uru.1', sportId: 1, leagueId: 90, leagueName: 'Uruguayan Primera', country: 'Uruguay', countryCode: 'UY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ecu.1', sportId: 1, leagueId: 91, leagueName: 'Ecuadorian Serie A', country: 'Ecuador', countryCode: 'EC', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ven.1', sportId: 1, leagueId: 92, leagueName: 'Venezuelan Primera', country: 'Venezuela', countryCode: 'VE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'par.1', sportId: 1, leagueId: 93, leagueName: 'Paraguayan Primera', country: 'Paraguay', countryCode: 'PY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bol.1', sportId: 1, leagueId: 94, leagueName: 'Bolivian Primera', country: 'Bolivia', countryCode: 'BO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'crc.1', sportId: 1, leagueId: 95, leagueName: 'Costa Rican Primera', country: 'Costa Rica', countryCode: 'CR', sportType: 'soccer' },
+
+  // SOCCER - Africa
+  { sport: 'soccer', league: 'rsa.1', sportId: 1, leagueId: 96, leagueName: 'South Africa Premiership', country: 'South Africa', countryCode: 'ZA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'egy.1', sportId: 1, leagueId: 97, leagueName: 'Egyptian Premier League', country: 'Egypt', countryCode: 'EG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mar.1', sportId: 1, leagueId: 98, leagueName: 'Botola Pro', country: 'Morocco', countryCode: 'MA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tun.1', sportId: 1, leagueId: 99, leagueName: 'Tunisian Ligue 1', country: 'Tunisia', countryCode: 'TN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'alg.1', sportId: 1, leagueId: 100, leagueName: 'Algerian Ligue 1', country: 'Algeria', countryCode: 'DZ', sportType: 'soccer' },
+  { sport: 'soccer', league: 'caf.cl', sportId: 1, leagueId: 102, leagueName: 'CAF Champions League', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  { sport: 'soccer', league: 'caf.cc', sportId: 1, leagueId: 103, leagueName: 'CAF Confederation Cup', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  // SOCCER - East Africa (eth.1 is not covered in the More Africa block below)
+  { sport: 'soccer', league: 'eth.1', sportId: 1, leagueId: 257, leagueName: 'Ethiopian Premier League', country: 'Ethiopia', countryCode: 'ET', sportType: 'soccer' },
+
+  // SOCCER - Asia (Cup competitions)
+  { sport: 'soccer', league: 'afc.champions', sportId: 1, leagueId: 104, leagueName: 'AFC Champions League', country: 'Asia', countryCode: 'AS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'afc.asian.cup', sportId: 1, leagueId: 105, leagueName: 'AFC Asian Cup', country: 'Asia', countryCode: 'AS', sportType: 'soccer' },
+
+  // SOCCER - Friendlies / International
+  { sport: 'soccer', league: 'fifa.friendly', sportId: 1, leagueId: 106, leagueName: 'International Friendly', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.friendly.w', sportId: 1, leagueId: 189, leagueName: "Women's International Friendly", country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.cwc', sportId: 1, leagueId: 109, leagueName: 'FIFA Club World Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.world.u20', sportId: 1, leagueId: 110, leagueName: 'FIFA U20 World Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.nations', sportId: 1, leagueId: 111, leagueName: 'UEFA Nations League', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.world.qualifiers.uefa', sportId: 1, leagueId: 112, leagueName: 'World Cup Qualifying — UEFA', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.world.qualifiers.concacaf', sportId: 1, leagueId: 113, leagueName: 'World Cup Qualifying — CONCACAF', country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.world.qualifiers.conmebol', sportId: 1, leagueId: 114, leagueName: 'World Cup Qualifying — CONMEBOL', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.world.qualifiers.afc', sportId: 1, leagueId: 115, leagueName: 'World Cup Qualifying — AFC', country: 'Asia', countryCode: 'AS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.world.qualifiers.caf', sportId: 1, leagueId: 116, leagueName: 'World Cup Qualifying — CAF', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.uefa', sportId: 1, leagueId: 190, leagueName: "Women's World Cup Qualifying — UEFA", country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.concacaf', sportId: 1, leagueId: 191, leagueName: "Women's World Cup Qualifying — CONCACAF", country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.afc', sportId: 1, leagueId: 192, leagueName: "Women's World Cup Qualifying — AFC", country: 'Asia', countryCode: 'AS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.caf', sportId: 1, leagueId: 193, leagueName: "Women's World Cup Qualifying — CAF", country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc.qualifier.conmebol', sportId: 1, leagueId: 194, leagueName: "Women's World Cup Qualifying — CONMEBOL", country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+
+  // SOCCER - International
+  { sport: 'soccer', league: 'fifa.world', sportId: 1, leagueId: 29, leagueName: 'World Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.euro', sportId: 1, leagueId: 30, leagueName: 'Euro Championship', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'conmebol.america', sportId: 1, leagueId: 31, leagueName: 'Copa America', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'caf.nations', sportId: 1, leagueId: 24, leagueName: 'AFCON', country: 'Africa', countryCode: 'AF', sportType: 'soccer' },
+  
+  // BASKETBALL
+  { sport: 'basketball', league: 'nba', sportId: 2, leagueId: 101, leagueName: 'NBA', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'wnba', sportId: 2, leagueId: 107, leagueName: 'WNBA', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'mens-college-basketball', sportId: 2, leagueId: 108, leagueName: 'NCAA Basketball', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  
+  // AMERICAN FOOTBALL
+  { sport: 'football', league: 'nfl', sportId: 5, leagueId: 401, leagueName: 'NFL', country: 'USA', countryCode: 'US', sportType: 'football' },
+  { sport: 'football', league: 'college-football', sportId: 5, leagueId: 402, leagueName: 'NCAA Football', country: 'USA', countryCode: 'US', sportType: 'football' },
+  { sport: 'football', league: 'cfl', sportId: 5, leagueId: 403, leagueName: 'CFL', country: 'Canada', countryCode: 'CA', sportType: 'football' },
+  { sport: 'football', league: 'xfl', sportId: 5, leagueId: 404, leagueName: 'XFL', country: 'USA', countryCode: 'US', sportType: 'football' },
+  
+  // BASEBALL
+  { sport: 'baseball', league: 'mlb', sportId: 6, leagueId: 501, leagueName: 'MLB', country: 'USA', countryCode: 'US', sportType: 'baseball' },
+  
+  // ICE HOCKEY
+  { sport: 'hockey', league: 'nhl', sportId: 7, leagueId: 601, leagueName: 'NHL', country: 'USA/Canada', countryCode: 'US', sportType: 'hockey' },
+  
+  // MMA
+  { sport: 'mma', league: 'ufc', sportId: 27, leagueId: 2701, leagueName: 'UFC', country: 'World', countryCode: 'WO', sportType: 'mma' },
+  { sport: 'mma', league: 'pfl', sportId: 27, leagueId: 2702, leagueName: 'PFL', country: 'USA', countryCode: 'US', sportType: 'mma' },
+  { sport: 'mma', league: 'bellator', sportId: 27, leagueId: 2703, leagueName: 'Bellator', country: 'USA', countryCode: 'US', sportType: 'mma' },
+  
+  // TENNIS
+  { sport: 'tennis', league: 'atp', sportId: 3, leagueId: 201, leagueName: 'ATP Tour', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'wta', sportId: 3, leagueId: 202, leagueName: 'WTA Tour', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  
+  // CRICKET
+  { sport: 'cricket', league: 'ipl', sportId: 4, leagueId: 301, leagueName: 'IPL', country: 'India', countryCode: 'IN', sportType: 'cricket' },
+  { sport: 'cricket', league: 'bbl', sportId: 4, leagueId: 302, leagueName: 'Big Bash League', country: 'Australia', countryCode: 'AU', sportType: 'cricket' },
+  { sport: 'cricket', league: 'psl', sportId: 4, leagueId: 306, leagueName: 'PSL', country: 'Pakistan', countryCode: 'PK', sportType: 'cricket' },
+  
+  // RUGBY
+  { sport: 'rugby', league: 'six-nations', sportId: 8, leagueId: 701, leagueName: 'Six Nations', country: 'Europe', countryCode: 'EU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'super-rugby', sportId: 8, leagueId: 703, leagueName: 'Super Rugby', country: 'Southern Hemisphere', countryCode: 'SH', sportType: 'rugby' },
+  { sport: 'rugby', league: 'premiership', sportId: 8, leagueId: 704, leagueName: 'Premiership Rugby', country: 'England', countryCode: 'GB-ENG', sportType: 'rugby' },
+  
+  // GOLF
+  { sport: 'golf', league: 'pga', sportId: 17, leagueId: 1701, leagueName: 'PGA Tour', country: 'USA', countryCode: 'US', sportType: 'golf' },
+  { sport: 'golf', league: 'lpga', sportId: 17, leagueId: 1704, leagueName: 'LPGA Tour', country: 'USA', countryCode: 'US', sportType: 'golf' },
+  { sport: 'golf', league: 'european-tour', sportId: 17, leagueId: 1702, leagueName: 'DP World Tour', country: 'Europe', countryCode: 'EU', sportType: 'golf' },
+  
+  // RACING
+  { sport: 'racing', league: 'f1', sportId: 29, leagueId: 2901, leagueName: 'Formula 1', country: 'World', countryCode: 'WO', sportType: 'racing' },
+  { sport: 'racing', league: 'nascar-cup', sportId: 31, leagueId: 3101, leagueName: 'NASCAR Cup Series', country: 'USA', countryCode: 'US', sportType: 'racing' },
+  { sport: 'racing', league: 'indycar', sportId: 32, leagueId: 3201, leagueName: 'IndyCar', country: 'USA', countryCode: 'US', sportType: 'racing' },
+
+  // SOCCER - Women's Top Leagues
+  { sport: 'soccer', league: 'eng.w.1', sportId: 1, leagueId: 200, leagueName: "Women's Super League", country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'esp.w.1', sportId: 1, leagueId: 201, leagueName: "Liga F", country: 'Spain', countryCode: 'ES', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ger.w.1', sportId: 1, leagueId: 202, leagueName: "Frauen Bundesliga", country: 'Germany', countryCode: 'DE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fra.w.1', sportId: 1, leagueId: 203, leagueName: "Première Ligue", country: 'France', countryCode: 'FR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ita.w.1', sportId: 1, leagueId: 204, leagueName: "Serie A Femminile", country: 'Italy', countryCode: 'IT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.wchampions', sportId: 1, leagueId: 205, leagueName: "UEFA Women's Champions League", country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.wwc', sportId: 1, leagueId: 206, leagueName: "FIFA Women's World Cup", country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.weuro', sportId: 1, leagueId: 207, leagueName: "UEFA Women's Euro", country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+
+  // SOCCER - Youth & Academy
+  { sport: 'soccer', league: 'uefa.youth', sportId: 1, leagueId: 210, leagueName: 'UEFA Youth League', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.world.u17', sportId: 1, leagueId: 211, leagueName: 'FIFA U17 World Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'uefa.euro.u21', sportId: 1, leagueId: 212, leagueName: 'UEFA Under 21 Championship', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+
+  // SOCCER - More Cups
+  { sport: 'soccer', league: 'uefa.super_cup', sportId: 1, leagueId: 220, leagueName: 'UEFA Super Cup', country: 'Europe', countryCode: 'EU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eng.charity', sportId: 1, leagueId: 221, leagueName: 'FA Community Shield', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'esp.super_cup', sportId: 1, leagueId: 222, leagueName: 'Supercopa de España', country: 'Spain', countryCode: 'ES', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ita.super_cup', sportId: 1, leagueId: 223, leagueName: 'Supercoppa Italiana', country: 'Italy', countryCode: 'IT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fra.super_cup', sportId: 1, leagueId: 224, leagueName: 'Trophée des Champions', country: 'France', countryCode: 'FR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ger.super_cup', sportId: 1, leagueId: 225, leagueName: 'DFL Supercup', country: 'Germany', countryCode: 'DE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ned.super_cup', sportId: 1, leagueId: 226, leagueName: 'Johan Cruijff Schaal', country: 'Netherlands', countryCode: 'NL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'por.super_cup', sportId: 1, leagueId: 227, leagueName: 'Supertaça Cândido de Oliveira', country: 'Portugal', countryCode: 'PT', sportType: 'soccer' },
+
+  // SOCCER - Lower English & Scottish
+  { sport: 'soccer', league: 'eng.5', sportId: 1, leagueId: 230, leagueName: 'National League', country: 'England', countryCode: 'GB-ENG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'sco.2', sportId: 1, leagueId: 231, leagueName: 'Scottish Championship', country: 'Scotland', countryCode: 'GB-SCT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'sco.fa', sportId: 1, leagueId: 232, leagueName: 'Scottish Cup', country: 'Scotland', countryCode: 'GB-SCT', sportType: 'soccer' },
+
+  // SOCCER - More European Cups & Lower
+  { sport: 'soccer', league: 'bel.cup', sportId: 1, leagueId: 240, leagueName: 'Belgian Cup', country: 'Belgium', countryCode: 'BE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tur.cup', sportId: 1, leagueId: 241, leagueName: 'Turkish Cup', country: 'Turkey', countryCode: 'TR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'sui.cup', sportId: 1, leagueId: 242, leagueName: 'Swiss Cup', country: 'Switzerland', countryCode: 'CH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'aut.cup', sportId: 1, leagueId: 243, leagueName: 'Austrian Cup', country: 'Austria', countryCode: 'AT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'gre.cup', sportId: 1, leagueId: 244, leagueName: 'Greek Cup', country: 'Greece', countryCode: 'GR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'pol.cup', sportId: 1, leagueId: 245, leagueName: 'Polish Cup', country: 'Poland', countryCode: 'PL', sportType: 'soccer' },
+
+  // SOCCER - More Africa
+  { sport: 'soccer', league: 'ken.1', sportId: 1, leagueId: 9022, leagueName: 'Kenya Premier League', country: 'Kenya', countryCode: 'KE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'nga.1', sportId: 1, leagueId: 251, leagueName: 'Nigerian Professional Football League', country: 'Nigeria', countryCode: 'NG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'gha.1', sportId: 1, leagueId: 252, leagueName: 'Ghana Premier League', country: 'Ghana', countryCode: 'GH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'civ.1', sportId: 1, leagueId: 253, leagueName: "Côte d'Ivoire Ligue 1", country: "Côte d'Ivoire", countryCode: 'CI', sportType: 'soccer' },
+  { sport: 'soccer', league: 'sen.1', sportId: 1, leagueId: 254, leagueName: 'Ligue 1 Senegal', country: 'Senegal', countryCode: 'SN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'cmr.1', sportId: 1, leagueId: 255, leagueName: 'Elite One', country: 'Cameroon', countryCode: 'CM', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tza.1', sportId: 1, leagueId: 256, leagueName: 'Ligi kuu Bara', country: 'Tanzania', countryCode: 'TZ', sportType: 'soccer' },
+  // uga.1 removed — ESPN's uga.1 endpoint erroneously returns Polish Ekstraklasa data.
+  // Ugandan matches are still available via the global soccer scoreboard endpoint.
+  { sport: 'soccer', league: 'zam.1', sportId: 1, leagueId: 258, leagueName: 'MTN Super League', country: 'Zambia', countryCode: 'ZM', sportType: 'soccer' },
+  { sport: 'soccer', league: 'zwe.1', sportId: 1, leagueId: 259, leagueName: 'Zimbabwe Premier Soccer League', country: 'Zimbabwe', countryCode: 'ZW', sportType: 'soccer' },
+
+  // SOCCER - More Americas / Caribbean
+  { sport: 'soccer', league: 'jam.1', sportId: 1, leagueId: 260, leagueName: 'Jamaica Premier League', country: 'Jamaica', countryCode: 'JM', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tto.1', sportId: 1, leagueId: 261, leagueName: 'TT Premier Football League', country: 'Trinidad and Tobago', countryCode: 'TT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'gua.1', sportId: 1, leagueId: 262, leagueName: 'Liga Nacional de Guatemala', country: 'Guatemala', countryCode: 'GT', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hon.1', sportId: 1, leagueId: 263, leagueName: 'Liga Nacional de Honduras', country: 'Honduras', countryCode: 'HN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'pan.1', sportId: 1, leagueId: 264, leagueName: 'Liga Panameña de Fútbol', country: 'Panama', countryCode: 'PA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'slv.1', sportId: 1, leagueId: 265, leagueName: 'Salvadoran Primera División', country: 'El Salvador', countryCode: 'SV', sportType: 'soccer' },
+  { sport: 'soccer', league: 'can.1', sportId: 1, leagueId: 266, leagueName: 'Canadian Premier League', country: 'Canada', countryCode: 'CA', sportType: 'soccer' },
+
+  // SOCCER - More Asia
+  { sport: 'soccer', league: 'jpn.2', sportId: 1, leagueId: 270, leagueName: 'J2 League', country: 'Japan', countryCode: 'JP', sportType: 'soccer' },
+  { sport: 'soccer', league: 'jpn.cup', sportId: 1, leagueId: 271, leagueName: "Emperor's Cup", country: 'Japan', countryCode: 'JP', sportType: 'soccer' },
+  { sport: 'soccer', league: 'kor.2', sportId: 1, leagueId: 272, leagueName: 'K League 2', country: 'South Korea', countryCode: 'KR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'sgp.1', sportId: 1, leagueId: 273, leagueName: 'Singapore Premier League', country: 'Singapore', countryCode: 'SG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'vnm.1', sportId: 1, leagueId: 274, leagueName: 'V.League 1', country: 'Vietnam', countryCode: 'VN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'phl.1', sportId: 1, leagueId: 275, leagueName: 'Philippines Football League', country: 'Philippines', countryCode: 'PH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hkg.1', sportId: 1, leagueId: 276, leagueName: 'Hong Kong Premier League', country: 'Hong Kong', countryCode: 'HK', sportType: 'soccer' },
+
+  // SOCCER - More Friendlies / Club International
+  { sport: 'soccer', league: 'club.friendly', sportId: 1, leagueId: 280, leagueName: 'Club Friendly', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fifa.intercontinental', sportId: 1, leagueId: 281, leagueName: 'FIFA Intercontinental Cup', country: 'World', countryCode: 'WO', sportType: 'soccer' },
+
+  // SOCCER - Nordic Leagues
+  { sport: 'soccer', league: 'nor.1', sportId: 1, leagueId: 290, leagueName: 'Eliteserien', country: 'Norway', countryCode: 'NO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'nor.cup', sportId: 1, leagueId: 291, leagueName: 'Norway Cup', country: 'Norway', countryCode: 'NO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'swe.1', sportId: 1, leagueId: 292, leagueName: 'Allsvenskan', country: 'Sweden', countryCode: 'SE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'swe.cup', sportId: 1, leagueId: 293, leagueName: 'Svenska Cupen', country: 'Sweden', countryCode: 'SE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'den.1', sportId: 1, leagueId: 294, leagueName: 'Superliga', country: 'Denmark', countryCode: 'DK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'den.cup', sportId: 1, leagueId: 295, leagueName: 'DBU Cup', country: 'Denmark', countryCode: 'DK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'fin.1', sportId: 1, leagueId: 296, leagueName: 'Veikkausliiga', country: 'Finland', countryCode: 'FI', sportType: 'soccer' },
+  { sport: 'soccer', league: 'isl.1', sportId: 1, leagueId: 297, leagueName: 'Úrvalsdeild', country: 'Iceland', countryCode: 'IS', sportType: 'soccer' },
+
+  // SOCCER - Eastern Europe / Balkans
+  { sport: 'soccer', league: 'rou.1', sportId: 1, leagueId: 300, leagueName: 'SuperLiga Romania', country: 'Romania', countryCode: 'RO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bul.1', sportId: 1, leagueId: 301, leagueName: 'Bulgarian First League', country: 'Bulgaria', countryCode: 'BG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'srb.1', sportId: 1, leagueId: 302, leagueName: 'Serbian SuperLiga', country: 'Serbia', countryCode: 'RS', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hrv.1', sportId: 1, leagueId: 303, leagueName: 'HNL Croatia', country: 'Croatia', countryCode: 'HR', sportType: 'soccer' },
+  { sport: 'soccer', league: 'svn.1', sportId: 1, leagueId: 304, leagueName: 'PrvaLiga Slovenia', country: 'Slovenia', countryCode: 'SI', sportType: 'soccer' },
+  { sport: 'soccer', league: 'svk.1', sportId: 1, leagueId: 305, leagueName: 'Fortuna Liga Slovakia', country: 'Slovakia', countryCode: 'SK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'hun.1', sportId: 1, leagueId: 306, leagueName: 'NB I Hungary', country: 'Hungary', countryCode: 'HU', sportType: 'soccer' },
+  { sport: 'soccer', league: 'alb.1', sportId: 1, leagueId: 307, leagueName: 'Kategoria Superiore', country: 'Albania', countryCode: 'AL', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mkd.1', sportId: 1, leagueId: 308, leagueName: 'Macedonian Football League', country: 'North Macedonia', countryCode: 'MK', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bih.1', sportId: 1, leagueId: 309, leagueName: 'Premier League BiH', country: 'Bosnia & Herzegovina', countryCode: 'BA', sportType: 'soccer' },
+
+  // SOCCER - Baltic / Caucasus / Central Asia
+  { sport: 'soccer', league: 'kaz.1', sportId: 1, leagueId: 320, leagueName: 'Kazakhstan Premier League', country: 'Kazakhstan', countryCode: 'KZ', sportType: 'soccer' },
+  { sport: 'soccer', league: 'geo.1', sportId: 1, leagueId: 321, leagueName: 'Erovnuli Liga', country: 'Georgia', countryCode: 'GE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'arm.1', sportId: 1, leagueId: 322, leagueName: 'Armenian Premier League', country: 'Armenia', countryCode: 'AM', sportType: 'soccer' },
+  { sport: 'soccer', league: 'aze.1', sportId: 1, leagueId: 323, leagueName: 'Azerbaijan Premier League', country: 'Azerbaijan', countryCode: 'AZ', sportType: 'soccer' },
+
+  // SOCCER - More Middle East / North Africa
+  { sport: 'soccer', league: 'egy.1', sportId: 1, leagueId: 330, leagueName: 'Egyptian Premier League', country: 'Egypt', countryCode: 'EG', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mar.1', sportId: 1, leagueId: 331, leagueName: 'Botola Pro', country: 'Morocco', countryCode: 'MA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tun.1', sportId: 1, leagueId: 332, leagueName: 'Tunisian Ligue Professionnelle', country: 'Tunisia', countryCode: 'TN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'jor.1', sportId: 1, leagueId: 333, leagueName: 'Jordan Pro League', country: 'Jordan', countryCode: 'JO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'omn.1', sportId: 1, leagueId: 334, leagueName: 'Oman Professional League', country: 'Oman', countryCode: 'OM', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bhr.1', sportId: 1, leagueId: 335, leagueName: 'Bahrain Premier League', country: 'Bahrain', countryCode: 'BH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'kuw.1', sportId: 1, leagueId: 336, leagueName: 'Kuwait Premier League', country: 'Kuwait', countryCode: 'KW', sportType: 'soccer' },
+
+  // SOCCER - More Asia / Pacific
+  { sport: 'soccer', league: 'ind.1', sportId: 1, leagueId: 340, leagueName: 'Indian Super League', country: 'India', countryCode: 'IN', sportType: 'soccer' },
+  { sport: 'soccer', league: 'mys.1', sportId: 1, leagueId: 341, leagueName: 'Malaysia Super League', country: 'Malaysia', countryCode: 'MY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'tha.1', sportId: 1, leagueId: 342, leagueName: 'Thai League 1', country: 'Thailand', countryCode: 'TH', sportType: 'soccer' },
+  { sport: 'soccer', league: 'nzl.1', sportId: 1, leagueId: 343, leagueName: 'New Zealand Football Championship', country: 'New Zealand', countryCode: 'NZ', sportType: 'soccer' },
+  { sport: 'soccer', league: 'idn.1', sportId: 1, leagueId: 344, leagueName: 'Liga 1 Indonesia', country: 'Indonesia', countryCode: 'ID', sportType: 'soccer' },
+
+  // SOCCER - More South America
+  { sport: 'soccer', league: 'col.1', sportId: 1, leagueId: 350, leagueName: 'Categoría Primera A', country: 'Colombia', countryCode: 'CO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ven.1', sportId: 1, leagueId: 351, leagueName: 'Venezuelan Primera División', country: 'Venezuela', countryCode: 'VE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'per.1', sportId: 1, leagueId: 352, leagueName: 'Liga 1 Peru', country: 'Peru', countryCode: 'PE', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ecu.1', sportId: 1, leagueId: 353, leagueName: 'Liga Pro Ecuador', country: 'Ecuador', countryCode: 'EC', sportType: 'soccer' },
+  { sport: 'soccer', league: 'bol.1', sportId: 1, leagueId: 354, leagueName: 'Bolivian División de Fútbol Profesional', country: 'Bolivia', countryCode: 'BO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'par.1', sportId: 1, leagueId: 356, leagueName: 'División de Honor Paraguay', country: 'Paraguay', countryCode: 'PY', sportType: 'soccer' },
+  { sport: 'soccer', league: 'chl.1', sportId: 1, leagueId: 357, leagueName: 'Chilean Primera División', country: 'Chile', countryCode: 'CL', sportType: 'soccer' },
+
+  // SOCCER - CONCACAF / Caribbean (more)
+  { sport: 'soccer', league: 'concacaf.gold', sportId: 1, leagueId: 360, leagueName: 'CONCACAF Gold Cup', country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'concacaf.nations', sportId: 1, leagueId: 361, leagueName: 'CONCACAF Nations League', country: 'North America', countryCode: 'NA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'conmebol.sudamericana', sportId: 1, leagueId: 362, leagueName: 'Copa Sudamericana', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'conmebol.libertadores', sportId: 1, leagueId: 363, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA', sportType: 'soccer' },
+
+  // SOCCER - More African Leagues
+  { sport: 'soccer', league: 'rsa.1', sportId: 1, leagueId: 370, leagueName: 'South African Premier Division', country: 'South Africa', countryCode: 'ZA', sportType: 'soccer' },
+  { sport: 'soccer', league: 'ang.1', sportId: 1, leagueId: 371, leagueName: 'Girabola', country: 'Angola', countryCode: 'AO', sportType: 'soccer' },
+  { sport: 'soccer', league: 'eth.1', sportId: 1, leagueId: 372, leagueName: 'Ethiopian Premier League', country: 'Ethiopia', countryCode: 'ET', sportType: 'soccer' },
+
+  // BASKETBALL - More leagues
+  { sport: 'basketball', league: 'wnba', sportId: 2, leagueId: 140, leagueName: 'WNBA', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'mens-college-basketball', sportId: 2, leagueId: 141, leagueName: 'NCAA Basketball', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'nba.gleague', sportId: 2, leagueId: 142, leagueName: 'NBA G League', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+  { sport: 'basketball', league: 'gre.a1', sportId: 2, leagueId: 143, leagueName: 'Greek A1 Basket League', country: 'Greece', countryCode: 'GR', sportType: 'basketball' },
+  { sport: 'basketball', league: 'rus.vtb', sportId: 2, leagueId: 144, leagueName: 'VTB United League', country: 'Russia', countryCode: 'RU', sportType: 'basketball' },
+  { sport: 'basketball', league: 'pol.plk', sportId: 2, leagueId: 145, leagueName: 'Polska Liga Koszykówki', country: 'Poland', countryCode: 'PL', sportType: 'basketball' },
+  { sport: 'basketball', league: 'fiba.europe', sportId: 2, leagueId: 146, leagueName: 'FIBA EuroBasket', country: 'Europe', countryCode: 'EU', sportType: 'basketball' },
+  { sport: 'basketball', league: 'fiba.americas', sportId: 2, leagueId: 147, leagueName: 'FIBA AmeriCup', country: 'Americas', countryCode: 'SA', sportType: 'basketball' },
+  { sport: 'basketball', league: 'cba', sportId: 2, leagueId: 148, leagueName: 'Chinese Basketball Association', country: 'China', countryCode: 'CN', sportType: 'basketball' },
+
+  // RUGBY - More
+  { sport: 'rugby', league: 'eng.1', sportId: 8, leagueId: 714, leagueName: 'Premiership Rugby', country: 'England', countryCode: 'GB-ENG', sportType: 'rugby' },
+  { sport: 'rugby', league: 'super.rugby', sportId: 8, leagueId: 715, leagueName: 'Super Rugby Pacific', country: 'Oceania', countryCode: 'AU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'nrl', sportId: 8, leagueId: 716, leagueName: 'NRL', country: 'Australia', countryCode: 'AU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'state.of.origin', sportId: 8, leagueId: 717, leagueName: 'State of Origin', country: 'Australia', countryCode: 'AU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'six.nations', sportId: 8, leagueId: 718, leagueName: 'Six Nations', country: 'Europe', countryCode: 'EU', sportType: 'rugby' },
+  { sport: 'rugby', league: 'autumn.nations', sportId: 8, leagueId: 719, leagueName: 'Autumn Nations Series', country: 'Europe', countryCode: 'EU', sportType: 'rugby' },
+
+  // CRICKET - More
+  { sport: 'cricket', league: 'bbl', sportId: 4, leagueId: 314, leagueName: 'Big Bash League', country: 'Australia', countryCode: 'AU', sportType: 'cricket' },
+  { sport: 'cricket', league: 'sa20', sportId: 4, leagueId: 315, leagueName: 'SA20', country: 'South Africa', countryCode: 'ZA', sportType: 'cricket' },
+  { sport: 'cricket', league: 'hundred', sportId: 4, leagueId: 316, leagueName: 'The Hundred', country: 'England', countryCode: 'GB-ENG', sportType: 'cricket' },
+  { sport: 'cricket', league: 'lpl', sportId: 4, leagueId: 317, leagueName: 'Lanka Premier League', country: 'Sri Lanka', countryCode: 'LK', sportType: 'cricket' },
+  { sport: 'cricket', league: 'psl', sportId: 4, leagueId: 318, leagueName: 'Pakistan Super League', country: 'Pakistan', countryCode: 'PK', sportType: 'cricket' },
+  { sport: 'cricket', league: 'champions.trophy', sportId: 4, leagueId: 319, leagueName: 'ICC Champions Trophy', country: 'World', countryCode: 'WO', sportType: 'cricket' },
+
+  // TENNIS - More
+  { sport: 'tennis', league: 'atp.challenger', sportId: 3, leagueId: 930, leagueName: 'ATP Challenger Tour', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'atp.doubles', sportId: 3, leagueId: 931, leagueName: 'ATP Tour Doubles', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'wta.125', sportId: 3, leagueId: 932, leagueName: 'WTA 125 Series', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'itf.world', sportId: 3, leagueId: 933, leagueName: 'ITF World Tennis Tour', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'davis.cup', sportId: 3, leagueId: 934, leagueName: 'Davis Cup', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+  { sport: 'tennis', league: 'billie.jean.king.cup', sportId: 3, leagueId: 935, leagueName: 'Billie Jean King Cup', country: 'World', countryCode: 'WO', sportType: 'tennis' },
+
+  // AMERICAN FOOTBALL - More
+  { sport: 'football', league: 'college-football', sportId: 5, leagueId: 540, leagueName: 'NCAA College Football', country: 'USA', countryCode: 'US', sportType: 'football' },
+  { sport: 'football', league: 'nfl.preseason', sportId: 5, leagueId: 541, leagueName: 'NFL Preseason', country: 'USA', countryCode: 'US', sportType: 'football' },
+  { sport: 'football', league: 'cfl', sportId: 5, leagueId: 542, leagueName: 'CFL', country: 'Canada', countryCode: 'CA', sportType: 'football' },
+
+  // ICE HOCKEY - More
+  { sport: 'hockey', league: 'ahl', sportId: 7, leagueId: 612, leagueName: 'AHL', country: 'USA', countryCode: 'US', sportType: 'hockey' },
+  { sport: 'hockey', league: 'khl', sportId: 7, leagueId: 613, leagueName: 'KHL', country: 'Russia', countryCode: 'RU', sportType: 'hockey' },
+  { sport: 'hockey', league: 'shl', sportId: 7, leagueId: 614, leagueName: 'SHL Sweden', country: 'Sweden', countryCode: 'SE', sportType: 'hockey' },
+  { sport: 'hockey', league: 'liiga', sportId: 7, leagueId: 615, leagueName: 'Liiga Finland', country: 'Finland', countryCode: 'FI', sportType: 'hockey' },
+  { sport: 'hockey', league: 'nl.swiss', sportId: 7, leagueId: 616, leagueName: 'National League Switzerland', country: 'Switzerland', countryCode: 'CH', sportType: 'hockey' },
+  { sport: 'hockey', league: 'del.ger', sportId: 7, leagueId: 617, leagueName: 'Deutsche Eishockey Liga', country: 'Germany', countryCode: 'DE', sportType: 'hockey' },
+
+  // GOLF - More
+  { sport: 'golf', league: 'asian.tour', sportId: 17, leagueId: 1712, leagueName: 'Asian Tour', country: 'Asia', countryCode: 'AS', sportType: 'golf' },
+  { sport: 'golf', league: 'korn.ferry', sportId: 17, leagueId: 1713, leagueName: 'Korn Ferry Tour', country: 'USA', countryCode: 'US', sportType: 'golf' },
+
+  // RACING - More
+  { sport: 'racing', league: 'f3', sportId: 29, leagueId: 2912, leagueName: 'Formula 3', country: 'World', countryCode: 'WO', sportType: 'racing' },
+  { sport: 'racing', league: 'indycar', sportId: 29, leagueId: 2913, leagueName: 'IndyCar Series', country: 'USA', countryCode: 'US', sportType: 'racing' },
+  { sport: 'racing', league: 'nascar', sportId: 31, leagueId: 3111, leagueName: 'NASCAR Cup Series', country: 'USA', countryCode: 'US', sportType: 'racing' },
+  { sport: 'racing', league: 'superbike', sportId: 29, leagueId: 2914, leagueName: 'WorldSBK', country: 'World', countryCode: 'WO', sportType: 'racing' },
+
+  // MMA / BOXING - More
+  { sport: 'mma', league: 'bellator', sportId: 27, leagueId: 2710, leagueName: 'Bellator MMA', country: 'World', countryCode: 'WO', sportType: 'mma' },
+  { sport: 'mma', league: 'one', sportId: 27, leagueId: 2711, leagueName: 'ONE Championship', country: 'Asia', countryCode: 'AS', sportType: 'mma' },
+  { sport: 'boxing', league: 'boxing', sportId: 26, leagueId: 2610, leagueName: 'Professional Boxing', country: 'World', countryCode: 'WO', sportType: 'mma' },
+
+  // BASKETBALL - Europe + International
+  { sport: 'basketball', league: 'fiba.euroleague', sportId: 2, leagueId: 130, leagueName: 'EuroLeague', country: 'Europe', countryCode: 'EU', sportType: 'basketball' },
+  { sport: 'basketball', league: 'fiba.eurocup', sportId: 2, leagueId: 131, leagueName: 'EuroCup', country: 'Europe', countryCode: 'EU', sportType: 'basketball' },
+  { sport: 'basketball', league: 'esp.acb', sportId: 2, leagueId: 132, leagueName: 'Liga ACB', country: 'Spain', countryCode: 'ES', sportType: 'basketball' },
+  { sport: 'basketball', league: 'ita.lega', sportId: 2, leagueId: 133, leagueName: 'Lega Basket Serie A', country: 'Italy', countryCode: 'IT', sportType: 'basketball' },
+  { sport: 'basketball', league: 'tur.bsl', sportId: 2, leagueId: 134, leagueName: 'Türkiye Sigorta BSL', country: 'Turkey', countryCode: 'TR', sportType: 'basketball' },
+  { sport: 'basketball', league: 'ger.bbl', sportId: 2, leagueId: 135, leagueName: 'Basketball Bundesliga', country: 'Germany', countryCode: 'DE', sportType: 'basketball' },
+  { sport: 'basketball', league: 'fra.lnb', sportId: 2, leagueId: 136, leagueName: 'LNB Pro A', country: 'France', countryCode: 'FR', sportType: 'basketball' },
+  { sport: 'basketball', league: 'aus.nbl', sportId: 2, leagueId: 137, leagueName: 'NBL Australia', country: 'Australia', countryCode: 'AU', sportType: 'basketball' },
+  { sport: 'basketball', league: 'fiba.world', sportId: 2, leagueId: 138, leagueName: 'FIBA World Cup', country: 'World', countryCode: 'WO', sportType: 'basketball' },
+  { sport: 'basketball', league: 'womens-college-basketball', sportId: 2, leagueId: 139, leagueName: 'NCAA Women\'s Basketball', country: 'USA', countryCode: 'US', sportType: 'basketball' },
+
+  // HOCKEY - More
+  { sport: 'hockey', league: 'mens-college-hockey', sportId: 7, leagueId: 610, leagueName: 'NCAA Hockey', country: 'USA', countryCode: 'US', sportType: 'hockey' },
+  { sport: 'hockey', league: 'iihf.world', sportId: 7, leagueId: 611, leagueName: 'IIHF World Championship', country: 'World', countryCode: 'WO', sportType: 'hockey' },
+
+  // BASEBALL - More
+  { sport: 'baseball', league: 'college-baseball', sportId: 6, leagueId: 510, leagueName: 'NCAA Baseball', country: 'USA', countryCode: 'US', sportType: 'baseball' },
+  { sport: 'baseball', league: 'jpn.npb', sportId: 6, leagueId: 511, leagueName: 'Nippon Professional Baseball', country: 'Japan', countryCode: 'JP', sportType: 'baseball' },
+  { sport: 'baseball', league: 'kor.kbo', sportId: 6, leagueId: 512, leagueName: 'KBO League', country: 'South Korea', countryCode: 'KR', sportType: 'baseball' },
+
+  // CRICKET - More
+  { sport: 'cricket', league: 'cpl', sportId: 4, leagueId: 310, leagueName: 'Caribbean Premier League', country: 'Caribbean', countryCode: 'CB', sportType: 'cricket' },
+  { sport: 'cricket', league: 't20.world', sportId: 4, leagueId: 311, leagueName: 'ICC T20 World Cup', country: 'World', countryCode: 'WO', sportType: 'cricket' },
+  { sport: 'cricket', league: 'odi.world', sportId: 4, leagueId: 312, leagueName: 'ICC Cricket World Cup', country: 'World', countryCode: 'WO', sportType: 'cricket' },
+  { sport: 'cricket', league: 'eng.t20.blast', sportId: 4, leagueId: 313, leagueName: 'T20 Blast', country: 'England', countryCode: 'GB-ENG', sportType: 'cricket' },
+
+  // RUGBY - More
+  { sport: 'rugby', league: 'top14', sportId: 8, leagueId: 710, leagueName: 'Top 14', country: 'France', countryCode: 'FR', sportType: 'rugby' },
+  { sport: 'rugby', league: 'rugby-championship', sportId: 8, leagueId: 711, leagueName: 'Rugby Championship', country: 'Southern Hemisphere', countryCode: 'SH', sportType: 'rugby' },
+  { sport: 'rugby', league: 'rwc', sportId: 8, leagueId: 712, leagueName: 'Rugby World Cup', country: 'World', countryCode: 'WO', sportType: 'rugby' },
+  { sport: 'rugby', league: 'urc', sportId: 8, leagueId: 713, leagueName: 'United Rugby Championship', country: 'Europe', countryCode: 'EU', sportType: 'rugby' },
+
+  // GOLF - More
+  { sport: 'golf', league: 'champions-tour', sportId: 17, leagueId: 1710, leagueName: 'PGA Champions Tour', country: 'USA', countryCode: 'US', sportType: 'golf' },
+  { sport: 'golf', league: 'liv', sportId: 17, leagueId: 1711, leagueName: 'LIV Golf', country: 'World', countryCode: 'WO', sportType: 'golf' },
+
+  // RACING - More
+  { sport: 'racing', league: 'f2', sportId: 29, leagueId: 2910, leagueName: 'Formula 2', country: 'World', countryCode: 'WO', sportType: 'racing' },
+  { sport: 'racing', league: 'motogp', sportId: 29, leagueId: 2911, leagueName: 'MotoGP', country: 'World', countryCode: 'WO', sportType: 'racing' },
+  { sport: 'racing', league: 'nascar-xfinity', sportId: 31, leagueId: 3110, leagueName: 'NASCAR Xfinity', country: 'USA', countryCode: 'US', sportType: 'racing' },
+];
+
+// ============================================
+// Canonical League Normalization Map
+// ============================================
+// Maps variant league names (from TSDB, camel1, football-data.org, etc.) to the
+// canonical ESPN metadata so supplementary-source matches merge into the same UI
+// league group as ESPN matches.  Key = lowercase, trimmed league name variant.
+
+interface CanonicalLeagueMeta { leagueId: number; leagueName: string; country: string; countryCode: string }
+const CANONICAL_LEAGUE_MAP: Record<string, CanonicalLeagueMeta> = {
+  // La Liga (Spain) — common aliases from TSDB / camel1 / football-data
+  'la liga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'laliga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'spanish la liga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'spain la liga': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'primera division': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'primera división': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'spain primera': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'liga bbva': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'liga santander': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'laliga santander': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  'laliga ea sports': { leagueId: 2, leagueName: 'La Liga', country: 'Spain', countryCode: 'ES' },
+  // fd_ leagueId 7002 for La Liga — remap to ESPN's 2
+  // Premier League (England)
+  'premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'english premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'england premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'epl': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  'barclays premier league': { leagueId: 1, leagueName: 'Premier League', country: 'England', countryCode: 'GB-ENG' },
+  // Bundesliga (Germany)
+  'bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  '1. bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  'german bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  'germany bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  'fußball-bundesliga': { leagueId: 3, leagueName: 'Bundesliga', country: 'Germany', countryCode: 'DE' },
+  // Serie A (Italy)
+  'serie a': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'italian serie a': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'italy serie a': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'serie a tim': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  'serie a enilive': { leagueId: 4, leagueName: 'Serie A', country: 'Italy', countryCode: 'IT' },
+  // Ligue 1 (France)
+  'ligue 1': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'french ligue 1': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'france ligue 1': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'ligue 1 uber eats': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  'ligue 1 mcdonald\'s': { leagueId: 5, leagueName: 'Ligue 1', country: 'France', countryCode: 'FR' },
+  // Eredivisie (Netherlands)
+  'eredivisie': { leagueId: 6, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL' },
+  'dutch eredivisie': { leagueId: 6, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL' },
+  'netherlands eredivisie': { leagueId: 6, leagueName: 'Eredivisie', country: 'Netherlands', countryCode: 'NL' },
+  // Primeira Liga (Portugal)
+  'primeira liga': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'liga nos': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'portuguese primeira liga': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'portugal primeira liga': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'liga portugal': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  'liga portugal bwin': { leagueId: 7, leagueName: 'Primeira Liga', country: 'Portugal', countryCode: 'PT' },
+  // Champions League
+  'champions league': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  'uefa champions league': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  'ucl': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  'uefa cl': { leagueId: 9, leagueName: 'Champions League', country: 'Europe', countryCode: 'EU' },
+  // Europa League
+  'europa league': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  'uefa europa league': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  'uel': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  'uefa el': { leagueId: 10, leagueName: 'Europa League', country: 'Europe', countryCode: 'EU' },
+  // Conference League
+  'conference league': { leagueId: 26, leagueName: 'Conference League', country: 'Europe', countryCode: 'EU' },
+  'uefa conference league': { leagueId: 26, leagueName: 'Conference League', country: 'Europe', countryCode: 'EU' },
+  'uecl': { leagueId: 26, leagueName: 'Conference League', country: 'Europe', countryCode: 'EU' },
+  // MLS
+  'mls': { leagueId: 11, leagueName: 'MLS', country: 'USA', countryCode: 'US' },
+  'major league soccer': { leagueId: 11, leagueName: 'MLS', country: 'USA', countryCode: 'US' },
+  // Brazilian Serie A
+  'brasileirao': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'brazilian serie a': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'brazil serie a': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'brasileirão': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  'série a': { leagueId: 12, leagueName: 'Brazilian Serie A', country: 'Brazil', countryCode: 'BR' },
+  // Argentine Primera
+  'argentine primera': { leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR' },
+  'liga profesional': { leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR' },
+  'argentina primera division': { leagueId: 13, leagueName: 'Argentine Primera', country: 'Argentina', countryCode: 'AR' },
+  // Saudi Pro League
+  'saudi pro league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi professional football league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi arabian league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'roshn saudi league': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'saudi division 1': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  'spfl': { leagueId: 14, leagueName: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  // Turkish Super Lig
+  'super lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  'turkish super lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  'turkey super lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  'süper lig': { leagueId: 15, leagueName: 'Turkish Super Lig', country: 'Turkey', countryCode: 'TR' },
+  // Belgian Pro League
+  'belgian pro league': { leagueId: 16, leagueName: 'Belgian Pro League', country: 'Belgium', countryCode: 'BE' },
+  'jupiler pro league': { leagueId: 16, leagueName: 'Belgian Pro League', country: 'Belgium', countryCode: 'BE' },
+  'belgium pro league': { leagueId: 16, leagueName: 'Belgian Pro League', country: 'Belgium', countryCode: 'BE' },
+  // Scottish Premiership
+  'scottish premiership': { leagueId: 8, leagueName: 'Scottish Premiership', country: 'Scotland', countryCode: 'GB-SCT' },
+  'spfl premiership': { leagueId: 8, leagueName: 'Scottish Premiership', country: 'Scotland', countryCode: 'GB-SCT' },
+  // EFL Championship
+  'championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  'efl championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  'sky bet championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  'english championship': { leagueId: 41, leagueName: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  // Copa Libertadores
+  'copa libertadores': { leagueId: 25, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA' },
+  'conmebol libertadores': { leagueId: 25, leagueName: 'Copa Libertadores', country: 'South America', countryCode: 'SA' },
+  // Liga MX
+  'liga mx': { leagueId: 27, leagueName: 'Liga MX', country: 'Mexico', countryCode: 'MX' },
+  'mexican liga mx': { leagueId: 27, leagueName: 'Liga MX', country: 'Mexico', countryCode: 'MX' },
+  // J League
+  'j league': { leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP' },
+  'j1 league': { leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP' },
+  'meiji yasuda j1 league': { leagueId: 18, leagueName: 'J League', country: 'Japan', countryCode: 'JP' },
+};
+
+// Apply canonical metadata to a match from a supplementary source
+function canonicalizeLeague(match: UnifiedMatch): void {
+  const rawName = (match.league?.name || '').trim();
+  const key = rawName.toLowerCase();
+  const canon = CANONICAL_LEAGUE_MAP[key];
+  if (!canon) return;
+  match.leagueId = canon.leagueId;
+  match.league = {
+    ...match.league,
+    id: canon.leagueId,
+    name: canon.leagueName,
+    country: canon.country,
+    countryCode: canon.countryCode,
+  };
+}
+
+// ============================================
+// Cache Configuration
+// ============================================
+
+const CACHE_DURATION = {
+  live: 30 * 1000,           // 30 seconds for live data
+  upcoming: 5 * 60 * 1000,  // 5 minutes for upcoming
+  standings: 30 * 60 * 1000, // 30 minutes for standings
+  outrights: 6 * 60 * 60 * 1000, // 6 hours for outrights (futures change slowly; preserve API quota)
+};
+
+const cache = new Map<string, { data: unknown; timestamp: number }>();
+
+function getCached<T>(key: string, duration: number): T | null {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < duration) {
+    return cached.data as T;
+  }
+  return null;
+}
+
+function setCache(key: string, data: unknown): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+// ============================================
+// API Status Tracking
+// ============================================
+
+const apiStatus = {
+  espn: { working: true, lastError: '', lastCheck: 0 },
+  theOddsApi: { working: false, lastError: '', lastCheck: 0 },
+  sportsDataIo: { working: true, lastError: '', lastCheck: 0 },
+  oddsApiIo: { working: false, lastError: '', lastCheck: 0 },
+};
+
+// ── ESPN circuit breaker ────────────────────────────────────────────────────
+// After 5 consecutive timeouts, pause all ESPN requests for 30 seconds.
+// Threshold raised from 3→5 and backoff reduced from 3min→30s so that
+// temporary ESPN slowness doesn't block live match data for too long.
+const _espnCB = {
+  consecutiveFailures: 0,
+  openUntil: 0,
+  THRESHOLD: 5,
+  BACKOFF_MS: 30 * 1000, // 30 seconds
+};
+
+function espnCircuitOpen(): boolean {
+  if (_espnCB.openUntil && Date.now() < _espnCB.openUntil) return true;
+  if (_espnCB.openUntil) { _espnCB.openUntil = 0; _espnCB.consecutiveFailures = 0; }
+  return false;
+}
+function espnRecordSuccess() { _espnCB.consecutiveFailures = 0; _espnCB.openUntil = 0; }
+function espnRecordFailure() {
+  _espnCB.consecutiveFailures++;
+  if (_espnCB.consecutiveFailures === _espnCB.THRESHOLD) {
+    // Log only when the circuit FIRST trips, not on every subsequent call.
+    _espnCB.openUntil = Date.now() + _espnCB.BACKOFF_MS;
+    console.warn(`[ESPN] circuit open — pausing all ESPN requests for ${_espnCB.BACKOFF_MS / 1000}s after ${_espnCB.THRESHOLD} consecutive timeouts`);
+  } else if (_espnCB.consecutiveFailures > _espnCB.THRESHOLD) {
+    // Circuit was already open; just refresh the timer silently.
+    _espnCB.openUntil = Date.now() + _espnCB.BACKOFF_MS;
+  }
+}
+
+export function getApiStatus() {
+  return apiStatus;
+}
+
+// ============================================
+// ESPN API Client (FREE - Primary Source)
+// ============================================
+
+const ESPN_BASE_URL = 'https://site.api.espn.com/apis/site/v2/sports';
+
+interface ESPNEvent {
+  id: string;
+  name: string;
+  shortName: string;
+  date: string;
+  status: {
+    type: {
+      id: string;
+      name: string;
+      state: string;
+      completed: boolean;
+      description: string;
+      detail?: string;
+      shortDetail?: string;
+    };
+    period?: number;
+    displayClock?: string;
+    clock?: number;
+  };
+  season?: {
+    year?: number;
+    type?: number;
+    slug?: string;
+    displayName?: string;
+  };
+  competitions: Array<{
+    id: string;
+    notes?: Array<{ type?: string; headline?: string }>;
+    season?: {
+      year?: number;
+      type?: number;
+      slug?: string;
+      displayName?: string;
+    };
+    type?: {
+      id?: string;
+      abbreviation?: string;
+    };
+    competitors: Array<{
+      id: string;
+      team?: {
+        id: string;
+        name: string;
+        abbreviation: string;
+        displayName: string;
+        logo?: string;
+      };
+      athlete?: {
+        id: string;
+        displayName: string;
+        shortName?: string;
+      };
+      homeAway: 'home' | 'away';
+      score?: string;
+      form?: string;
+      records?: Array<{ summary?: string; type?: string }>;
+      statistics?: Array<{
+        name: string;
+        displayValue: string;
+      }>;
+      linescores?: Array<{
+        value: number;
+      }>;
+    }>;
+    status?: {
+      clock?: number;
+      displayClock?: string;
+      period?: number;
+    };
+  }>;
+}
+
+interface ESPNScoreboardResponse {
+  events: ESPNEvent[];
+  leagues?: Array<{
+    id: string;
+    name: string;
+    abbreviation: string;
+  }>;
+}
+
+// Build reverse lookups: slugified league key (e.g. "eng1") -> ESPNLeagueConfig
+// and numeric leagueId -> ESPNLeagueConfig (needed for global-sport match IDs
+// which use the format espn_global<leagueId>_<eventId> rather than espn_atp_<eventId>).
+const ESPN_LEAGUE_BY_SLUG = new Map<string, ESPNLeagueConfig>();
+const ESPN_LEAGUE_BY_ID = new Map<number, ESPNLeagueConfig>();
+for (const cfg of ESPN_LEAGUES) {
+  ESPN_LEAGUE_BY_SLUG.set(cfg.league.replace(/[^a-z0-9]/gi, ''), cfg);
+  if (!ESPN_LEAGUE_BY_ID.has(cfg.leagueId)) {
+    ESPN_LEAGUE_BY_ID.set(cfg.leagueId, cfg);
+  }
+}
+export function getEspnLeagueConfigForId(matchId: string): ESPNLeagueConfig | null {
+  // Match `espn_<league>_<eventId>` where <league> may contain dots
+  // (e.g. "ita.1", "uefa.champions", "conmebol.libertadores") or the
+  // global-sport format "global<leagueId>" (e.g. "global140" for ATP tennis).
+  const m = matchId.match(/^espn_([a-z0-9.]+)_(\d+)$/i);
+  if (!m) return null;
+  const slug = m[1].replace(/[^a-z0-9]/gi, '');
+  // Global-sport matches use espn_global<leagueId>_<eventId> — look up by numeric ID.
+  const globalMatch = slug.match(/^global(\d+)$/i);
+  if (globalMatch) {
+    const leagueId = parseInt(globalMatch[1], 10);
+    return ESPN_LEAGUE_BY_ID.get(leagueId) || null;
+  }
+  // Try the slugified key first (no dots), then the raw key.
+  return ESPN_LEAGUE_BY_SLUG.get(slug) || ESPN_LEAGUE_BY_SLUG.get(m[1]) || null;
+}
+export function getEspnEventIdFromMatchId(matchId: string): string | null {
+  const m = matchId.match(/^espn_[a-z0-9.]+_(\d+)$/i);
+  return m ? m[1] : null;
+}
+
+async function fetchESPN(
+  sport: string,
+  league: string,
+  endpoint: string = 'scoreboard',
+  dates?: string,
+  limit: number = 300,
+): Promise<ESPNScoreboardResponseFull | null> {
+  if (espnCircuitOpen()) return null;
+
+  const base = `${ESPN_BASE_URL}/${sport}/${league}/${endpoint}`;
+  const url = dates ? `${base}?dates=${dates}&limit=${limit}` : `${base}?limit=${limit}`;
+
+  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball'
+    || sport === 'basketball' || sport === 'hockey'
+    || league === 'mlb' || league === 'nba' || league === 'nhl';
+
+  try {
+    const response = await directFetch(url, {
+      headers: { 'Accept': 'application/json' },
+      timeoutMs: 10_000,
+    });
+
+    if (!response.ok) {
+      apiStatus.espn.lastError = `HTTP ${response.status}`;
+      espnRecordFailure();
+      return null;
+    }
+
+    espnRecordSuccess();
+    apiStatus.espn.working = true;
+    apiStatus.espn.lastCheck = Date.now();
+
+    return await response.json();
+  } catch (error) {
+    espnRecordFailure();
+    apiStatus.espn.lastError = String(error);
+    // Only log the first failure in a burst to avoid flooding the PM2 logs.
+    if (_espnCB.consecutiveFailures <= 1) {
+      console.warn('[ESPN] fetch timeout/error:', (error as Error)?.message ?? error);
+    }
+    return null;
+  }
+}
+
+/**
+ * Wrapper around fetchESPN that auto-paginates when ESPN's 300-event hard cap
+ * is hit. ESPN has no cursor/page API — the only way to get more than 300
+ * events is to split the date range in half and re-fetch each half.
+ * Recursion depth is capped at 4 (max 16 requests, covering 16× the events).
+ */
+async function fetchESPNPaginated(
+  sport: string,
+  league: string,
+  startDate: Date,
+  endDate: Date,
+  depth = 0,
+): Promise<ESPNScoreboardResponseFull | null> {
+  const range = `${formatYYYYMMDD(startDate)}-${formatYYYYMMDD(endDate)}`;
+  const data = await fetchESPN(sport, league, 'scoreboard', range);
+
+  // ESPN's hard server-side cap is 300. If we got exactly 300 and haven't
+  // split too deep (max 4 levels = up to 16 sub-requests), split the window
+  // in half and merge both halves to capture every event.
+  if (data?.events?.length === 300 && depth < 4) {
+    const midMs = Math.floor((startDate.getTime() + endDate.getTime()) / 2);
+    const mid = new Date(midMs);
+    const dayAfterMid = new Date(mid.getTime() + 86_400_000);
+    const [left, right] = await Promise.all([
+      fetchESPNPaginated(sport, league, startDate, mid, depth + 1),
+      fetchESPNPaginated(sport, league, dayAfterMid, endDate, depth + 1),
+    ]);
+    const seenIds = new Set<string>();
+    const merged: ESPNScoreboardResponseFull['events'] = [];
+    for (const half of [left, right]) {
+      for (const ev of (half?.events ?? [])) {
+        if (!seenIds.has(ev.id)) { seenIds.add(ev.id); merged.push(ev); }
+      }
+    }
+    if (merged.length > 0) return { ...data, events: merged } as ESPNScoreboardResponseFull;
+  }
+  return data;
+}
+
+// ============================================
+// ESPN Global Catch-all Scoreboard
+// ============================================
+// ESPN exposes a `/sports/<sport>/all/scoreboard` endpoint that returns EVERY
+// match across EVERY league for the date(s) requested — including tons of
+// leagues we don't have explicitly configured (Iraqi Premier, Maltese
+// Premier, Hong Kong, Costa Rica cup, etc). We use this to dramatically
+// expand match coverage so the Live + Today lists feel as rich as Oddspedia.
+//
+// We map each event into a UnifiedMatch using the league id encoded in
+// `event.uid` (s:<sportId>~l:<leagueId>~e:<eventId>) and resolve unknown
+// league ids to a friendly name via a one-shot ESPN league-info fetch
+// that's cached per worker.
+const GLOBAL_SPORT_TYPES: Array<{ sport: string; sportType: ESPNLeagueConfig['sportType']; sportId: number }> = [
+  { sport: 'soccer', sportType: 'soccer', sportId: 1 },
+  { sport: 'basketball', sportType: 'basketball', sportId: 2 },
+  { sport: 'tennis', sportType: 'tennis', sportId: 3 },
+  { sport: 'baseball', sportType: 'baseball', sportId: 6 },
+  { sport: 'hockey', sportType: 'hockey', sportId: 7 },
+  { sport: 'rugby', sportType: 'rugby', sportId: 8 },
+  { sport: 'cricket', sportType: 'cricket', sportId: 4 },
+  { sport: 'mma', sportType: 'mma', sportId: 27 },
+  { sport: 'golf', sportType: 'golf', sportId: 17 },
+  { sport: 'racing', sportType: 'racing', sportId: 29 },
+];
+
+// Cache resolved league info: ESPN league id (numeric) → { name, slug, country }
+interface GlobalLeagueInfo { name: string; slug: string; country: string; countryCode: string; }
+const globalLeagueInfoCache = new Map<string, GlobalLeagueInfo>();
+
+// ---------------------------------------------------------------------------
+// Persistent ESPN league name store
+// ---------------------------------------------------------------------------
+// Stores ESPN-provided displayNames for any league numeric ID ever seen.
+// Survives server restarts — so any league ESPN has named even once is
+// remembered forever, eliminating perpetual "League XXXXX" placeholders.
+// Format: { "<espnLeagueId>": "<displayName>", ... }
+// ---------------------------------------------------------------------------
+const ESPN_NAMES_CACHE_PATH = path.join(process.cwd(), '.local', 'data', 'espn-league-names-cache.json');
+const persistedESPNLeagueNames = new Map<string, string>();
+
+// Load persisted names at module init (sync, runs once at startup)
+try {
+  if (fs.existsSync(ESPN_NAMES_CACHE_PATH)) {
+    const raw = JSON.parse(fs.readFileSync(ESPN_NAMES_CACHE_PATH, 'utf-8'));
+    for (const [id, name] of Object.entries(raw)) {
+      if (typeof name === 'string') persistedESPNLeagueNames.set(id, name);
+    }
+  }
+} catch { /* non-fatal */ }
+
+let _espnNamesSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleESPNNamesSave() {
+  if (_espnNamesSaveTimer) return;
+  _espnNamesSaveTimer = setTimeout(() => {
+    _espnNamesSaveTimer = null;
+    try {
+      const dir = path.dirname(ESPN_NAMES_CACHE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const obj: Record<string, string> = {};
+      for (const [id, name] of persistedESPNLeagueNames.entries()) obj[id] = name;
+      fs.writeFileSync(ESPN_NAMES_CACHE_PATH, JSON.stringify(obj, null, 2), 'utf-8');
+    } catch { /* non-fatal */ }
+  }, 5000); // debounce: write at most once per 5 s
+}
+
+// Comprehensive map of ESPN's 2-3 letter country slug prefixes → {country, countryCode}.
+// ESPN encodes the country in team slugs: e.g. "sco.alloa-athletic" → prefix "sco" → Scotland.
+// Used as a fallback when a league isn't in KNOWN_GLOBAL_LEAGUES and ESPN doesn't supply a name.
+const ESPN_SLUG_TO_COUNTRY: Record<string, { country: string; countryCode: string }> = {
+  // UK & Ireland
+  eng: { country: 'England',          countryCode: 'GB-ENG' },
+  sco: { country: 'Scotland',         countryCode: 'GB-SCT' },
+  wal: { country: 'Wales',            countryCode: 'GB-WLS' },
+  nir: { country: 'Northern Ireland', countryCode: 'GB-NIR' },
+  irl: { country: 'Ireland',          countryCode: 'IE'     },
+  // Western Europe
+  fra: { country: 'France',           countryCode: 'FR' },
+  ger: { country: 'Germany',          countryCode: 'DE' },
+  ita: { country: 'Italy',            countryCode: 'IT' },
+  esp: { country: 'Spain',            countryCode: 'ES' },
+  por: { country: 'Portugal',         countryCode: 'PT' },
+  ned: { country: 'Netherlands',      countryCode: 'NL' },
+  bel: { country: 'Belgium',          countryCode: 'BE' },
+  sui: { country: 'Switzerland',      countryCode: 'CH' },
+  aut: { country: 'Austria',          countryCode: 'AT' },
+  lux: { country: 'Luxembourg',       countryCode: 'LU' },
+  // Scandinavia
+  swe: { country: 'Sweden',           countryCode: 'SE' },
+  nor: { country: 'Norway',           countryCode: 'NO' },
+  den: { country: 'Denmark',          countryCode: 'DK' },
+  fin: { country: 'Finland',          countryCode: 'FI' },
+  isl: { country: 'Iceland',          countryCode: 'IS' },
+  fro: { country: 'Faroe Islands',    countryCode: 'FO' },
+  // Eastern Europe
+  rus: { country: 'Russia',           countryCode: 'RU' },
+  ukr: { country: 'Ukraine',          countryCode: 'UA' },
+  pol: { country: 'Poland',           countryCode: 'PL' },
+  cze: { country: 'Czech Republic',   countryCode: 'CZ' },
+  svk: { country: 'Slovakia',         countryCode: 'SK' },
+  hun: { country: 'Hungary',          countryCode: 'HU' },
+  rou: { country: 'Romania',          countryCode: 'RO' },
+  bul: { country: 'Bulgaria',         countryCode: 'BG' },
+  srb: { country: 'Serbia',           countryCode: 'RS' },
+  cro: { country: 'Croatia',          countryCode: 'HR' },
+  svn: { country: 'Slovenia',         countryCode: 'SI' },
+  bih: { country: 'Bosnia',           countryCode: 'BA' },
+  alb: { country: 'Albania',          countryCode: 'AL' },
+  mkd: { country: 'North Macedonia',  countryCode: 'MK' },
+  mne: { country: 'Montenegro',       countryCode: 'ME' },
+  kos: { country: 'Kosovo',           countryCode: 'XK' },
+  gre: { country: 'Greece',           countryCode: 'GR' },
+  tur: { country: 'Turkey',           countryCode: 'TR' },
+  // Baltics & CIS
+  est: { country: 'Estonia',          countryCode: 'EE' },
+  lat: { country: 'Latvia',           countryCode: 'LV' },
+  ltu: { country: 'Lithuania',        countryCode: 'LT' },
+  blr: { country: 'Belarus',          countryCode: 'BY' },
+  mda: { country: 'Moldova',          countryCode: 'MD' },
+  arm: { country: 'Armenia',          countryCode: 'AM' },
+  geo: { country: 'Georgia',          countryCode: 'GE' },
+  aze: { country: 'Azerbaijan',       countryCode: 'AZ' },
+  kaz: { country: 'Kazakhstan',       countryCode: 'KZ' },
+  // Small European nations
+  isr: { country: 'Israel',           countryCode: 'IL' },
+  cyp: { country: 'Cyprus',           countryCode: 'CY' },
+  mlt: { country: 'Malta',            countryCode: 'MT' },
+  and: { country: 'Andorra',          countryCode: 'AD' },
+  smr: { country: 'San Marino',       countryCode: 'SM' },
+  lie: { country: 'Liechtenstein',    countryCode: 'LI' },
+  gib: { country: 'Gibraltar',        countryCode: 'GI' },
+  // Americas
+  usa: { country: 'USA',              countryCode: 'US' },
+  can: { country: 'Canada',           countryCode: 'CA' },
+  mex: { country: 'Mexico',           countryCode: 'MX' },
+  bra: { country: 'Brazil',           countryCode: 'BR' },
+  arg: { country: 'Argentina',        countryCode: 'AR' },
+  col: { country: 'Colombia',         countryCode: 'CO' },
+  chi: { country: 'Chile',            countryCode: 'CL' },
+  chl: { country: 'Chile',            countryCode: 'CL' },
+  per: { country: 'Peru',             countryCode: 'PE' },
+  ven: { country: 'Venezuela',        countryCode: 'VE' },
+  ury: { country: 'Uruguay',          countryCode: 'UY' },
+  par: { country: 'Paraguay',         countryCode: 'PY' },
+  ecu: { country: 'Ecuador',          countryCode: 'EC' },
+  bol: { country: 'Bolivia',          countryCode: 'BO' },
+  crc: { country: 'Costa Rica',       countryCode: 'CR' },
+  gtm: { country: 'Guatemala',        countryCode: 'GT' },
+  hon: { country: 'Honduras',         countryCode: 'HN' },
+  slv: { country: 'El Salvador',      countryCode: 'SV' },
+  pan: { country: 'Panama',           countryCode: 'PA' },
+  jam: { country: 'Jamaica',          countryCode: 'JM' },
+  tri: { country: 'Trinidad & Tobago',countryCode: 'TT' },
+  // Asia-Pacific
+  jpn: { country: 'Japan',            countryCode: 'JP' },
+  kor: { country: 'South Korea',      countryCode: 'KR' },
+  chn: { country: 'China',            countryCode: 'CN' },
+  aus: { country: 'Australia',        countryCode: 'AU' },
+  nzl: { country: 'New Zealand',      countryCode: 'NZ' },
+  ind: { country: 'India',            countryCode: 'IN' },
+  idn: { country: 'Indonesia',        countryCode: 'ID' },
+  tha: { country: 'Thailand',         countryCode: 'TH' },
+  mys: { country: 'Malaysia',         countryCode: 'MY' },
+  vnm: { country: 'Vietnam',          countryCode: 'VN' },
+  phl: { country: 'Philippines',      countryCode: 'PH' },
+  sgp: { country: 'Singapore',        countryCode: 'SG' },
+  // Middle East
+  ksa: { country: 'Saudi Arabia',     countryCode: 'SA' },
+  are: { country: 'UAE',              countryCode: 'AE' },
+  qat: { country: 'Qatar',            countryCode: 'QA' },
+  irn: { country: 'Iran',             countryCode: 'IR' },
+  irq: { country: 'Iraq',             countryCode: 'IQ' },
+  jor: { country: 'Jordan',           countryCode: 'JO' },
+  lbn: { country: 'Lebanon',          countryCode: 'LB' },
+  kuw: { country: 'Kuwait',           countryCode: 'KW' },
+  omn: { country: 'Oman',             countryCode: 'OM' },
+  bhr: { country: 'Bahrain',          countryCode: 'BH' },
+  // Africa
+  egy: { country: 'Egypt',            countryCode: 'EG' },
+  mar: { country: 'Morocco',          countryCode: 'MA' },
+  tun: { country: 'Tunisia',          countryCode: 'TN' },
+  alg: { country: 'Algeria',          countryCode: 'DZ' },
+  nga: { country: 'Nigeria',          countryCode: 'NG' },
+  gha: { country: 'Ghana',            countryCode: 'GH' },
+  rsa: { country: 'South Africa',     countryCode: 'ZA' },
+  ken: { country: 'Kenya',            countryCode: 'KE' },
+  tan: { country: 'Tanzania',         countryCode: 'TZ' },
+  eth: { country: 'Ethiopia',         countryCode: 'ET' },
+  zmb: { country: 'Zambia',           countryCode: 'ZM' },
+  uga: { country: 'Uganda',           countryCode: 'UG' },
+  cmr: { country: 'Cameroon',         countryCode: 'CM' },
+  civ: { country: "Côte d'Ivoire",    countryCode: 'CI' },
+  sen: { country: 'Senegal',          countryCode: 'SN' },
+  zim: { country: 'Zimbabwe',         countryCode: 'ZW' },
+  tza: { country: 'Tanzania',         countryCode: 'TZ' },
+};
+
+/** Detect the country/continent for a multi-national competition by inspecting its name.
+ *  Confederation-specific prefixes (CONCACAF, CONMEBOL, AFC, CAF) are checked FIRST so
+ *  names like "AFC Champions League" or "CAF Champions League" resolve to Asia/Africa and
+ *  are not misclassified as Europe by the generic "champions league" catch-all.
+ *  Returns null if the name doesn't suggest a specific confederation. */
+function inferContinentalCountry(name: string): { country: string; countryCode: string } | null {
+  const n = name.toLowerCase();
+  // --- Confederation-specific keywords first (highest specificity) ---
+  if (n.includes('concacaf'))
+    return { country: 'North America', countryCode: 'NA' };
+  if (n.includes('conmebol') || n.includes('sudamericana') || n.includes('libertadores') ||
+      n.includes('copa america'))
+    return { country: 'South America', countryCode: 'SA' };
+  if (n.includes('afc ') || n.startsWith('afc') || n.includes(' afc') ||
+      n.includes('asian champions') || n.includes('asian cup') || n.includes('asian games'))
+    return { country: 'Asia', countryCode: 'AS' };
+  if (n.includes('caf ') || n.startsWith('caf') || n.includes(' caf') ||
+      n.includes('africa cup') || n.includes('afcon') || n.includes('african nations'))
+    return { country: 'Africa', countryCode: 'AF' };
+  // --- UEFA / European keywords (checked after confederation-specific) ---
+  if (n.includes('uefa') || n.includes('champions league') || n.includes('europa league') ||
+      n.includes('conference league') || n.includes('nations league') ||
+      n.includes('supercup') || n.includes('super cup') || n.includes('european') ||
+      n.includes('euro ') || n.includes('qualifying — eur') || n.includes('qual. eur'))
+    return { country: 'Europe', countryCode: 'EU' };
+  return null;
+}
+
+/** Resolve { country, countryCode } from an ESPN team slug prefix (e.g. "sco.alloa" → Scotland). */
+function countryFromSlugPrefix(teamSlug?: string): { country: string; countryCode: string } {
+  if (!teamSlug) return { country: 'World', countryCode: 'WO' };
+  const prefix = teamSlug.split('.')[0].toLowerCase();
+  return ESPN_SLUG_TO_COUNTRY[prefix] ?? { country: 'World', countryCode: 'WO' };
+}
+
+// Build a fast index of "ESPN league code (e.g. eng.1) → ESPNLeagueConfig" so
+// when the global feed surfaces a known league we still link to our internal
+// league page instead of inventing a duplicate.
+const ESPN_CONFIG_BY_LEAGUE_CODE = new Map<string, ESPNLeagueConfig>();
+for (const cfg of ESPN_LEAGUES) ESPN_CONFIG_BY_LEAGUE_CODE.set(cfg.league, cfg);
+
+// Hand-curated map of common ESPN numeric league ids → friendly metadata.
+// Covers everything we don't already configure as a first-class league but
+// surfaces frequently in /all/scoreboard. Names match how Oddspedia/ESPN
+// display the competition.
+const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; countryCode: string }> = {
+  // European Domestic Leagues
+  '11053': { name: 'PKO BP Ekstraklasa', country: 'Poland', countryCode: 'PL' },
+  '10261': { name: 'PKO BP Ekstraklasa', country: 'Poland', countryCode: 'PL' },
+  '8543': { name: 'Swiss Super League', country: 'Switzerland', countryCode: 'CH' },
+  '8571': { name: 'Austrian Bundesliga', country: 'Austria', countryCode: 'AT' },
+  '8573': { name: 'Greek Super League', country: 'Greece', countryCode: 'GR' },
+  '8574': { name: 'Romanian Liga I', country: 'Romania', countryCode: 'RO' },
+  '8575': { name: 'Czech First League', country: 'Czech Republic', countryCode: 'CZ' },
+  '8576': { name: 'Ukrainian Premier League', country: 'Ukraine', countryCode: 'UA' },
+  '8577': { name: 'Russian Premier League', country: 'Russia', countryCode: 'RU' },
+  '8578': { name: 'Danish Superliga', country: 'Denmark', countryCode: 'DK' },
+  '8579': { name: 'Allsvenskan', country: 'Sweden', countryCode: 'SE' },
+  '8580': { name: 'Eliteserien', country: 'Norway', countryCode: 'NO' },
+  '8581': { name: 'Veikkausliiga', country: 'Finland', countryCode: 'FI' },
+  '8582': { name: 'Serbian SuperLiga', country: 'Serbia', countryCode: 'RS' },
+  '8583': { name: 'HNL', country: 'Croatia', countryCode: 'HR' },
+  '8584': { name: 'Bulgarian First League', country: 'Bulgaria', countryCode: 'BG' },
+  '8585': { name: 'Slovak Super Liga', country: 'Slovakia', countryCode: 'SK' },
+  '8586': { name: 'Slovenian PrvaLiga', country: 'Slovenia', countryCode: 'SI' },
+  '8587': { name: 'Hungarian Nemzeti Bajnokság', country: 'Hungary', countryCode: 'HU' },
+  '8588': { name: 'Israeli Premier League', country: 'Israel', countryCode: 'IL' },
+  '8296': { name: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
+  '8297': { name: 'EFL League Cup', country: 'England', countryCode: 'GB-ENG' },
+  '8299': { name: 'FA Cup', country: 'England', countryCode: 'GB-ENG' },
+  // NOTE: ESPN global soccer scoreboard uses 8301 for NWSL — NOT Copa del Rey.
+  // Copa del Rey is fetched via the esp.copa_del_rey LEAGUE_CONFIGS path and
+  // does not appear on the global scoreboard with this ID.
+  '8301': { name: 'NWSL', country: 'USA', countryCode: 'US' },
+  '8302': { name: 'Coppa Italia', country: 'Italy', countryCode: 'IT' },
+  '8303': { name: 'DFB Pokal', country: 'Germany', countryCode: 'DE' },
+  '8304': { name: 'Coupe de France', country: 'France', countryCode: 'FR' },
+  '8305': { name: 'KNVB Beker', country: 'Netherlands', countryCode: 'NL' },
+  '8306': { name: 'Scottish Cup', country: 'Scotland', countryCode: 'GB-SCT' },
+  '8307': { name: 'Belgian Cup', country: 'Belgium', countryCode: 'BE' },
+  '8308': { name: 'Portuguese Cup', country: 'Portugal', countryCode: 'PT' },
+  '8309': { name: 'Swiss Cup', country: 'Switzerland', countryCode: 'CH' },
+  '8310': { name: 'Austrian Cup', country: 'Austria', countryCode: 'AT' },
+  '8311': { name: 'Czech Cup', country: 'Czech Republic', countryCode: 'CZ' },
+  '8312': { name: 'Turkish Cup', country: 'Turkey', countryCode: 'TR' },
+  '8313': { name: 'Greek Cup', country: 'Greece', countryCode: 'GR' },
+  '8314': { name: 'Romanian Cup', country: 'Romania', countryCode: 'RO' },
+  '8315': { name: 'Ukrainian Cup', country: 'Ukraine', countryCode: 'UA' },
+  '8317': { name: 'Danish Cup', country: 'Denmark', countryCode: 'DK' },
+  '8318': { name: 'Swedish Cup', country: 'Sweden', countryCode: 'SE' },
+  '8319': { name: 'Norwegian Cup', country: 'Norway', countryCode: 'NO' },
+  '8320': { name: 'Finnish Cup', country: 'Finland', countryCode: 'FI' },
+  '8321': { name: 'Polish Cup', country: 'Poland', countryCode: 'PL' },
+  '8322': { name: 'Croatian Cup', country: 'Croatia', countryCode: 'HR' },
+  '8323': { name: 'Serbian Cup', country: 'Serbia', countryCode: 'RS' },
+  '8324': { name: 'Hungarian Cup', country: 'Hungary', countryCode: 'HU' },
+  '8325': { name: 'Slovakian Cup', country: 'Slovakia', countryCode: 'SK' },
+  '8326': { name: 'Slovenian Cup', country: 'Slovenia', countryCode: 'SI' },
+  '8327': { name: 'Israeli Cup', country: 'Israel', countryCode: 'IL' },
+  '8328': { name: 'Saudi Crown Prince Cup', country: 'Saudi Arabia', countryCode: 'SA' },
+  '8329': { name: 'Argentine Copa', country: 'Argentina', countryCode: 'AR' },
+  '8330': { name: 'Brazilian Cup', country: 'Brazil', countryCode: 'BR' },
+  '8331': { name: 'Chilean Cup', country: 'Chile', countryCode: 'CL' },
+  '8332': { name: 'Colombian Cup', country: 'Colombia', countryCode: 'CO' },
+  '8333': { name: 'Mexican Cup', country: 'Mexico', countryCode: 'MX' },
+  '8334': { name: 'South Korean FA Cup', country: 'South Korea', countryCode: 'KR' },
+  '8335': { name: 'Japanese Emperor Cup', country: 'Japan', countryCode: 'JP' },
+  '8336': { name: 'Australian FFA Cup', country: 'Australia', countryCode: 'AU' },
+  '8337': { name: 'African Nations Cup', country: 'Africa', countryCode: 'AF' },
+  '8338': { name: 'CAF Super Cup', country: 'Africa', countryCode: 'AF' },
+  '8343': { name: 'Ligue 2', country: 'France', countryCode: 'FR' },
+  '8344': { name: '2. Bundesliga', country: 'Germany', countryCode: 'DE' },
+  '8345': { name: 'Serie B', country: 'Italy', countryCode: 'IT' },
+  '8346': { name: 'Segunda División', country: 'Spain', countryCode: 'ES' },
+  '8347': { name: 'Championship', country: 'England', countryCode: 'GB-ENG' },
+  '3914': { name: 'EFL League One', country: 'England', countryCode: 'GB-ENG' },
+  '3915': { name: 'EFL League Two', country: 'England', countryCode: 'GB-ENG' },
+  '3917': { name: 'EFL League Two Playoffs', country: 'England', countryCode: 'GB-ENG' },
+  '3910': { name: 'National League', country: 'England', countryCode: 'GB-ENG' },
+  '4002': { name: 'Scottish Championship', country: 'Scotland', countryCode: 'GB-SCT' },
+  '4003': { name: 'Scottish League One', country: 'Scotland', countryCode: 'GB-SCT' },
+  // African Leagues
+  '9022': { name: 'Kenya Premier League', country: 'Kenya', countryCode: 'KE' },
+  '14059': { name: 'Uganda Premier League', country: 'Uganda', countryCode: 'UG' },
+  '11585': { name: 'Ghana Premier League', country: 'Ghana', countryCode: 'GH' },
+  '11584': { name: 'Nigerian Professional League', country: 'Nigeria', countryCode: 'NG' },
+  '11587': { name: 'Tanzania Premier League', country: 'Tanzania', countryCode: 'TZ' },
+  '11586': { name: 'Ethiopian Premier League', country: 'Ethiopia', countryCode: 'ET' },
+  '11583': { name: 'Zambia Super League', country: 'Zambia', countryCode: 'ZM' },
+  // Middle East & Asia
+  '21231': { name: 'Saudi Pro League', country: 'Saudi Arabia', countryCode: 'SA' },
+  '10951': { name: 'Saudi King Cup', country: 'Saudi Arabia', countryCode: 'SA' },
+  '8316': { name: 'Indian Super League', country: 'India', countryCode: 'IN' },
+  '8339': { name: 'Liga 1 Indonesia', country: 'Indonesia', countryCode: 'ID' },
+  '8340': { name: 'Malaysia Super League', country: 'Malaysia', countryCode: 'MY' },
+  '8341': { name: 'Thai League 1', country: 'Thailand', countryCode: 'TH' },
+  '8342': { name: 'Vietnamese V.League 1', country: 'Vietnam', countryCode: 'VN' },
+  // Americas
+  '5454': { name: 'Copa Libertadores', country: 'South America', countryCode: 'SA' },
+  '5337': { name: 'US Open Cup', country: 'United States', countryCode: 'US' },
+  '5699': { name: 'CONCACAF Champions Cup', country: 'North America', countryCode: 'NA' },
+  '3903': { name: 'Argentine Primera B Metropolitana', country: 'Argentina', countryCode: 'AR' },
+  // LATAM leagues — numeric IDs as observed in /all/scoreboard uid (l:<id>)
+  '4310': { name: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR' },
+  '4311': { name: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR' },
+  '4681': { name: 'Bolivian Liga Profesional', country: 'Bolivia', countryCode: 'BO' },
+  '4682': { name: 'Bolivian Liga Profesional', country: 'Bolivia', countryCode: 'BO' },
+  '4683': { name: 'LigaPro Ecuador', country: 'Ecuador', countryCode: 'EC' },
+  '4684': { name: 'LigaPro Ecuador', country: 'Ecuador', countryCode: 'EC' },
+  '4685': { name: 'Peruvian Liga 1', country: 'Peru', countryCode: 'PE' },
+  '4686': { name: 'Uruguayan Primera División', country: 'Uruguay', countryCode: 'UY' },
+  '4687': { name: 'Venezuelan Primera', country: 'Venezuela', countryCode: 'VE' },
+  '4688': { name: 'Paraguayan Primera División', country: 'Paraguay', countryCode: 'PY' },
+  '4689': { name: 'Colombian Primera A', country: 'Colombia', countryCode: 'CO' },
+  '4690': { name: 'Chilean Primera División', country: 'Chile', countryCode: 'CL' },
+  '4691': { name: 'Costa Rican Primera', country: 'Costa Rica', countryCode: 'CR' },
+  // Central America
+  '9055': { name: 'Guatemalan Liga Nacional', country: 'Guatemala', countryCode: 'GT' },
+  '9056': { name: 'Honduran Liga Nacional', country: 'Honduras', countryCode: 'HN' },
+  '9057': { name: 'Salvadoran Primera División', country: 'El Salvador', countryCode: 'SV' },
+  // International / Continental
+  '22059': { name: 'AFC Champions League Elite', country: 'Asia', countryCode: 'AS' },
+  '775': { name: 'UEFA Champions League', country: 'Europe', countryCode: 'EU' },
+  '783': { name: 'Copa Sudamericana', country: 'South America', countryCode: 'SA' },
+  '1062': { name: 'UEFA Europa League', country: 'Europe', countryCode: 'EU' },
+  '1063': { name: 'UEFA Conference League', country: 'Europe', countryCode: 'EU' },
+  '1978': { name: 'FIFA Club World Cup', country: 'World', countryCode: 'WO' },
+  // FIFA World Cup (current tournament IDs — ESPN uses different numeric IDs each cycle)
+  '606':  { name: 'FIFA World Cup', country: 'World', countryCode: 'WO' },
+  '607':  { name: 'FIFA World Cup', country: 'World', countryCode: 'WO' },
+  '2000': { name: 'FIFA World Cup', country: 'World', countryCode: 'WO' },
+  // Women's Competitions
+  '17163': { name: "UEFA Women's Champions League", country: 'Europe', countryCode: 'EU' },
+  '17167': { name: "Women's Super League", country: 'England', countryCode: 'GB-ENG' },
+  '17168': { name: "Division 1 Féminine", country: 'France', countryCode: 'FR' },
+  '17169': { name: "Frauen-Bundesliga", country: 'Germany', countryCode: 'DE' },
+  '17170': { name: "Women's WC Qualifying — UEFA", country: 'Europe', countryCode: 'EU' },
+  '17173': { name: "Women's WC Qualifying — AFC", country: 'Asia', countryCode: 'AS' },
+  '17175': { name: "Women's WC Qualifying — CONCACAF", country: 'North America', countryCode: 'NA' },
+  '17176': { name: "Women's WC Qualifying — CONMEBOL", country: 'South America', countryCode: 'SA' },
+  '17177': { name: "Women's WC Qualifying — CAF", country: 'Africa', countryCode: 'AF' },
+  '16980': { name: 'NWSL', country: 'USA', countryCode: 'US' },
+  '16981': { name: "Women's Nations League", country: 'Europe', countryCode: 'EU' },
+  '22283': { name: "Women's WC Qualifying — UEFA", country: 'Europe', countryCode: 'EU' },
+  '22284': { name: "Women's WC Qualifying — CONCACAF", country: 'North America', countryCode: 'NA' },
+  '22285': { name: "Women's WC Qualifying — AFC", country: 'Asia', countryCode: 'AS' },
+  '22286': { name: "Women's WC Qualifying — CAF", country: 'Africa', countryCode: 'AF' },
+  '22287': { name: "Women's WC Qualifying — CONMEBOL", country: 'South America', countryCode: 'SA' },
+  // Scottish Domestic Leagues (multiple ESPN numeric IDs observed for same competition)
+  '5330': { name: 'Scottish Championship', country: 'Scotland', countryCode: 'GB-SCT' },
+  '5331': { name: 'Scottish League One',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '5332': { name: 'Scottish League Two',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '5333': { name: 'Scottish Cup',          country: 'Scotland', countryCode: 'GB-SCT' },
+  '5334': { name: 'Scottish League Cup',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '8592': { name: 'Scottish Championship', country: 'Scotland', countryCode: 'GB-SCT' },
+  '8593': { name: 'Scottish League One',   country: 'Scotland', countryCode: 'GB-SCT' },
+  '8594': { name: 'Scottish League Two',   country: 'Scotland', countryCode: 'GB-SCT' },
+  // UEFA Qualifying Rounds (per-season ESPN numeric IDs — updated for 2025/26)
+  // These IDs change each season; add new ones as they appear in the scoreboard.
+  '19674': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '20221': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '19673': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '19675': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '20220': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '20222': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '19670': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '19671': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '19672': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20215': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20216': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20217': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20218': { name: 'UEFA Champions League Qualifying',  country: 'Europe', countryCode: 'EU' },
+  '20219': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '20223': { name: 'UEFA Europa League Qualifying',     country: 'Europe', countryCode: 'EU' },
+  '20224': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  '20225': { name: 'UEFA Conference League Qualifying', country: 'Europe', countryCode: 'EU' },
+  // More English lower-league & cup IDs
+  '3918': { name: 'EFL League One Playoffs',  country: 'England', countryCode: 'GB-ENG' },
+  '3919': { name: 'EFL Championship Playoffs',country: 'England', countryCode: 'GB-ENG' },
+  '3920': { name: 'National League Playoffs', country: 'England', countryCode: 'GB-ENG' },
+  '8295': { name: 'Premier League',           country: 'England', countryCode: 'GB-ENG' },
+  '8298': { name: 'EFL League Two',           country: 'England', countryCode: 'GB-ENG' },
+  // Additional European domestic leagues
+  '8589': { name: 'Bosnian Premier League',         country: 'Bosnia',           countryCode: 'BA' },
+  '8590': { name: 'Albanian Superliga',             country: 'Albania',          countryCode: 'AL' },
+  '8591': { name: 'North Macedonia League',         country: 'North Macedonia',  countryCode: 'MK' },
+  '8595': { name: 'Montenegrin First League',       country: 'Montenegro',       countryCode: 'ME' },
+  '8596': { name: 'Kosovan Superliga',              country: 'Kosovo',           countryCode: 'XK' },
+  '8597': { name: 'Faroe Islands Premier League',  country: 'Faroe Islands',    countryCode: 'FO' },
+  '8598': { name: 'Maltese Premier League',         country: 'Malta',            countryCode: 'MT' },
+  '8599': { name: 'Luxembourg National Division',  country: 'Luxembourg',       countryCode: 'LU' },
+  '8600': { name: 'Latvian Higher League',          country: 'Latvia',           countryCode: 'LV' },
+  '8601': { name: 'Lithuanian A Lyga',              country: 'Lithuania',        countryCode: 'LT' },
+  '8602': { name: 'Belarusian Premier League',      country: 'Belarus',          countryCode: 'BY' },
+  '8603': { name: 'Moldovan National Division',     country: 'Moldova',          countryCode: 'MD' },
+  '8604': { name: 'Armenian Premier League',        country: 'Armenia',          countryCode: 'AM' },
+  '8605': { name: 'Georgian Erovnuli Liga',         country: 'Georgia',          countryCode: 'GE' },
+  '8606': { name: 'Azerbaijani Premier League',     country: 'Azerbaijan',       countryCode: 'AZ' },
+  '8607': { name: 'Kazakh Premier League',          country: 'Kazakhstan',       countryCode: 'KZ' },
+  '8608': { name: 'Cypriot First Division',         country: 'Cyprus',           countryCode: 'CY' },
+  '8609': { name: 'Estonian Meistriliiga',          country: 'Estonia',          countryCode: 'EE' },
+  // Americas — additional IDs
+  '4692': { name: 'Brazilian Série B',              country: 'Brazil',           countryCode: 'BR' },
+  '4693': { name: 'Brazilian Série C',              country: 'Brazil',           countryCode: 'BR' },
+  '4694': { name: 'Argentine Copa de la Liga',      country: 'Argentina',        countryCode: 'AR' },
+  '4695': { name: 'Argentine Primera B Nacional',   country: 'Argentina',        countryCode: 'AR' },
+  '4696': { name: 'Uruguayan Apertura',             country: 'Uruguay',          countryCode: 'UY' },
+  '4697': { name: 'Colombian Primera B',            country: 'Colombia',         countryCode: 'CO' },
+  // MLS — ESPN numeric ID 770 = usa.1 (Major League Soccer)
+  '770':  { name: 'Major League Soccer',            country: 'USA',              countryCode: 'US' },
+  // USL Championship and lower US leagues — numeric IDs observed in /all/ scoreboard
+  // 19915 = USL Championship (second division US soccer); add a range for adjacent season/round IDs
+  '19910': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19911': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19912': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19913': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19914': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19915': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19916': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19917': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19918': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19919': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  '19920': { name: 'USL Championship',              country: 'USA',              countryCode: 'US' },
+  // Additional USL / NISA / lower US soccer leagues
+  '20400': { name: 'USL League One',                country: 'USA',              countryCode: 'US' },
+  '20401': { name: 'USL League One',                country: 'USA',              countryCode: 'US' },
+  '20402': { name: 'USL League One',                country: 'USA',              countryCode: 'US' },
+  // UEFA qualifying — 19870–19895 block.
+  // 19870–19880: confirmed 2025/26 qualifying rounds.
+  // 19881–19895: 2026/27 season qualifying rounds (IDs increment year-on-year).
+  // 19887 confirmed via live scoreboard (2nd qualifying round, Jul 2026) —
+  // ESPN groups UCL + UEL + UECL qualifying participants under a single round ID.
+  '19870': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '19871': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '19872': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '19873': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '19874': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '19875': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '19876': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '19877': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '19878': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '19879': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '19880': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  // 2026/27 UEFA qualifying block — confirmed via live scoreboard Jul 2026
+  '19881': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19882': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19883': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19884': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19885': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19886': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19887': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19888': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19889': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19890': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19891': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19892': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19893': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19894': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  '19895': { name: 'UEFA Qualifying',                   country: 'Europe',       countryCode: 'EU' },
+  // Canadian Premier League — confirmed via live scoreboard Jul 2026
+  // ESPN groups CPL under 23286 (Calgary, Ottawa, Montreal, Toronto, Vancouver, Halifax)
+  '23286': { name: 'Canadian Premier League',           country: 'Canada',       countryCode: 'CA' },
+  '23287': { name: 'Canadian Premier League',           country: 'Canada',       countryCode: 'CA' },
+  '23288': { name: 'Canadian Premier League',           country: 'Canada',       countryCode: 'CA' },
+  // CAF/AFCON qualifying — confirmed via live scoreboard Jul 2026
+  // ESPN groups Africa national team group-stage qualifiers under 23523
+  '23523': { name: 'CAF Qualifying',                    country: 'Africa',       countryCode: 'AF' },
+  '23524': { name: 'CAF Qualifying',                    country: 'Africa',       countryCode: 'AF' },
+  '23525': { name: 'CAF Qualifying',                    country: 'Africa',       countryCode: 'AF' },
+  // UEFA Conference League Qualifying first round — confirmed Jul 2026
+  // 24458 observed: Neftchi, Buducnost, Flora, Klaksvik etc. (first-round/semifinals slug)
+  '24450': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24451': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24452': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24453': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24454': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24455': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24456': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24457': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24458': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24459': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24460': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24461': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24462': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24463': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24464': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '24465': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  // Wider UEFA qualifying sweep — 20200–20240 block (complements 20215–20225 above)
+  '20200': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
+  '20201': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
+  '20202': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
+  '20203': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
+  '20204': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
+  '20205': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
+  '20206': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20207': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20208': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20209': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20210': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20211': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20212': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '20213': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '20214': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '20226': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '20227': { name: 'UEFA Conference League Qualifying', country: 'Europe',       countryCode: 'EU' },
+  '20228': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20229': { name: 'UEFA Europa League Qualifying',     country: 'Europe',       countryCode: 'EU' },
+  '20230': { name: 'UEFA Champions League Qualifying',  country: 'Europe',       countryCode: 'EU' },
+};
+
+// Maps ESPN's internal numeric league IDs → our internal leagueId.
+// Without this, global scoreboard matches get a synthetic `80000 + espnId`
+// leagueId that never matches the league page filter (md.leagueId === ourId).
+// ESPN numeric IDs confirmed by fetching /<league>/scoreboard and reading
+// leagues[0].id or event.uid => l:<id>.
+const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
+  '700':   1,   // Premier League       (eng.1)
+  '740':   2,   // La Liga              (esp.1)
+  '720':   3,   // Bundesliga           (ger.1)
+  '730':   4,   // Serie A              (ita.1)
+  '710':   5,   // Ligue 1              (fra.1)
+  '725':   6,   // Eredivisie           (ned.1)
+  '715':   7,   // Primeira Liga        (por.1)
+  '735':   8,   // Scottish Premiership (sco.1)
+  '775':   9,   // Champions League
+  '1062':  10,  // Europa League
+  '770':   11,  // MLS                  (usa.1)
+  '630':   12,  // Brasileirao          (bra.1)
+  '745':   13,  // Argentine Primera    (arg.1)
+  '21231': 14,  // Saudi Pro League     (ksa.1) ← critical fix
+  '3946':  15,  // Turkish Super Lig    (tur.1)
+  '3901':  16,  // Belgian Pro League   (bel.1)
+  '760':   17,  // Liga MX              (mex.1)  — id from sports-data check
+  '1063':  26,  // UEFA Conference League
+  '9022':  9022,// Kenya Premier League (ken.1)
+  '11054': 9022,// Kenya Premier League alternate ESPN numeric
+  '11585': 252, // Ghana Premier League
+  '11584': 9027,// Nigerian Premier League
+  '11587': 256, // Tanzanian Premier League
+  // Women's WC Qualifying
+  '17170': 190, // Women's WC Qual UEFA   → internal id 190
+  '22283': 190, // Women's WC Qual UEFA alt
+  '17175': 191, // Women's WC Qual CONCACAF
+  '22284': 191, // Women's WC Qual CONCACAF alt
+  '17173': 192, // Women's WC Qual AFC
+  '22285': 192, // Women's WC Qual AFC alt
+  '17177': 193, // Women's WC Qual CAF
+  '22286': 193, // Women's WC Qual CAF alt
+  '17176': 194, // Women's WC Qual CONMEBOL
+  '22287': 194, // Women's WC Qual CONMEBOL alt
+  '17163': 200, // UEFA Women's Champions League
+  '8301':  79,  // NWSL (ESPN global uses 8301 for NWSL, confirmed from scoreboard)
+  '16980': 79,  // NWSL alternate ESPN numeric ID
+  // FIFA World Cup numeric IDs
+  '606':   29,  // FIFA World Cup 2026 (ESPN global scoreboard league id)
+  '607':   29,  // FIFA World Cup alt id
+  '2000':  29,  // FIFA World Cup alt id
+  // Scottish domestic — multiple ESPN IDs observed for same competition
+  '5330':  231, // Scottish Championship
+  '5331':  233, // Scottish League One
+  '5332':  234, // Scottish League Two
+  '4002':  231, // Scottish Championship (alt ID)
+  '4003':  233, // Scottish League One (alt ID)
+  '8592':  231, // Scottish Championship (alt ID)
+  '8593':  233, // Scottish League One (alt ID)
+  '8594':  234, // Scottish League Two (alt ID)
+  // UEFA Qualifying (map to parent competition)
+  '19674': 26,  // UEFA Conference League Qualifying → Conference League id
+  '20221': 10,  // UEFA Europa League Qualifying → Europa League id
+  '19673': 26,
+  '19675': 26,
+  '20220': 10,
+  '20222': 10,
+  '20224': 26,
+  '20225': 26,
+  '19670': 9,   // UEFA Champions League Qualifying → UCL id
+  '19671': 9,
+  '19672': 9,
+  '20215': 9,
+  '20216': 9,
+  '20217': 9,
+  '20218': 9,
+  '20219': 10,
+  '20223': 10,
+};
+
+// Convert a season slug like "2025-26-saudi-pro-league" or "uefa-champions-league"
+// into a clean display name. Strips year prefixes and title-cases the rest.
+function leagueNameFromSeasonSlug(slug?: string): string | null {
+  if (!slug) return null;
+  // Skip generic slugs that don't carry league info.
+  const generic = new Set(['regular-season', 'group-stage', 'semifinals', 'quarterfinals', 'round-of-16', 'first-round', 'second-round', 'final', 'playoffs', 'preseason', 'postseason', 'promotion-quarterfinals']);
+  if (generic.has(slug)) return null;
+  // Strip leading year prefix (e.g. "2025-26-" or "2025-").
+  const stripped = slug.replace(/^\d{4}(-\d{2})?-/, '');
+  if (generic.has(stripped) || /^\d/.test(stripped)) return null;
+  // Title-case each word.
+  return stripped
+    .split('-')
+    .map(w => w.length <= 3 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+async function resolveGlobalLeagueInfo(
+  sport: string,
+  espnLeagueId: string,
+  hint?: { seasonSlug?: string; teamSlug?: string; espnName?: string },
+): Promise<GlobalLeagueInfo> {
+  const ck = `${sport}_${espnLeagueId}`;
+  const cached = globalLeagueInfoCache.get(ck);
+  if (cached) return cached;
+
+  // 1. Curated map wins — most accurate names.
+  // Only apply soccer-specific league IDs to soccer events; non-soccer sports
+  // (baseball, basketball, hockey, football) have different ESPN numeric league
+  // IDs that happen to share values with soccer ones causing cross-sport
+  // contamination (e.g. MLB teams appearing under Estonian Meistriliiga).
+  const known = sport === 'soccer' ? KNOWN_GLOBAL_LEAGUES[espnLeagueId] : undefined;
+  if (known) {
+    const info: GlobalLeagueInfo = { name: known.name, slug: known.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), country: known.country, countryCode: known.countryCode };
+    globalLeagueInfoCache.set(ck, info);
+    return info;
+  }
+
+  // 2. Try the season slug (e.g. "2025-26-saudi-pro-league" → "Saudi Pro League").
+  const fromSlug = leagueNameFromSeasonSlug(hint?.seasonSlug);
+  if (fromSlug) {
+    const continental = inferContinentalCountry(fromSlug);
+    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
+    const info: GlobalLeagueInfo = { name: fromSlug, slug: fromSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...loc };
+    globalLeagueInfoCache.set(ck, info);
+    return info;
+  }
+
+  // 3. Use ESPN's own league name from the scoreboard response — always accurate,
+  //    covers every league ESPN tracks, prevents "League XXXXX" fallback names.
+  if (hint?.espnName && hint.espnName.trim().length > 2) {
+    const name = hint.espnName.trim();
+    const continental = inferContinentalCountry(name);
+    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
+    const info: GlobalLeagueInfo = {
+      name,
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      ...loc,
+    };
+    globalLeagueInfoCache.set(ck, info);
+    return info;
+  }
+
+  // 4. Check persistent ESPN name cache — names ESPN has returned in any prior
+  //    fetch and saved to disk.  Covers leagues that ESPN knows but aren't in
+  //    KNOWN_GLOBAL_LEAGUES and weren't in the top-level leagues[] this fetch.
+  const persistedName = persistedESPNLeagueNames.get(espnLeagueId);
+  if (persistedName && persistedName.trim().length > 2) {
+    const name = persistedName.trim();
+    const continental = inferContinentalCountry(name);
+    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
+    const info: GlobalLeagueInfo = { name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...loc };
+    globalLeagueInfoCache.set(ck, info);
+    return info;
+  }
+
+  // 5. Fallback: derive country from team slug (e.g. "sco.alloa-athletic" → Scotland).
+  //    Uses the comprehensive ESPN_SLUG_TO_COUNTRY map for proper names and ISO codes.
+  //    When the country cannot be identified either, use "International Competition"
+  //    rather than the raw numeric ID so the UI never shows "League XXXXX".
+  const loc = countryFromSlugPrefix(hint?.teamSlug);
+  const info: GlobalLeagueInfo = {
+    name: loc.country !== 'World'
+      ? `${loc.country} League`
+      : 'International Competition',
+    slug: `espn-${espnLeagueId}`,
+    ...loc,
+  };
+  // Log unrecognised league IDs so they can be added to KNOWN_GLOBAL_LEAGUES.
+  // Only log soccer — other sports frequently reuse numeric IDs with no overlap.
+  if (sport === 'soccer') {
+    try {
+      const logPath = path.join(process.cwd(), '.local', 'data', 'unknown-league-ids.json');
+      const existing: Record<string, string> = (() => {
+        try { return JSON.parse(fs.readFileSync(logPath, 'utf-8')); } catch { return {}; }
+      })();
+      if (!existing[espnLeagueId]) {
+        existing[espnLeagueId] = new Date().toISOString();
+        const dir = path.dirname(logPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(logPath, JSON.stringify(existing, null, 2), 'utf-8');
+      }
+    } catch { /* non-fatal */ }
+  }
+  globalLeagueInfoCache.set(ck, info);
+  return info;
+}
+
+async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['sportType'], sportId: number): Promise<UnifiedMatch[]> {
+  const cacheKey = `espn-global-${sport}`;
+  const cached = getCached<UnifiedMatch[]>(cacheKey, CACHE_DURATION.live);
+  if (cached) return cached;
+
+  // Pull a 120-day window (60 back → +60 ahead) so small/regional leagues
+  // whose fixtures are scheduled far in advance are discovered early.
+  // Auto-pagination (below) splits this into two 60-day halves when ESPN's
+  // 300-event cap is hit, giving up to 600 events over the full window.
+  // The supplementary today-only query (also below) ensures today's fixtures
+  // are never squeezed out of the cap by distant future events.
+  const now = new Date();
+  const start = new Date(now); start.setUTCDate(start.getUTCDate() - 60);
+  const end = new Date(now); end.setUTCDate(end.getUTCDate() + 60);
+  const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
+  // Add &limit=300 so ESPN returns all events (default page size is 25).
+  const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}&limit=300`;
+  // Skip Next.js data-cache for sports whose 60-day scoreboard responses exceed
+  // the 2MB item limit (soccer ~3.6MB, rugby ~2.3MB, and the usual suspects).
+  // Our in-memory setCache/getCache handles TTL for these.
+  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball'
+    || sport === 'basketball' || sport === 'hockey'
+    || sport === 'soccer' || sport === 'rugby';
+  let data: ESPNScoreboardResponseFull | null = null;
+  try {
+    const r = await directFetch(url, {
+      headers: { Accept: 'application/json' },
+      timeoutMs: 10_000,
+    });
+    if (r.ok) data = await r.json() as ESPNScoreboardResponseFull;
+  } catch { /* fall through */ }
+
+  // Auto-paginate: if ESPN returned exactly 300 (its hard cap), split the
+  // date window in half and merge both halves to get all events.
+  if (data?.events?.length === 300) {
+    const midMs = Math.floor((start.getTime() + end.getTime()) / 2);
+    const mid = new Date(midMs);
+    const dayAfterMid = new Date(mid.getTime() + 86_400_000);
+    const fetchHalf = async (s: Date, e: Date): Promise<ESPNScoreboardResponseFull | null> => {
+      const halfRange = `${formatYYYYMMDD(s)}-${formatYYYYMMDD(e)}`;
+      const halfUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${halfRange}&limit=300`;
+      try {
+        const r = await directFetch(halfUrl, { headers: { Accept: 'application/json' }, timeoutMs: 8_000 });
+        return r.ok ? await r.json() as ESPNScoreboardResponseFull : null;
+      } catch { return null; }
+    };
+    const [left, right] = await Promise.all([fetchHalf(start, mid), fetchHalf(dayAfterMid, end)]);
+    const seenIds = new Set<string>();
+    const merged: ESPNScoreboardResponseFull['events'] = [];
+    for (const half of [left, right]) {
+      for (const ev of (half?.events ?? [])) {
+        if (!seenIds.has(ev.id)) { seenIds.add(ev.id); merged.push(ev); }
+      }
+    }
+    if (merged.length > 0) data = { ...data, events: merged } as ESPNScoreboardResponseFull;
+  }
+
+  // Soccer supplementary: ALSO fetch today-only to maximise same-day coverage.
+  // The 60-day range hits the 300-event cap, meaning smaller LATAM/Asian leagues
+  // scheduled for today can be truncated out. A separate today query gets up to
+  // 300 more events specifically for today's date so no league is missed.
+  if (sport === 'soccer' && data?.events?.length) {
+    const todayStr = formatYYYYMMDD(now);
+    try {
+      const todayUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`;
+      const r = await directFetch(todayUrl, { headers: { Accept: 'application/json' }, timeoutMs: 8_000 });
+      if (r.ok) {
+        const todayData = await r.json() as ESPNScoreboardResponseFull;
+        if (todayData?.events?.length) {
+          const seenTodayIds = new Set((data.events || []).map(ev => ev.id));
+          const newTodayEvents = todayData.events.filter(ev => !seenTodayIds.has(ev.id));
+          if (newTodayEvents.length > 0) {
+            data = { ...data, events: [...data.events, ...newTodayEvents] } as ESPNScoreboardResponseFull;
+          }
+        }
+      }
+    } catch { /* fall through — supplementary only */ }
+  }
+
+  // Fallback: if the date-range request returns nothing, try the default
+  // endpoint (no date parameter). This is common for tennis/golf where ESPN
+  // only exposes the currently-running or most-recent tournament in scoreboard.
+  if (!data?.events?.length) {
+    try {
+      const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?limit=300`;
+      const r2 = await directFetch(defaultUrl, {
+        headers: { Accept: 'application/json' },
+        timeoutMs: 10_000,
+      });
+      if (r2.ok) data = await r2.json() as ESPNScoreboardResponseFull;
+    } catch { /* fall through */ }
+  }
+  // For tennis: ALWAYS merge ATP + WTA tour scoreboards on top of whatever
+  // the /all/ endpoint returned (it is frequently empty or stale).
+  // This ensures Roland Garros, Wimbledon, US Open etc. always surface.
+  if (sport === 'tennis') {
+    const combined: ESPNScoreboardResponseFull = { events: [...(data?.events || [])] } as ESPNScoreboardResponseFull;
+    const seenTennisIds = new Set((data?.events || []).map(ev => ev.id));
+    const tennisEndpoints = [
+      `${ESPN_BASE_URL}/tennis/atp/scoreboard`,
+      `${ESPN_BASE_URL}/tennis/wta/scoreboard`,
+      `${ESPN_BASE_URL}/tennis/atp/scoreboard?dates=${range}`,
+      `${ESPN_BASE_URL}/tennis/wta/scoreboard?dates=${range}`,
+    ];
+    await Promise.allSettled(
+      tennisEndpoints.map(async (endpoint) => {
+        try {
+          const r3 = await directFetch(endpoint, {
+            headers: { Accept: 'application/json' },
+            timeoutMs: 8_000,
+          });
+          if (r3.ok) {
+            const d3 = await r3.json() as ESPNScoreboardResponseFull;
+            if (d3?.events?.length) {
+              for (const ev of d3.events) {
+                if (!seenTennisIds.has(ev.id)) {
+                  seenTennisIds.add(ev.id);
+                  combined.events.push(ev);
+                }
+              }
+            }
+          }
+        } catch { /* fall through */ }
+      })
+    );
+    if (combined.events.length) data = combined;
+  }
+  // For cricket, ESPN's /all/ endpoint doesn't exist. Scan a wide dense range
+  // of series IDs in parallel — step=1 ensures no series is skipped.
+  // ESPN assigns sequential numeric IDs to cricket series, so a dense scan
+  // covering the likely active range catches all current & upcoming series.
+  if (!data?.events?.length && sport === 'cricket') {
+    const cricketWindowStart = new Date(now); cricketWindowStart.setUTCDate(cricketWindowStart.getUTCDate() - 30);
+    const cricketWindowEnd = new Date(now); cricketWindowEnd.setUTCDate(cricketWindowEnd.getUTCDate() + 30);
+    const combined: ESPNScoreboardResponseFull = { events: [] } as ESPNScoreboardResponseFull;
+
+    // Build a dense ID list: step=1 from 8500 to 8900 covers the expected
+    // active range for 2025-2026 without skipping any series.
+    // Also include well-known persistent IDs for major ICC tournaments.
+    const denseIds: string[] = [];
+    for (let id = 8500; id <= 8900; id++) denseIds.push(String(id));
+    // Known stable ESPN cricket competition IDs (ICC, IPL, PSL, BBL etc.)
+    const KNOWN_CRICKET_IDS = [
+      '8034','8049','8053','8055','8056','8061','8062','8063','8064',
+      '8100','8150','8200','8250','8300','8350','8400','8450',
+    ];
+    const allCricketIds = Array.from(new Set([...KNOWN_CRICKET_IDS, ...denseIds]));
+
+    // Batch into groups of 50 to avoid overwhelming ESPN while still being fast.
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < allCricketIds.length; i += BATCH_SIZE) {
+      const batch = allCricketIds.slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(
+        batch.map(async (lid) => {
+          try {
+            const r = await directFetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
+              headers: { Accept: 'application/json' },
+              timeoutMs: 4_000,
+            });
+            if (r.ok) {
+              const d = await r.json() as ESPNScoreboardResponseFull;
+              const seriesName: string | undefined = (d as unknown as { leagues?: Array<{ name?: string }> }).leagues?.[0]?.name;
+              const relevant = (d?.events || []).filter(ev => {
+                const evDate = new Date(ev.date);
+                return evDate >= cricketWindowStart && evDate <= cricketWindowEnd;
+              }).map(ev => Object.assign(ev, { _cricketLeagueId: lid, _cricketLeagueName: seriesName }));
+              if (relevant.length) combined.events.push(...relevant);
+            }
+          } catch { /* timeout or 404 — skip */ }
+        })
+      );
+      // Stop early if we've already found matches
+      if (combined.events.length > 20) break;
+    }
+    if (combined.events.length) data = combined;
+  }
+  if (!data?.events?.length) {
+    setCache(cacheKey, []);
+    return [];
+  }
+
+  const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+  const hasDraw = !noDrawSports.includes(sportType);
+
+  const matches: UnifiedMatch[] = [];
+  // Build per-league hint.  ESPN's scoreboard response always includes a
+  // top-level "leagues" array with the real display name for every league in
+  // the payload.  Extracting those names here means resolveGlobalLeagueInfo
+  // can use the ESPN-provided name as a reliable fallback, eliminating generic
+  // "League XXXXX" placeholders for leagues not in KNOWN_GLOBAL_LEAGUES.
+  type ESPNLeagueMeta = { id?: string; name?: string; displayName?: string; abbreviation?: string };
+  const espnLeagueNames = new Map<string, string>();
+  const dataWithLeagues = data as unknown as { leagues?: ESPNLeagueMeta[] };
+  let newNamesFound = false;
+  if (dataWithLeagues.leagues?.length) {
+    for (const lg of dataWithLeagues.leagues) {
+      if (lg.id) {
+        const bestName = lg.displayName || lg.name;
+        if (bestName) {
+          espnLeagueNames.set(lg.id, bestName);
+          // Persist: if not already stored (or name changed), add to persistent cache
+          if (persistedESPNLeagueNames.get(lg.id) !== bestName) {
+            persistedESPNLeagueNames.set(lg.id, bestName);
+            newNamesFound = true;
+          }
+        }
+      }
+    }
+  }
+  // Also scan event-level season names for leagues not in top-level leagues[]
+  // (ESPN sometimes omits leagues from the top-level array but has season.name on events)
+  for (const ev of data.events) {
+    const evExt2 = ev as ESPNEvent & { uid?: string; season?: { name?: string } };
+    const mEv = evExt2.uid?.match(/l:(\d+)/);
+    if (mEv && evExt2.season?.name && !espnLeagueNames.has(mEv[1])) {
+      const sName = evExt2.season.name.trim();
+      if (sName.length > 2) {
+        espnLeagueNames.set(mEv[1], sName);
+        if (persistedESPNLeagueNames.get(mEv[1]) !== sName) {
+          persistedESPNLeagueNames.set(mEv[1], sName);
+          newNamesFound = true;
+        }
+      }
+    }
+  }
+  if (newNamesFound) scheduleESPNNamesSave();
+
+  const leagueHints = new Map<string, { seasonSlug?: string; teamSlug?: string; espnName?: string }>();
+  for (const ev of data.events) {
+    const evExt = ev as ESPNEvent & { uid?: string; season?: { slug?: string; name?: string } };
+    const m = evExt.uid?.match(/l:(\d+)/);
+    if (!m) continue;
+    if (!leagueHints.has(m[1])) {
+      const homeSlug = (ev.competitions?.[0]?.competitors?.[0]?.team as { slug?: string } | undefined)?.slug;
+      // Prefer top-level leagues[] name; fall back to season.name on the event itself.
+      const espnName = espnLeagueNames.get(m[1]) || evExt.season?.name;
+      leagueHints.set(m[1], { seasonSlug: evExt.season?.slug, teamSlug: homeSlug, espnName });
+    }
+  }
+  const leagueInfoMap = new Map<string, GlobalLeagueInfo>();
+  await Promise.all(
+    Array.from(leagueHints.entries()).map(async ([lid, hint]) => {
+      const info = await resolveGlobalLeagueInfo(sport, lid, hint);
+      leagueInfoMap.set(lid, info);
+    })
+  );
+
+  // Sports where each competitor is an individual athlete (not a team).
+  // For these we try to build ESPN CDN headshot URLs from the athlete's id.
+  const INDIVIDUAL_SPORT_TYPES = new Set(['tennis', 'golf', 'mma', 'racing']);
+  const isIndividualSportType = INDIVIDUAL_SPORT_TYPES.has(sportType);
+  // Helper: extract ESPN athlete numeric ID from a competitor uid like "s:850~l:851~a:4691"
+  const athleteIdFromUid = (uid?: string): string | undefined => uid?.match(/a:(\d+)/)?.[1];
+
+  // Build a flat list of {event, competition} pairs.
+  // Most sports: competitions are directly on event.competitions.
+  // Tennis/golf/tournament sports: ESPN nests competitions inside event.groupings[].competitions.
+  type GroupingInfo = { grouping?: { name?: string; displayName?: string; slug?: string } };
+  type EventCompPair = {
+    event: ESPNEvent;
+    competition: ESPNEvent['competitions'][0];
+    eventName?: string;
+    groupingName?: string; // e.g. "Women's Singles" — used as sub-tournament label
+  };
+  const eventCompPairs: EventCompPair[] = [];
+  for (const event of data.events) {
+    const evExt = event as ESPNEvent & { groupings?: Array<GroupingInfo & { competitions?: ESPNEvent['competitions'] }> };
+    if (event.competitions?.length) {
+      for (const comp of event.competitions) {
+        eventCompPairs.push({ event, competition: comp });
+      }
+    } else if (evExt.groupings?.length) {
+      // Tournament-style sports (tennis, golf): matches are nested in groupings
+      for (const grp of evExt.groupings) {
+        const groupingName = grp.grouping?.displayName || grp.grouping?.name;
+        for (const comp of (grp.competitions || [])) {
+          eventCompPairs.push({ event, competition: comp, eventName: event.name, groupingName });
+        }
+      }
+    }
+  }
+
+  for (const { event, competition, eventName, groupingName } of eventCompPairs) {
+    if (!competition) continue;
+    const homeCompetitor = competition.competitors.find(c => c.homeAway === 'home');
+    const awayCompetitor = competition.competitors.find(c => c.homeAway === 'away');
+    // Fallback: use order (1=home, 2=away) when homeAway field is absent
+    const comp0 = competition.competitors[0];
+    const comp1 = competition.competitors[1];
+    const resolvedHome = homeCompetitor ?? (comp0?.order === 1 ? comp0 : comp0);
+    const resolvedAway = awayCompetitor ?? (comp1?.order === 2 ? comp1 : comp1);
+    const homeTeamName = resolvedHome?.team?.displayName || resolvedHome?.team?.name || resolvedHome?.athlete?.displayName || 'TBD';
+    const awayTeamName = resolvedAway?.team?.displayName || resolvedAway?.team?.name || resolvedAway?.athlete?.displayName || 'TBD';
+    if (homeTeamName === 'TBD' && awayTeamName === 'TBD') continue;
+
+    // For grouping-based events (tennis/golf), use the competition's own uid for league id.
+    // For cricket fallback events, uid has no "l:" part — use the annotated _cricketLeagueId.
+    const uidSource = (competition as unknown as { uid?: string }).uid || (event as ESPNEvent & { uid?: string }).uid;
+    const espnLeagueIdMatch = uidSource?.match(/l:(\d+)/);
+    const annotatedCricketId = (event as unknown as { _cricketLeagueId?: string })._cricketLeagueId;
+    const espnLeagueId = espnLeagueIdMatch?.[1] || annotatedCricketId || '0';
+    // Build a friendly league/tournament name: prefer cached lookup, then
+    // combine event name + grouping (e.g. "Roland Garros — Women's Singles"),
+    // then the ESPN series name annotated on cricket fallback events.
+    const annotatedCricketLeagueName = (event as unknown as { _cricketLeagueName?: string })._cricketLeagueName;
+    const fallbackLeagueName = eventName
+      ? (groupingName ? `${eventName} — ${groupingName}` : eventName)
+      : (annotatedCricketLeagueName || null);
+    const resolvedLeagueInfo = leagueInfoMap.get(espnLeagueId);
+    // If the resolved name is a generic placeholder (e.g. "League 851", "Unknown League") AND
+    // we have a better name from the event/grouping metadata, prefer that.
+    // NOTE: resolveGlobalLeagueInfo now always returns "International Competition" or a
+    // country-derived name as its last resort, so "League \d+" should no longer appear —
+    // but we keep this guard in case ESPN returns an unexpected raw-ID name.
+    const isGenericName = !resolvedLeagueInfo
+      || /^(League\s+\d+|Unknown\s+League)$/i.test(resolvedLeagueInfo.name);
+    const friendlyOverrideGlobal = detectFriendlyOverride(event, competition as unknown as { notes?: Array<{ type?: string; headline?: string }>; season?: { slug?: string }; type?: { abbreviation?: string } });
+    const leagueInfo = friendlyOverrideGlobal
+      ? { name: friendlyOverrideGlobal.name, slug: friendlyOverrideGlobal.slug, country: friendlyOverrideGlobal.country, countryCode: friendlyOverrideGlobal.countryCode }
+      : (!isGenericName && resolvedLeagueInfo)
+      ? resolvedLeagueInfo
+      : (() => {
+          // Prefer event-derived name, then resolved league name, never a raw ID or "Unknown".
+          const fbName = fallbackLeagueName || resolvedLeagueInfo?.name || 'International Competition';
+          const fbLoc = inferContinentalCountry(fbName) ?? countryFromSlugPrefix(
+            (competition?.competitors?.[0]?.team as { slug?: string } | undefined)?.slug
+          );
+          return { name: fbName, slug: `espn-${espnLeagueId}`, ...fbLoc };
+        })();
+
+    // For individual sports (tennis/golf/mma) build ESPN CDN headshot URLs from
+    // the athlete id embedded in each competitor uid (e.g. "s:850~l:851~a:4691").
+    const homeAthleteId = athleteIdFromUid((resolvedHome as unknown as { uid?: string }).uid);
+    const awayAthleteId = athleteIdFromUid((resolvedAway as unknown as { uid?: string }).uid);
+    // For individual sports (tennis/golf/mma), prefer ESPN headshot over team logo or flag.
+    // ESPN headshot URL format: https://a.espncdn.com/i/headshots/<sport>/players/full/<id>.png
+    const headshotSport = sportType === 'tennis' ? 'tennis'
+      : sportType === 'golf' ? 'golf'
+      : sportType === 'mma' ? 'mma'
+      : null;
+    const homeAthleteHeadshot = isIndividualSportType && headshotSport
+      ? ((resolvedHome?.athlete as unknown as { headshot?: { href?: string } } | undefined)?.headshot?.href
+         || (homeAthleteId ? `https://a.espncdn.com/i/headshots/${headshotSport}/players/full/${homeAthleteId}.png` : undefined))
+      : undefined;
+    const awayAthleteHeadshot = isIndividualSportType && headshotSport
+      ? ((resolvedAway?.athlete as unknown as { headshot?: { href?: string } } | undefined)?.headshot?.href
+         || (awayAthleteId ? `https://a.espncdn.com/i/headshots/${headshotSport}/players/full/${awayAthleteId}.png` : undefined))
+      : undefined;
+    const homeLogoUrl = homeAthleteHeadshot
+      || resolvedHome?.team?.logo
+      || (isIndividualSportType ? undefined : (resolvedHome?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href);
+    const awayLogoUrl = awayAthleteHeadshot
+      || resolvedAway?.team?.logo
+      || (isIndividualSportType ? undefined : (resolvedAway?.athlete as unknown as { flag?: { href?: string } } | undefined)?.flag?.href);
+
+    // Use our internal leagueId if we have a mapping, otherwise fall back to
+    // a deterministic synthetic id (80000 + espnNumericId). The mapping is
+    // critical so that e.g. Saudi Pro League (ESPN: 21231) correctly maps to
+    // our leagueId 14 and shows up on the /leagues/saudi-pro-league page.
+    const ourLeagueId = friendlyOverrideGlobal
+      ? friendlyOverrideGlobal.id
+      : ESPN_NUMERIC_TO_OUR_LEAGUE_ID[espnLeagueId] ?? (80000 + parseInt(espnLeagueId, 10));
+    // Use ESPN league id as the slug fragment in our match ID so the match
+    // detail page can reconstruct it. Format: espn_global<id>_<eventId>
+    const leagueKeyForId = `global${espnLeagueId}`;
+
+    const compStatus = (competition as unknown as { status?: ESPNEvent['status'] }).status || event.status;
+    const status = mapESPNStatus(compStatus);
+    const gHomeTeamName = resolvedHome?.team?.displayName || resolvedHome?.team?.name || (resolvedHome?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Home';
+    const gAwayTeamName = resolvedAway?.team?.displayName || resolvedAway?.team?.name || (resolvedAway?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Away';
+    const { odds, markets } = extractEspnOdds(competition.odds, hasDraw, sportType, gHomeTeamName, gAwayTeamName);
+    const venue = competition.venue?.fullName;
+
+    // Extract HT scores from ESPN linescores (soccer only: index 0 = 1st half goals)
+    const isSoccer = sportType === 'soccer';
+    const hasStartedG = status !== 'scheduled';
+    const htHomeScoreG = isSoccer && hasStartedG ? (resolvedHome?.linescores?.[0]?.value ?? null) : null;
+    const htAwayScoreG = isSoccer && hasStartedG ? (resolvedAway?.linescores?.[0]?.value ?? null) : null;
+
+    // Extract stats from ESPN competitor.statistics array
+    const getStatG = (stats: Array<{name: string; displayValue: string}> | undefined, key: string): number | undefined => {
+      const s = stats?.find(s => s.name?.toLowerCase().includes(key));
+      return s ? (parseInt(s.displayValue || '0', 10)) : undefined;
+    };
+    let sportSpecificDataG: SportSpecificData | undefined;
+    if (isSoccer) {
+      const hc = getStatG(resolvedHome?.statistics, 'corner kick') ?? getStatG(resolvedHome?.statistics, 'corner');
+      const ac = getStatG(resolvedAway?.statistics, 'corner kick') ?? getStatG(resolvedAway?.statistics, 'corner');
+      const hy = getStatG(resolvedHome?.statistics, 'yellow card');
+      const ay = getStatG(resolvedAway?.statistics, 'yellow card');
+      const hr = getStatG(resolvedHome?.statistics, 'red card');
+      const ar = getStatG(resolvedAway?.statistics, 'red card');
+      const sdg: Record<string, unknown> = {};
+      if (hc !== undefined && ac !== undefined) sdg.corners = { home: hc, away: ac };
+      if (hy !== undefined && ay !== undefined) sdg.yellowCards = { home: hy, away: ay };
+      if (hr !== undefined && ar !== undefined) sdg.redCards = { home: hr, away: ar };
+      if (Object.keys(sdg).length) sportSpecificDataG = sdg as SportSpecificData;
+    }
+
+    const compId = (competition as unknown as { id?: string }).id || event.id;
+    matches.push({
+      id: `espn_${leagueKeyForId}_${compId}`,
+      externalId: compId,
+      source: 'espn',
+      sportId,
+      sportKey: `${sport}_global${espnLeagueId}`,
+      leagueId: ourLeagueId,
+      leagueKey: leagueKeyForId,
+      homeTeam: {
+        id: resolvedHome?.team?.id || resolvedHome?.athlete?.id || homeAthleteId || '',
+        name: homeTeamName,
+        shortName: resolvedHome?.team?.abbreviation || resolvedHome?.athlete?.shortName || homeTeamName.slice(0, 3).toUpperCase(),
+        logo: homeLogoUrl,
+        form: resolvedHome?.form || undefined,
+        record: resolvedHome?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      awayTeam: {
+        id: resolvedAway?.team?.id || resolvedAway?.athlete?.id || awayAthleteId || '',
+        name: awayTeamName,
+        shortName: resolvedAway?.team?.abbreviation || resolvedAway?.athlete?.shortName || awayTeamName.slice(0, 3).toUpperCase(),
+        logo: awayLogoUrl,
+        form: resolvedAway?.form || undefined,
+        record: resolvedAway?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      kickoffTime: new Date((competition as unknown as { date?: string }).date || event.date),
+      status,
+      homeScore:
+        resolvedHome?.score !== undefined && resolvedHome?.score !== null && resolvedHome.score !== ''
+          ? parseInt(resolvedHome.score, 10)
+          : null,
+      awayScore:
+        resolvedAway?.score !== undefined && resolvedAway?.score !== null && resolvedAway.score !== ''
+          ? parseInt(resolvedAway.score, 10)
+          : null,
+      htHomeScore: htHomeScoreG,
+      htAwayScore: htAwayScoreG,
+      minute: extractLiveMinute(compStatus, sportType) ?? undefined,
+      period: compStatus.displayClock,
+      league: {
+        id: ourLeagueId,
+        name: leagueInfo.name,
+        slug: leagueInfo.slug,
+        country: leagueInfo.country,
+        countryCode: leagueInfo.countryCode,
+        tier: 3,
+      },
+      sport: {
+        id: sportId,
+        name: ALL_SPORTS.find(s => s.id === sportId)?.name || sport,
+        slug: ALL_SPORTS.find(s => s.id === sportId)?.slug || sport,
+        icon: ALL_SPORTS.find(s => s.id === sportId)?.icon || sport,
+      },
+      odds,
+      markets,
+      tipsCount: 0,
+      venue,
+      legInfo: extractLegInfo(competition?.notes),
+      roundName: extractRoundName(competition?.notes, event, { season: event.season, competition }),
+      ...(sportSpecificDataG ? { sportSpecificData: sportSpecificDataG } : {}),
+    });
+  }
+
+  setCache(cacheKey, matches);
+  return matches;
+}
+
+async function fetchESPNGlobalAll(): Promise<UnifiedMatch[]> {
+  const all = await Promise.allSettled(
+    GLOBAL_SPORT_TYPES.map(s => fetchESPNGlobalSport(s.sport, s.sportType, s.sportId))
+  );
+  const out: UnifiedMatch[] = [];
+  for (const r of all) {
+    if (r.status === 'fulfilled') out.push(...r.value);
+  }
+  return out;
+}
+
+// Leagues we always fetch a multi-day window for (so today + a week of fixtures
+// always show up regardless of ESPN's default "next game day" behaviour).
+const PRIORITY_LEAGUE_KEYS = new Set<string>([
+  // ── England ──────────────────────────────────────────────
+  'eng.1', 'eng.2', 'eng.3', 'eng.4', 'eng.fa', 'eng.league_cup', 'eng.w.1',
+  // ── Spain ────────────────────────────────────────────────
+  'esp.1', 'esp.2', 'esp.copa_del_rey', 'esp.w.1',
+  // ── Germany ──────────────────────────────────────────────
+  'ger.1', 'ger.2', 'ger.dfb_pokal', 'ger.w.1',
+  // ── Italy ────────────────────────────────────────────────
+  'ita.1', 'ita.2', 'ita.coppa_italia', 'ita.w.1',
+  // ── France ───────────────────────────────────────────────
+  'fra.1', 'fra.2', 'fra.coupe_de_france', 'fra.w.1',
+  // ── Rest of Top European ─────────────────────────────────
+  'ned.1', 'ned.2', 'por.1', 'por.2',
+  'sco.1', 'bel.1', 'tur.1', 'sui.1', 'aut.1',
+  'gre.1', 'den.1', 'swe.1', 'nor.1', 'fin.1',
+  'pol.1', 'cze.1', 'rou.1', 'ukr.1', 'rus.1',
+  'srb.1', 'hrv.1', 'hun.1', 'bgr.1', 'svk.1', 'svn.1',
+  'irl.1', 'wal.1', 'isl.1',
+  // ── European Club Competitions ────────────────────────────
+  'uefa.champions', 'uefa.europa', 'uefa.europa.conf',
+  'uefa.nations', 'uefa.wchampions',
+  // ── Americas ─────────────────────────────────────────────
+  'usa.1', 'usa.2', 'usa.nwsl', 'mex.1',
+  'bra.1', 'arg.1', 'arg.2', 'col.1', 'chi.1', 'per.1', 'uru.1', 'ven.1', 'ecu.1', 'bol.1', 'par.1', 'crc.1',
+  'conmebol.libertadores', 'conmebol.sudamericana',
+  'concacaf.champions_cup', 'concacaf.gold',
+  // ── Middle East & Africa ─────────────────────────────────
+  'ksa.1', 'are.1', 'qat.1', 'irn.1', 'isr.1',
+  'egy.1', 'mar.1', 'nga.1', 'rsa.1', 'tun.1', 'alg.1', 'ken.1',
+  // ── Asia & Oceania ────────────────────────────────────────
+  'jpn.1', 'jpn.2', 'kor.1', 'chn.1',
+  'aus.1', 'ind.1', 'idn.1', 'tha.1', 'mys.1',
+  // ── North America Pro Sports ──────────────────────────────
+  'nba', 'wnba', 'nfl', 'mlb', 'nhl', 'ufc',
+  // ── International ─────────────────────────────────────────
+  'fifa.world', 'fifa.wwc', 'afc.asian.qual', 'concacaf.wcq',
+  'uefa.euro.qual', 'copa.america',
+  // Friendlies and women's qualifiers — high match count days need priority treatment
+  'fifa.friendly', 'fifa.friendly.w', 'club.friendly',
+  'fifa.world.qualifiers.uefa', 'fifa.world.qualifiers.concacaf',
+  'fifa.world.qualifiers.conmebol', 'fifa.world.qualifiers.afc', 'fifa.world.qualifiers.caf',
+  'fifa.wwc.qualifier.uefa', 'fifa.wwc.qualifier.concacaf',
+  'fifa.wwc.qualifier.afc', 'fifa.wwc.qualifier.caf', 'fifa.wwc.qualifier.conmebol',
+  // ── Tennis (Grand Slams + tours, wide date range needed) ──
+  'atp', 'wta', 'atp.challenger', 'atp.doubles', 'wta.125', 'davis.cup', 'billie.jean.king.cup',
+  // ── Rugby (tournaments need 90-day forward visibility) ────
+  'rwc', 'six-nations', 'six.nations', 'rugby-championship', 'super-rugby', 'super.rugby',
+  'nrl', 'state.of.origin', 'urc', 'autumn.nations', 'premiership', 'eng.1', 'top14',
+]);
+
+function formatYYYYMMDD(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+// ============================================
+// ESPN Odds extraction (real DraftKings/etc odds)
+// ============================================
+
+function americanToDecimal(american: number | string | undefined): number | undefined {
+  if (american === undefined || american === null || american === '') return undefined;
+  const n = typeof american === 'string' ? parseFloat(american.replace(/[^\d.\-+]/g, '')) : american;
+  if (!Number.isFinite(n) || n === 0) return undefined;
+  const decimal = n > 0 ? 1 + n / 100 : 1 + 100 / Math.abs(n);
+  return Math.round(decimal * 100) / 100;
+}
+
+interface ESPNOddsRaw {
+  provider?: { id?: string; name?: string; displayName?: string };
+  details?: string;
+  overUnder?: number;
+  spread?: number;
+  overOdds?: number | string;
+  underOdds?: number | string;
+  drawOdds?: { moneyLine?: number };
+  homeTeamOdds?: { moneyLine?: number; spreadOdds?: number; favorite?: boolean; team?: { id?: string } };
+  awayTeamOdds?: { moneyLine?: number; spreadOdds?: number; favorite?: boolean; team?: { id?: string } };
+  total?: {
+    over?: { close?: { odds?: string; line?: string }, open?: { odds?: string; line?: string } };
+    under?: { close?: { odds?: string; line?: string }, open?: { odds?: string; line?: string } };
+  };
+  // New ESPN scoreboard format (2024+)
+  moneyline?: {
+    displayName?: string;
+    shortDisplayName?: string;
+    home?: { open?: { odds?: string }; close?: { odds?: string } };
+    away?: { open?: { odds?: string }; close?: { odds?: string } };
+    draw?: { open?: { odds?: string }; close?: { odds?: string } };
+  };
+  pointSpread?: {
+    displayName?: string;
+    shortDisplayName?: string;
+    home?: { open?: { line?: string; odds?: string }; close?: { line?: string; odds?: string } };
+    away?: { open?: { line?: string; odds?: string }; close?: { line?: string; odds?: string } };
+  };
+}
+
+interface ESPNScoreboardResponseFull extends ESPNScoreboardResponse {
+  events: Array<ESPNEvent & { competitions: Array<ESPNEvent['competitions'][number] & { odds?: ESPNOddsRaw[]; venue?: { fullName?: string; address?: { city?: string; country?: string } } }> }>;
+}
+
+// Sport-specific totals market label
+function totalMarketName(sportType?: string): string {
+  switch (sportType) {
+    case 'basketball': return 'Total Points';
+    case 'football': return 'Total Points';    // American Football
+    case 'baseball': return 'Total Runs';
+    case 'hockey': case 'icehockey': return 'Total Goals';
+    case 'rugby': return 'Total Points';
+    case 'cricket': return 'Total Runs';
+    case 'tennis': return 'Total Games';
+    default: return 'Total Goals';             // soccer default
+  }
+}
+
+// Sport-specific handicap/spread label
+function spreadMarketName(sportType?: string): string {
+  switch (sportType) {
+    case 'baseball': return 'Run Line';
+    case 'hockey': case 'icehockey': return 'Puck Line';
+    case 'basketball': case 'football': return 'Point Spread';
+    case 'rugby': return 'Handicap';
+    case 'tennis': return 'Game Handicap';
+    case 'cricket': return 'Innings Handicap';
+    default: return 'Asian Handicap';
+  }
+}
+
+export function extractEspnOdds(
+  rawOddsList: ESPNOddsRaw[] | undefined,
+  hasDraw: boolean = true,
+  sportType?: string,
+  homeTeam?: string,
+  awayTeam?: string,
+): { odds?: MatchOdds; markets?: Market[] } {
+  if (!rawOddsList || !Array.isArray(rawOddsList) || rawOddsList.length === 0) return {};
+
+  // ESPN sometimes returns null entries in the odds array — strip them first.
+  const cleanList = rawOddsList.filter((x): x is ESPNOddsRaw => x != null);
+  if (cleanList.length === 0) return {};
+
+  // Try to find provider with moneyline data — support BOTH ESPN formats:
+  // Old: homeTeamOdds.moneyLine (number)
+  // New (2024+): moneyline.home.close.odds (string like "+180")
+  const o = cleanList.find(x =>
+    x.homeTeamOdds?.moneyLine !== undefined ||
+    x.awayTeamOdds?.moneyLine !== undefined ||
+    x.moneyline?.home?.close?.odds !== undefined ||
+    x.moneyline?.away?.close?.odds !== undefined
+  ) || cleanList[0];
+  if (!o) return {};
+
+  // Extract moneyline: prefer new format, fallback to old
+  const home = americanToDecimal(o.moneyline?.home?.close?.odds ?? o.homeTeamOdds?.moneyLine);
+  const away = americanToDecimal(o.moneyline?.away?.close?.odds ?? o.awayTeamOdds?.moneyLine);
+  const draw = hasDraw
+    ? americanToDecimal(o.moneyline?.draw?.close?.odds ?? o.drawOdds?.moneyLine)
+    : undefined;
+
+  if (!home || !away) return {};
+
+  const odds: MatchOdds = {
+    home,
+    away,
+    draw,
+    bookmaker: o.provider?.displayName || o.provider?.name || 'DraftKings',
+    lastUpdate: new Date(),
+  };
+
+  // "Match Winner" for no-draw sports; "Match Result" (1X2) for soccer/cricket/rugby
+  const h2hName = hasDraw ? 'Match Result' : 'Match Winner';
+  const h1 = homeTeam || 'Home';
+  const h2 = awayTeam || 'Away';
+
+  const markets: Market[] = [{
+    key: 'h2h',
+    name: h2hName,
+    outcomes: [
+      { name: h1, price: home },
+      ...(draw ? [{ name: 'Draw', price: draw }] : []),
+      { name: h2, price: away },
+    ],
+  }];
+
+  // Spread / handicap — support new format (pointSpread) and old (homeTeamOdds.spreadOdds)
+  // For soccer: use key 'asian_handicap' (same product, different name in European markets).
+  // This prevents a duplicate entry when deriveSoccerMarkets also produces 'asian_handicap'.
+  // For other sports: keep 'spreads' (Point Spread).
+  // Outcome names always include the line value (e.g. "Málaga -0.5").
+  const isSoccerSport = sportType === 'soccer';
+  let spreadLine: number | undefined;
+  if (o.pointSpread?.home?.close?.odds && o.pointSpread?.away?.close?.odds) {
+    const homeSpread = americanToDecimal(o.pointSpread.home.close.odds);
+    const awaySpread = americanToDecimal(o.pointSpread.away.close.odds);
+    spreadLine = parseFloat(o.pointSpread.home.close.line || '0');
+    if (homeSpread && awaySpread) {
+      const hSign = spreadLine > 0 ? '+' : '';
+      const aSign = -spreadLine > 0 ? '+' : '';
+      const baseName = isSoccerSport ? 'Asian Handicap' : spreadMarketName(sportType);
+      const mktKey   = isSoccerSport ? 'asian_handicap' : 'spreads';
+      markets.push({
+        key: mktKey,
+        name: `${baseName} (${hSign}${spreadLine})`,
+        outcomes: [
+          { name: `${h1} ${hSign}${spreadLine}`, price: homeSpread, point: spreadLine },
+          { name: `${h2} ${aSign}${-spreadLine}`, price: awaySpread, point: -spreadLine },
+        ],
+      });
+    }
+  } else if (o.spread !== undefined && o.homeTeamOdds?.spreadOdds !== undefined) {
+    const homeSpread = americanToDecimal(o.homeTeamOdds.spreadOdds);
+    const awaySpread = americanToDecimal(o.awayTeamOdds?.spreadOdds);
+    spreadLine = Math.abs(o.spread);
+    if (homeSpread && awaySpread) {
+      const homeLine = -Math.abs(o.spread);
+      const awayLine =  Math.abs(o.spread);
+      const hSign = homeLine > 0 ? '+' : '';
+      const aSign = awayLine > 0 ? '+' : '';
+      const baseName = isSoccerSport ? 'Asian Handicap' : spreadMarketName(sportType);
+      const mktKey   = isSoccerSport ? 'asian_handicap' : 'spreads';
+      markets.push({
+        key: mktKey,
+        name: `${baseName} (${hSign}${homeLine})`,
+        outcomes: [
+          { name: `${h1} ${hSign}${homeLine}`, price: homeSpread, point: homeLine },
+          { name: `${h2} ${aSign}${awayLine}`,  price: awaySpread, point: awayLine },
+        ],
+      });
+    }
+  }
+
+  // Totals (over/under) — include the line in outcome names (e.g. "Over 2.5")
+  let totalLine: number | undefined;
+  if (o.overUnder !== undefined) {
+    const overOdds  = americanToDecimal(o.total?.over?.close?.odds  || o.overOdds);
+    const underOdds = americanToDecimal(o.total?.under?.close?.odds || o.underOdds);
+    totalLine = o.overUnder;
+    if (overOdds && underOdds) {
+      markets.push({
+        key: 'totals',
+        name: `Over/Under ${o.overUnder}`,
+        outcomes: [
+          { name: `Over ${o.overUnder}`,  price: overOdds,  point: o.overUnder },
+          { name: `Under ${o.overUnder}`, price: underOdds, point: o.overUnder },
+        ],
+      });
+    }
+  }
+
+  // ─── Sport-specific derived markets ──────────────────────────────────────────
+  // All derived prices are mathematically grounded in the real ESPN moneyline —
+  // never random. Each sport gets its own set of contextually correct markets.
+  switch (sportType) {
+    case 'soccer': {
+      // Soccer: full 1X2 derived suite (Double Chance, BTTS, O/U, Correct Score…)
+      let drawForDerivation = draw;
+      if (!drawForDerivation) {
+        const pH = 1 / home;
+        const pA = 1 / away;
+        const fairH = pH / 1.05;
+        const fairA = pA / 1.05;
+        const drawProb = Math.max(0.15, Math.min(0.40, 1 - fairH - fairA));
+        drawForDerivation = Math.round((1 / drawProb) * 100) / 100;
+      }
+      deriveSoccerMarkets(home, drawForDerivation, away).forEach(m => markets.push(m));
+      break;
+    }
+    case 'basketball':
+      deriveBasketballMarkets(home, away, spreadLine, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'baseball':
+      deriveBaseballMarkets(home, away, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'hockey':
+    case 'icehockey':
+      deriveHockeyMarkets(home, draw, away, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'football': // American Football (NFL/NCAA)
+      deriveAmericanFootballMarkets(home, away, spreadLine, totalLine, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'tennis':
+      deriveTennisMarkets(home, away, h1, h2).forEach(m => markets.push(m));
+      break;
+    case 'cricket':
+      deriveCricketMarkets(home, draw, away, h1, h2).forEach(m => markets.push(m));
+      break;
+    // rugby, mma, boxing, golf, racing: keep only real ESPN markets (no derivation)
+    default:
+      if (hasDraw && sportType !== 'cricket') {
+        // Fallback for unknown draw sports: basic soccer-style derivation
+        let drawFallback = draw;
+        if (!drawFallback) {
+          const pH = 1 / home, pA = 1 / away;
+          const drawProb = Math.max(0.15, Math.min(0.35, 1 - pH / 1.05 - pA / 1.05));
+          drawFallback = Math.round((1 / drawProb) * 100) / 100;
+        }
+        deriveSoccerMarkets(home, drawFallback, away).forEach(m => markets.push(m));
+      }
+      break;
+  }
+
+  return { odds, markets };
+}
+
+/**
+ * Build a comprehensive soccer derived market suite from real 1X2 odds.
+ * Uses a Poisson goal-scoring model so every derived price is mathematically
+ * grounded in the real implied probabilities — never random/jittered.
+ *
+ * Markets produced: Double Chance, Draw No Bet, BTTS, Over/Under 0.5-4.5,
+ * HT Result, HT/FT, BTTS & Result, Odd/Even Goals, Exact Goals, Clean Sheet
+ * (Home/Away), Win to Nil, Correct Score (top 12), First Team to Score,
+ * Goal in 1st Half, Asian Handicap (±1).
+ */
+export function deriveSoccerMarkets(
+  home: number, draw: number, away: number,
+  homeTeam = 'Home', awayTeam = 'Away',
+  homeForm?: string, awayForm?: string,
+): Market[] {
+  if (!home || !draw || !away) return [];
+  const pH = 1 / home, pD = 1 / draw, pA = 1 / away;
+  const total = pH + pD + pA;
+  if (total <= 0) return [];
+
+  // Strip bookmaker margin — work with fair probabilities
+  const nH = pH / total, nD = pD / total, nA = pA / total;
+
+  // Price helper: convert probability → decimal odds with 93 % payout (7 % margin)
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 250) * 100) / 100);
+
+  // ── Poisson model ────────────────────────────────────────────────────────
+  // Calibrated from observed data: avg 2.65 goals / match, home scores ~55 %
+  // Form-adjusted: a team on a hot streak (WWWWW) gets ~15% more goals;
+  // a team on a cold streak (LLLLL) gets ~15% fewer. This ensures markets
+  // like Over/Under and BTTS actually vary meaningfully between matches.
+  function parseForm(f: string | undefined): number {
+    if (!f) return 0.5;
+    const chars = f.replace(/[^WwDdLl]/g, '').slice(-5).toUpperCase().split('');
+    if (!chars.length) return 0.5;
+    let pts = 0, maxPts = 0;
+    chars.forEach((c, i) => { const w = 1 + i * 0.3; maxPts += 3 * w; if (c === 'W') pts += 3 * w; else if (c === 'D') pts += w; });
+    return maxPts > 0 ? Math.min(pts / maxPts, 1) : 0.5;
+  }
+  const hFS = parseForm(homeForm), aFS = parseForm(awayForm);
+  const homeGoalShare = Math.min(0.80, Math.max(0.35, 0.50 + (nH - 0.33) * 0.65));
+  const λH = Math.max(0.20, Math.min(4.0, 2.65 * homeGoalShare * (0.82 + 0.36 * hFS)));
+  const λA = Math.max(0.20, Math.min(4.0, 2.65 * (1 - homeGoalShare) * (0.82 + 0.36 * aFS)));
+
+  const poisson = (λ: number, k: number): number => {
+    let f = 1; for (let i = 1; i <= k; i++) f *= i;
+    return Math.exp(-λ) * Math.pow(λ, k) / f;
+  };
+
+  const markets: Market[] = [];
+
+  // ── Double Chance ────────────────────────────────────────────────────────
+  markets.push({
+    key: 'double_chance', name: 'Double Chance',
+    outcomes: [
+      { name: '1X', price: price(nH + nD) },
+      { name: '12', price: price(nH + nA) },
+      { name: 'X2', price: price(nD + nA) },
+    ],
+  });
+
+  // ── Draw No Bet ──────────────────────────────────────────────────────────
+  const dnbH = nH / (nH + nA), dnbA = nA / (nH + nA);
+  markets.push({
+    key: 'draw_no_bet', name: 'Draw No Bet',
+    outcomes: [
+      { name: homeTeam, price: price(dnbH) },
+      { name: awayTeam, price: price(dnbA) },
+    ],
+  });
+
+  // ── Both Teams to Score ──────────────────────────────────────────────────
+  const pHome0 = poisson(λH, 0), pAway0 = poisson(λA, 0);
+  const pBttsYes = (1 - pHome0) * (1 - pAway0);
+  markets.push({
+    key: 'btts', name: 'Both Teams to Score',
+    outcomes: [
+      { name: 'Yes', price: price(pBttsYes) },
+      { name: 'No',  price: price(1 - pBttsYes) },
+    ],
+  });
+
+  // ── Over/Under goals ladder ──────────────────────────────────────────────
+  for (const line of [0.5, 1.5, 2.5, 3.5, 4.5]) {
+    let pUnder = 0;
+    const cap = Math.floor(line);
+    for (let hg = 0; hg <= 9; hg++)
+      for (let ag = 0; ag <= 9; ag++)
+        if (hg + ag <= cap) pUnder += poisson(λH, hg) * poisson(λA, ag);
+    markets.push({
+      key: `totals_${String(line).replace('.', '_')}`, name: `Over/Under ${line} Goals`,
+      outcomes: [
+        { name: `Over ${line}`,  price: price(1 - pUnder), point: line },
+        { name: `Under ${line}`, price: price(pUnder),     point: line },
+      ],
+    });
+  }
+
+  // ── Half-Time Result ─────────────────────────────────────────────────────
+  // At HT ~40 % are draws; scale home/away by their relative FT probability.
+  const htDraw = 0.40;
+  const htHome = nH / (nH + nA) * 0.60;
+  const htAway = nA / (nH + nA) * 0.60;
+  markets.push({
+    key: 'ht_result', name: 'Half-Time Result',
+    outcomes: [
+      { name: homeTeam, price: price(htHome) },
+      { name: 'Draw',   price: price(htDraw) },
+      { name: awayTeam, price: price(htAway) },
+    ],
+  });
+
+  // ── Half-Time / Full-Time ────────────────────────────────────────────────
+  // Apply a minimum floor of 2 % per outcome so extreme mismatches don't
+  // produce impossible odds like 124x. Real bookmakers cap HT/FT at ~33-50x.
+  const htFtRaw: [string, number][] = [
+    ['1/1', Math.max(htHome * nH * 1.25, 0.02)],
+    ['1/X', Math.max(htHome * nD * 0.45,  0.02)],
+    ['1/2', Math.max(htHome * nA * 0.30,  0.02)],
+    ['X/1', Math.max(htDraw * nH * 1.05,  0.02)],
+    ['X/X', Math.max(htDraw * nD * 1.05,  0.02)],
+    ['X/2', Math.max(htDraw * nA * 1.05,  0.02)],
+    ['2/1', Math.max(htAway * nH * 0.30,  0.02)],
+    ['2/X', Math.max(htAway * nD * 0.45,  0.02)],
+    ['2/2', Math.max(htAway * nA * 1.25,  0.02)],
+  ];
+  const htFtSum = htFtRaw.reduce((s, [, p]) => s + p, 0);
+  // Hard cap: no HT/FT outcome should exceed 40.00 (realistic bookmaker limit)
+  markets.push({
+    key: 'ht_ft', name: 'Half-Time / Full-Time',
+    outcomes: htFtRaw.map(([name, p]) => ({
+      name,
+      price: Math.min(40.00, price(p / htFtSum)),
+    })),
+  });
+
+  // ── BTTS & Result ────────────────────────────────────────────────────────
+  const bR = (p: number) => price(p * pBttsYes);
+  const bN = (p: number) => price(p * (1 - pBttsYes));
+  markets.push({
+    key: 'btts_and_result', name: 'BTTS & Result',
+    outcomes: [
+      { name: `${homeTeam} & Yes`, price: bR(nH) },
+      { name: 'Draw & Yes',        price: bR(nD) },
+      { name: `${awayTeam} & Yes`, price: bR(nA) },
+      { name: `${homeTeam} & No`,  price: bN(nH) },
+      { name: 'Draw & No',         price: bN(nD) },
+      { name: `${awayTeam} & No`,  price: bN(nA) },
+    ],
+  });
+
+  // ── Odd / Even Goals ─────────────────────────────────────────────────────
+  let pEven = 0;
+  for (let hg = 0; hg <= 9; hg++)
+    for (let ag = 0; ag <= 9; ag++)
+      if ((hg + ag) % 2 === 0) pEven += poisson(λH, hg) * poisson(λA, ag);
+  markets.push({
+    key: 'odd_even_goals', name: 'Odd/Even Goals',
+    outcomes: [
+      { name: 'Odd',  price: price(1 - pEven) },
+      { name: 'Even', price: price(pEven) },
+    ],
+  });
+
+  // ── Exact Goals ──────────────────────────────────────────────────────────
+  const exactP: number[] = Array.from({ length: 6 }, (_, g) => {
+    let p = 0;
+    for (let hg = 0; hg <= g; hg++) p += poisson(λH, hg) * poisson(λA, g - hg);
+    return p;
+  });
+  const exact5Plus = Math.max(0.005, 1 - exactP.reduce((s, p) => s + p, 0));
+  markets.push({
+    key: 'exact_goals', name: 'Exact Goals',
+    outcomes: [
+      { name: '0', price: price(exactP[0]) }, { name: '1', price: price(exactP[1]) },
+      { name: '2', price: price(exactP[2]) }, { name: '3', price: price(exactP[3]) },
+      { name: '4', price: price(exactP[4]) }, { name: '5+', price: price(exact5Plus + exactP[5]) },
+    ],
+  });
+
+  // ── Clean Sheet ──────────────────────────────────────────────────────────
+  markets.push({
+    key: 'clean_sheet_home', name: `${homeTeam} Clean Sheet`,
+    outcomes: [{ name: 'Yes', price: price(pAway0) }, { name: 'No', price: price(1 - pAway0) }],
+  });
+  markets.push({
+    key: 'clean_sheet_away', name: `${awayTeam} Clean Sheet`,
+    outcomes: [{ name: 'Yes', price: price(pHome0) }, { name: 'No', price: price(1 - pHome0) }],
+  });
+
+  // ── Win to Nil ───────────────────────────────────────────────────────────
+  const pHWtN = pAway0 * 0.80, pAWtN = pHome0 * 0.80;
+  markets.push({
+    key: 'win_to_nil', name: 'Win to Nil',
+    outcomes: [
+      { name: homeTeam, price: price(pHWtN) },
+      { name: awayTeam, price: price(pAWtN) },
+      { name: 'Neither', price: price(Math.max(0.01, 1 - pHWtN - pAWtN)) },
+    ],
+  });
+
+  // ── Correct Score (top 12 scorelines) ────────────────────────────────────
+  const cs: [string, number][] = [];
+  for (let h = 0; h <= 4; h++)
+    for (let a = 0; a <= 4; a++)
+      cs.push([`${h}-${a}`, poisson(λH, h) * poisson(λA, a)]);
+  cs.sort(([, pa], [, pb]) => pb - pa);
+  const csOther = Math.max(0.005, 1 - cs.slice(0, 12).reduce((s, [, p]) => s + p, 0));
+  markets.push({
+    key: 'correct_score', name: 'Correct Score',
+    outcomes: [...cs.slice(0, 12).map(([name, p]) => ({ name, price: price(p) })), { name: 'Other', price: price(csOther) }],
+  });
+
+  // ── First Team to Score ──────────────────────────────────────────────────
+  const pNoGoal = pHome0 * pAway0;
+  const pHomeFirst = (nH * 0.55 + nD * 0.50) * (1 - pNoGoal);
+  const pAwayFirst = Math.max(0.01, 1 - pNoGoal - pHomeFirst);
+  markets.push({
+    key: 'first_team_to_score', name: 'First Team to Score',
+    outcomes: [
+      { name: homeTeam,    price: price(pHomeFirst) },
+      { name: awayTeam,    price: price(pAwayFirst) },
+      { name: 'No Goal',   price: price(pNoGoal) },
+    ],
+  });
+
+  // ── Goal in 1st Half ─────────────────────────────────────────────────────
+  // Each half gets roughly half the expected goals
+  const pNoGoalHalf = poisson(λH * 0.5, 0) * poisson(λA * 0.5, 0);
+  markets.push({
+    key: 'goal_first_half', name: 'Goal in 1st Half',
+    outcomes: [
+      { name: 'Yes', price: price(1 - pNoGoalHalf) },
+      { name: 'No',  price: price(pNoGoalHalf) },
+    ],
+  });
+
+  // ── Asian Handicap — smartly-chosen line ─────────────────────────────────
+  // Scan lines ±0.5 … ±2.5; pick the one where the favoured side covers at
+  // ~55% probability. This means a dominant favourite gets -1.5 or -2 while
+  // an even match gets -0.5 — far more match-specific than a fixed ±1.
+  const favHome = nH >= nA;
+  let bestAHLineAbs = 1.0;
+  let bestAHDiff = 999;
+  for (const lineAbs of [0.5, 1.0, 1.5, 2.0, 2.5]) {
+    const ahL = favHome ? -lineAbs : lineAbs;
+    let favCover = 0, pushL = 0, favFail = 0;
+    for (let h = 0; h <= 7; h++) {
+      for (let a = 0; a <= 7; a++) {
+        const p = poisson(λH, h) * poisson(λA, a);
+        const diff = (h + ahL) - a;
+        if (diff > 0) { if (favHome) favCover += p; else favFail += p; }
+        else if (diff === 0) { pushL += p; }
+        else { if (favHome) favFail += p; else favCover += p; }
+      }
+    }
+    const pFavAdj = (favCover + pushL * 0.5) / Math.max(favCover + favFail + pushL, 0.001);
+    const diff = Math.abs(pFavAdj - 0.55);
+    if (diff < bestAHDiff) { bestAHDiff = diff; bestAHLineAbs = lineAbs; }
+  }
+  const ahLine = favHome ? -bestAHLineAbs : bestAHLineAbs;
+  let pAHHome = 0, pAHAway = 0, pAHPush = 0;
+  for (let h = 0; h <= 7; h++) {
+    for (let a = 0; a <= 7; a++) {
+      const p = poisson(λH, h) * poisson(λA, a);
+      const diff = (h + ahLine) - a;
+      if (diff > 0) pAHHome += p; else if (diff === 0) pAHPush += p; else pAHAway += p;
+    }
+  }
+  const ahT = pAHHome + pAHAway + pAHPush;
+  const ahHomeSign = ahLine > 0 ? '+' : '';
+  const ahAwaySign = -ahLine > 0 ? '+' : '';
+  markets.push({
+    key: 'asian_handicap', name: `Asian Handicap (${ahHomeSign}${ahLine})`,
+    outcomes: [
+      { name: `${homeTeam} ${ahHomeSign}${ahLine}`, price: price((pAHHome + pAHPush * 0.5) / Math.max(ahT, 0.001)), point: ahLine },
+      { name: `${awayTeam} ${ahAwaySign}${-ahLine}`, price: price((pAHAway + pAHPush * 0.5) / Math.max(ahT, 0.001)), point: -ahLine },
+    ],
+  });
+
+  return markets;
+}
+
+// ─── Basketball markets (NBA / WNBA / NCAA) ──────────────────────────────────
+// Derives period-level betting markets that ESPN pickcenter doesn't return.
+// Uses the full-game moneyline and total to anchor all period prices.
+export function deriveBasketballMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  spreadValue: number | undefined,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  // Normal CDF approximation (logistic)
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── 1st Half Moneyline ───────────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_1h',
+    name: '1st Half - Moneyline',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma = 11; // typical SD for basketball final total
+    // ── Alternate Total Points ─────────────────────────────────────────────────
+    for (const offset of [-5, -3, -1, 1, 3, 5]) {
+      const line = totalLine + offset + (offset > 0 ? -0.5 : 0.5);
+      const z = (line - totalLine) / sigma;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.05 || pOver > 0.95) continue;
+      const safeKey = String(Math.abs(line)).replace('.', '_');
+      markets.push({
+        key: `alt_total_${safeKey}`,
+        name: `Total Points O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── 1st Half Total ─────────────────────────────────────────────────────────
+    const halfTotal = Math.round(totalLine / 2 * 2) / 2;
+    markets.push({
+      key: 'totals_1h',
+      name: '1st Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── 2nd Half Total ─────────────────────────────────────────────────────────
+    markets.push({
+      key: 'totals_2h',
+      name: '2nd Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── Quarter Totals (Q1–Q4) ────────────────────────────────────────────────
+    const qTotal = Math.round(totalLine / 4 * 2) / 2;
+    for (const [qKey, qName] of [
+      ['totals_1q', '1st Quarter Total'],
+      ['totals_2q', '2nd Quarter Total'],
+      ['totals_3q', '3rd Quarter Total'],
+      ['totals_4q', '4th Quarter Total'],
+    ] as [string, string][]) {
+      markets.push({
+        key: qKey,
+        name: qName,
+        outcomes: [
+          { name: `Over ${qTotal}`,  price: price(0.50), point: qTotal },
+          { name: `Under ${qTotal}`, price: price(0.50), point: qTotal },
+        ],
+      });
+    }
+
+    // ── 1st Quarter Moneyline ─────────────────────────────────────────────────
+    markets.push({
+      key: 'h2h_1q',
+      name: '1st Quarter - Moneyline',
+      outcomes: [
+        { name: homeTeam, price: price(nH) },
+        { name: awayTeam, price: price(nA) },
+      ],
+    });
+  }
+
+  // ── Alternate Spreads ─────────────────────────────────────────────────────
+  if (spreadValue !== undefined && spreadValue !== 0) {
+    const sigma = 11;
+    for (const altLine of [-8.5, -6.5, -4.5, -2.5, 2.5, 4.5, 6.5, 8.5]) {
+      if (Math.abs(altLine - spreadValue) < 1.5) continue;
+      const z = altLine / sigma;
+      const pHomeCover = normCDF(-z); // P(home covers altLine spread)
+      if (pHomeCover < 0.15 || pHomeCover > 0.85) continue;
+      const safeKey = String(altLine).replace('-', 'm').replace('.', '_');
+      markets.push({
+        key: `alt_spread_${safeKey}`,
+        name: `Alternate Spread`,
+        outcomes: [
+          { name: `${homeTeam} ${altLine > 0 ? '+' : ''}${altLine}`,   price: price(pHomeCover),     point: altLine },
+          { name: `${awayTeam} ${-altLine > 0 ? '+' : ''}${-altLine}`, price: price(1 - pHomeCover), point: -altLine },
+        ],
+      });
+    }
+  }
+
+  return markets;
+}
+
+// ─── Baseball markets (MLB) ───────────────────────────────────────────────────
+export function deriveBaseballMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── Run Line Alternatives ──────────────────────────────────────────────────
+  const sigma = 2.2; // typical MLB scoring SD
+  for (const rl of [-2.5, -1.5, 1.5, 2.5]) {
+    const z = rl / sigma;
+    const pHomeCover = normCDF(-z);
+    if (pHomeCover < 0.1 || pHomeCover > 0.9) continue;
+    markets.push({
+      key: `run_line_${String(rl).replace('-', 'm').replace('.', '_')}`,
+      name: `Run Line`,
+      outcomes: [
+        { name: `${homeTeam} ${rl > 0 ? '+' : ''}${rl}`,   price: price(pHomeCover),     point: rl },
+        { name: `${awayTeam} ${-rl > 0 ? '+' : ''}${-rl}`, price: price(1 - pHomeCover), point: -rl },
+      ],
+    });
+  }
+
+  // ── 1st 5 Innings Moneyline ────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_f5',
+    name: 'First 5 Innings - Moneyline',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma2 = 1.8;
+    // ── Alternate Totals ───────────────────────────────────────────────────────
+    for (const offset of [-1.5, -0.5, 0.5, 1.5]) {
+      const line = totalLine + offset;
+      const z = (line - totalLine) / sigma2;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.1 || pOver > 0.9) continue;
+      markets.push({
+        key: `alt_total_${String(line).replace('.', '_')}`,
+        name: `Total Runs O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── 1st 5 Innings Total ────────────────────────────────────────────────────
+    const f5Total = Math.round(totalLine * 0.55 * 2) / 2; // ~55% of runs in first 5
+    markets.push({
+      key: 'totals_f5',
+      name: 'First 5 Innings Total',
+      outcomes: [
+        { name: `Over ${f5Total}`,  price: price(0.50), point: f5Total },
+        { name: `Under ${f5Total}`, price: price(0.50), point: f5Total },
+      ],
+    });
+  }
+
+  return markets;
+}
+
+// ─── Ice Hockey markets (NHL) ─────────────────────────────────────────────────
+export function deriveHockeyMarkets(
+  homeOdds: number,
+  drawOdds: number | undefined,
+  awayOdds: number,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds;
+  const pD = drawOdds ? 1 / drawOdds : 0.2;
+  const pA = 1 / awayOdds;
+  const norm = pH + pD + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── Puck Line Alternatives ─────────────────────────────────────────────────
+  const sigma = 1.3;
+  for (const pl of [-2.5, 2.5]) {
+    const z = pl / sigma;
+    const pHomeCover = normCDF(-z);
+    if (pHomeCover < 0.1 || pHomeCover > 0.9) continue;
+    markets.push({
+      key: `puck_line_${String(pl).replace('-', 'm').replace('.', '_')}`,
+      name: `Puck Line`,
+      outcomes: [
+        { name: `${homeTeam} ${pl > 0 ? '+' : ''}${pl}`,   price: price(pHomeCover),     point: pl },
+        { name: `${awayTeam} ${-pl > 0 ? '+' : ''}${-pl}`, price: price(1 - pHomeCover), point: -pl },
+      ],
+    });
+  }
+
+  // ── Regulation Moneyline (3-way, excl. OT/SO) ────────────────────────────
+  markets.push({
+    key: 'h2h_regulation',
+    name: 'Regulation - 3-Way',
+    outcomes: [
+      { name: homeTeam,  price: price(nH) },
+      { name: 'Draw',    price: price(pD / norm * MARGIN) },
+      { name: awayTeam,  price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma2 = 1.1;
+    // ── Alternate Totals ───────────────────────────────────────────────────────
+    for (const offset of [-1, -0.5, 0.5, 1]) {
+      const line = totalLine + offset;
+      const z = (line - totalLine) / sigma2;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.1 || pOver > 0.9) continue;
+      markets.push({
+        key: `alt_total_${String(line).replace('.', '_')}`,
+        name: `Total Goals O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── Period Totals (P1, P2, P3) ─────────────────────────────────────────────
+    const pTotal = Math.round(totalLine / 3 * 2) / 2;
+    for (const [pKey, pName] of [
+      ['totals_p1', '1st Period Total'],
+      ['totals_p2', '2nd Period Total'],
+      ['totals_p3', '3rd Period Total'],
+    ] as [string, string][]) {
+      markets.push({
+        key: pKey,
+        name: pName,
+        outcomes: [
+          { name: `Over ${pTotal}`,  price: price(0.50), point: pTotal },
+          { name: `Under ${pTotal}`, price: price(0.50), point: pTotal },
+        ],
+      });
+    }
+  }
+
+  return markets;
+}
+
+// ─── American Football markets (NFL / NCAA) ───────────────────────────────────
+export function deriveAmericanFootballMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  spreadValue: number | undefined,
+  totalLine: number | undefined,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const nH = pH / norm, nA = pA / norm;
+  const MARGIN = 0.93;
+  const price = (p: number) => Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+  const normCDF = (z: number) => 0.5 * (1 + Math.tanh(z * 0.7978845608));
+  const markets: Market[] = [];
+
+  // ── 1st Half Moneyline ───────────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_1h',
+    name: '1st Half - Moneyline',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  if (totalLine && totalLine > 0) {
+    const sigma = 10;
+    // ── Alternate Totals ──────────────────────────────────────────────────────
+    for (const offset of [-7, -4, -1, 1, 4, 7]) {
+      const line = totalLine + offset + (offset > 0 ? -0.5 : 0.5);
+      const z = (line - totalLine) / sigma;
+      const pUnder = normCDF(z);
+      const pOver = 1 - pUnder;
+      if (pOver < 0.05 || pOver > 0.95) continue;
+      const safeKey = String(Math.abs(line)).replace('.', '_');
+      markets.push({
+        key: `alt_total_${safeKey}`,
+        name: `Total Points O/U ${line}`,
+        outcomes: [
+          { name: `Over ${line}`,  price: price(pOver),  point: line },
+          { name: `Under ${line}`, price: price(pUnder), point: line },
+        ],
+      });
+    }
+
+    // ── 1st Half Total ────────────────────────────────────────────────────────
+    const halfTotal = Math.round(totalLine / 2 * 2) / 2;
+    markets.push({
+      key: 'totals_1h',
+      name: '1st Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── 2nd Half Total ────────────────────────────────────────────────────────
+    markets.push({
+      key: 'totals_2h',
+      name: '2nd Half Total Points',
+      outcomes: [
+        { name: `Over ${halfTotal}`,  price: price(0.50), point: halfTotal },
+        { name: `Under ${halfTotal}`, price: price(0.50), point: halfTotal },
+      ],
+    });
+
+    // ── Quarter Totals (Q1 & Q2) ──────────────────────────────────────────────
+    const qTotal = Math.round(totalLine / 4 * 2) / 2;
+    for (const [qKey, qName] of [
+      ['totals_1q', '1st Quarter Total'],
+      ['totals_2q', '2nd Quarter Total'],
+    ] as [string, string][]) {
+      markets.push({
+        key: qKey,
+        name: qName,
+        outcomes: [
+          { name: `Over ${qTotal}`,  price: price(0.50), point: qTotal },
+          { name: `Under ${qTotal}`, price: price(0.50), point: qTotal },
+        ],
+      });
+    }
+  }
+
+  // ── Alternate Spreads ─────────────────────────────────────────────────────
+  if (spreadValue !== undefined && spreadValue !== 0) {
+    const sigma = 10;
+    for (const altLine of [-10.5, -7.5, -4.5, -2.5, 2.5, 4.5, 7.5, 10.5]) {
+      if (Math.abs(altLine - spreadValue) < 1.5) continue;
+      const z = altLine / sigma;
+      const pHomeCover = normCDF(-z);
+      if (pHomeCover < 0.15 || pHomeCover > 0.85) continue;
+      const safeKey = String(altLine).replace('-', 'm').replace('.', '_');
+      markets.push({
+        key: `alt_spread_${safeKey}`,
+        name: `Alternate Spread`,
+        outcomes: [
+          { name: `${homeTeam} ${altLine > 0 ? '+' : ''}${altLine}`,   price: price(pHomeCover),     point: altLine },
+          { name: `${awayTeam} ${-altLine > 0 ? '+' : ''}${-altLine}`, price: price(1 - pHomeCover), point: -altLine },
+        ],
+      });
+    }
+  }
+
+  return markets;
+}
+
+// ─── Tennis markets ──────────────────────────────────────────────────────────
+// Derives set-level markets from the match moneyline using an independent-sets
+// Bernoulli model (best-of-3). All prices are mathematically grounded in the
+// real ESPN moneyline — no random values are introduced.
+// Markets produced: First Set, Total Sets O/U 2.5, Set Betting (2-0/2-1/1-2/0-2)
+export function deriveTennisMarkets(
+  homeOdds: number,
+  awayOdds: number,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+
+  const pH = 1 / homeOdds, pA = 1 / awayOdds;
+  const norm = pH + pA;
+  const p = pH / norm; // home match win prob (normalised, vig stripped)
+
+  const MARGIN = 0.93;
+  const price = (prob: number) =>
+    Math.max(1.01, Math.round(Math.min(1 / Math.max(prob, 0.001) * MARGIN, 99) * 100) / 100);
+
+  // Solve for pS (per-set win prob for home) using Newton's method on
+  // f(pS) = pS²(3 − 2pS) = p  (best-of-3 iid Bernoulli model)
+  let pS = Math.sqrt(p);
+  for (let i = 0; i < 12; i++) {
+    const f  = pS * pS * (3 - 2 * pS);
+    const df = 6 * pS * (1 - pS);
+    if (Math.abs(df) < 1e-10) break;
+    pS = Math.max(0.01, Math.min(0.99, pS - (f - p) / df));
+  }
+
+  const markets: Market[] = [];
+
+  // ── First Set Winner ───────────────────────────────────────────────────────
+  markets.push({
+    key: 'h2h_set1',
+    name: 'First Set',
+    outcomes: [
+      { name: homeTeam, price: price(pS) },
+      { name: awayTeam, price: price(1 - pS) },
+    ],
+  });
+
+  // ── Total Sets O/U 2.5 ────────────────────────────────────────────────────
+  const pThreeSets = 2 * pS * (1 - pS);   // P(match goes to a deciding set)
+  const pTwoSets   = 1 - pThreeSets;
+  if (pThreeSets > 0.08 && pThreeSets < 0.92) {
+    markets.push({
+      key: 'totals_sets',
+      name: 'Total Sets',
+      outcomes: [
+        { name: 'Over 2.5',  price: price(pThreeSets), point: 2.5 },
+        { name: 'Under 2.5', price: price(pTwoSets),   point: 2.5 },
+      ],
+    });
+  }
+
+  // ── Set Betting (best-of-3 outcomes) ──────────────────────────────────────
+  const p20 = pS * pS;                              // H wins 2-0
+  const p21 = 2 * pS * pS * (1 - pS);              // H wins 2-1
+  const p02 = (1 - pS) * (1 - pS);                 // A wins 0-2
+  const p12 = 2 * pS * (1 - pS) * (1 - pS);        // A wins 1-2
+  markets.push({
+    key: 'set_betting',
+    name: 'Set Betting',
+    outcomes: [
+      { name: `${homeTeam} 2-0`, price: price(p20) },
+      { name: `${homeTeam} 2-1`, price: price(p21) },
+      { name: `${awayTeam} 2-1`, price: price(p12) },
+      { name: `${awayTeam} 2-0`, price: price(p02) },
+    ],
+  });
+
+  return markets;
+}
+
+// ─── Cricket markets ──────────────────────────────────────────────────────────
+// Derives cricket-specific betting markets from the real moneyline (+ draw for
+// Test matches). All prices are grounded in ESPN odds — no random values.
+// Markets produced: Draw No Bet, First Innings Lead
+export function deriveCricketMarkets(
+  homeOdds: number,
+  drawOdds: number | undefined,
+  awayOdds: number,
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+): Market[] {
+  if (!homeOdds || !awayOdds) return [];
+
+  const MARGIN = 0.93;
+  const price = (p: number) =>
+    Math.max(1.01, Math.round(Math.min(1 / Math.max(p, 0.001) * MARGIN, 99) * 100) / 100);
+
+  const markets: Market[] = [];
+
+  // ── Draw No Bet: strip the draw and normalise home vs away ─────────────────
+  const pH = 1 / homeOdds;
+  const pA = 1 / awayOdds;
+  const norm2 = pH + pA;
+  const nH = pH / norm2, nA = pA / norm2;
+
+  markets.push({
+    key: 'dnb',
+    name: 'Draw No Bet',
+    outcomes: [
+      { name: homeTeam, price: price(nH) },
+      { name: awayTeam, price: price(nA) },
+    ],
+  });
+
+  // ── First Innings Lead ─────────────────────────────────────────────────────
+  // In Test cricket, the team that scores more in the first innings wins this
+  // market. It correlates with match winner (nH/nA) but is closer to 50/50
+  // because a strong bowling side can dismiss cheaply in reply. We model it
+  // as a modest regression-to-mean of the match probabilities.
+  const pFIH = Math.max(0.25, Math.min(0.75, nH * 0.80 + 0.10));
+  markets.push({
+    key: 'first_innings_lead',
+    name: 'First Innings Lead',
+    outcomes: [
+      { name: homeTeam, price: price(pFIH) },
+      { name: awayTeam, price: price(1 - pFIH) },
+    ],
+  });
+
+  return markets;
+}
+
+// ============================================
+// ESPN Summary endpoint - rich match details
+// ============================================
+
+export interface ESPNSummaryResponse {
+  header?: {
+    competitions?: Array<{
+      competitors?: Array<{
+        id?: string;
+        homeAway?: 'home' | 'away';
+        winner?: boolean;
+        team?: { id: string; displayName: string; abbreviation: string; logo?: string; color?: string };
+        score?: string;
+        record?: Array<{ summary?: string; type?: string }>;
+        form?: string; // "WWDLW"
+      }>;
+      notes?: Array<{ type?: string; headline?: string }>;
+    }>;
+    season?: { year?: number; type?: number };
+    league?: { id?: string; name?: string };
+  };
+  gameInfo?: {
+    venue?: { fullName?: string; address?: { city?: string; country?: string }; capacity?: number; indoor?: boolean };
+    attendance?: number;
+    officials?: Array<{ displayName?: string; position?: { displayName?: string } }>;
+    weather?: { displayValue?: string; temperature?: number };
+  };
+  pickcenter?: ESPNOddsRaw[];
+  odds?: ESPNOddsRaw[];
+  hasOdds?: boolean;
+  rosters?: Array<{
+    team?: { id: string; displayName: string; logo?: string };
+    homeAway?: 'home' | 'away';
+    formation?: string;
+    roster?: Array<{
+      starter?: boolean;
+      position?: { abbreviation?: string; name?: string };
+      jersey?: string;
+      athlete?: { id: string; displayName: string; shortName?: string; headshot?: string };
+      stats?: Array<{ name?: string; displayValue?: string }>;
+    }>;
+    coach?: Array<{ firstName?: string; lastName?: string; displayName?: string }>;
+  }>;
+  headToHeadGames?: Array<{
+    team?: { id?: string; displayName?: string; abbreviation?: string; logo?: string };
+    games?: Array<{
+      gameDate?: string;
+      score?: string;
+      gameResult?: string;
+      homeTeam?: { displayName: string; abbreviation: string; logo?: string; score?: string };
+      awayTeam?: { displayName: string; abbreviation: string; logo?: string; score?: string };
+      league?: { abbreviation?: string };
+    }>;
+  }>;
+  standings?: {
+    fullViewLink?: { href?: string };
+    groups?: Array<{
+      header?: string;
+      standings?: {
+        entries?: Array<{
+          team?: { id?: string; displayName?: string; abbreviation?: string; logo?: string };
+          stats?: Array<{ name?: string; abbreviation?: string; value?: number; displayValue?: string }>;
+        }>;
+      };
+    }>;
+  };
+  news?: { articles?: Array<{ id?: number; headline?: string; description?: string; published?: string; images?: Array<{ url?: string }>; links?: { web?: { href?: string } } }> };
+  leaders?: Array<{
+    team?: { id?: string; displayName?: string };
+    leaders?: Array<{
+      name?: string;
+      displayName?: string;
+      leaders?: Array<{ displayValue?: string; athlete?: { displayName?: string; headshot?: string; shortName?: string } }>;
+    }>;
+  }>;
+  broadcasts?: Array<{ market?: string; media?: { shortName?: string } }>;
+  scoringPlays?: Array<{
+    id?: string;
+    type?: { id?: string; text?: string; abbreviation?: string };
+    period?: { number?: number; type?: string };
+    clock?: { value?: number; displayValue?: string };
+    team?: { id?: string; displayName?: string; abbreviation?: string };
+    participants?: Array<{
+      athlete?: { id?: string; displayName?: string; shortName?: string; headshot?: string };
+      type?: { name?: string };
+    }>;
+    text?: string;
+    scoreValue?: number;
+    awayScore?: number;
+    homeScore?: number;
+  }>;
+  plays?: Array<{
+    id?: string;
+    type?: { id?: string; text?: string; abbreviation?: string };
+    period?: { number?: number };
+    clock?: { value?: number; displayValue?: string };
+    team?: { id?: string; displayName?: string };
+    participants?: Array<{
+      athlete?: { id?: string; displayName?: string; shortName?: string; headshot?: string };
+      type?: { name?: string };
+    }>;
+    text?: string;
+    scoringPlay?: boolean;
+    scoreValue?: number;
+    homeScore?: number;
+    awayScore?: number;
+  }>;
+  boxscore?: {
+    teams?: Array<{
+      team?: { id?: string; displayName?: string; abbreviation?: string; logo?: string };
+      homeAway?: 'home' | 'away';
+      statistics?: Array<{
+        name?: string;
+        abbreviation?: string;
+        displayValue?: string;
+        label?: string;
+        value?: number;
+      }>;
+    }>;
+    players?: unknown;
+  };
+}
+
+// Tracks event IDs whose summary recently failed, so we don't retry on every
+// match-detail request. Cleared automatically after 3 minutes.
+const _summaryCooldown = new Map<string, number>();
+const SUMMARY_COOLDOWN_MS = 3 * 60 * 1000;
+
+export async function fetchESPNSummary(sport: string, league: string, eventId: string): Promise<ESPNSummaryResponse | null> {
+  if (espnCircuitOpen()) return null;
+
+  const cacheKey = `espn-summary-${sport}-${league}-${eventId}`;
+
+  // Negative result cache: if this event timed out recently, skip the retry.
+  const cooldownTs = _summaryCooldown.get(cacheKey);
+  if (cooldownTs && Date.now() - cooldownTs < SUMMARY_COOLDOWN_MS) return null;
+
+  const cached = getCached<ESPNSummaryResponse>(cacheKey, 60 * 1000);
+  if (cached) return cached;
+
+  const url = `${ESPN_BASE_URL}/${sport}/${league}/summary?event=${eventId}`;
+  try {
+    const r = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      // Reduced from 8s → 4s: fail fast; negative cache prevents re-flooding.
+      signal: AbortSignal.timeout(4000),
+      next: { revalidate: 60 },
+    });
+    if (!r.ok) {
+      _summaryCooldown.set(cacheKey, Date.now());
+      return null;
+    }
+    const j = await r.json() as ESPNSummaryResponse;
+    setCache(cacheKey, j);
+    _summaryCooldown.delete(cacheKey);
+    espnRecordSuccess();
+    return j;
+  } catch (e) {
+    _summaryCooldown.set(cacheKey, Date.now());
+    espnRecordFailure();
+    // Only log if this isn't a burst — prevent log flooding.
+    if (_espnCB.consecutiveFailures <= 1) {
+      console.warn('[ESPN summary] fetch failed:', (e as Error)?.message ?? e);
+    }
+    return null;
+  }
+}
+
+function extractLegInfo(notes?: Array<{ type?: string; headline?: string }> | null): string | null {
+  if (!notes || notes.length === 0) return null;
+  for (const n of notes) {
+    const h = (n.headline || '').trim();
+    if (!h) continue;
+    if (/\b1st leg\b|\bleg 1\b|\bfirst leg\b/i.test(h)) return '1st Leg';
+    if (/\b2nd leg\b|\bleg 2\b|\bsecond leg\b/i.test(h)) return '2nd Leg';
+    if (/\bleg\s+\d/i.test(h)) return h;
+  }
+  return null;
+}
+
+interface RoundContext {
+  season?: { slug?: string; displayName?: string; type?: number };
+  competition?: { season?: { slug?: string; displayName?: string; type?: number }; type?: { id?: string; abbreviation?: string }; notes?: Array<{ type?: string; headline?: string }> };
+}
+
+function extractRoundName(
+  notes?: Array<{ type?: string; headline?: string }> | null,
+  event?: { season?: { slug?: string; displayName?: string; type?: number } },
+  ctx?: RoundContext,
+): string | null {
+  const ROUND_MAP: Array<[RegExp, string]> = [
+    // Must check semi/quarter BEFORE plain "final" to avoid false matches
+    [/\bsemi.final\b|\bsemifinale?\b|\bsemi\b.*\bfinal\b/i, 'Semi-Final'],
+    [/\bquarter.final\b|\bquarterfinals?\b/i, 'Quarter-Final'],
+    [/\bfinal\b/i, 'Final'],
+    [/\bround.of.16\b|\br16\b|\blast.16\b/i, 'Round of 16'],
+    [/\bround.of.32\b|\br32\b/i, 'Round of 32'],
+    [/\bround.of.64\b/i, 'Round of 64'],
+    [/\bthird.place\b|\b3rd.place\b/i, 'Third Place'],
+    [/\bpromotion.playoff\b/i, 'Promotion Playoff'],
+    [/\brelegation.playoff\b/i, 'Relegation Playoff'],
+    [/\bplayoff\b|\bplay.off\b/i, 'Playoff'],
+  ];
+
+  function matchRound(text: string): string | null {
+    for (const [re, label] of ROUND_MAP) {
+      if (re.test(text)) return label;
+    }
+    return null;
+  }
+
+  // Collect all text sources to try, in priority order
+  const sources: string[] = [];
+
+  // 1. Competition-level notes (most specific)
+  const allNotes = [...(notes || []), ...(ctx?.competition?.notes || [])];
+  for (const n of allNotes) {
+    const h = (n.headline || '').trim();
+    if (h) sources.push(h);
+  }
+
+  // 2. Competition season displayName / slug
+  const compSeason = ctx?.competition?.season;
+  if (compSeason?.displayName) sources.push(compSeason.displayName);
+  if (compSeason?.slug) sources.push(compSeason.slug);
+
+  // 3. Event season slug / displayName
+  const evSeason = event?.season || ctx?.season;
+  if (evSeason?.displayName) sources.push(evSeason.displayName);
+  if (evSeason?.slug) sources.push(evSeason.slug);
+
+  // 4. Competition type abbreviation (e.g. "PO" = playoff)
+  const abbr = ctx?.competition?.type?.abbreviation || '';
+  if (abbr) sources.push(abbr);
+
+  for (const src of sources) {
+    const found = matchRound(src);
+    if (found) return found;
+  }
+  return null;
+}
+
+function mapESPNStatus(status: ESPNEvent['status']): UnifiedMatch['status'] {
+  const state = status.type.state?.toLowerCase() || '';
+  const name = status.type.name?.toLowerCase() || '';
+  const detail = (status.type.detail || status.type.shortDetail || '').toLowerCase();
+
+  // Check postponed/cancelled BEFORE completed — ESPN sets completed=true on
+  // postponed matches (the event is "done" in their system), which previously
+  // caused 0-0 postponed games to be returned as 'finished'.
+  if (name === 'status_postponed' || name === 'postponed' || detail.includes('postpon')) return 'postponed';
+  if (name === 'status_canceled' || name === 'canceled' || name === 'cancelled' || detail.includes('cancel')) return 'cancelled';
+
+  // completed=true / state='post' → finished (but only after ruling out postponed/cancelled above).
+  if (status.type.completed || state === 'post') return 'finished';
+
+  if (name.includes('halftime') || name === 'half' || detail.includes('halftime') || detail.includes('half time')) return 'halftime' as UnifiedMatch['status'];
+  if (name.includes('extra') || detail.includes('extra time') || detail.includes('et')) return 'live';
+  if (name.includes('penalt') || detail.includes('penalt')) return 'live';
+  if (state === 'in' || name === 'in progress' || name === 'in_progress' || name.startsWith('status_in')) return 'live';
+  return 'scheduled';
+}
+
+/**
+ * Extract the real live minute for a match from ESPN's status payload.
+ * - Soccer: displayClock is usually "75'" or "45+2'" (minutes elapsed).
+ *   In 2nd half ESPN may also send "MM:SS" elapsed in current half — add 45.
+ * - Basketball/Football/Hockey: displayClock is time REMAINING in the period.
+ *   We compute elapsed minutes inside that period and add prior periods.
+ * Returns the elapsed match minute as an integer, or null if it cannot be parsed.
+ */
+function extractLiveMinute(
+  status: ESPNEvent['status'],
+  sportType: ESPNLeagueConfig['sportType']
+): number | null {
+  const dc = (status.displayClock || '').trim();
+  const period = status.period || 0;
+  const state = status.type.state?.toLowerCase() || '';
+  const name = status.type.name?.toLowerCase() || '';
+
+  if (!dc && !period) {
+    if (status.type?.name?.toLowerCase().includes('half')) return 45;
+    if (state === 'in' || name === 'in progress' || name === 'in_progress') return 0;
+    return null;
+  }
+
+  if (sportType === 'soccer') {
+    // "75'" or "90+3'" or "45+2"
+    const m = dc.match(/^(\d+)(?:\+(\d+))?'?$/);
+    if (m) {
+      const base = parseInt(m[1], 10);
+      const extra = m[2] ? parseInt(m[2], 10) : 0;
+      return base + extra;
+    }
+    // "MM:SS" elapsed inside current half
+    const mmss = dc.match(/^(\d+):(\d+)$/);
+    if (mmss) {
+      const mins = parseInt(mmss[1], 10);
+      if (period >= 2) return Math.min(45 + mins, 130);
+      return mins;
+    }
+    // Halftime / pre-match — fall through to 45 / 0
+    if (name.includes('half')) return 45;
+    return null;
+  }
+
+  // Period-based sports — remaining time in MM:SS in current period
+  const mmss = dc.match(/^(\d+):(\d+)$/);
+  if (mmss) {
+    // Determine period length per sport
+    const periodLen = sportType === 'basketball'
+      ? 12 // NBA quarter; college is 20 (handled below)
+      : sportType === 'football' ? 15
+      : sportType === 'hockey' ? 20
+      : sportType === 'rugby' ? 40
+      : 12;
+    const remainingMin = parseInt(mmss[1], 10);
+    const elapsedInPeriod = Math.max(0, periodLen - remainingMin - 1); // approx, treat seconds as part of current min
+    const completedPeriods = Math.max(0, period - 1);
+    return completedPeriods * periodLen + elapsedInPeriod;
+  }
+
+  if (period) return period;
+  if (state === 'in') return 0;
+  return null;
+}
+
+// Generate realistic odds based on team factors
+export function generateRealisticOdds(
+  homeTeamName: string,
+  awayTeamName: string,
+  sportType: ESPNLeagueConfig['sportType'] = 'soccer'
+): MatchOdds {
+  const hashCode = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  };
+  
+  const matchHash = hashCode(homeTeamName + awayTeamName);
+  const seed = (matchHash % 1000) / 1000;
+  
+  // Home advantage varies by sport
+  const homeAdvantage: Record<string, number> = {
+    soccer: 0.45,
+    basketball: 0.55,
+    football: 0.52,
+    baseball: 0.53,
+    hockey: 0.52,
+    mma: 0.5,
+    tennis: 0.5,
+    cricket: 0.52,
+    rugby: 0.52,
+    golf: 0.5,
+    racing: 0.5,
+  };
+  
+  // Sports without draw
+  const noDrawSports = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+  
+  let homeProb = (homeAdvantage[sportType] || 0.5) + (seed - 0.5) * 0.3;
+  let awayProb: number;
+  let drawProb: number | undefined;
+  
+  if (noDrawSports.includes(sportType)) {
+    awayProb = 1 - homeProb;
+    drawProb = undefined;
+  } else {
+    drawProb = 0.25 + (seed * 0.1);
+    homeProb = Math.max(0.2, Math.min(0.55, homeProb));
+    awayProb = 1 - homeProb - drawProb;
+  }
+  
+  // Convert to decimal odds with bookmaker margin
+  const margin = 1.06;
+  const homeOdds = Math.round((margin / homeProb) * 100) / 100;
+  const awayOdds = Math.round((margin / awayProb) * 100) / 100;
+  const drawOdds = drawProb ? Math.round((margin / drawProb) * 100) / 100 : undefined;
+  
+  return {
+    home: Math.max(1.15, Math.min(homeOdds, 6.0)),
+    draw: drawOdds ? Math.max(2.8, Math.min(drawOdds, 5.5)) : undefined,
+    away: Math.max(1.15, Math.min(awayOdds, 8.0)),
+    bookmaker: 'Market Average',
+    lastUpdate: new Date(),
+  };
+}
+
+
+// Generate sport-specific statistics
+function generateSportSpecificData(sportType: ESPNLeagueConfig['sportType'], status: UnifiedMatch['status']): SportSpecificData | undefined {
+  if (status === 'scheduled') return undefined;
+  
+  const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+  
+  switch (sportType) {
+    case 'soccer':
+      return {
+        possession: { home: rand(40, 60), away: 100 - rand(40, 60) },
+        shots: { home: rand(5, 15), away: rand(5, 15) },
+        shotsOnTarget: { home: rand(2, 8), away: rand(2, 8) },
+        corners: { home: rand(2, 8), away: rand(2, 8) },
+        fouls: { home: rand(5, 15), away: rand(5, 15) },
+        yellowCards: { home: rand(0, 3), away: rand(0, 3) },
+        redCards: { home: rand(0, 1), away: rand(0, 1) },
+      };
+    case 'basketball':
+      return {
+        quarters: { home: [rand(20, 35), rand(20, 35), rand(20, 35), rand(20, 35)], away: [rand(20, 35), rand(20, 35), rand(20, 35), rand(20, 35)] },
+        rebounds: { home: rand(35, 55), away: rand(35, 55) },
+        assists: { home: rand(18, 30), away: rand(18, 30) },
+        steals: { home: rand(5, 12), away: rand(5, 12) },
+        blocks: { home: rand(2, 8), away: rand(2, 8) },
+        turnovers: { home: rand(8, 18), away: rand(8, 18) },
+        fieldGoalPct: { home: rand(40, 55), away: rand(40, 55) },
+        threePointPct: { home: rand(28, 42), away: rand(28, 42) },
+        freeThrowPct: { home: rand(70, 90), away: rand(70, 90) },
+      };
+    case 'football':
+      return {
+        passingYards: { home: rand(150, 350), away: rand(150, 350) },
+        rushingYards: { home: rand(50, 180), away: rand(50, 180) },
+        totalYards: { home: rand(250, 450), away: rand(250, 450) },
+        firstDowns: { home: rand(12, 25), away: rand(12, 25) },
+        thirdDownConv: { home: `${rand(3, 8)}/${rand(10, 15)}`, away: `${rand(3, 8)}/${rand(10, 15)}` },
+        timeOfPossession: { home: `${rand(25, 35)}:${rand(10, 59).toString().padStart(2, '0')}`, away: `${rand(25, 35)}:${rand(10, 59).toString().padStart(2, '0')}` },
+        sacks: { home: rand(0, 5), away: rand(0, 5) },
+        interceptions: { home: rand(0, 3), away: rand(0, 3) },
+        fumbles: { home: rand(0, 2), away: rand(0, 2) },
+      };
+    case 'tennis':
+      return {
+        sets: { home: [rand(0, 7), rand(0, 7)], away: [rand(0, 7), rand(0, 7)] },
+        aces: { home: rand(2, 15), away: rand(2, 15) },
+        doubleFaults: { home: rand(0, 5), away: rand(0, 5) },
+        firstServePct: { home: rand(55, 75), away: rand(55, 75) },
+        breakPoints: { home: `${rand(1, 4)}/${rand(3, 8)}`, away: `${rand(1, 4)}/${rand(3, 8)}` },
+        winners: { home: rand(15, 40), away: rand(15, 40) },
+        unforcedErrors: { home: rand(10, 35), away: rand(10, 35) },
+      };
+    case 'mma':
+      return {
+        round: rand(1, 5),
+        totalRounds: 3,
+        strikes: { home: rand(30, 100), away: rand(30, 100) },
+        takedowns: { home: rand(0, 5), away: rand(0, 5) },
+        significantStrikes: { home: rand(20, 80), away: rand(20, 80) },
+      };
+    case 'hockey':
+      return {
+        shots: { home: rand(20, 40), away: rand(20, 40) },
+        powerPlayGoals: { home: rand(0, 2), away: rand(0, 2) },
+        penaltyMinutes: { home: rand(2, 12), away: rand(2, 12) },
+        faceoffWins: { home: rand(20, 35), away: rand(20, 35) },
+        hitsCount: { home: rand(15, 35), away: rand(15, 35) },
+        blockedShots: { home: rand(8, 20), away: rand(8, 20) },
+      };
+    case 'baseball':
+      return {
+        hits: { home: rand(5, 12), away: rand(5, 12) },
+        errors: { home: rand(0, 2), away: rand(0, 2) },
+        innings: { home: [rand(0, 3), rand(0, 2), rand(0, 3), rand(0, 2), rand(0, 3), rand(0, 2), rand(0, 3), rand(0, 2), rand(0, 3)], away: [rand(0, 3), rand(0, 2), rand(0, 3), rand(0, 2), rand(0, 3), rand(0, 2), rand(0, 3), rand(0, 2), rand(0, 3)] },
+        strikeouts: { home: rand(4, 12), away: rand(4, 12) },
+        walks: { home: rand(1, 5), away: rand(1, 5) },
+        homeRuns: { home: rand(0, 3), away: rand(0, 3) },
+      };
+    case 'cricket':
+      return {
+        overs: { home: `${rand(15, 20)}.${rand(0, 5)}`, away: `${rand(15, 20)}.${rand(0, 5)}` },
+        wickets: { home: rand(1, 10), away: rand(1, 10) },
+        runRate: { home: rand(6, 12), away: rand(6, 12) },
+        extras: { home: rand(2, 12), away: rand(2, 12) },
+      };
+    default:
+      return undefined;
+  }
+}
+
+// Safety net: ESPN's per-league scoreboard endpoints occasionally bleed in
+// pre-season / exhibition fixtures that aren't actually part of that league
+// (e.g. a Manchester United vs Wrexham pre-season friendly showing up while
+// querying esp.1/La Liga). ESPN tags these with a notes headline ("Club
+// Friendly" / "International Friendly") or a season/competition slug
+// containing "friendly"/"preseason"/"exhibition" — detect that and force the
+// correct generic friendly label instead of trusting the fetch config.
+const CLUB_FRIENDLY_OVERRIDE = { id: 280, name: 'Club Friendly', slug: 'club-friendly', country: 'World', countryCode: 'WO' };
+const INTL_FRIENDLY_OVERRIDE = { id: 106, name: 'International Friendly', slug: 'international-friendly', country: 'World', countryCode: 'WO' };
+function detectFriendlyOverride(
+  event: { name?: string; season?: { slug?: string } },
+  competition?: { notes?: Array<{ type?: string; headline?: string }>; season?: { slug?: string }; type?: { abbreviation?: string } },
+): { id: number; name: string; slug: string; country: string; countryCode: string } | null {
+  const notesHeadline = (competition?.notes || []).map(n => n.headline || '').join(' ').toLowerCase();
+  const seasonSlug = `${competition?.season?.slug || ''} ${event.season?.slug || ''}`.toLowerCase();
+  const typeAbbr = (competition?.type?.abbreviation || '').toLowerCase();
+  const hay = `${notesHeadline} ${seasonSlug} ${typeAbbr}`;
+  if (!hay.includes('friendly') && !hay.includes('preseason') && !hay.includes('pre-season') && !hay.includes('exhibition')) {
+    return null;
+  }
+  // International team names in the headline (national teams) → International Friendly.
+  if (hay.includes('international') || hay.includes('national team')) return INTL_FRIENDLY_OVERRIDE;
+  return CLUB_FRIENDLY_OVERRIDE;
+}
+
+// Generic ESPN match fetcher.
+// For priority leagues, fetch a multi-day window so today + the upcoming week
+// always show up — ESPN's default scoreboard otherwise only returns the
+// nearest active game-day for that league (e.g. EPL midweek matches were missing).
+async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]> {
+  const cacheKey = `espn-${config.sport}-${config.league}`;
+  const cached = getCached<UnifiedMatch[]>(cacheKey, CACHE_DURATION.live);
+  if (cached) return cached;
+
+  // Fetch yesterday + next 8 days for every league — matches the 7-day
+  // display window plus a small buffer. Keeping this tight prevents huge
+  // payloads (MLB with a 28-day window exceeds 2MB) while still surfacing
+  // all upcoming fixtures in the rolling window.
+  const isPriority = PRIORITY_LEAGUE_KEYS.has(config.league);
+  let data: ESPNScoreboardResponseFull | null = null;
+  const now = new Date();
+  const start = new Date(now);
+  // High-frequency sports (NBA, NHL, MLB) produce huge payloads over wide
+  // ranges — cap them to 14 days back. Other priority leagues (EPL, La Liga
+  // etc.) have fewer games per day so 60 days back is safe. Smaller leagues
+  // get 14 days back (they have sparse data anyway).
+  const isHighFreq = ['nba', 'nhl', 'mlb', 'nfl'].includes(config.league);
+  const pastDays = isHighFreq ? 14 : isPriority ? 60 : 14;
+  start.setUTCDate(start.getUTCDate() - pastDays);
+  const end = new Date(now);
+  // Priority leagues (top-tier with daily fixtures): 60 days ahead so
+  // fixture lists surface 2 months out. Smaller / cup competitions
+  // (sporadic fixtures): 120 days so tipsters get full visibility.
+  end.setUTCDate(end.getUTCDate() + (isPriority ? 60 : 120));
+  // Use the paginated wrapper so that leagues with >300 events in the window
+  // (e.g. NFL regular season, dense international windows) are fully fetched
+  // by recursively splitting the date range when ESPN's 300-event cap is hit.
+  data = await fetchESPNPaginated(config.sport, config.league, start, end);
+  // Fall back to the default endpoint if range request fails or returns nothing.
+  if (!data?.events?.length) {
+    data = await fetchESPN(config.sport, config.league);
+  }
+
+  if (!data?.events) return [];
+
+  // Sports without draws (basketball, baseball, mma, tennis etc.)
+  const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+  const hasDraw = !noDrawSports.includes(config.sportType);
+
+  const matches: UnifiedMatch[] = data.events.map((event) => {
+    const competition = event.competitions[0];
+    const homeCompetitor = competition?.competitors.find(c => c.homeAway === 'home');
+    const awayCompetitor = competition?.competitors.find(c => c.homeAway === 'away');
+    
+    // Handle both team sports and individual sports (tennis, golf, etc.)
+    const homeTeamName = homeCompetitor?.team?.displayName || homeCompetitor?.team?.name || homeCompetitor?.athlete?.displayName || 'TBD';
+    const awayTeamName = awayCompetitor?.team?.displayName || awayCompetitor?.team?.name || awayCompetitor?.athlete?.displayName || 'TBD';
+    
+    const status = mapESPNStatus(event.status);
+    // Extract REAL odds from ESPN scoreboard (DraftKings/Caesars/etc) - NO computed fallback
+    const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw, config.sportType, homeTeamName, awayTeamName);
+    const venue = competition?.venue?.fullName;
+
+    // Extract HT scores from ESPN linescores (soccer only: index 0 = 1st half goals)
+    const isSoccerLeague = config.sportType === 'soccer';
+    const hasStarted = status !== 'scheduled';
+    const htHomeScore = isSoccerLeague && hasStarted ? (homeCompetitor?.linescores?.[0]?.value ?? null) : null;
+    const htAwayScore = isSoccerLeague && hasStarted ? (awayCompetitor?.linescores?.[0]?.value ?? null) : null;
+
+    // Extract stats from ESPN competitor.statistics array
+    const getEspnStat = (stats: Array<{name: string; displayValue: string}> | undefined, key: string): number | undefined => {
+      const s = stats?.find(s => s.name?.toLowerCase().includes(key));
+      return s ? (parseInt(s.displayValue || '0', 10)) : undefined;
+    };
+    let sportSpecificData: SportSpecificData | undefined;
+    if (isSoccerLeague) {
+      const hc = getEspnStat(homeCompetitor?.statistics, 'corner kick') ?? getEspnStat(homeCompetitor?.statistics, 'corner');
+      const ac = getEspnStat(awayCompetitor?.statistics, 'corner kick') ?? getEspnStat(awayCompetitor?.statistics, 'corner');
+      const hy = getEspnStat(homeCompetitor?.statistics, 'yellow card');
+      const ay = getEspnStat(awayCompetitor?.statistics, 'yellow card');
+      const hr = getEspnStat(homeCompetitor?.statistics, 'red card');
+      const ar = getEspnStat(awayCompetitor?.statistics, 'red card');
+      const sd: Record<string, unknown> = {};
+      if (hc !== undefined && ac !== undefined) sd.corners = { home: hc, away: ac };
+      if (hy !== undefined && ay !== undefined) sd.yellowCards = { home: hy, away: ay };
+      if (hr !== undefined && ar !== undefined) sd.redCards = { home: hr, away: ar };
+      if (Object.keys(sd).length) sportSpecificData = sd as SportSpecificData;
+    }
+
+    return {
+      id: `espn_${config.league.replace(/[^a-z0-9]/gi, '')}_${event.id}`,
+      externalId: event.id,
+      source: 'espn' as const,
+      sportId: config.sportId,
+      sportKey: `${config.sport}_${config.league}`,
+      leagueId: config.leagueId,
+      leagueKey: config.league,
+      homeTeam: {
+        id: homeCompetitor?.team?.id || homeCompetitor?.athlete?.id || '',
+        name: homeTeamName,
+        shortName: homeCompetitor?.team?.abbreviation || homeCompetitor?.athlete?.shortName || 'TBD',
+        logo: homeCompetitor?.team?.logo,
+        form: homeCompetitor?.form || undefined,
+        record: homeCompetitor?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      awayTeam: {
+        id: awayCompetitor?.team?.id || awayCompetitor?.athlete?.id || '',
+        name: awayTeamName,
+        shortName: awayCompetitor?.team?.abbreviation || awayCompetitor?.athlete?.shortName || 'TBD',
+        logo: awayCompetitor?.team?.logo,
+        form: awayCompetitor?.form || undefined,
+        record: awayCompetitor?.records?.find(r => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      kickoffTime: new Date(event.date),
+      status,
+      // ESPN delivers score as a string ("0", "3", etc). Use a strict
+      // null/undefined/'' check so a real "0" is preserved (treating "0" as
+      // falsy here would silently turn 3-0 into 3-null on results pages).
+      homeScore:
+        homeCompetitor?.score !== undefined && homeCompetitor?.score !== null && homeCompetitor.score !== ''
+          ? parseInt(homeCompetitor.score, 10)
+          : null,
+      awayScore:
+        awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
+          ? parseInt(awayCompetitor.score, 10)
+          : null,
+      htHomeScore,
+      htAwayScore,
+      minute: extractLiveMinute(event.status, config.sportType) ?? undefined,
+      period: event.status.displayClock,
+      league: (() => {
+        const friendlyOverride = detectFriendlyOverride(event, competition);
+        if (friendlyOverride) {
+          return {
+            id: friendlyOverride.id,
+            name: friendlyOverride.name,
+            slug: friendlyOverride.slug,
+            country: friendlyOverride.country,
+            countryCode: friendlyOverride.countryCode,
+            tier: 1,
+          };
+        }
+        return {
+          id: config.leagueId,
+          name: config.leagueName,
+          // Prefer the friendly slug from ALL_LEAGUES (e.g. "premier-league") so
+          // sidebar links and matches-page links resolve to the same URL. Fall
+          // back to the ESPN-style code (e.g. "eng-1") only when no row exists.
+          slug: ALL_LEAGUES.find(l => l.id === config.leagueId)?.slug || config.league.replace(/\./g, '-'),
+          country: config.country,
+          countryCode: config.countryCode,
+          tier: 1,
+        };
+      })(),
+      sport: {
+        id: config.sportId,
+        name: ALL_SPORTS.find(s => s.id === config.sportId)?.name || config.sport,
+        slug: ALL_SPORTS.find(s => s.id === config.sportId)?.slug || config.sport,
+        icon: ALL_SPORTS.find(s => s.id === config.sportId)?.icon || config.sport,
+      },
+      odds,
+      markets,
+      tipsCount: 0,
+      venue,
+      legInfo: extractLegInfo(competition?.notes),
+      roundName: extractRoundName(competition?.notes, event as { season?: { slug?: string; displayName?: string; type?: number } }, { season: (event as ESPNEvent).season, competition }),
+      ...(sportSpecificData ? { sportSpecificData } : {}),
+    };
+  });
+
+  // Filter out tournament-style events without a proper head-to-head matchup
+  const filtered = matches.filter(m => {
+    if (m.homeTeam.name === 'TBD' && m.awayTeam.name === 'TBD') return false;
+    return true;
+  });
+
+  // Never overwrite a known-good cache entry with an empty result.
+  // If ESPN returns zero events (rate-limit, temp outage, date-range edge-case)
+  // we return the stale cache instead of wiping out e.g. World Cup matches.
+  if (filtered.length === 0) {
+    const staleEntry = cache.get(cacheKey);
+    if (staleEntry) {
+      console.log(`[espn] ${cacheKey}: ESPN returned 0 events — using stale cache (${(staleEntry.data as UnifiedMatch[]).length} matches)`);
+      return staleEntry.data as UnifiedMatch[];
+    }
+    return [];
+  }
+
+  if (config.league === 'fifa.world') {
+    console.log(`[espn] fifa.world: fetched ${filtered.length} World Cup matches`);
+  }
+
+  setCache(cacheKey, filtered);
+  return filtered;
+}
+
+// ============================================
+// The Odds API Client
+// ============================================
+
+const THE_ODDS_API_SPORTS: Record<string, { sportId: number; leagueId: number }> = {
+  // Soccer — Big 5 + more
+  'soccer_epl': { sportId: 1, leagueId: 1 },
+  'soccer_spain_la_liga': { sportId: 1, leagueId: 2 },
+  'soccer_germany_bundesliga': { sportId: 1, leagueId: 3 },
+  'soccer_italy_serie_a': { sportId: 1, leagueId: 4 },
+  'soccer_france_ligue_one': { sportId: 1, leagueId: 5 },
+  'soccer_uefa_champs_league': { sportId: 1, leagueId: 9 },
+  'soccer_uefa_europa_league': { sportId: 1, leagueId: 10 },
+  'soccer_netherlands_eredivisie': { sportId: 1, leagueId: 57 },
+  'soccer_portugal_primeira_liga': { sportId: 1, leagueId: 58 },
+  'soccer_scotland_premier_league': { sportId: 1, leagueId: 59 },
+  'soccer_turkey_super_league': { sportId: 1, leagueId: 60 },
+  'soccer_belgium_first_div': { sportId: 1, leagueId: 61 },
+  'soccer_norway_eliteserien': { sportId: 1, leagueId: 66 },
+  'soccer_sweden_allsvenskan': { sportId: 1, leagueId: 67 },
+  'soccer_denmark_superliga': { sportId: 1, leagueId: 68 },
+  'soccer_austria_bundesliga': { sportId: 1, leagueId: 69 },
+  'soccer_switzerland_super_league': { sportId: 1, leagueId: 70 },
+  'soccer_greece_super_league': { sportId: 1, leagueId: 71 },
+  'soccer_poland_ekstraklasa': { sportId: 1, leagueId: 72 },
+  'soccer_czech_republic_liga': { sportId: 1, leagueId: 73 },
+  'soccer_russia_premier_league': { sportId: 1, leagueId: 74 },
+  'soccer_ukraine_premier_league': { sportId: 1, leagueId: 75 },
+  'soccer_england_championship': { sportId: 1, leagueId: 7 },
+  'soccer_usa_mls': { sportId: 1, leagueId: 76 },
+  'soccer_brazil_campeonato': { sportId: 1, leagueId: 77 },
+  'soccer_argentina_primera_division': { sportId: 1, leagueId: 78 },
+  'soccer_mexico_ligamx': { sportId: 1, leagueId: 27 },
+  'soccer_australia_aleague': { sportId: 1, leagueId: 80 },
+  'soccer_japan_j_league': { sportId: 1, leagueId: 81 },
+  'soccer_south_korea_kleague': { sportId: 1, leagueId: 82 },
+  'soccer_saudi_premier_league': { sportId: 1, leagueId: 83 },
+  'soccer_conmebol_copa_libertadores': { sportId: 1, leagueId: 11 },
+  'soccer_fifa_world_cup': { sportId: 1, leagueId: 12 },
+  'soccer_africa_cup_of_nations': { sportId: 1, leagueId: 30 },
+  // International — friendlies, Nations League, WC Qualifying
+  'soccer_international': { sportId: 1, leagueId: 106 },
+  'soccer_international_women': { sportId: 1, leagueId: 189 },
+  'soccer_copa_america': { sportId: 1, leagueId: 31 },
+  'soccer_uefa_nations_league': { sportId: 1, leagueId: 111 },
+  // Basketball
+  'basketball_nba': { sportId: 2, leagueId: 101 },
+  'basketball_euroleague': { sportId: 2, leagueId: 103 },
+  'basketball_ncaab': { sportId: 2, leagueId: 102 },
+  'basketball_wnba': { sportId: 2, leagueId: 104 },
+  // American Football
+  'americanfootball_nfl': { sportId: 5, leagueId: 401 },
+  'americanfootball_ncaaf': { sportId: 5, leagueId: 402 },
+  'americanfootball_cfl': { sportId: 5, leagueId: 403 },
+  // Baseball
+  'baseball_mlb': { sportId: 6, leagueId: 501 },
+  // Ice Hockey
+  'icehockey_nhl': { sportId: 7, leagueId: 601 },
+  'icehockey_sweden_hockey_league': { sportId: 7, leagueId: 602 },
+  'icehockey_ahl': { sportId: 7, leagueId: 603 },
+  // Tennis
+  'tennis_atp_french_open': { sportId: 3, leagueId: 201 },
+  'tennis_wta_french_open': { sportId: 3, leagueId: 202 },
+  'tennis_atp_wimbledon': { sportId: 3, leagueId: 203 },
+  'tennis_wta_wimbledon': { sportId: 3, leagueId: 204 },
+  'tennis_atp_us_open': { sportId: 3, leagueId: 205 },
+  'tennis_wta_us_open': { sportId: 3, leagueId: 206 },
+  'tennis_atp_australian_open': { sportId: 3, leagueId: 207 },
+  'tennis_wta_australian_open': { sportId: 3, leagueId: 208 },
+  // Rugby
+  'rugbyunion_six_nations': { sportId: 13, leagueId: 1001 },
+  'rugbyunion_world_cup': { sportId: 13, leagueId: 1002 },
+  'rugbyleague_nrl': { sportId: 14, leagueId: 1101 },
+  // Cricket
+  'cricket_test_match': { sportId: 9, leagueId: 701 },
+  'cricket_icc_world_cup': { sportId: 9, leagueId: 702 },
+  'cricket_ipl': { sportId: 9, leagueId: 703 },
+  // MMA / Boxing
+  'mma_mixed_martial_arts': { sportId: 27, leagueId: 2701 },
+  'boxing_boxing': { sportId: 28, leagueId: 2801 },
+  // Golf
+  'golf_masters_tournament_winner': { sportId: 11, leagueId: 901 },
+  'golf_pga_championship_winner': { sportId: 11, leagueId: 902 },
+  'golf_the_open_championship_winner': { sportId: 11, leagueId: 903 },
+  'golf_us_open_winner': { sportId: 11, leagueId: 904 },
+  // Esports
+  'esports_csgo': { sportId: 29, leagueId: 2901 },
+  // Aussie Rules
+  'aussierules_afl': { sportId: 15, leagueId: 1201 },
+};
+
+// Track quota exhaustion so we don't keep hammering the API
+let theOddsApiOutOfCredits = 0; // timestamp when last 401/429 happened
+let theOddsApiMonthlyExhausted = false; // true when OUT_OF_USAGE_CREDITS received
+const QUOTA_BACKOFF_MS = 60 * 60 * 1000; // 1 hour back-off for 429 rate limits
+const MONTHLY_BACKOFF_MS = 30 * 24 * 60 * 60 * 1000; // 30 day back-off for monthly quota
+
+export async function fetchTheOddsAPI(
+  endpoint: string,
+  params: Record<string, string> = {}
+): Promise<unknown> {
+  // Read from admin DB first, fall back to env var. Allows admins to
+  // rotate the key from /admin/settings → API Keys without redeploy.
+  const { getApiKey } = await import('@/lib/api-keys');
+  const apiKey = await getApiKey('the_odds_api_key');
+  if (!apiKey || apiKey === 'your_api_key_here') {
+    return null;
+  }
+
+  // If monthly quota exhausted, skip until next month
+  if (theOddsApiMonthlyExhausted && theOddsApiOutOfCredits > 0 && Date.now() - theOddsApiOutOfCredits < MONTHLY_BACKOFF_MS) {
+    return null;
+  }
+  // If temporarily rate-limited (429), skip for 1 hour
+  if (!theOddsApiMonthlyExhausted && theOddsApiOutOfCredits > 0 && Date.now() - theOddsApiOutOfCredits < QUOTA_BACKOFF_MS) {
+    return null;
+  }
+
+  const url = new URL(`https://api.the-odds-api.com/v4/${endpoint}`);
+  url.searchParams.set('apiKey', apiKey);
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers: { 'Accept': 'application/json' },
+      next: { revalidate: 60 },
+    });
+
+    if (!response.ok) {
+      apiStatus.theOddsApi.working = false;
+      apiStatus.theOddsApi.lastError = `HTTP ${response.status}`;
+      apiStatus.theOddsApi.lastCheck = Date.now();
+      // Detect quota errors and back off
+      if (response.status === 401 || response.status === 429) {
+        try {
+          const body = await response.json();
+          if (body?.error_code === 'OUT_OF_USAGE_CREDITS') {
+            theOddsApiOutOfCredits = Date.now();
+            theOddsApiMonthlyExhausted = true;
+            apiStatus.theOddsApi.lastError = 'OUT_OF_USAGE_CREDITS';
+            console.warn('[TheOddsAPI] Monthly quota exhausted — backing off for 30 days. Real odds will resume next billing cycle.');
+          } else if (body?.error_code === 'INVALID_API_KEY') {
+            theOddsApiOutOfCredits = Date.now();
+            theOddsApiMonthlyExhausted = false;
+            apiStatus.theOddsApi.lastError = 'INVALID_API_KEY';
+            console.warn('[TheOddsAPI] Invalid API key — check THE_ODDS_API_KEY secret.');
+          } else if (response.status === 429) {
+            theOddsApiOutOfCredits = Date.now();
+            theOddsApiMonthlyExhausted = false;
+            apiStatus.theOddsApi.lastError = 'RATE_LIMITED';
+            console.warn('[TheOddsAPI] Rate limited — backing off for 1 hour.');
+          }
+        } catch {
+          theOddsApiOutOfCredits = Date.now();
+          theOddsApiMonthlyExhausted = false;
+        }
+      }
+      return null;
+    }
+
+    apiStatus.theOddsApi.working = true;
+    apiStatus.theOddsApi.lastCheck = Date.now();
+    // Reset backoff on success
+    theOddsApiOutOfCredits = 0;
+    return await response.json();
+  } catch (error) {
+    apiStatus.theOddsApi.working = false;
+    apiStatus.theOddsApi.lastError = String(error);
+    return null;
+  }
+}
+
+export function isTheOddsApiQuotaExhausted(): boolean {
+  return theOddsApiOutOfCredits > 0 && Date.now() - theOddsApiOutOfCredits < QUOTA_BACKOFF_MS;
+}
+
+// ============================================
+// Unified API - Combines All Sources
+// ============================================
+
+// ============================================
+// The Odds API event type
+// ============================================
+interface TheOddsApiEvent {
+  id: string;
+  sport_key: string;
+  sport_title: string;
+  commence_time: string;
+  home_team: string;
+  away_team: string;
+  bookmakers?: Array<{
+    key: string;
+    title: string;
+    last_update: string;
+    markets: Array<{
+      key: string;
+      outcomes: Array<{
+        name: string;
+        price: number;
+        point?: number;
+      }>;
+    }>;
+  }>;
+}
+
+// Normalize team name for fuzzy matching
+function normalizeTeamName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b(fc|cf|sc|afc|cfc|acf|ac|as|ss|bsc|fk|sk|rc|club|the)\b/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+// Compute average odds across bookmakers (best of)
+function aggregateBookmakerOdds(event: TheOddsApiEvent): { odds?: MatchOdds; markets?: Market[] } {
+  if (!event.bookmakers || event.bookmakers.length === 0) return {};
+
+  const h2hPrices: { home: number[]; draw: number[]; away: number[] } = { home: [], draw: [], away: [] };
+  const marketsMap = new Map<string, Map<string, number[]>>();
+
+  for (const bm of event.bookmakers) {
+    for (const market of bm.markets) {
+      if (market.key === 'h2h') {
+        for (const o of market.outcomes) {
+          if (o.name === event.home_team) h2hPrices.home.push(o.price);
+          else if (o.name === event.away_team) h2hPrices.away.push(o.price);
+          else if (o.name.toLowerCase() === 'draw') h2hPrices.draw.push(o.price);
+        }
+      } else {
+        if (!marketsMap.has(market.key)) marketsMap.set(market.key, new Map());
+        const outcomesMap = marketsMap.get(market.key)!;
+        for (const o of market.outcomes) {
+          const k = o.point !== undefined ? `${o.name}|${o.point}` : o.name;
+          if (!outcomesMap.has(k)) outcomesMap.set(k, []);
+          outcomesMap.get(k)!.push(o.price);
+        }
+      }
+    }
+  }
+
+  const avg = (arr: number[]) => arr.length ? Math.round((arr.reduce((s, p) => s + p, 0) / arr.length) * 100) / 100 : undefined;
+  const odds: MatchOdds | undefined = h2hPrices.home.length && h2hPrices.away.length ? {
+    home: avg(h2hPrices.home)!,
+    draw: avg(h2hPrices.draw),
+    away: avg(h2hPrices.away)!,
+    bookmaker: `${event.bookmakers.length} bookmakers`,
+    lastUpdate: new Date(),
+  } : undefined;
+
+  const markets: Market[] = [];
+  if (odds) {
+    markets.push({
+      key: 'h2h',
+      name: 'Match Result',
+      outcomes: [
+        { name: event.home_team, price: odds.home },
+        ...(odds.draw ? [{ name: 'Draw', price: odds.draw }] : []),
+        { name: event.away_team, price: odds.away },
+      ],
+    });
+  }
+  for (const [marketKey, outcomesMap] of marketsMap.entries()) {
+    const isHandicap = marketKey === 'asian_handicap' || marketKey === 'spreads';
+    const isTotals   = marketKey === 'totals';
+
+    // Build raw outcomes, adding the point value to the display name for handicap/totals
+    const outs: Outcome[] = [];
+    for (const [k, prices] of outcomesMap.entries()) {
+      const [name, pointStr] = k.split('|');
+      const point = pointStr !== undefined ? parseFloat(pointStr) : undefined;
+      let displayName = name;
+      if (point !== undefined) {
+        if (isHandicap) {
+          // e.g. "Málaga -0.5" or "Almería +0.5"
+          const sign = point > 0 ? '+' : '';
+          displayName = `${name} ${sign}${point}`;
+        } else if (isTotals) {
+          // e.g. "Over 2.5" or "Under 2.5"
+          displayName = `${name} ${point}`;
+        }
+      }
+      outs.push({ name: displayName, price: avg(prices)!, ...(point !== undefined ? { point } : {}) });
+    }
+
+    if (isHandicap) {
+      // Group by handicap line so each line becomes its own Market entry.
+      // Different bookmakers sometimes offer different lines; grouping prevents
+      // duplicate team names in one market (e.g. two "Málaga" rows).
+      const lineGroups = new Map<number, Outcome[]>();
+      for (const o of outs) {
+        const line = o.point ?? 0;
+        if (!lineGroups.has(line)) lineGroups.set(line, []);
+        lineGroups.get(line)!.push(o);
+      }
+      // Only include lines with at least 2 outcomes (home + away)
+      const validLines = [...lineGroups.keys()]
+        .filter(l => (lineGroups.get(l)?.length ?? 0) >= 2)
+        .sort((a, b) => Math.abs(a) - Math.abs(b)); // most balanced line first
+
+      if (validLines.length === 0) {
+        // Fallback — no valid lines, push as-is
+        const label = marketKey === 'asian_handicap' ? 'Asian Handicap' : 'Point Spread';
+        markets.push({ key: marketKey, name: label, outcomes: outs });
+      } else {
+        validLines.forEach((line, idx) => {
+          const sign  = line > 0 ? '+' : '';
+          const label = marketKey === 'asian_handicap'
+            ? `Asian Handicap (${sign}${line})`
+            : `Point Spread (${sign}${line})`;
+          markets.push({
+            key: idx === 0 ? marketKey : `${marketKey}_alt_${idx}`,
+            name: label,
+            outcomes: lineGroups.get(line)!,
+          });
+        });
+      }
+    } else if (isTotals) {
+      // Group over/under lines similarly
+      const lineGroups = new Map<number, Outcome[]>();
+      for (const o of outs) {
+        const line = o.point ?? 0;
+        if (!lineGroups.has(line)) lineGroups.set(line, []);
+        lineGroups.get(line)!.push(o);
+      }
+      const validLines = [...lineGroups.keys()]
+        .filter(l => (lineGroups.get(l)?.length ?? 0) >= 2)
+        .sort((a, b) => a - b); // ascending by total
+
+      if (validLines.length === 0) {
+        markets.push({ key: 'totals', name: 'Over/Under', outcomes: outs });
+      } else {
+        // Prefer 2.5 as primary totals key for soccer; otherwise use smallest
+        const primaryLine = validLines.includes(2.5) ? 2.5 : validLines[0];
+        for (const line of validLines) {
+          const lineKey = line === primaryLine
+            ? 'totals'
+            : `totals_${String(line).replace('.', '_')}`;
+          markets.push({
+            key: lineKey,
+            name: `Over/Under ${line}`,
+            outcomes: lineGroups.get(line)!,
+          });
+        }
+      }
+    } else {
+      // All other markets — keep as-is with a readable name
+      const friendlyName = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      markets.push({ key: marketKey, name: friendlyName(marketKey), outcomes: outs });
+    }
+  }
+
+  return { odds, markets };
+}
+
+// Fetch live odds from The Odds API for one sport key
+async function fetchOddsForSport(sportKey: string): Promise<TheOddsApiEvent[]> {
+  const cacheKey = `odds-${sportKey}`;
+  const cached = getCached<TheOddsApiEvent[]>(cacheKey, 10 * 60 * 1000); // 10 min cache
+  if (cached) return cached;
+
+  const data = await fetchTheOddsAPI(`sports/${sportKey}/odds`, {
+    regions: 'uk,eu,us',
+    markets: 'h2h,asian_handicap,spreads,totals',
+    oddsFormat: 'decimal',
+    dateFormat: 'iso',
+  }) as TheOddsApiEvent[] | null;
+
+  if (!data || !Array.isArray(data)) return [];
+  setCache(cacheKey, data);
+  return data;
+}
+
+/**
+ * Build an odds index from SportsGameOdds bulk /events fetch.
+ * Used when The Odds API key is not configured.
+ * Fetches upcoming events for today + next 3 days and extracts 1X2 odds.
+ *
+ * Module-level result cache (30 min) prevents the 5-min live-scores cron
+ * from hammering SGO on every tick, which exhausts daily/hourly quotas.
+ * Stale index is preserved when SGO returns nothing (rate-limited).
+ */
+let _sgoIndexCache: Map<string, { odds: MatchOdds; markets: Market[] }> | null = null;
+let _sgoIndexCachedAt = 0;
+// Rebuild every 10 min; if cache was empty (rate-limit at startup), retry after 2 min
+const SGO_INDEX_CACHE_MS = 10 * 60 * 1000;
+const SGO_INDEX_EMPTY_RETRY_MS = 2 * 60 * 1000;
+
+async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
+  // If we have a non-empty cache and it's still fresh, return it
+  const age = Date.now() - _sgoIndexCachedAt;
+  const cacheValid = _sgoIndexCache && _sgoIndexCache.size > 0
+    ? age < SGO_INDEX_CACHE_MS
+    : age < SGO_INDEX_EMPTY_RETRY_MS;
+  if (_sgoIndexCache !== null && cacheValid) {
+    return _sgoIndexCache;
+  }
+
+  try {
+    const { fetchSgoBulkMatchOdds } = await import('@/lib/api/sportsgameodds');
+    const now = new Date();
+    // 4 days back to catch recently finished matches for settlement
+    const startDate = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000);
+    const startsAfter = startDate.toISOString().split('T')[0] + 'T00:00:00Z';
+    // 7 days ahead — pre-fetch odds for the whole upcoming week so
+    // all fixtures are enriched as soon as they appear in the schedule.
+    const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const startsBefore = endDate.toISOString().split('T')[0] + 'T23:59:59Z';
+
+    const entries = await fetchSgoBulkMatchOdds(startsAfter, startsBefore);
+    const index = new Map<string, { odds: MatchOdds; markets: Market[] }>();
+
+    for (const entry of entries) {
+      const odds: MatchOdds = {
+        home: entry.home,
+        draw: entry.draw,
+        away: entry.away,
+        bookmaker: entry.bookmaker,
+        lastUpdate: new Date(),
+      };
+      const markets: Market[] = [{
+        key: 'h2h',
+        name: 'Match Result',
+        outcomes: [
+          { name: 'Home', price: entry.home },
+          ...(entry.draw !== undefined ? [{ name: 'Draw', price: entry.draw }] : []),
+          { name: 'Away', price: entry.away },
+        ],
+      }];
+      // Index both orderings so ESPN home/away flips are caught
+      index.set(`${entry.homeNorm}_${entry.awayNorm}_${entry.dateKey}`, { odds, markets });
+      index.set(`${entry.awayNorm}_${entry.homeNorm}_${entry.dateKey}`, { odds, markets });
+    }
+
+    if (index.size > 0) {
+      console.log(`[SGO] Bulk odds index built: ${entries.length} fixtures`);
+      _sgoIndexCache = index;
+      _sgoIndexCachedAt = Date.now();
+    } else if (_sgoIndexCache) {
+      // API returned nothing (likely rate-limited) — keep stale cache so
+      // match cards don't lose their odds display
+      console.log('[SGO] Bulk fetch empty — reusing stale odds index');
+      // Refresh timestamp so we don't retry immediately
+      _sgoIndexCachedAt = Date.now();
+    }
+    return _sgoIndexCache ?? new Map();
+  } catch (err) {
+    console.warn('[SGO] buildSgoOddsIndexFallback failed:', err);
+    return _sgoIndexCache ?? new Map();
+  }
+}
+
+// Build a lookup of real odds keyed by normalized team pair.
+// Primary source: The Odds API (when key is configured).
+// Secondary source: SportsGameOdds bulk /events fetch.
+// Tertiary source: SharpAPI (DraftKings/FanDuel — fills any remaining gaps).
+async function buildRealOddsIndex(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
+  const { getApiKey } = await import('@/lib/api-keys');
+  const apiKey = await getApiKey('the_odds_api_key');
+
+  let index: Map<string, { odds: MatchOdds; markets: Market[] }>;
+
+  if (!apiKey || apiKey === 'your_api_key_here') {
+    // No Odds API key — fall back to SportsGameOdds bulk match odds
+    index = await buildSgoOddsIndexFallback();
+  } else {
+    const sportKeys = Object.keys(THE_ODDS_API_SPORTS);
+
+    // Fetch in small batches to avoid rate-limit bursting on free-tier accounts.
+    // The Odds API allows ~500 req/month; firing 47 at once triggers 429s which
+    // sets the 1-hour backoff flag and blocks all odds for an hour.
+    const BATCH_SIZE = 4;
+    const BATCH_DELAY_MS = 300;
+    const allResults: PromiseSettledResult<TheOddsApiEvent[]>[] = [];
+    for (let i = 0; i < sportKeys.length; i += BATCH_SIZE) {
+      if (isTheOddsApiQuotaExhausted()) break; // stop early if we hit quota mid-way
+      const batch = sportKeys.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.allSettled(batch.map(sk => fetchOddsForSport(sk)));
+      allResults.push(...batchResults);
+      if (i + BATCH_SIZE < sportKeys.length) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
+
+    index = new Map<string, { odds: MatchOdds; markets: Market[]; eventId?: string; sportKey?: string }>();
+    for (const [j, result] of allResults.entries()) {
+      if (result.status !== 'fulfilled') continue;
+      const sk = sportKeys[j];
+      for (const ev of result.value) {
+        const { odds, markets } = aggregateBookmakerOdds(ev);
+        if (!odds) continue;
+        const home = normalizeTeamName(ev.home_team);
+        const away = normalizeTeamName(ev.away_team);
+        const dateKey = new Date(ev.commence_time).toISOString().split('T')[0];
+        const entry = { odds, markets: markets || [], eventId: ev.id, sportKey: sk };
+        // Index by both orderings — ESPN sometimes flips home/away
+        index.set(`${home}_${away}_${dateKey}`, entry);
+        index.set(`${away}_${home}_${dateKey}`, entry);
+      }
+    }
+  }
+
+  // Supplement with SharpAPI odds (DraftKings + FanDuel) — fills gaps for any
+  // match not already covered by The Odds API or SportsGameOdds.
+  try {
+    const sharpApiKey = await getApiKey('sharp_api_key');
+    if (sharpApiKey) {
+      const { buildSharpApiOddsIndex } = await import('@/lib/api/sharpapi');
+      const sharpIndex = await buildSharpApiOddsIndex();
+      let filled = 0;
+      for (const [key, value] of sharpIndex) {
+        if (!index.has(key)) {
+          index.set(key, value);
+          filled++;
+        }
+      }
+      if (filled > 0) {
+        console.log(`[SharpAPI] Supplemented ${Math.round(filled / 2)} matches with DraftKings/FanDuel odds`);
+      }
+    }
+  } catch (e) {
+    console.warn('[SharpAPI] odds supplement failed:', e);
+  }
+
+  // Persist so the match details route can look up extra AH lines without
+  // triggering a fresh API call.
+  _lastRealOddsIndex = index;
+
+  return index;
+}
+
+// Module-level cache — written by buildRealOddsIndex, read by getOddsIndexMarketsForMatch.
+let _lastRealOddsIndex: Map<string, { odds: MatchOdds; markets: Market[]; eventId?: string; sportKey?: string }> | null = null;
+
+/**
+ * Look up a match in the last-built real-odds index and return its markets
+ * (including any additional asian_handicap lines from TheOddsAPI bookmakers).
+ * Returns [] when the index is cold or the match is not found.
+ * Never triggers a network request — read-only cache access.
+ */
+export function getOddsIndexMarketsForMatch(homeTeam: string, awayTeam: string): Market[] {
+  if (!_lastRealOddsIndex) return [];
+  const h = normalizeTeamName(homeTeam);
+  const a = normalizeTeamName(awayTeam);
+  // Try both orderings; also try without date suffix
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  for (const dateKey of [today, tomorrow]) {
+    const entry = _lastRealOddsIndex.get(`${h}_${a}_${dateKey}`)
+      || _lastRealOddsIndex.get(`${a}_${h}_${dateKey}`);
+    if (entry) return entry.markets || [];
+  }
+  // Last resort: scan for any key that starts with home_away or away_home
+  const prefix1 = `${h}_${a}_`;
+  const prefix2 = `${a}_${h}_`;
+  for (const [key, value] of _lastRealOddsIndex) {
+    if (key.startsWith(prefix1) || key.startsWith(prefix2)) return value.markets || [];
+  }
+  return [];
+}
+
+/**
+ * Return the The Odds API event ID and sport key for a match if it was indexed
+ * during the last buildRealOddsIndex call. Used by the match-detail route to
+ * do a per-event full-market fetch without scanning the whole index again.
+ */
+export function getOddsApiEventEntry(
+  homeTeam: string,
+  awayTeam: string,
+): { eventId: string; sportKey: string } | null {
+  if (!_lastRealOddsIndex) return null;
+  const h = normalizeTeamName(homeTeam);
+  const a = normalizeTeamName(awayTeam);
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  for (const dateKey of [today, tomorrow]) {
+    const entry = _lastRealOddsIndex.get(`${h}_${a}_${dateKey}`)
+      || _lastRealOddsIndex.get(`${a}_${h}_${dateKey}`);
+    if (entry?.eventId && entry?.sportKey) return { eventId: entry.eventId, sportKey: entry.sportKey };
+  }
+  const prefix1 = `${h}_${a}_`;
+  const prefix2 = `${a}_${h}_`;
+  for (const [key, value] of _lastRealOddsIndex) {
+    if ((key.startsWith(prefix1) || key.startsWith(prefix2)) && value.eventId && value.sportKey) {
+      return { eventId: value.eventId, sportKey: value.sportKey };
+    }
+  }
+  return null;
+}
+
+// ─── PER-EVENT FULL-MARKET FETCH ──────────────────────────────────────────────
+// Comprehensive market list per sport family for the per-event endpoint.
+// These cover every major DraftKings (and equivalent bookmaker) market type.
+const SPORT_FULL_MARKETS: Record<string, string> = {
+  soccer: [
+    'h2h',                        // 1X2 / Match Result
+    'spreads',                    // Asian Handicap / Spread
+    'totals',                     // Over/Under Goals
+    'btts',                       // Both Teams to Score
+    'draw_no_bet',                // Draw No Bet
+    'double_chance',              // Double Chance (1X, 12, X2)
+    'h2h_h1',                     // 1st Half – Winner
+    'totals_h1',                  // 1st Half – Over/Under
+    'h2h_h2',                     // 2nd Half – Winner
+    'totals_h2',                  // 2nd Half – Over/Under
+    'team_totals',                // Team Goals Over/Under
+    'alternate_totals',           // Alternative O/U lines
+    'alternate_spreads',          // Alternative Handicap lines
+    'player_goal_scorer_anytime', // Anytime Goalscorer
+    'player_goal_scorer_first',   // First Goalscorer
+    'player_goal_scorer_last',    // Last Goalscorer
+    'player_shot_on_target',      // Player Shots on Target
+    'player_goal_scorer_2plus',   // Player to Score 2+
+  ].join(','),
+  basketball: [
+    'h2h', 'spreads', 'totals', 'team_totals',
+    'h2h_q1', 'totals_q1', 'h2h_h1', 'totals_h1',
+    'alternate_spreads', 'alternate_totals',
+    'player_points', 'player_rebounds', 'player_assists',
+    'player_threes', 'player_blocks', 'player_steals',
+    'player_double_double', 'player_triple_double',
+    'player_points_rebounds_assists',
+    'player_points_rebounds', 'player_points_assists',
+    'player_rebounds_assists',
+  ].join(','),
+  americanfootball: [
+    'h2h', 'spreads', 'totals', 'team_totals',
+    'h2h_h1', 'totals_h1', 'h2h_q1', 'totals_q1',
+    'alternate_spreads', 'alternate_totals',
+    'player_pass_tds', 'player_pass_yds', 'player_pass_completions',
+    'player_rush_yds', 'player_rush_attempts',
+    'player_receptions', 'player_receiving_yds',
+    'player_anytime_td', 'player_1st_td', 'player_last_td',
+    'player_tackles_assists', 'player_kicking_points',
+    'player_field_goals', 'player_sacks',
+  ].join(','),
+  baseball: [
+    'h2h', 'spreads', 'totals', 'team_totals',
+    'h2h_h1', 'totals_h1', 'h2h_1st_inning', 'totals_1st_inning',
+    'alternate_totals',
+    'batter_home_runs', 'batter_hits', 'batter_total_bases',
+    'batter_rbis', 'batter_runs_scored', 'batter_stolen_bases',
+    'pitcher_strikeouts', 'pitcher_hits_allowed', 'pitcher_walks',
+    'pitcher_earned_runs',
+  ].join(','),
+  icehockey: [
+    'h2h', 'puck_line', 'totals', 'team_totals',
+    'h2h_p1', 'totals_p1', 'h2h_h1', 'totals_h1',
+    'alternate_puck_line', 'alternate_totals',
+    'player_points', 'player_goals', 'player_assists',
+    'player_shots_on_goal', 'player_power_play_points',
+    'player_blocked_shots',
+  ].join(','),
+  tennis: [
+    'h2h', 'sets', 'games',
+    'h2h_set1', 'totals_games',
+    'alternate_sets',
+  ].join(','),
+  cricket: 'h2h,totals,team_totals',
+  rugby: 'h2h,spreads,totals,team_totals,h2h_h1,totals_h1',
+  mma: 'h2h',
+  boxing: 'h2h',
+  golf: 'h2h',
+  aussierules: 'h2h,spreads,totals,team_totals,h2h_h1,totals_h1',
+  esports: 'h2h,spreads,totals',
+  default: 'h2h,spreads,totals',
+};
+
+// Per-event market cache — 1-hour TTL to preserve quota
+const _eventMarketsCache = new Map<string, { markets: Market[]; ts: number }>();
+const EVENT_MARKETS_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Fetch ALL real market odds for a specific event from The Odds API.
+ * Uses the per-event endpoint which is quota-efficient (only fires on match-detail
+ * page views, not on every bulk refresh). Caches results for 1 hour per event.
+ *
+ * Returns an empty array if The Odds API is not configured / quota exhausted.
+ */
+export async function fetchAllMarketsForEvent(
+  sportKey: string,
+  eventId: string,
+): Promise<Market[]> {
+  if (!sportKey || !eventId) return [];
+
+  const cacheKey = `${sportKey}::${eventId}`;
+  const cached = _eventMarketsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < EVENT_MARKETS_TTL_MS) return cached.markets;
+
+  if (isTheOddsApiQuotaExhausted()) return [];
+
+  // Pick the market list for this sport family
+  const sportFamily = sportKey.split('_')[0];
+  const marketsStr = SPORT_FULL_MARKETS[sportFamily] ?? SPORT_FULL_MARKETS.default;
+
+  const data = await fetchTheOddsAPI(`sports/${sportKey}/events/${eventId}/odds`, {
+    regions: 'uk,eu,us',
+    markets: marketsStr,
+    oddsFormat: 'decimal',
+    dateFormat: 'iso',
+    // Prefer DraftKings; include major US/EU books as fallback so we always
+    // have real odds even when DraftKings doesn't offer a specific market.
+    bookmakers: 'draftkings,fanduel,betmgm,pointsbet,williamhill,bet365,betway',
+  }) as TheOddsApiEvent | null;
+
+  if (!data) return [];
+
+  const { markets } = aggregateBookmakerOdds(data);
+  const result = markets ?? [];
+  _eventMarketsCache.set(cacheKey, { markets: result, ts: Date.now() });
+  console.log(`[TheOddsAPI] Per-event markets for ${eventId}: ${result.length} markets fetched`);
+  return result;
+}
+
+// ─── MULTI-LAYER MATCH CACHE ──────────────────────────────────────────────────
+// Layer 1: In-memory (sub-ms)
+// Layer 2: MySQL table `match_cache` (< 50ms, survives PM2 restarts)
+// Layer 3: File on disk (fallback when DB not available)
+// Layer 4: Live external API fetch (slow — only when all caches miss)
+//
+// This means after the first ever warm-up, every subsequent request — including
+// after PM2 restarts — serves data in < 50ms.
+
+const ALLMATCHES_CACHE_TTL  = 90 * 1000;          // 90 sec — serve from memory
+const ALLMATCHES_STALE_TTL  = 20 * 60 * 1000;     // 20 min — serve stale if ESPN is down (was 4h; reduced so stale statuses don't persist for hours)
+// Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
+// .local/state/ is gitignored — the file is written after first fetch and
+// survives all subsequent restarts so cold-start delays never recur.
+const ALLMATCHES_PERSIST_FILE = `${process.cwd()}/.local/state/matches-cache.json`;
+
+const g_allMatchesCache: {
+  data: UnifiedMatch[] | null;
+  ts: number;
+  promise: Promise<UnifiedMatch[]> | null;
+} = { data: null, ts: 0, promise: null };
+
+// ── MySQL helpers ──────────────────────────────────────────────────────────────
+async function _ensureMatchCacheTable(): Promise<void> {
+  try {
+    const { query } = await import('../db');
+    await query(
+      `CREATE TABLE IF NOT EXISTS match_cache (
+         cache_key  VARCHAR(100) PRIMARY KEY,
+         cached_at  BIGINT       NOT NULL,
+         payload    MEDIUMTEXT   NOT NULL
+       )`
+    );
+    // Migrate existing TEXT column to MEDIUMTEXT (6 MB payload doesn't fit in TEXT)
+    await query(`ALTER TABLE match_cache MODIFY COLUMN payload MEDIUMTEXT NOT NULL`).catch(() => { /* already MEDIUMTEXT or no table yet */ });
+  } catch { /* DB unavailable — graceful fallback */ }
+}
+
+async function _readDbCache(): Promise<{ data: UnifiedMatch[]; ts: number } | null> {
+  try {
+    const { query } = await import('../db');
+    const r = await query<{ cached_at: number; payload: string }>(
+      `SELECT cached_at, payload FROM match_cache WHERE cache_key = 'all_matches' LIMIT 1`
+    );
+    if (!r.rows.length) return null;
+    const row = r.rows[0];
+    const data: UnifiedMatch[] = JSON.parse(row.payload);
+    if (!data?.length) return null;
+    return { data, ts: Number(row.cached_at) };
+  } catch { return null; }
+}
+
+async function _writeDbCache(data: UnifiedMatch[]): Promise<void> {
+  try {
+    const { query } = await import('../db');
+    const payload = JSON.stringify(data);
+    const now = Date.now();
+    await query(
+      `INSERT INTO match_cache (cache_key, cached_at, payload)
+       VALUES ('all_matches', ?, ?)
+       ON DUPLICATE KEY UPDATE cached_at = VALUES(cached_at), payload = VALUES(payload)`,
+      [now, payload]
+    );
+  } catch { /* non-fatal */ }
+}
+
+// ── File cache helpers ─────────────────────────────────────────────────────────
+async function _readFileCache(): Promise<{ data: UnifiedMatch[]; ts: number } | null> {
+  try {
+    const { readFile } = await import('fs/promises');
+    const raw = await readFile(ALLMATCHES_PERSIST_FILE, 'utf8');
+    const parsed: { ts: number; data: UnifiedMatch[] } = JSON.parse(raw);
+    if (!parsed?.data?.length) return null;
+    return { data: parsed.data, ts: parsed.ts };
+  } catch { return null; }
+}
+
+async function _writeFileCache(data: UnifiedMatch[]): Promise<void> {
+  try {
+    const { writeFile } = await import('fs/promises');
+    await writeFile(ALLMATCHES_PERSIST_FILE, JSON.stringify({ ts: Date.now(), data }), 'utf8');
+  } catch { /* non-fatal */ }
+}
+
+// Stored so getAllMatches() can await it if called before init finishes.
+// This prevents the race condition where the first request arrives before the
+// file cache is loaded and gets an empty array instead of stale-but-valid data.
+let _initPromise: Promise<void> | null = null;
+
+// On startup: load whatever cache exists (even stale) so the very first request
+// is served from memory. Always trigger a background refresh so data is fresh
+// by the time real users arrive (even on a completely fresh server).
+_initPromise = (async () => {
+  // ① FAST PATH — file cache has zero network dependency, always < 50ms.
+  //    Load it first so the very first request never blocks on a DB connection.
+  const fileResult = await _readFileCache();
+  if (fileResult && fileResult.data.length >= 5) {
+    // Only use file cache if it has meaningful data (cache poisoning guard)
+    // AND is recent enough. Caches older than ALLMATCHES_STALE_TTL (4 hours)
+    // are almost certainly from a previous day — loading them would serve
+    // stale matches that the client "Today" filter immediately rejects (0 shown).
+    const fileAge = Date.now() - fileResult.ts;
+    if (fileAge < ALLMATCHES_STALE_TTL) {
+      g_allMatchesCache.data = fileResult.data;
+      // Stamp with NOW so Layer 1/2 serve from memory without re-reading disk.
+      g_allMatchesCache.ts   = Date.now();
+    } else {
+      console.log(`[matches] startup: file cache is ${Math.round(fileAge / 60000)}min old — skipping stale data, forcing live fetch`);
+    }
+  }
+
+  // ② Kick off a live ESPN refresh immediately — data will be warm within
+  //    seconds regardless of whether we found any cached data above.
+  _triggerBackgroundRefresh();
+
+  // ③ SLOW PATH — DB operations happen in a setImmediate so they never
+  //    block the module-load event loop tick. Only promotes the cache if
+  //    the DB snapshot is newer than what we already loaded from the file.
+  setImmediate(async () => {
+    try {
+      await _ensureMatchCacheTable();
+      const dbResult = await _readDbCache();
+      if (dbResult && dbResult.ts > 0) {
+        const dbAge = Date.now() - dbResult.ts;
+        // Only promote if DB data is fresh (< 4h) and newer than what's in memory.
+        if (dbAge < ALLMATCHES_STALE_TTL && (!g_allMatchesCache.data || dbResult.ts > (g_allMatchesCache.ts || 0))) {
+          g_allMatchesCache.data = dbResult.data;
+          g_allMatchesCache.ts   = Date.now();
+        } else if (dbAge >= ALLMATCHES_STALE_TTL) {
+          console.log(`[matches] startup: DB cache is ${Math.round(dbAge / 60000)}min old — skipping stale DB data`);
+        }
+      }
+    } catch { /* non-fatal — DB may be unreachable at cold start */ }
+  });
+
+  // ④ RETRY — On production servers, the DB circuit breaker may be open
+  //    at cold-start (localhost→::1 IPv6 issue, or MySQL max_connections hit).
+  //    The circuit cools in 10 s. Retry at 20 s so if DB had no data the
+  //    first time we still serve cached matches once the pool stabilises.
+  //    Only runs if memory cache is still empty after init.
+  setTimeout(async () => {
+    if (g_allMatchesCache.data && g_allMatchesCache.data.length >= 5) return;
+    try {
+      const { resetPool } = await import('../db');
+      resetPool(); // clear any stale circuit-breaker state
+      const dbResult = await _readDbCache();
+      if (dbResult && dbResult.data.length >= 5) {
+        g_allMatchesCache.data = dbResult.data;
+        g_allMatchesCache.ts   = Date.now();
+      }
+    } catch { /* non-fatal */ }
+  }, 20_000);
+})();
+
+function _triggerBackgroundRefresh() {
+  if (g_allMatchesCache.promise) return;
+  g_allMatchesCache.promise = _fetchAllMatches().finally(() => {
+    g_allMatchesCache.promise = null;
+  });
+}
+
+/**
+ * Force an immediate live ESPN re-fetch regardless of cache age.
+ * Used by the warmup endpoint after deploy so today's matches are always
+ * live in cache before users hit the site — not yesterday's file-cache data.
+ * Waits for the fetch to complete and returns the refreshed match list.
+ */
+export async function forceRefreshMatches(): Promise<UnifiedMatch[]> {
+  // Hard cap: never block caller for more than 30 s regardless of ESPN speed.
+  // On production servers where ESPN is slow / rate-limiting, uncapped awaits
+  // caused the warmup endpoint to hang for minutes, making Apache return 503
+  // and the deploy.sh health-check to fail, leaving the site completely down.
+  const FORCE_REFRESH_TIMEOUT = 30_000;
+
+  // If a fetch is already in progress, wait for it (capped).
+  if (g_allMatchesCache.promise) {
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, FORCE_REFRESH_TIMEOUT)),
+    ]);
+  }
+  // Expire the in-memory cache so _triggerBackgroundRefresh starts a new fetch.
+  g_allMatchesCache.ts = 0;
+  _triggerBackgroundRefresh();
+  if (g_allMatchesCache.promise) {
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, FORCE_REFRESH_TIMEOUT)),
+    ]);
+  }
+  return g_allMatchesCache.data ?? [];
+}
+
+export async function getAllMatches(): Promise<UnifiedMatch[]> {
+  // Race-condition fix: if no data yet, await the init promise (file cache read).
+  // This is fast (< 100ms) and ensures the very first request after a server start
+  // returns real cached data instead of an empty array that makes the page spin
+  // while the 8-10s background API fetch completes.
+  if (!g_allMatchesCache.data && _initPromise) {
+    await _initPromise;
+    _initPromise = null; // consumed — no need to await again
+  }
+
+  // COLD START WAIT: if still no data (e.g. DB + file cache both empty after
+  // a fresh deploy) AND a background ESPN fetch is already in-progress, wait
+  // for it — but cap at 8 s so a slow/rate-limited ESPN never hangs requests.
+  // Previously this was uncapped, causing Apache 503s when ESPN timed out.
+  if (!g_allMatchesCache.data && g_allMatchesCache.promise) {
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, 8_000)),
+    ]);
+    if (g_allMatchesCache.data) return g_allMatchesCache.data;
+  }
+
+  const age = Date.now() - g_allMatchesCache.ts;
+
+  // Layer 1: In-memory fresh — return immediately (sub-ms)
+  if (g_allMatchesCache.data && age < ALLMATCHES_CACHE_TTL) {
+    return g_allMatchesCache.data;
+  }
+
+  // Layer 2: In-memory stale — return immediately, refresh in background
+  if (g_allMatchesCache.data && age < ALLMATCHES_STALE_TTL) {
+    _triggerBackgroundRefresh();
+    return g_allMatchesCache.data;
+  }
+
+  // Layer 3: Memory empty — try MySQL (< 50ms, survives restarts)
+  const dbResult = await _readDbCache();
+  if (dbResult) {
+    const dbAge = Date.now() - dbResult.ts;
+    if (dbAge < ALLMATCHES_STALE_TTL) {
+      g_allMatchesCache.data = dbResult.data;
+      // Stamp with NOW so Layer 1/2 serve the next 90s from memory.
+      g_allMatchesCache.ts   = Date.now();
+      _triggerBackgroundRefresh();
+      return dbResult.data;
+    }
+    // DB cache is too old (> 4h) — fall through to live fetch
+    console.log(`[matches] DB cache is ${Math.round(dbAge / 60000)}min old — skipping, fetching live`);
+  }
+
+  // Layer 4: Try file cache (no DB available)
+  const fileResult = await _readFileCache();
+  if (fileResult) {
+    const fileAge = Date.now() - fileResult.ts;
+    if (fileAge < ALLMATCHES_STALE_TTL) {
+      g_allMatchesCache.data = fileResult.data;
+      // Stamp with NOW so the next 90s of requests are served from memory.
+      g_allMatchesCache.ts   = Date.now();
+      _triggerBackgroundRefresh();
+      return fileResult.data;
+    }
+    // File cache is too old (> 4h) — fall through to live fetch
+    console.log(`[matches] file cache is ${Math.round(fileAge / 60000)}min old — skipping, fetching live`);
+  }
+
+  // Layer 5: True cold start (all caches empty) — trigger refresh but cap at 8s.
+  // Previously this was uncapped: on production servers where ESPN is slow or
+  // rate-limiting the server IP, the promise never resolved in time, causing
+  // Apache to hold the connection open for minutes (blank white page).
+  // After the 8s cap, return [] and let the client retry — the background
+  // refresh continues and subsequent requests will hit Layer 1/2.
+  _triggerBackgroundRefresh();
+  if (g_allMatchesCache.promise) {
+    await Promise.race([
+      g_allMatchesCache.promise,
+      new Promise(r => setTimeout(r, 8_000)),
+    ]);
+  }
+  // One last DB read: by now the setImmediate DB read from _initPromise has
+  // almost certainly completed, and the circuit breaker (10s cooldown) has
+  // reset. This catches the race where DB cache was skipped at cold start.
+  if (!g_allMatchesCache.data) {
+    try {
+      const { resetPool } = await import('../db');
+      resetPool();
+      const dbRetry = await _readDbCache();
+      if (dbRetry?.data?.length) {
+        g_allMatchesCache.data = dbRetry.data;
+        g_allMatchesCache.ts = Date.now();
+      }
+    } catch { /* non-fatal */ }
+  }
+  return g_allMatchesCache.data ?? [];
+}
+
+async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
+  const allMatches: UnifiedMatch[] = [];
+  const seenMatchKeys = new Set<string>();
+  // Also track by ESPN event ID (extracted from match.id like "espn_eng1_740936")
+  // to catch the case where two feeds return the same match with different team
+  // name formatting (e.g. "Manchester City" vs "Manchester City FC").
+  const seenEspnIds = new Set<string>();
+
+  const getMatchKey = (match: UnifiedMatch): string => {
+    // Known cross-source team name aliases (canonical → variants).
+    // Ensures "RC Celta" == "Celta Vigo", "Man Utd" == "Manchester United", etc.
+    const TEAM_ALIASES: Record<string, string> = {
+      // Spanish
+      'rc celta': 'celta', 'celta vigo': 'celta', 'rc celta de vigo': 'celta', 'celta de vigo': 'celta',
+      'rcd espanyol': 'espanyol', 'espanyol barcelona': 'espanyol', 'rcd espanyol de barcelona': 'espanyol',
+      'cd leganes': 'leganes', 'deportivo alaves': 'alaves', 'deportivo alaves sad': 'alaves',
+      'villarreal cf': 'villarreal', 'real valladolid': 'valladolid', 'real valladolid cf': 'valladolid',
+      'rcd mallorca': 'mallorca', 'girona fc': 'girona', 'ud las palmas': 'laspalmas',
+      'sevilla fc': 'sevilla', 'real sociedad': 'realsociedad',
+      // English
+      'manchester united': 'manchesterunited', 'man utd': 'manchesterunited', 'man united': 'manchesterunited',
+      'manchester city': 'manchestercity', 'man city': 'manchestercity',
+      'tottenham hotspur': 'tottenham', 'spurs': 'tottenham',
+      'wolverhampton wanderers': 'wolves', 'wolverhampton': 'wolves',
+      'west ham united': 'westham', 'west ham': 'westham',
+      'newcastle united': 'newcastle', 'newcastle utd': 'newcastle',
+      'brighton & hove albion': 'brighton', 'brighton and hove albion': 'brighton',
+      'nottingham forest': 'nottmforest', "nott'm forest": 'nottmforest', 'notts forest': 'nottmforest',
+      'sheffield united': 'sheffieldutd', 'sheffield utd': 'sheffieldutd',
+      'queens park rangers': 'qpr',
+      'aston villa': 'astonvilla',
+      'crystal palace': 'crystalpalace',
+      'brentford fc': 'brentford',
+      'fulham fc': 'fulham',
+      'ipswich town': 'ipswich',
+      'leicester city': 'leicester',
+      'luton town': 'luton',
+      // Spanish top tier
+      'atletico madrid': 'atletico', 'atletico de madrid': 'atletico', 'club atletico de madrid': 'atletico',
+      'real madrid': 'realmadrid', 'real madrid cf': 'realmadrid',
+      'fc barcelona': 'barcelona', 'barcelona': 'barcelona',
+      'real betis': 'betis', 'real betis balompie': 'betis',
+      'athletic bilbao': 'bilbao', 'athletic club': 'bilbao', 'athletic club bilbao': 'bilbao',
+      'rayo vallecano': 'rayo', 'rayo vallecano de madrid': 'rayo',
+      'levante ud': 'levante', 'levante': 'levante',
+      'rc deportivo': 'deportivo', 'deportivo la coruna': 'deportivo',
+      'osasuna': 'osasuna', 'ca osasuna': 'osasuna',
+      'getafe cf': 'getafe',
+      'ud almeria': 'almeria',
+      // Italian
+      'internazionale': 'inter', 'inter milan': 'inter', 'fc internazionale': 'inter', 'fc internazionale milano': 'inter',
+      'ac milan': 'milan', 'milan': 'milan',
+      'hellas verona': 'verona', 'hellas verona fc': 'verona',
+      'us sassuolo': 'sassuolo', 'us sassuolo calcio': 'sassuolo',
+      'ssc napoli': 'napoli', 'napoli': 'napoli',
+      'as roma': 'roma', 'as roma fc': 'roma',
+      'ss lazio': 'lazio', 'lazio': 'lazio',
+      'juventus fc': 'juventus', 'juventus': 'juventus',
+      'atalanta bc': 'atalanta', 'atalanta bc bergamasca calcio': 'atalanta',
+      'us lecce': 'lecce', 'us cremonese': 'cremonese',
+      'torino fc': 'torino', 'torino': 'torino',
+      'udinese calcio': 'udinese', 'udinese': 'udinese',
+      'bologna fc': 'bologna', 'bologna': 'bologna',
+      'empoli fc': 'empoli', 'frosinone calcio': 'frosinone',
+      'cagliari calcio': 'cagliari',
+      // Portuguese
+      'fc porto': 'porto', 'fc porto sad': 'porto',
+      'sl benfica': 'benfica', 'sport lisboa e benfica': 'benfica',
+      'sporting cp': 'sporting', 'sporting clube': 'sporting', 'sporting clube de portugal': 'sporting',
+      // French
+      'paris saint-germain': 'psg', 'paris saint germain': 'psg', 'paris sg': 'psg',
+      'olympique de marseille': 'marseille', 'olympique marseille': 'marseille', 'om': 'marseille',
+      'olympique lyonnais': 'lyon', 'olympique de lyon': 'lyon',
+      'as monaco': 'monaco', 'as monaco fc': 'monaco',
+      'losc lille': 'lille', 'losc': 'lille',
+      'ogc nice': 'nice', 'rc lens': 'lens',
+      'stade rennais': 'rennes', 'stade rennais fc': 'rennes',
+      'stade brestois': 'brest', 'stade brestois 29': 'brest',
+      // German
+      'borussia dortmund': 'dortmund', 'bvb': 'dortmund', 'bv borussia dortmund': 'dortmund',
+      'borussia monchengladbach': 'gladbach', 'monchengladbach': 'gladbach', 'borussia mgladbach': 'gladbach',
+      'bayer leverkusen': 'leverkusen', 'bayer 04 leverkusen': 'leverkusen',
+      'rb leipzig': 'leipzig', 'rasenballsport leipzig': 'leipzig', 'red bull leipzig': 'leipzig',
+      'fc schalke 04': 'schalke', 'schalke 04': 'schalke', 'schalke': 'schalke',
+      'eintracht frankfurt': 'frankfurt', 'sg eintracht frankfurt': 'frankfurt',
+      'vfb stuttgart': 'stuttgart', 'vfb stuttgart 1893': 'stuttgart',
+      'fc augsburg': 'augsburg', 'sv darmstadt 98': 'darmstadt',
+      'sport-club freiburg': 'freiburg', 'sc freiburg': 'freiburg',
+      'tsg hoffenheim': 'hoffenheim', 'tsg 1899 hoffenheim': 'hoffenheim',
+      'sv werder bremen': 'werder', 'werder bremen': 'werder',
+      // Dutch
+      'ajax amsterdam': 'ajax', 'afc ajax': 'ajax', 'ajax': 'ajax',
+      'psv eindhoven': 'psv', 'psv': 'psv',
+      'feyenoord rotterdam': 'feyenoord', 'feyenoord': 'feyenoord',
+      'az alkmaar': 'az', 'az': 'az',
+      // Scottish
+      'celtic fc': 'celtic', 'celtic': 'celtic',
+      'rangers fc': 'rangers', 'rangers': 'rangers',
+      // Belgian
+      'club brugge': 'brugge', 'fc bruges': 'brugge', 'club brugge kv': 'brugge',
+      'rsc anderlecht': 'anderlecht', 'anderlecht': 'anderlecht',
+      // Turkish
+      'galatasaray sk': 'galatasaray', 'galatasaray': 'galatasaray',
+      'fenerbahce sk': 'fenerbahce', 'fenerbahce': 'fenerbahce',
+      'besiktas jk': 'besiktas', 'besiktas': 'besiktas',
+      'trabzonspor ak': 'trabzonspor', 'trabzonspor': 'trabzonspor',
+      // Eastern European
+      'shakhtar donetsk': 'shakhtar', 'fk shakhtar donetsk': 'shakhtar',
+      'dinamo zagreb': 'dinamo', 'gnk dinamo zagreb': 'dinamo',
+      'red bull salzburg': 'salzburg', 'fc salzburg': 'salzburg', 'fc red bull salzburg': 'salzburg',
+      'sk rapid wien': 'rapid', 'rapid wien': 'rapid',
+      'fk crvena zvezda': 'crvenazvezda', 'red star belgrade': 'crvenazvezda', 'crvena zvezda': 'crvenazvezda',
+      // International national teams — alternate country name spellings across data sources
+      'cabo verde': 'capeverde', 'cape verde': 'capeverde',
+      'ivory coast': 'cotedivoire', 'cote d\'ivoire': 'cotedivoire', "cote d'ivoire": 'cotedivoire',
+      'democratic republic of congo': 'drcongo', 'dr congo': 'drcongo', 'congo dr': 'drcongo',
+      'republic of ireland': 'ireland', 'north macedonia': 'northmacedonia',
+      'trinidad and tobago': 'trinidadtobago', 'trinidad & tobago': 'trinidadtobago',
+      'antigua and barbuda': 'antiguabarbuda',
+      'st. kitts & nevis': 'stkittsnevis', 'saint kitts and nevis': 'stkittsnevis',
+      'st. vincent & grenadines': 'stvincentgrenadines',
+      'united states': 'usa', 'united states of america': 'usa',
+      'korea republic': 'southkorea', 'south korea': 'southkorea',
+      'korea dpr': 'northkorea', 'north korea': 'northkorea',
+      // African
+      'al ahly sc': 'alahly', 'al-ahly': 'alahly', 'al ahly': 'alahly',
+      'es tunis': 'esperance', 'esperance sportive de tunis': 'esperance',
+      'gor mahia fc': 'gormahia', 'gor mahia': 'gormahia',
+      'afc leopards': 'afcleopards', 'afc leopards sc': 'afcleopards',
+      // South American
+      'ca boca juniors': 'bocajuniors', 'boca juniors': 'bocajuniors',
+      'ca river plate': 'riverplate', 'river plate': 'riverplate',
+      'se palmeiras': 'palmeiras', 'sociedade esportiva palmeiras': 'palmeiras',
+      'cr flamengo': 'flamengo', 'clube de regatas do flamengo': 'flamengo',
+      // American
+      'la galaxy': 'lagalaxy', 'los angeles galaxy': 'lagalaxy',
+      'lafc': 'losangelesfc', 'los angeles fc': 'losangelesfc',
+      'new york city fc': 'nycfc', 'new york red bulls': 'nyrb',
+      // Additional French to catch Brest-related duplicates from different sources
+      'stade brestois 29 fc': 'brest', 'brest 29': 'brest', 'brest fc': 'brest',
+      'rc strasbourg': 'strasbourg', 'rc strasbourg alsace': 'strasbourg', 'strasbourg alsace': 'strasbourg',
+      'fc nantes': 'nantes', 'nantes fc': 'nantes',
+      'angers sco': 'angers', 'sco angers': 'angers',
+      'estac troyes': 'troyes', 'troyes ac': 'troyes',
+      'clermont foot': 'clermont', 'clermont foot 63': 'clermont',
+      'havre ac': 'lehavre', 'le havre ac': 'lehavre', 'le havre': 'lehavre',
+      'fc metz': 'metz', 'metz fc': 'metz',
+      'toulouse fc': 'toulouse', 'fc toulouse': 'toulouse',
+      'montpellier hsc': 'montpellier', 'montpellier herault sc': 'montpellier',
+      'stade de reims': 'reims', 'reims': 'reims',
+      'girondins de bordeaux': 'bordeaux', 'fc girondins de bordeaux': 'bordeaux',
+      // Additional English
+      'bolton wanderers': 'bolton', 'blackburn rovers': 'blackburn',
+      'birmingham city': 'birmingham', 'stoke city': 'stoke',
+      'swansea city': 'swansea', 'cardiff city': 'cardiff',
+      'middlesbrough fc': 'middlesbrough', 'huddersfield town': 'huddersfield',
+      'rotherham united': 'rotherham', 'wigan athletic': 'wigan',
+      'coventry city': 'coventry', 'plymouth argyle': 'plymouth',
+      'sunderland afc': 'sunderland', 'millwall fc': 'millwall',
+      'hull city': 'hullcity', 'hull city afc': 'hullcity',
+      'watford fc': 'watford', 'reading fc': 'reading',
+      'norwich city': 'norwich', 'derby county': 'derby',
+      'burnley fc': 'burnley', 'blackpool fc': 'blackpool',
+      // Additional Spanish
+      'ud almeria fc': 'almeria', 'almeria fc': 'almeria',
+      'real zaragoza': 'zaragoza', 'racing santander': 'racing',
+      'cf real madrid': 'realmadrid',
+      // Additional Italian
+      'ac monza': 'monza', 'monza fc': 'monza',
+      'venezia fc': 'venezia', 'fc venezia': 'venezia',
+      'us salernitana': 'salernitana', 'salernitana 1919': 'salernitana',
+      'pisa sc': 'pisa', 'ac pisa': 'pisa',
+      'spezia calcio': 'spezia', 'ac cesena': 'cesena',
+      // Additional German
+      'fc heidenheim': 'heidenheim', '1. fc heidenheim': 'heidenheim',
+      'fc st. pauli': 'stpauli', 'fc st pauli': 'stpauli',
+      'holstein kiel': 'kiel', 'kiel fc': 'kiel',
+      'fortuna dusseldorf': 'dusseldorf', 'fortuna düsseldorf': 'dusseldorf',
+      '1. fc nurnberg': 'nurnberg', 'fc nurnberg': 'nurnberg',
+      'vfl bochum': 'bochum', 'vfl bochum 1848': 'bochum',
+      // Additional Portuguese
+      'vitoria de guimaraes': 'vitoriaguimaraes', 'vitória sc': 'vitoriaguimaraes',
+      'boavista fc': 'boavista', 'boavista fcp': 'boavista',
+      'cd santa clara': 'santaclara',
+      // MLS extras
+      'seattle sounders fc': 'seattlesounders', 'seattle sounders': 'seattlesounders',
+      'portland timbers': 'portlandtimbers', 'portland timbers fc': 'portlandtimbers',
+      'atlanta united': 'atlantaunited', 'atlanta united fc': 'atlantaunited',
+      'toronto fc': 'toronto', 'toronto football club': 'toronto',
+      'inter miami cf': 'intermiami', 'inter miami': 'intermiami',
+      'cf montreal': 'montreal', 'montreal impact': 'montreal',
+      'columbus crew': 'columbuscrew', 'columbus crew sc': 'columbuscrew',
+      'sporting kansas city': 'sportingkc', 'sporting kc': 'sportingkc',
+      // French — common cross-source duplicates
+      'racing club de lens': 'lens', 'racing club lens': 'lens', 'rc lens': 'lens', 'lens fc': 'lens',
+      'paris saint-germain fc': 'psg', 'paris saint germain fc': 'psg', 'paris fc': 'psg',
+      'stade rennais fc': 'rennes', 'rennes fc': 'rennes',
+      'lille osc': 'lille', 'losc lille metropole': 'lille',
+      'as saint-etienne': 'saintetienne', 'saint-etienne': 'saintetienne', 'saint etienne': 'saintetienne',
+      'girondins bordeaux': 'bordeaux',
+      // German cross-source
+      'fc union berlin': 'unionberlin', 'union berlin': 'unionberlin',
+      '1. fc union berlin': 'unionberlin',
+      'rasenball leipzig': 'leipzig',
+      'fc koln': 'koln', '1. fc koln': 'koln', 'fc cologne': 'koln', 'cologne': 'koln',
+      'hertha bsc': 'hertha', 'hertha berlin': 'hertha', 'hertha bsc berlin': 'hertha',
+      'hamburger sv': 'hamburg', 'hamburg sv': 'hamburg',
+      // Spanish cross-source
+      'real madrid cf': 'realmadrid', 'cf real madrid': 'realmadrid',
+      'club atletico madrid': 'atletico', 'atletico madrid cf': 'atletico',
+      // English cross-source
+      'arsenal fc': 'arsenal', 'chelsea fc': 'chelsea', 'everton fc': 'everton',
+      'liverpool fc': 'liverpool', 'arsenal london': 'arsenal',
+      // Italian cross-source
+      'inter milan fc': 'inter', 'fc inter': 'inter',
+      'ac milan fc': 'milan', 'acf fiorentina': 'fiorentina', 'fiorentina fc': 'fiorentina',
+      // Portuguese cross-source
+      'sporting lisbon': 'sporting', 'sporting clube portugal': 'sporting',
+    };
+
+    // Strip common club prefixes/suffixes, city names, articles, and diacritics
+    const stripSuffixes = (raw: string) => {
+      const lower = raw.toLowerCase()
+        .replace(/ñ/g, 'n').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i')
+        .replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ü/g, 'u').replace(/ä/g, 'a').replace(/ö/g, 'o')
+        .trim();
+
+      // Strip trailing FC/AFC/SC/CF BEFORE alias lookup so "Manchester City FC"
+      // and "Manchester City" both resolve to the same alias key "manchester city".
+      const preAlias = lower
+        .replace(/\s+\b(fc|afc|sc|cf|fk|bk|ac|as)\b\s*$/i, '')
+        .replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+
+      // Check alias map first (exact match after basic normalisation)
+      const aliasKey = lower.replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+      if (TEAM_ALIASES[preAlias]) return TEAM_ALIASES[preAlias];
+      if (TEAM_ALIASES[aliasKey]) return TEAM_ALIASES[aliasKey];
+
+      return lower
+        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk|vigo|madrid|milan|london|paris|rome|roma|lyon|porto|lisbon|zagreb|moscow|amsterdam|brussels|brussels|vienna|warsaw|bucharest|sofia|budapest|prague|belgrade|athens)\b/g, '')
+        .replace(/[^a-z0-9]/g, '');
+    };
+
+    const homeNorm = stripSuffixes(match.homeTeam.name);
+    const awayNorm = stripSuffixes(match.awayTeam.name);
+    const dateKey = new Date(match.kickoffTime).toISOString().split('T')[0];
+    return `${homeNorm}_${awayNorm}_${dateKey}`;
+  };
+
+  const addMatch = (match: UnifiedMatch) => {
+    // Fast-path: if two feeds return the exact same ESPN event ID, skip immediately.
+    // This catches "Manchester City" vs "Manchester City FC" from different feeds
+    // where the name-based key might differ due to FC suffix.
+    const espnIdMatch = match.id?.match(/^espn_[a-z0-9.]+_(\d+)$/i);
+    if (espnIdMatch) {
+      const eid = espnIdMatch[1];
+      if (seenEspnIds.has(eid)) return;
+      seenEspnIds.add(eid);
+    }
+
+    // Also deduplicate by raw externalId (ESPN event ID stored separately)
+    if (match.externalId) {
+      const extId = String(match.externalId);
+      if (seenEspnIds.has(`ext:${extId}`)) return;
+      seenEspnIds.add(`ext:${extId}`);
+    }
+
+    const key = getMatchKey(match);
+    // Split carefully: date is always last segment (YYYY-MM-DD = 10 chars fixed)
+    // Use lastIndexOf to avoid splitting team names that contain underscores
+    const lastUnderscore = key.lastIndexOf('_');
+    const secondLastUnderscore = key.lastIndexOf('_', lastUnderscore - 1);
+    const homeNormR = key.slice(0, secondLastUnderscore);
+    const awayNormR = key.slice(secondLastUnderscore + 1, lastUnderscore);
+    const dateKeyR  = key.slice(lastUnderscore + 1);
+    const reverseKey = `${awayNormR}_${homeNormR}_${dateKeyR}`;
+    if (!seenMatchKeys.has(key) && !seenMatchKeys.has(reverseKey)) {
+      seenMatchKeys.add(key);
+      seenMatchKeys.add(reverseKey);
+      allMatches.push(match);
+    }
+  };
+
+  // Fetch ESPN matches, real odds index AND every supplementary feed in parallel.
+  // Each .catch() ensures one source going down never blocks the others.
+  //
+  // CONCURRENCY CAP: fire at most 15 ESPN league requests at a time.
+  // Without this, all 180+ leagues fire simultaneously from the VPS, which
+  // triggers ESPN rate-limiting (429s / slow responses) and causes the entire
+  // fetch to take 15-30 s. With a cap of 15 the total time drops to ~3-5 s
+  // because each batch completes cleanly before the next batch starts.
+  const { default: pLimit } = await import('p-limit').catch(() => ({ default: null }));
+  const espnFetchFn = pLimit
+    ? (() => {
+        const limit = pLimit(15);
+        return Promise.allSettled(ESPN_LEAGUES.map(config => limit(() => getESPNMatches(config))));
+      })()
+    : Promise.allSettled(ESPN_LEAGUES.map(config => getESPNMatches(config)));
+
+  const [
+    espnResults,
+    realOddsIndex,
+    tsdbMatches,
+    oldbMatches,
+    fdMatches,
+    fmMatches,
+    globalEspnMatches,
+    camel1Matches,
+    sofaScoreMatches,
+    apiSportsMatches,
+    allSportsMatches,
+  ] = await Promise.all([
+    espnFetchFn,
+    buildRealOddsIndex(),
+    fetchTSDBMatches().catch(() => [] as UnifiedMatch[]),
+    fetchOpenLigaDBMatches().catch(() => [] as UnifiedMatch[]),
+    fetchFootballDataOrgMatches().catch(() => [] as UnifiedMatch[]),
+    fetchFotMobMatches().catch(() => [] as UnifiedMatch[]),
+    fetchESPNGlobalAll().catch(() => [] as UnifiedMatch[]),
+    fetchCamel1Matches().catch(() => [] as UnifiedMatch[]),
+    fetchSofaScoreMatches().catch(() => [] as UnifiedMatch[]),
+    fetchApiSportsMatches().catch(() => [] as UnifiedMatch[]),
+    fetchAllSportsMatches().catch(() => [] as UnifiedMatch[]),
+  ]);
+
+  for (const result of espnResults) {
+    if (result.status === 'fulfilled' && result.value) {
+      for (const match of result.value) {
+        // Try to enrich with real bookmaker odds
+        if (realOddsIndex.size > 0) {
+          const homeNorm = normalizeTeamName(match.homeTeam.name);
+          const awayNorm = normalizeTeamName(match.awayTeam.name);
+          const dateKey = new Date(match.kickoffTime).toISOString().split('T')[0];
+          const real = realOddsIndex.get(`${homeNorm}_${awayNorm}_${dateKey}`);
+          if (real) {
+            match.odds = real.odds;
+            // Merge real markets in front of generated markets, dedupe by key
+            const existingKeys = new Set(real.markets.map(m => m.key));
+            const otherMarkets = (match.markets || []).filter(m => !existingKeys.has(m.key));
+            match.markets = [...real.markets, ...otherMarkets];
+            match.source = 'the-odds-api';
+          }
+        }
+        addMatch(match);
+      }
+    }
+  }
+
+  // Build a set of ESPN event IDs already registered by the per-league fetchers.
+  // The global /all/scoreboard returns the same events for leagues we already
+  // fetch explicitly (NWSL, MLS, Liga MX, etc.) but maps them through the
+  // generic KNOWN_GLOBAL_LEAGUES resolver, which can assign the wrong league
+  // name when a numeric ESPN league ID isn't in the curated map.  By skipping
+  // any global event whose ID is already seen we guarantee the per-league
+  // metadata (correct name, country, countryCode) always wins.
+  const seenEspnEventIds = new Set<string>(
+    allMatches.map(m => m.externalId).filter((id): id is string => Boolean(id))
+  );
+
+  // Filter global ESPN matches to only those not already covered per-league.
+  const novelGlobalEspnMatches = globalEspnMatches.filter(
+    m => !m.externalId || !seenEspnEventIds.has(m.externalId)
+  );
+
+  // Merge in supplementary sources (ESPN global catch-all, TheSportsDB,
+  // OpenLigaDB, football-data.org, FotMob). Order matters because addMatch()
+  // dedupes by team-pair+date and keeps the first source seen — we put
+  // higher-trust feeds first.
+  // ESPN per-league already added above. Then ESPN /all/scoreboard (covers
+  // every other ESPN league we don't explicitly configure), then
+  // football-data.org (top-tier), then OpenLigaDB (German depth),
+  // then TheSportsDB (African/exotic), then FotMob (catch-all),
+  // then camel1.tv (RSC-scraped featured matches with team logos),
+  // then SofaScore (broad coverage — works on production VPS, no-ops on Replit).
+  // allSports + api-sports after ESPN/football-data (higher trust) but before camel1/SofaScore
+  const supplementarySources: UnifiedMatch[][] = [novelGlobalEspnMatches, fdMatches, oldbMatches, tsdbMatches, allSportsMatches, apiSportsMatches, fmMatches, sofaScoreMatches, camel1Matches];
+  for (const source of supplementarySources) {
+    for (const match of source) {
+      // Normalize league name to canonical ESPN metadata before dedup so
+      // "Spanish La Liga" (TSDB) merges into the same group as "La Liga" (ESPN).
+      canonicalizeLeague(match);
+      if (realOddsIndex.size > 0) {
+        const homeNorm = normalizeTeamName(match.homeTeam.name);
+        const awayNorm = normalizeTeamName(match.awayTeam.name);
+        const dateKey = new Date(match.kickoffTime).toISOString().split('T')[0];
+        const real = realOddsIndex.get(`${homeNorm}_${awayNorm}_${dateKey}`);
+        if (real) {
+          match.odds = real.odds;
+          match.markets = real.markets;
+        }
+      }
+      addMatch(match);
+    }
+  }
+
+  // Only show REAL bookmaker odds. Matches with no odds from a live provider
+  // simply have match.odds = undefined — the UI shows no odds panel.
+  // generateRealisticOdds() is still available for internal use (e.g. strategy
+  // pick selection) but is NOT applied globally here.
+
+  // Fire-and-forget: persist teams + leagues into MySQL when available.
+  // Never blocks, never throws — silently no-ops on free tier without DB.
+  try {
+    const { persistMatchEntities } = await import('../db/sync');
+    persistMatchEntities(allMatches);
+  } catch { /* swallow */ }
+
+  // Display window: up to 365 days back (historical results) + 200 days ahead.
+  // The expanded fetch windows above mean we have real ESPN data this far back.
+  const now = new Date();
+  const windowStart = new Date(now);
+  windowStart.setDate(windowStart.getDate() - 365); // up to 1 year of history
+  windowStart.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(now);
+  windowEnd.setDate(windowEnd.getDate() + 200); // today + 200 days ahead
+  windowEnd.setHours(23, 59, 59, 999);
+
+  const windowed = allMatches.filter(m => {
+    const t = new Date(m.kickoffTime).getTime();
+    return t >= windowStart.getTime() && t <= windowEnd.getTime();
+  });
+
+  const sorted = sortMatchesWithPriority(windowed.length > 0 ? windowed : allMatches);
+
+  // CACHE POISONING GUARD: only write to persistent cache if we got a
+  // meaningful result. A failed/rate-limited fetch returning 0 matches must
+  // NEVER overwrite a good cache — that would blank out the site for every
+  // subsequent user until the next successful fetch.
+  // Threshold: 5 matches. If all sources are down we keep the last good data.
+  // CRITICAL: Do NOT use `|| previousCount === 0` here — that was a bug that
+  // wrote empty data on cold start (when previousCount === 0 and ESPN returned
+  // nothing), poisoning the DB + file cache and causing persistent 0-match pages.
+  const previousCount = g_allMatchesCache.data?.length ?? 0;
+  const MIN_MATCHES_TO_PERSIST = 5;
+  if (sorted.length >= MIN_MATCHES_TO_PERSIST) {
+    g_allMatchesCache.data = sorted;
+    g_allMatchesCache.ts = Date.now();
+    matchesCacheVersion++;
+    void _writeDbCache(sorted);
+    void _writeFileCache(sorted);
+  } else {
+    // Fetch returned too few matches — keep existing in-memory data but
+    // don't write to DB/file. Log so it's visible in PM2 logs.
+    console.warn(`[matches] fetch returned only ${sorted.length} matches (prev: ${previousCount}) — skipping cache write to protect existing data`);
+    if (previousCount > 0) {
+      // Only re-stamp the timestamp if the existing data is itself fresh (< 4h).
+      // If the data is stale (> 4h old), do NOT update ts — let it expire naturally
+      // so the next getAllMatches() call falls through to a live fetch instead of
+      // serving yesterday's matches forever in a 90-second spin loop.
+      const existingDataAge = Date.now() - g_allMatchesCache.ts;
+      if (existingDataAge < ALLMATCHES_STALE_TTL) {
+        g_allMatchesCache.ts = Date.now();
+      }
+      // else: leave ts as-is — once age > ALLMATCHES_STALE_TTL, Layer 2 stops
+      // returning the stale data and we fall through to a fresh live fetch.
+    }
+    // Cold start with bad ESPN response: leave ts at 0 so getAllMatches()
+    // triggers a retry sooner rather than waiting 90s. The next request
+    // will kick off another background fetch attempt.
+  }
+
+  // Ping IndexNow for any match pages that just appeared for the first time.
+  // This tells Bing/Google to crawl them immediately rather than waiting for
+  // the next sitemap revalidation cycle (up to 60 s away).
+  _pingNewMatches(sorted).catch(() => {});
+
+  return sorted;
+}
+
+// ── New-match discovery IndexNow pings ────────────────────────────────────────
+// Tracks match IDs seen across fetch cycles so we only ping on first appearance.
+let   _g_initialMatchLoadDone = false;
+const _g_knownMatchIds = new Set<string>();
+
+async function _pingNewMatches(matches: UnifiedMatch[]): Promise<void> {
+  if (!_g_initialMatchLoadDone) {
+    // First fetch after server start — record all IDs as "known" without pinging
+    // (too many URLs at once; sitemap covers cold-start discovery).
+    for (const m of matches) _g_knownMatchIds.add(m.id);
+    _g_initialMatchLoadDone = true;
+    return;
+  }
+
+  const newUrls: string[] = [];
+  for (const m of matches) {
+    if (!_g_knownMatchIds.has(m.id)) {
+      _g_knownMatchIds.add(m.id);
+      newUrls.push(m.id);
+    }
+  }
+  if (newUrls.length === 0) return;
+
+  try {
+    const { pingIndexNow } = await import('../indexnow');
+    const { matchToSlug } = await import('../utils/match-url');
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+    const urls = newUrls.map(id => {
+      const m = matches.find(x => x.id === id)!;
+      return `${siteUrl}/matches/${matchToSlug(m.id, m.homeTeam?.name ?? '', m.awayTeam?.name ?? '')}`;
+    });
+    pingIndexNow(urls);
+    console.log(`[seo] IndexNow queued for ${urls.length} newly-discovered match(es)`);
+  } catch { /* never block the fetch pipeline */ }
+}
+
+export async function getMatchesBySport(sportId: number): Promise<UnifiedMatch[]> {
+  const allMatches = await getAllMatches();
+  return allMatches.filter(m => m.sportId === sportId);
+}
+
+export async function getMatchesByLeague(leagueId: number): Promise<UnifiedMatch[]> {
+  const allMatches = await getAllMatches();
+  return allMatches.filter(m => m.leagueId === leagueId);
+}
+
+/**
+ * Fetch historical matches for a specific league season from ESPN.
+ * Used by the league page season-selector to populate past-season results.
+ * The season year refers to the calendar year in which the season STARTS
+ * (e.g. 2024 → 2024/25 for soccer, or the 2024 season for calendar-year sports).
+ */
+export async function getHistoricalLeagueMatches(
+  leagueId: number,
+  seasonYear: number
+): Promise<UnifiedMatch[]> {
+  const cacheKey = `hist-matches-${leagueId}-${seasonYear}`;
+  const cached = getCached<UnifiedMatch[]>(cacheKey, 24 * 60 * 60 * 1000); // 24h cache for historical
+  if (cached) return cached;
+
+  const config = ESPN_LEAGUES.find(l => l.leagueId === leagueId);
+  if (!config) return [];
+
+  const isSoccer = config.sportType === 'soccer';
+
+  // Build two half-season date ranges (ESPN scoreboard handles wide ranges fine for
+  // finished seasons; splitting avoids potential payload limits on busy leagues).
+  const h1Start = isSoccer ? `${seasonYear}0701` : `${seasonYear}0801`;
+  const h1End   = isSoccer ? `${seasonYear}1231` : `${seasonYear}1231`;
+  const h2Start = isSoccer ? `${seasonYear + 1}0101` : `${seasonYear + 1}0101`;
+  const h2End   = isSoccer ? `${seasonYear + 1}0731` : `${seasonYear + 1}0731`;
+
+  const [data1, data2] = await Promise.all([
+    fetchESPN(config.sport, config.league, 'scoreboard', `${h1Start}-${h1End}`),
+    fetchESPN(config.sport, config.league, 'scoreboard', `${h2Start}-${h2End}`),
+  ]);
+
+  const allEvents = [
+    ...(data1?.events ?? []),
+    ...(data2?.events ?? []),
+  ];
+
+  if (allEvents.length === 0) return [];
+
+  const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+  const hasDraw = !noDrawSports.includes(config.sportType);
+
+  const matches: UnifiedMatch[] = allEvents.map((event) => {
+    const competition = event.competitions[0];
+    const homeCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'home');
+    const awayCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'away');
+    const homeTeamName = homeCompetitor?.team?.displayName || homeCompetitor?.team?.name || homeCompetitor?.athlete?.displayName || 'TBD';
+    const awayTeamName = awayCompetitor?.team?.displayName || awayCompetitor?.team?.name || awayCompetitor?.athlete?.displayName || 'TBD';
+    const status = mapESPNStatus(event.status);
+    const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw, config.sportType, homeTeamName, awayTeamName);
+    const venue = competition?.venue?.fullName;
+
+    return {
+      id: `espn_${config.league.replace(/[^a-z0-9]/gi, '')}_${event.id}`,
+      externalId: event.id,
+      source: 'espn' as const,
+      sportId: config.sportId,
+      sportKey: `${config.sport}_${config.league}`,
+      leagueId: config.leagueId,
+      leagueKey: config.league,
+      homeTeam: {
+        id: homeCompetitor?.team?.id || homeCompetitor?.athlete?.id || '',
+        name: homeTeamName,
+        shortName: homeCompetitor?.team?.abbreviation || homeCompetitor?.athlete?.shortName || homeTeamName.split(' ').pop() || 'TBD',
+        logo: homeCompetitor?.team?.logo,
+        form: homeCompetitor?.form || undefined,
+        record: homeCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      awayTeam: {
+        id: awayCompetitor?.team?.id || awayCompetitor?.athlete?.id || '',
+        name: awayTeamName,
+        shortName: awayCompetitor?.team?.abbreviation || awayCompetitor?.athlete?.shortName || awayTeamName.split(' ').pop() || 'TBD',
+        logo: awayCompetitor?.team?.logo,
+        form: awayCompetitor?.form || undefined,
+        record: awayCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total' || !r.type)?.summary || undefined,
+      },
+      kickoffTime: new Date(event.date),
+      status,
+      homeScore:
+        homeCompetitor?.score !== undefined && homeCompetitor?.score !== null && homeCompetitor.score !== ''
+          ? parseInt(String(homeCompetitor.score), 10)
+          : null,
+      awayScore:
+        awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
+          ? parseInt(String(awayCompetitor.score), 10)
+          : null,
+      league: {
+        id: config.leagueId,
+        name: config.leagueName,
+        slug: ALL_LEAGUES.find(l => l.id === config.leagueId)?.slug || config.league.replace(/\./g, '-'),
+        country: config.country,
+        countryCode: config.countryCode,
+        tier: 1,
+      },
+      sport: {
+        id: config.sportId,
+        name: ALL_SPORTS.find(s => s.id === config.sportId)?.name || config.sport,
+        slug: ALL_SPORTS.find(s => s.id === config.sportId)?.slug || config.sport,
+        icon: ALL_SPORTS.find(s => s.id === config.sportId)?.icon || config.sport,
+      },
+      odds,
+      markets,
+      tipsCount: 0,
+      venue,
+      roundName: (event as unknown as { week?: { number?: number } }).week?.number
+        ? `Round ${(event as unknown as { week?: { number?: number } }).week!.number}`
+        : null,
+    };
+  });
+
+  const result = matches.sort((a, b) => new Date(b.kickoffTime).getTime() - new Date(a.kickoffTime).getTime());
+  setCache(cacheKey, result);
+  return result;
+}
+
+/**
+ * Fetch the full fixture list for the current season of a league.
+ * Unlike getAllMatches() (rolling 7-day window), this fetches the entire
+ * season from start to end — all played, live, and upcoming matches.
+ * Results are cached for 1 hour (upcoming schedule changes rarely).
+ */
+export async function getFullSeasonFixtures(leagueId: number): Promise<UnifiedMatch[]> {
+  const cacheKey = `full-season-${leagueId}`;
+  const cached = getCached<UnifiedMatch[]>(cacheKey, 60 * 60 * 1000); // 1h cache
+  if (cached) return cached;
+
+  const config = ESPN_LEAGUES.find(l => l.leagueId === leagueId);
+  if (!config) return [];
+
+  const now = new Date();
+  const month = now.getMonth(); // 0=Jan … 11=Dec
+  const year = now.getFullYear();
+
+  // European soccer: Aug–May. By June the new season starts.
+  // Other sports: use a straight 12-month season window.
+  let seasonStart: Date;
+  let seasonEnd: Date;
+
+  if (config.sportType === 'soccer') {
+    const seasonStartYear = month >= 5 ? year : year - 1; // Jun+ → new season
+    seasonStart = new Date(`${seasonStartYear}-07-01`);
+    seasonEnd   = new Date(`${seasonStartYear + 1}-07-31`);
+  } else {
+    // Generic: look back 3 months + ahead 9 months to capture the current season
+    seasonStart = new Date(now);
+    seasonStart.setMonth(seasonStart.getMonth() - 3);
+    seasonEnd = new Date(now);
+    seasonEnd.setMonth(seasonEnd.getMonth() + 9);
+  }
+
+  const h1Start = formatYYYYMMDD(seasonStart);
+  const h1End   = formatYYYYMMDD(new Date(Math.min(
+    new Date(`${seasonStart.getFullYear()}-12-31`).getTime(),
+    seasonEnd.getTime()
+  )));
+  const h2StartDate = new Date(`${seasonStart.getFullYear() + 1}-01-01`);
+  const needsH2 = h2StartDate <= seasonEnd;
+
+  const fetches: Promise<ESPNScoreboardResponseFull | null>[] = [
+    fetchESPN(config.sport, config.league, 'scoreboard', `${h1Start}-${h1End}`),
+  ];
+  if (needsH2) {
+    const h2Start = formatYYYYMMDD(h2StartDate);
+    const h2End   = formatYYYYMMDD(seasonEnd);
+    fetches.push(fetchESPN(config.sport, config.league, 'scoreboard', `${h2Start}-${h2End}`));
+  }
+
+  const [data1, data2] = await Promise.all(fetches);
+  const allEvents = [
+    ...(data1?.events ?? []),
+    ...((data2 as ESPNScoreboardResponseFull | null | undefined)?.events ?? []),
+  ];
+
+  if (allEvents.length === 0) return [];
+
+  const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+  const hasDraw = !noDrawSports.includes(config.sportType);
+
+  const matches: UnifiedMatch[] = allEvents.map((event) => {
+    const competition = event.competitions[0];
+    const homeCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'home');
+    const awayCompetitor = competition?.competitors.find((c: { homeAway?: string }) => c.homeAway === 'away');
+    const homeTeamName = homeCompetitor?.team?.displayName || homeCompetitor?.team?.name || 'TBD';
+    const awayTeamName = awayCompetitor?.team?.displayName || awayCompetitor?.team?.name || 'TBD';
+    const status = mapESPNStatus(event.status);
+    const { odds, markets } = extractEspnOdds(competition?.odds, hasDraw, config.sportType, homeTeamName, awayTeamName);
+
+    return {
+      id: `espn_${config.league.replace(/[^a-z0-9]/gi, '')}_${event.id}`,
+      externalId: event.id,
+      source: 'espn' as const,
+      sportId: config.sportId,
+      sportKey: `${config.sport}_${config.league}`,
+      leagueId: config.leagueId,
+      leagueKey: config.league,
+      homeTeam: {
+        id: homeCompetitor?.team?.id || '',
+        name: homeTeamName,
+        shortName: homeCompetitor?.team?.abbreviation || homeTeamName.split(' ').pop() || 'TBD',
+        logo: homeCompetitor?.team?.logo,
+        record: homeCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total')?.summary,
+      },
+      awayTeam: {
+        id: awayCompetitor?.team?.id || '',
+        name: awayTeamName,
+        shortName: awayCompetitor?.team?.abbreviation || awayTeamName.split(' ').pop() || 'TBD',
+        logo: awayCompetitor?.team?.logo,
+        record: awayCompetitor?.records?.find((r: { type?: string; summary?: string }) => r.type === 'total')?.summary,
+      },
+      kickoffTime: new Date(event.date),
+      status,
+      homeScore: homeCompetitor?.score !== undefined && homeCompetitor?.score !== null && homeCompetitor.score !== ''
+        ? parseInt(String(homeCompetitor.score), 10) : null,
+      awayScore: awayCompetitor?.score !== undefined && awayCompetitor?.score !== null && awayCompetitor.score !== ''
+        ? parseInt(String(awayCompetitor.score), 10) : null,
+      league: {
+        id: config.leagueId,
+        name: config.leagueName,
+        slug: ALL_LEAGUES.find(l => l.id === config.leagueId)?.slug || config.league.replace(/\./g, '-'),
+        country: config.country,
+        countryCode: config.countryCode,
+        tier: 1,
+      },
+      sport: {
+        id: config.sportId,
+        name: ALL_SPORTS.find(s => s.id === config.sportId)?.name || config.sport,
+        slug: ALL_SPORTS.find(s => s.id === config.sportId)?.slug || config.sport,
+        icon: ALL_SPORTS.find(s => s.id === config.sportId)?.icon || config.sport,
+      },
+      odds,
+      markets,
+      tipsCount: 0,
+      venue: competition?.venue?.fullName,
+      roundName: (event as unknown as { week?: { number?: number } }).week?.number
+        ? `Round ${(event as unknown as { week?: { number?: number } }).week!.number}`
+        : null,
+    };
+  });
+
+  const result = matches.sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
+  setCache(cacheKey, result);
+  return result;
+}
+
+export async function getLiveMatches(): Promise<UnifiedMatch[]> {
+  const allMatches = await getAllMatches();
+  return allMatches.filter(m =>
+    m.status === 'live' ||
+    m.status === 'halftime' ||
+    (m.status as string) === 'extra_time' ||
+    (m.status as string) === 'penalties'
+  );
+}
+
+/**
+ * Patch live match scores directly into the in-memory main cache without doing
+ * a full re-fetch. Called by the live-scores cron after every ESPN score check
+ * so that the /api/matches endpoint immediately reflects updated scores,
+ * match minutes, and status changes — no need to wait for the next full
+ * background refresh (which takes 10-30 seconds).
+ */
+// Monotonically increasing counter — bumped whenever g_allMatchesCache is updated
+// from an external source (live-score patch or background refresh). Route.ts
+// reads this to know when to invalidate its own route-level cache.
+export let matchesCacheVersion = 0;
+
+/**
+ * Patch scores from a supplementary source (e.g. camel1) into the main cache.
+ * Only patches matches where ESPN has null scores (match was 'scheduled' when
+ * last fetched and ESPN never returned a real score due to circuit breaker).
+ * Does NOT overwrite non-null ESPN scores to avoid introducing stale data.
+ */
+export function patchScoresFromSupplementary(supplementaryMatches: UnifiedMatch[]): void {
+  if (!g_allMatchesCache.data?.length || !supplementaryMatches.length) return;
+
+  // Build a lookup by normalised team-pair + date for O(1) lookups inside the map.
+  const suppIndex = new Map<string, UnifiedMatch>();
+  for (const s of supplementaryMatches) {
+    const sd = new Date(s.kickoffTime).toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    const sh = s.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const sa = s.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    suppIndex.set(`${sd}|${sh}|${sa}`, s);
+  }
+
+  let changed = false;
+  g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
+    // Find a supplementary match by team name + kickoff date (UTC).
+    const md = new Date(m.kickoffTime).toISOString().slice(0, 10);
+    const mh = m.homeTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const ma = m.awayTeam.name.toLowerCase().replace(/[^a-z]/g, '');
+    const supp = suppIndex.get(`${md}|${mh}|${ma}`);
+    if (!supp) return m;
+
+    const espnTotal = (m.homeScore ?? 0) + (m.awayScore ?? 0);
+    const suppTotal = (supp.homeScore ?? 0) + (supp.awayScore ?? 0);
+
+    // Only override if supplementary source has actual goals (avoids overwriting
+    // a genuine 0-0 result with a pre-match null/0).
+    if (suppTotal === 0) return m;
+
+    // Don't override a cached score that is already higher than supplementary.
+    // (e.g. ESPN has 3-1 and SofaScore temporarily still shows 2-1 mid-update)
+    if (espnTotal > 0 && espnTotal >= suppTotal) return m;
+
+    // Supplementary source has a real / higher score — patch it in.
+    changed = true;
+    return {
+      ...m,
+      homeScore: supp.homeScore,
+      awayScore: supp.awayScore,
+      // Update status if the supplementary source shows a non-scheduled status
+      // and our cached status is still scheduled or live (allows finished→finished
+      // score patches to propagate without toggling status backwards).
+      ...(supp.status && supp.status !== 'scheduled' &&
+          (m.status === 'scheduled' || m.status === 'live' || m.status === 'halftime')
+        ? { status: supp.status }
+        : {}),
+    };
+  });
+  if (changed) {
+    g_allMatchesCache.ts = Date.now();
+    matchesCacheVersion++;
+    console.log('[matches] supplementary score patch: updated null-score matches from fallback source');
+  }
+}
+
+
+/**
+ * Merge SofaScore matches into the main cache.
+ * Unlike patchScoresFromSupplementary() which only updates existing entries,
+ * this function ALSO adds genuinely new matches (small leagues, lower-tier
+ * competitions) that weren't in the initial ESPN/FotMob/etc. fetch.
+ *
+ * Called every 5 minutes from the live-scores cron so that all SofaScore
+ * leagues — including small/regional ones — appear in Today's matches shortly
+ * after server startup rather than waiting for the next full background refresh.
+ */
+export function mergeNewMatchesIntoCache(newMatches: UnifiedMatch[]): void {
+  if (!newMatches.length || !g_allMatchesCache.data) return;
+
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const dateOf = (m: UnifiedMatch) => new Date(m.kickoffTime).toISOString().slice(0, 10);
+
+  // Build lookup of every match already in cache (both forward and reverse key)
+  const existingKeys = new Set<string>();
+  for (const m of g_allMatchesCache.data) {
+    const d = dateOf(m);
+    const h = norm(m.homeTeam.name);
+    const a = norm(m.awayTeam.name);
+    existingKeys.add(`${h}|${a}|${d}`);
+    existingKeys.add(`${a}|${h}|${d}`);
+  }
+
+  // Build a quick score-patch index keyed by home|away|date
+  const suppIndex = new Map<string, UnifiedMatch>();
+  for (const s of newMatches) {
+    const d = dateOf(s);
+    const h = norm(s.homeTeam.name);
+    const a = norm(s.awayTeam.name);
+    suppIndex.set(`${h}|${a}|${d}`, s);
+  }
+
+  // ── Pass 1: patch scores on existing cached matches ────────────────────────
+  let scorePatched = 0;
+  g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
+    const key = `${norm(m.homeTeam.name)}|${norm(m.awayTeam.name)}|${dateOf(m)}`;
+    const supp = suppIndex.get(key);
+    if (!supp) return m;
+
+    const suppTotal = (supp.homeScore ?? 0) + (supp.awayScore ?? 0);
+    const espnTotal = (m.homeScore ?? 0) + (m.awayScore ?? 0);
+
+    // Only patch if supplementary has a real score AND it is higher than cached
+    if (suppTotal === 0) return m;
+    if (espnTotal > 0 && espnTotal >= suppTotal) return m;
+
+    scorePatched++;
+    return {
+      ...m,
+      homeScore: supp.homeScore,
+      awayScore: supp.awayScore,
+      matchMinute: supp.matchMinute ?? m.matchMinute,
+      ...(supp.status && supp.status !== 'scheduled' &&
+          (m.status === 'scheduled' || m.status === 'live' || m.status === 'halftime')
+        ? { status: supp.status }
+        : {}),
+    };
+  });
+
+  // ── Pass 2: add matches not seen in cache yet ──────────────────────────────
+  const toAdd: UnifiedMatch[] = [];
+  for (const m of newMatches) {
+    const d = dateOf(m);
+    const h = norm(m.homeTeam.name);
+    const a = norm(m.awayTeam.name);
+    const fwd = `${h}|${a}|${d}`;
+    const rev = `${a}|${h}|${d}`;
+    if (!existingKeys.has(fwd) && !existingKeys.has(rev)) {
+      toAdd.push(m);
+      existingKeys.add(fwd);
+      existingKeys.add(rev);
+    }
+  }
+
+  if (toAdd.length > 0 || scorePatched > 0) {
+    if (toAdd.length > 0) {
+      g_allMatchesCache.data = [...g_allMatchesCache.data, ...toAdd];
+    }
+    g_allMatchesCache.ts = Date.now();
+    matchesCacheVersion++;
+    console.log(`[matches] SofaScore merge: +${toAdd.length} new matches, ${scorePatched} scores patched (cache total: ${g_allMatchesCache.data.length})`);
+  }
+}
+
+export function patchLiveScoresInMainCache(liveMatches: UnifiedMatch[]): void {
+  if (!g_allMatchesCache.data?.length || !liveMatches.length) return;
+  const byId = new Map(liveMatches.map(m => [m.id, m]));
+  let changed = false;
+  g_allMatchesCache.data = g_allMatchesCache.data.map(m => {
+    const live = byId.get(m.id);
+    if (!live) return m;
+    // Only patch if something actually changed — avoids unnecessary object churn
+    if (
+      live.homeScore === m.homeScore &&
+      live.awayScore === m.awayScore &&
+      live.status === m.status &&
+      live.matchMinute === m.matchMinute
+    ) return m;
+    changed = true;
+    return {
+      ...m,
+      homeScore: live.homeScore,
+      awayScore: live.awayScore,
+      status: live.status,
+      matchMinute: live.matchMinute,
+    };
+  });
+  // Reset TTL so the patched data is immediately served as "fresh"
+  if (changed) {
+    g_allMatchesCache.ts = Date.now();
+    matchesCacheVersion++;
+    console.log(`[matches] live-score patch: updated ${liveMatches.length} live matches in cache (v${matchesCacheVersion})`);
+  }
+}
+
+export async function getUpcomingMatches(): Promise<UnifiedMatch[]> {
+  const allMatches = await getAllMatches();
+  const now = new Date();
+  return allMatches
+    .filter(m => m.status === 'scheduled' && new Date(m.kickoffTime) > now)
+    .sort((a, b) => new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime());
+}
+
+// ============================================
+// Standings API (real ESPN data)
+// ============================================
+
+interface ESPNStandingEntry {
+  team?: {
+    id?: string;
+    displayName?: string;
+    shortDisplayName?: string;
+    logos?: Array<{ href?: string }>;
+    logo?: string;
+  };
+  stats?: Array<{
+    name?: string;
+    type?: string;
+    abbreviation?: string;
+    value?: number;
+    displayValue?: string;
+  }>;
+  note?: { description?: string; rank?: number };
+}
+
+interface ESPNStandingsResponse {
+  children?: Array<{
+    name?: string;
+    abbreviation?: string;
+    standings?: { entries?: ESPNStandingEntry[] };
+  }>;
+  standings?: { entries?: ESPNStandingEntry[] };
+}
+
+function pickStat(stats: ESPNStandingEntry['stats'], names: string[]): number {
+  if (!stats) return 0;
+  for (const s of stats) {
+    const key = (s.name || s.type || s.abbreviation || '').toLowerCase();
+    if (names.some(n => key === n.toLowerCase())) {
+      const v = typeof s.value === 'number' ? s.value : parseFloat(s.displayValue || '0');
+      if (Number.isFinite(v)) return v;
+    }
+  }
+  return 0;
+}
+
+export async function getLeagueStandings(leagueId: number, seasonYear?: number): Promise<Standing[]> {
+  const cacheKey = `standings-${leagueId}-${seasonYear ?? 'current'}`;
+  const cached = getCached<Standing[]>(cacheKey, CACHE_DURATION.standings);
+  if (cached) return cached;
+
+  const config = ESPN_LEAGUES.find(l => l.leagueId === leagueId);
+  if (!config) return [];
+
+  // Use the site.web.api URL for all cases — it accepts an optional ?season= param
+  // and works across leagues without needing to know the group ID (groups/1 was wrong
+  // for many leagues). For non-soccer sports fall back to site.api.espn.com same pattern.
+  let url: string;
+  if (config.sportType === 'soccer') {
+    url = `https://site.web.api.espn.com/apis/v2/sports/soccer/${config.league}/standings`;
+    if (seasonYear) url += `?season=${seasonYear}`;
+  } else {
+    url = `https://site.api.espn.com/apis/v2/sports/${config.sport}/${config.league}/standings`;
+    if (seasonYear) url += `?season=${seasonYear}`;
+  }
+
+  let data: ESPNStandingsResponse | null = null;
+  try {
+    const resp = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      next: { revalidate: 600 },
+    });
+    if (resp.ok) data = await resp.json();
+  } catch {
+    /* network error → empty */
+  }
+
+  if (!data) return [];
+
+  // ESPN packages standings either at top-level or in `children[].standings.entries`.
+  // For group-stage tournaments (World Cup, AFCON, Copa America, etc.) each child
+  // represents one group and carries a `name` like "Group A".
+  type EntryWithGroup = ESPNStandingEntry & { _group?: string };
+
+  let entries: EntryWithGroup[];
+  const hasNamedGroups = data.children?.some(c => c.name);
+
+  if (hasNamedGroups && data.children) {
+    entries = data.children.flatMap(c =>
+      (c.standings?.entries || []).map(e => ({ ...e, _group: c.name || c.abbreviation }))
+    );
+  } else {
+    entries = (
+      data.standings?.entries ||
+      data.children?.flatMap(c => c.standings?.entries || []) ||
+      []
+    ) as EntryWithGroup[];
+  }
+
+  const standings: Standing[] = entries.map((e, idx) => {
+    const won = pickStat(e.stats, ['wins', 'gameswon']);
+    const drawn = pickStat(e.stats, ['ties', 'draws']);
+    const lost = pickStat(e.stats, ['losses', 'gameslost']);
+    const played = pickStat(e.stats, ['gamesplayed', 'games']) || won + drawn + lost;
+    const goalsFor = pickStat(e.stats, ['pointsfor', 'goalsfor', 'pf']);
+    const goalsAgainst = pickStat(e.stats, ['pointsagainst', 'goalsagainst', 'pa']);
+    const goalDifference = pickStat(e.stats, ['pointdifferential', 'goaldifference', 'gd']) || (goalsFor - goalsAgainst);
+    const points = pickStat(e.stats, ['points', 'leaguepoints']);
+    const rank = pickStat(e.stats, ['rank']) || idx + 1;
+
+    return {
+      position: rank,
+      group: e._group,
+      team: {
+        id: String(e.team?.id || idx),
+        name: e.team?.displayName || e.team?.shortDisplayName || `Team ${idx + 1}`,
+        logo: e.team?.logos?.[0]?.href || e.team?.logo,
+      },
+      played,
+      won,
+      drawn,
+      lost,
+      goalsFor,
+      goalsAgainst,
+      goalDifference,
+      points,
+    };
+  }).sort((a, b) => {
+    // When groups exist, sort within each group by position
+    if (a.group && b.group && a.group !== b.group) return a.group.localeCompare(b.group);
+    return a.position - b.position;
+  });
+
+  setCache(cacheKey, standings);
+  return standings;
+}
+
+// ============================================
+// Outrights API (real bookmaker odds via The Odds API)
+// ============================================
+
+interface TheOddsApiOutrightEvent {
+  id: string;
+  sport_key: string;
+  sport_title: string;
+  commence_time: string;
+  bookmakers?: Array<{
+    key: string;
+    title: string;
+    markets: Array<{
+      key: string;
+      outcomes: Array<{ name: string; price: number }>;
+    }>;
+  }>;
+}
+
+// leagueId → ARRAY of The Odds API sport_keys for OUTRIGHTS markets.
+// We probe multiple winner / top-scorer / relegation keys per league and merge
+// whichever ones return data — this catches seasonal markets that come and go.
+//
+// We try ALL of these in parallel; empty responses are skipped silently.
+export const LEAGUE_TO_ODDS_KEYS: Record<number, string[]> = {
+  // ─── Soccer — top tiers ───
+  1:  ['soccer_epl_winner', 'soccer_epl_top_scorer', 'soccer_epl_relegation'],
+  2:  ['soccer_spain_la_liga_winner', 'soccer_spain_la_liga_top_scorer', 'soccer_spain_la_liga_relegation'],
+  3:  ['soccer_germany_bundesliga_winner', 'soccer_germany_bundesliga_top_scorer'],
+  4:  ['soccer_italy_serie_a_winner', 'soccer_italy_serie_a_top_scorer'],
+  5:  ['soccer_france_ligue_one_winner', 'soccer_france_ligue_one_top_scorer'],
+  6:  ['soccer_netherlands_eredivisie_winner'],
+  7:  ['soccer_portugal_primeira_liga_winner'],
+  8:  ['soccer_spl_winner'],                                  // Scottish Premiership
+  11: ['soccer_usa_mls_winner', 'soccer_usa_mls_top_scorer'], // MLS
+  12: ['soccer_brazil_campeonato_winner'],
+  13: ['soccer_argentina_primera_division_winner'],
+  15: ['soccer_turkey_super_league_winner'],
+  16: ['soccer_belgium_first_div_winner'],
+  // ─── Soccer — European competitions ───
+  9:  ['soccer_uefa_champs_league_winner'],
+  10: ['soccer_uefa_europa_league_winner'],
+  26: ['soccer_uefa_europa_conference_league_winner'],
+  220: ['soccer_uefa_super_cup_winner'],
+  // ─── Soccer — domestic cups ───
+  44: ['soccer_fa_cup_winner'],
+  45: ['soccer_efl_cup_winner'],
+  47: ['soccer_copa_del_rey_winner'],
+  49: ['soccer_germany_dfb_pokal_winner'],
+  51: ['soccer_italy_coppa_italia_winner'],
+  53: ['soccer_france_coupe_winner'],
+  // ─── Soccer — internationals ───
+  29: ['soccer_fifa_world_cup', 'soccer_fifa_world_cup_winner'],
+  30: ['soccer_uefa_european_championship_winner', 'soccer_uefa_euros_qualification_winner'],
+  31: ['soccer_conmebol_copa_america_winner'],
+  24: ['soccer_caf_africa_cup_of_nations_winner'],
+  109: ['soccer_fifa_club_world_cup_winner'],
+  111: ['soccer_uefa_nations_league_winner'],
+  // ─── Soccer — Lower European tiers ───
+  41: ['soccer_efl_champ_winner'],                  // EFL Championship
+  46: ['soccer_spain_segunda_division_winner'],     // La Liga 2
+  48: ['soccer_germany_bundesliga2_winner'],        // 2. Bundesliga
+  50: ['soccer_italy_serie_b_winner'],              // Serie B
+  // ─── North-American majors — championship futures ───
+  101: ['basketball_nba_championship_winner', 'basketball_nba_mvp'],
+  107: ['basketball_wnba_championship_winner'],
+  401: ['americanfootball_nfl_super_bowl_winner', 'americanfootball_nfl_mvp'],
+  501: ['baseball_mlb_world_series_winner', 'baseball_mlb_world_series_mvp'],
+  601: ['icehockey_nhl_championship_winner'],
+  // ─── NCAA ───
+  108: ['basketball_ncaab_championship_winner'],
+  402: ['americanfootball_ncaaf_championship_winner'],
+  // ─── Tennis (Grand Slam outrights) ───
+  201: ['tennis_atp_aus_open_singles', 'tennis_atp_french_open_singles', 'tennis_atp_wimbledon_singles', 'tennis_atp_us_open_singles'],
+  202: ['tennis_wta_aus_open_singles', 'tennis_wta_french_open_singles', 'tennis_wta_wimbledon_singles', 'tennis_wta_us_open_singles'],
+  // ─── Cricket ───
+  301: ['cricket_ipl_winner'],
+  302: ['cricket_big_bash_winner'],
+  306: ['cricket_psl_winner'],
+  // ─── Golf majors ───
+  1701: ['golf_masters_tournament_winner', 'golf_us_open_winner', 'golf_the_open_championship_winner', 'golf_pga_championship_winner'],
+  1702: ['golf_dp_world_tour_championship_winner'],
+  // ─── Motorsports ───
+  2901: ['motorsport_f1_drivers_championship', 'motorsport_f1_constructors_championship'],
+};
+
+// Cached list of currently active outright sport keys from The Odds API.
+// Markets come and go (Super Bowl winner runs all year, EPL Winner only in season).
+// We re-fetch every 6h.
+let activeOutrightKeysCache: { keys: Set<string>; ts: number } | null = null;
+async function getActiveOutrightKeys(): Promise<Set<string>> {
+  if (activeOutrightKeysCache && Date.now() - activeOutrightKeysCache.ts < 6 * 60 * 60_000) {
+    return activeOutrightKeysCache.keys;
+  }
+  const list = await fetchTheOddsAPI('sports', { all: 'true' }) as Array<{ key: string; active: boolean; has_outrights: boolean }> | null;
+  const keys = new Set<string>();
+  if (Array.isArray(list)) {
+    for (const s of list) {
+      if (s.active && s.has_outrights) keys.add(s.key);
+    }
+  }
+  activeOutrightKeysCache = { keys, ts: Date.now() };
+  return keys;
+}
+
+export async function getLeagueOutrights(leagueId: number): Promise<Outright[]> {
+  const cacheKey = `outrights-${leagueId}`;
+  const cached = getCached<Outright[]>(cacheKey, CACHE_DURATION.outrights);
+  if (cached) return cached;
+
+  // First try SportsGameOdds (covers UCL + MLS on free tier; richer book coverage).
+  // Their data is keyed differently so we run both providers and concat.
+  const { getSgoOutrights } = await import('@/lib/api/sportsgameodds');
+  const sgoOutrights = await getSgoOutrights(leagueId).catch(() => []);
+
+  const sportKeys = LEAGUE_TO_ODDS_KEYS[leagueId];
+  if (!sportKeys || sportKeys.length === 0) {
+    if (sgoOutrights.length > 0) {
+      setCache(cacheKey, sgoOutrights);
+      return sgoOutrights;
+    }
+    setCache(cacheKey, []);
+    return [];
+  }
+
+  // Filter to only sport keys actually active right now in The Odds API —
+  // calling an inactive key returns INVALID_MARKET_COMBO and burns quota.
+  const activeKeys = await getActiveOutrightKeys();
+  const callableKeys = sportKeys.filter(k => activeKeys.has(k));
+  if (callableKeys.length === 0) {
+    if (sgoOutrights.length > 0) {
+      setCache(cacheKey, sgoOutrights);
+      return sgoOutrights;
+    }
+    setCache(cacheKey, []);
+    return [];
+  }
+
+  // Probe all callable outright keys in parallel.
+  const responses = await Promise.allSettled(
+    callableKeys.map(sportKey => fetchTheOddsAPI(`sports/${sportKey}/odds`, {
+      regions: 'uk,eu,us',
+      markets: 'outrights',
+      oddsFormat: 'decimal',
+      dateFormat: 'iso',
+    }) as Promise<TheOddsApiOutrightEvent[] | null>),
+  );
+
+  const outrights: Outright[] = [];
+
+  for (const result of responses) {
+    if (result.status !== 'fulfilled') continue;
+    const data = result.value;
+    if (!data || !Array.isArray(data) || data.length === 0) continue;
+
+    for (const ev of data) {
+      if (!ev.bookmakers || ev.bookmakers.length === 0) continue;
+
+      // outcome name → array of prices across bookmakers
+      const tally = new Map<string, number[]>();
+      for (const bm of ev.bookmakers) {
+        for (const market of bm.markets) {
+          if (market.key !== 'outrights') continue;
+          for (const o of market.outcomes) {
+            if (!tally.has(o.name)) tally.set(o.name, []);
+            tally.get(o.name)!.push(o.price);
+          }
+        }
+      }
+
+      if (tally.size === 0) continue;
+
+      const outcomes = Array.from(tally.entries())
+        .map(([name, prices]) => ({
+          name,
+          // best (highest) decimal price across bookmakers — that's what punters want
+          price: Math.round(Math.max(...prices) * 100) / 100,
+        }))
+        .sort((a, b) => a.price - b.price); // shortest odds = favourite first
+
+      outrights.push({
+        id: ev.id,
+        name: ev.sport_title || 'Outright Winner',
+        outcomes,
+      });
+    }
+  }
+
+  // Merge in any SGO outrights (de-dup on (name, top outcome)) so we never
+  // show the same market twice if both providers return it.
+  const seen = new Set(outrights.map(o => `${o.name}::${o.outcomes[0]?.name || ''}`));
+  for (const sgo of sgoOutrights) {
+    const key = `${sgo.name}::${sgo.outcomes[0]?.name || ''}`;
+    if (!seen.has(key)) {
+      outrights.push(sgo);
+      seen.add(key);
+    }
+  }
+
+  setCache(cacheKey, outrights);
+  return outrights;
+}
+
+/**
+ * Synthetic outright winner market built from the current standings table.
+ *
+ * We compute each team's "title equity" as a function of:
+ *   • current points (the dominant factor)
+ *   • goal difference (tie-breaker)
+ *   • position penalty (each rung down halves the implied probability)
+ *
+ * The top 6 are surfaced; the long tail collapses into "Field" so totals
+ * roughly sum to 1.0. Decimal odds are then 1 / probability.
+ */
+export async function buildOutrightFromStandings(leagueId: number): Promise<Outright | null> {
+  const standings = await getLeagueStandings(leagueId).catch(() => []);
+  if (!standings || standings.length < 4) return null;
+
+  // Deterministic-but-team-seeded jitter so odds look bookmaker-natural
+  // without changing on every render (same team always gets same nudge).
+  function teamJitter(name: string): number {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
+    // Maps to ±4% range
+    return 1 + ((h & 0xff) / 255 - 0.5) * 0.08;
+  }
+
+  // Round to the nearest bookmaker increment:
+  //   < 2.0  → 0.05 steps  (e.g. 1.65, 1.70, 1.80)
+  //   < 4.0  → 0.10 steps  (e.g. 2.20, 2.50, 3.60)
+  //   < 10   → 0.25 steps  (e.g. 4.25, 5.50, 7.75)
+  //   < 20   → 0.50 steps  (e.g. 11.0, 14.5, 19.0)
+  //   ≥ 20   → 1.00 steps  (e.g. 21.0, 34.0, 67.0)
+  function bookmakerRound(price: number): number {
+    if (price < 2.0) return Math.round(price / 0.05) * 0.05;
+    if (price < 4.0) return Math.round(price / 0.10) * 0.10;
+    if (price < 10)  return Math.round(price / 0.25) * 0.25;
+    if (price < 20)  return Math.round(price / 0.50) * 0.50;
+    return Math.round(price);
+  }
+
+  // Filter out teams that are mathematically eliminated from winning the title.
+  // A team can no longer win if: leader_points - team_points > remaining_games * 3.
+  // We estimate total games per season from league size and games already played.
+  const leagueSize = standings.length;
+  // Double round-robin: each team plays (leagueSize - 1) * 2 games.
+  // Clamp to common values (38 for 20-team, 34 for 18-team, 30 for 16-team, etc.)
+  const totalGamesEstimate = Math.max((leagueSize - 1) * 2, standings[0].played + 4, 26);
+  const leader = standings[0];
+  const contenders = standings.filter(s => {
+    const remaining = Math.max(0, totalGamesEstimate - s.played);
+    return leader.points - s.points <= remaining * 3;
+  });
+  // Require at least 2 contenders; if data is sparse fall back to top-6 standings
+  const titleContenders = contenders.length >= 2 ? contenders : standings.slice(0, 6);
+
+  // Score each team — points dominate, GD is tertiary, position adds decay.
+  // Use a softer 0.62 decay (vs old 0.55) so 2nd/3rd place get realistic
+  // non-trivial odds rather than astronomical prices.
+  const scored = titleContenders
+    .map(s => {
+      const ptsScore = Math.max(0, s.points);
+      const gdScore  = Math.max(0, s.goalDifference) * 0.12;
+      const decay    = Math.pow(0.62, Math.max(0, s.position - 1));
+      return { team: s.team, raw: (ptsScore + gdScore) * decay };
+    })
+    .filter(s => s.raw > 0);
+
+  if (scored.length === 0) return null;
+
+  const total = scored.reduce((acc, s) => acc + s.raw, 0);
+  if (total === 0) return null;
+
+  // 8% overround (typical bookmaker margin for outrights)
+  const MARGIN = 0.92;
+
+  const top = scored.slice(0, 6).map(s => {
+    const trueProb = s.raw / total;
+    const rawPrice = (1 / trueProb) * MARGIN;
+    const jittered  = rawPrice * teamJitter(s.team.name);
+    return { name: s.team.name, price: bookmakerRound(Math.max(1.05, jittered)) };
+  });
+
+  // Long-tail "Field" outcome
+  const tailRaw = scored.slice(6).reduce((acc, s) => acc + s.raw, 0);
+  if (tailRaw > 0) {
+    const rawPrice = (1 / (tailRaw / total)) * MARGIN;
+    top.push({ name: 'Any other team', price: bookmakerRound(Math.max(1.50, rawPrice)) });
+  }
+
+  return {
+    id: `synthetic-outright-${leagueId}`,
+    name: 'Title Winner',
+    outcomes: top.sort((a, b) => a.price - b.price),
+  };
+}
+
+// ============================================
+// Top scorers / leaders (real ESPN data)
+// ============================================
+
+export interface TopScorer {
+  position: number;
+  player: {
+    id: string;
+    name: string;
+    photo?: string;
+    position?: string;
+  };
+  team: { id?: string; name: string; logo?: string };
+  stats: { goals: number; appearances?: number; assists?: number };
+}
+
+interface ESPNLeader {
+  displayValue?: string;
+  value?: number;
+  athlete?: {
+    id?: string;
+    displayName?: string;
+    shortName?: string;
+    headshot?: { href?: string };
+    position?: { abbreviation?: string };
+    team?: { id?: string; displayName?: string; logo?: string; logos?: Array<{ href?: string }> };
+  };
+  team?: { id?: string; displayName?: string; logo?: string; logos?: Array<{ href?: string }> };
+}
+
+interface ESPNLeadersResponse {
+  categories?: Array<{
+    name?: string;
+    displayName?: string;
+    abbreviation?: string;
+    leaders?: ESPNLeader[];
+  }>;
+  leaders?: Array<{
+    name?: string;
+    displayName?: string;
+    abbreviation?: string;
+    leaders?: ESPNLeader[];
+  }>;
+}
+
+type CoreLeader = {
+  displayValue?: string;
+  shortDisplayValue?: string;
+  value?: number;
+  athlete?: { $ref?: string; id?: string | number; displayName?: string; shortName?: string; headshot?: { href?: string }; position?: { abbreviation?: string } };
+  team?: { $ref?: string; id?: string | number; displayName?: string; logos?: Array<{ href?: string }>; logo?: string };
+};
+
+async function dereferenceEspnRef<T>(ref?: string): Promise<T | null> {
+  if (!ref) return null;
+  try {
+    // ESPN $ref values come back as http:// — upgrade to https for safety
+    const url = ref.replace(/^http:\/\//, 'https://');
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, next: { revalidate: 3600 } });
+    if (!r.ok) return null;
+    return (await r.json()) as T;
+  } catch { return null; }
+}
+
+export async function getLeagueTopScorers(leagueId: number, limit = 10): Promise<TopScorer[]> {
+  const cacheKey = `top-scorers-${leagueId}-${limit}`;
+  const cached = getCached<TopScorer[]>(cacheKey, CACHE_DURATION.standings);
+  if (cached) return cached;
+
+  const config = ESPN_LEAGUES.find(l => l.leagueId === leagueId);
+  if (!config) return [];
+
+  // The reliable ESPN core leaders endpoint: per-season per-type.
+  // type=1 (regular season) is the only one that's populated for soccer/most leagues.
+  // Try current year first, then previous year (covers off-season + late-starting leagues).
+  const now = new Date();
+  const yr = now.getUTCFullYear();
+  const candidates = [
+    `https://sports.core.api.espn.com/v2/sports/${config.sport}/leagues/${config.league}/seasons/${yr}/types/1/leaders`,
+    `https://sports.core.api.espn.com/v2/sports/${config.sport}/leagues/${config.league}/seasons/${yr - 1}/types/1/leaders`,
+    `https://sports.core.api.espn.com/v2/sports/${config.sport}/leagues/${config.league}/seasons/${yr}/types/2/leaders`,
+  ];
+
+  let data: { categories?: Array<{ name?: string; displayName?: string; leaders?: CoreLeader[] }> } | null = null;
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' }, next: { revalidate: 1800 } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j?.categories?.length) { data = j; break; }
+    } catch { /* try next */ }
+  }
+
+  if (!data?.categories?.length) {
+    setCache(cacheKey, []);
+    return [];
+  }
+
+  // Sport-aware scoring category — soccer uses goalsLeaders, basketball uses pointsPerGame, etc.
+  const SCORING_PRIORITY: Record<string, string[]> = {
+    soccer: ['goalsLeaders', 'goals'],
+    basketball: ['pointsPerGame', 'points', 'totalPoints', 'pointsLeaders'],
+    football: ['passingYards', 'rushingYards', 'totalTouchdowns'],
+    baseball: ['homeRuns', 'rbi', 'battingAverage'],
+    hockey: ['goals', 'points', 'goalsLeaders'],
+  };
+  const wantList = SCORING_PRIORITY[config.sport] || ['goals', 'goalsLeaders', 'points'];
+  const scoringCat =
+    wantList.map(n => data!.categories!.find(c => (c.name || '').toLowerCase() === n.toLowerCase())).find(Boolean) ||
+    data.categories.find(c => /goal|point|score/i.test(c.name || c.displayName || '')) ||
+    data.categories[0];
+
+  if (!scoringCat?.leaders?.length) {
+    setCache(cacheKey, []);
+    return [];
+  }
+
+  // Dereference athlete + team for top N in parallel
+  const top = scoringCat.leaders.slice(0, limit);
+  const enriched = await Promise.all(top.map(async (l, idx) => {
+    const [athlete, team] = await Promise.all([
+      dereferenceEspnRef<{ id?: string; displayName?: string; shortName?: string; headshot?: { href?: string }; position?: { abbreviation?: string } }>(l.athlete?.$ref),
+      dereferenceEspnRef<{ id?: string; displayName?: string; logos?: Array<{ href?: string }> }>(l.team?.$ref),
+    ]);
+    const goals = typeof l.value === 'number' ? l.value : parseFloat(l.displayValue || '0') || 0;
+    return {
+      position: idx + 1,
+      player: {
+        id: String(athlete?.id || idx),
+        name: athlete?.displayName || athlete?.shortName || `Player ${idx + 1}`,
+        photo: athlete?.headshot?.href,
+        position: athlete?.position?.abbreviation,
+      },
+      team: {
+        id: team?.id ? String(team.id) : undefined,
+        name: team?.displayName || 'Unknown',
+        logo: team?.logos?.[0]?.href,
+      },
+      stats: { goals: Math.round(goals) },
+    } as TopScorer;
+  }));
+
+  setCache(cacheKey, enriched);
+  return enriched;
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+const SPORT_PRIORITY: Record<number, number> = {
+  1: 0,   // Football
+  2: 1,   // Basketball
+  3: 2,   // Tennis
+  4: 3,   // Cricket
+  5: 4,   // American Football
+  6: 5,   // Baseball
+  7: 6,   // Ice Hockey
+  8: 7,   // Rugby
+  27: 8,  // MMA
+  26: 9,  // Boxing
+  29: 10, // Formula 1
+  17: 11, // Golf
+  33: 12, // Esports
+};
+
+export function sortMatchesWithPriority(matches: UnifiedMatch[]): UnifiedMatch[] {
+  return matches.sort((a, b) => {
+    const sportPriorityA = SPORT_PRIORITY[a.sportId] ?? 99;
+    const sportPriorityB = SPORT_PRIORITY[b.sportId] ?? 99;
+    if (sportPriorityA !== sportPriorityB) return sportPriorityA - sportPriorityB;
+
+    const statusOrder = { live: 0, halftime: 1, scheduled: 2, finished: 3, postponed: 4, cancelled: 5 };
+    const statusOrderA = statusOrder[a.status] ?? 5;
+    const statusOrderB = statusOrder[b.status] ?? 5;
+    if (statusOrderA !== statusOrderB) return statusOrderA - statusOrderB;
+
+    return new Date(a.kickoffTime).getTime() - new Date(b.kickoffTime).getTime();
+  });
+}
+
+export async function getMatchById(matchId: string, nameHints?: [string, string]): Promise<UnifiedMatch | null> {
+  // 1) Fast path — match is in the current rolling window (today/upcoming/recent).
+  //    For espn_eventid_ format we scan the cache and prefer the most recent match
+  //    when multiple hits share the same numeric ID (ESPN reuses IDs across seasons).
+  //    This is critical for non-soccer sports (tennis, basketball, cricket, etc.)
+  //    whose matches ARE in the cache under espn_atp_, espn_wta_, espn_nba_, etc.
+  const isEventIdFormat = matchId.startsWith('espn_eventid_');
+
+  // Stale fallback: if all cache hits are old finished matches (>7 days), we still
+  // save the most recent one here so we can return it if the staged lookup also fails.
+  let staleHitFallback: UnifiedMatch | null = null;
+
+  try {
+    const allMatches = await getAllMatches();
+
+    if (!isEventIdFormat) {
+      const found = allMatches.find(m => m.id === matchId);
+      if (found) return found;
+
+      // Scan by trailing numeric event ID — handles legacy-format mismatches where
+      // dots were (re)introduced into the league key (e.g. looking for
+      // espn_eng.1_740936 while cache holds espn_eng1_740936).
+      const numericSuffix = matchId.match(/^espn_[a-z0-9.]+_(\d+)$/i);
+      if (numericSuffix) {
+        const numericId = numericSuffix[1];
+        const srcSport = matchId.split('_')[1]?.toLowerCase() || '';
+        const byEventId = allMatches.find(m =>
+          m.id.endsWith(`_${numericId}`) &&
+          (srcSport === '' || m.id.includes(srcSport.slice(0, 4)))
+        );
+        if (byEventId) return byEventId;
+      }
+    } else {
+      // espn_eventid_ format: scan ALL sports by numeric suffix.
+      // Sort by kickoff (most recent first) so today's match wins over an old
+      // one from a previous season — ESPN sometimes reuses event IDs.
+      const numericId = matchId.slice('espn_eventid_'.length);
+      const hits = allMatches.filter(m => m.id.endsWith(`_${numericId}`));
+      if (hits.length > 0) {
+        const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+        // Sort most-recent kickoff first so the freshest match is preferred
+        const sorted = [...hits].sort(
+          (a, b) => new Date(b.kickoffTime).getTime() - new Date(a.kickoffTime).getTime()
+        );
+        // Return the freshest non-stale hit (live, upcoming, or finished <7 days)
+        const freshHit = sorted.find(h =>
+          h.status !== 'finished' ||
+          (Date.now() - new Date(h.kickoffTime).getTime()) < sevenDaysMs
+        );
+        if (freshHit) return freshHit;
+        // All hits are stale (finished >7 days). Save most recent as a last-resort
+        // fallback in case the staged ESPN lookup also finds nothing.
+        staleHitFallback = sorted[0];
+      }
+      // Zero hits, or all stale → fall through to staged ESPN API lookup below
+    }
+  } catch (error) {
+    console.warn('[API] getAllMatches failed during getMatchById fast-path:', error);
+  }
+
+  // Handle new human-readable URL format (espn_eventid_NNNNN) via staged ESPN lookup.
+  // Stage 1: try soccer leagues (most common on the site) with Promise.any.
+  // Stage 2: if soccer fails, try non-soccer leagues.
+  // Each stage has a 10-second timeout to avoid stalling the page.
+  const eventIdOnly = matchId.match(/^espn_eventid_(\d+)$/);
+  if (eventIdOnly) {
+    const numericId = eventIdOnly[1];
+
+    /**
+     * Team-name hint validator: returns true when the hint (extracted from the
+     * URL slug) plausibly corresponds to the ESPN team name.
+     *
+     * Key design choice: both sides are "slugified" the same way as the URL
+     * slug generator (`teamNameToSlug`), i.e. strip ALL non-alphanumeric chars.
+     * This correctly handles diacritic names like Mönchengladbach or Fenerbahçe
+     * where the URL slug loses the accented letter entirely
+     * ("Mönchengladbach" → "mnchengladbach" and "mnchengladbach" slugified is
+     * "mnchengladbach" — they match on both sides).
+     */
+    const hintMatchesName = (teamName: string, hint: string): boolean => {
+      const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const teamSlug = slugify(teamName);
+      const hintSlug = slugify(hint);
+      if (!hintSlug) return true; // empty hint — don't filter
+      // Direct slug containment covers single-token and concatenated multi-word
+      // names (e.g. "manchesterunited" in "manchesterunited").
+      if (teamSlug.includes(hintSlug) || hintSlug.includes(teamSlug)) return true;
+      // Word-level fallback: split hint on original spaces (pre-slugify), check
+      // each significant word (≥3 chars) against the team slug.
+      const words = hint.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(/\s+/).filter(w => w.length >= 3);
+      if (words.length === 0) return true;
+      const matched = words.filter(w => teamSlug.includes(w));
+      return matched.length >= Math.ceil(words.length / 2);
+    };
+
+    /**
+     * Try each league in parallel and collect ALL results within the timeout.
+     * No age cutoff — old historical matches must load too.
+     * Collision guard: when multiple leagues return a match for the same event ID
+     * (rare but possible), we pick the most recent kickoff date so a current
+     * match always beats an older one from a different league.
+     * Name-hint validation: when nameHints are provided, any league that returns
+     * different team names is rejected so the wrong-league hijack is eliminated.
+     */
+    async function tryLeagues(leagues: ESPNLeagueConfig[]): Promise<string | null> {
+      return new Promise<string | null>(resolve => {
+        const TIMEOUT_MS = 10_000;
+        const candidates: Array<{ id: string; date: number }> = [];
+        let settled = false;
+        let remaining = leagues.length;
+
+        // Resolve with best candidate found so far.
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (candidates.length === 0) { resolve(null); return; }
+          // Pick most recent kickoff (beats stale hijacking without rejecting old matches)
+          candidates.sort((a, b) => b.date - a.date);
+          resolve(candidates[0].id);
+        };
+
+        const timer = setTimeout(finish, TIMEOUT_MS);
+
+        if (leagues.length === 0) { clearTimeout(timer); resolve(null); return; }
+
+        for (const cfg of leagues) {
+          fetchESPNSummary(cfg.sport, cfg.league, numericId).then(summary => {
+            const competition = summary?.header?.competitions?.[0];
+            if (competition) {
+              const homeComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'home');
+              const awayComp = competition.competitors?.find((c: {homeAway?: string}) => c.homeAway === 'away');
+              if (homeComp) {
+                // Team-name validation: when the caller supplies name hints (from
+                // the URL slug), reject leagues whose team names don't match.
+                // This kills the classic wrong-league collision where e.g. Serie A
+                // returns a match with the same event ID but completely different
+                // teams — it was winning the old date-only guard because it
+                // happened to have a more recent kickoff.
+                if (nameHints) {
+                  const homeName = (homeComp.team as { displayName?: string; name?: string })?.displayName
+                    || (homeComp.team as { displayName?: string; name?: string })?.name || '';
+                  const awayName = (awayComp?.team as { displayName?: string; name?: string })?.displayName
+                    || (awayComp?.team as { displayName?: string; name?: string })?.name || '';
+                  if (!hintMatchesName(homeName, nameHints[0]) || !hintMatchesName(awayName, nameHints[1])) {
+                    // Wrong league — skip this candidate entirely.
+                    return;
+                  }
+                }
+                const competitionDate = (competition as { date?: string }).date;
+                const matchDate = competitionDate ? new Date(competitionDate).getTime() : 0;
+
+                // ── Competition-type override ─────────────────────────────────
+                // ESPN's event summary is sometimes accessible via ANY league URL
+                // (e.g. a Club Friendly queried under bel.1 still returns the
+                // correct match data). This means the probing league (cfg.league)
+                // can be completely wrong. We read the actual competition type /
+                // abbreviation from the summary response and override the league
+                // so we never label "Arsenal vs Betis" as "Belgian Pro League".
+                const COMP_TYPE_TO_LEAGUE: Record<string, string> = {
+                  // Friendlies
+                  'FR':     'club.friendly', 'FRI':    'club.friendly', 'FREN':  'club.friendly',
+                  'CLUB':   'club.friendly', 'CLB':    'club.friendly',
+                  'INTFR':  'fifa.friendly', 'INTLFR': 'fifa.friendly', 'INTL':  'fifa.friendly',
+                  // European club comps
+                  'UCL': 'uefa.champions',    'CL':    'uefa.champions',
+                  'UCLQ': 'uefa.champions',   'CLSSF': 'uefa.champions',
+                  'UEL': 'uefa.europa',       'EL':    'uefa.europa',
+                  'UECL': 'uefa.europa.conf', 'CONF':  'uefa.europa.conf', 'ECL': 'uefa.europa.conf',
+                  // English cups
+                  'FAC': 'eng.fa', 'FA': 'eng.fa', 'FACUP': 'eng.fa', 'FACH': 'eng.fa',
+                  'CC':  'eng.league_cup', 'LC':   'eng.league_cup',
+                  'EFLC': 'eng.league_cup', 'ELC': 'eng.league_cup',
+                  // Spanish / French / Italian / German cups
+                  'CDR': 'esp.copa_del_rey', 'COPA': 'esp.copa_del_rey',
+                  'CDF': 'fra.coupe_de_france',
+                  'CI':  'ita.coppa_italia',  'COPI': 'ita.coppa_italia',
+                  'DFBP': 'ger.dfb_pokal',   'DFB':  'ger.dfb_pokal',
+                  // FIFA / CAF / AFC / CONMEBOL
+                  'WC':    'fifa.world',     'FIFA':   'fifa.world',
+                  'CWC':   'fifa.cwc',       'FCWC':  'fifa.cwc',
+                  'CONCAF': 'concacaf.champions', 'CCL': 'concacaf.champions',
+                  'CAF':   'caf.champions',  'CAFCL': 'caf.champions',
+                  'AFCON': 'caf.cup_of_nations',
+                  'ACL':   'afc.champions',
+                  'LIB':   'conmebol.libertadores', 'CONML': 'conmebol.libertadores',
+                  'CONS':  'conmebol.sudamericana',
+                };
+                const rawComp = competition as {
+                  type?: { abbreviation?: string; text?: string; description?: string };
+                  season?: { type?: { abbreviation?: string } };
+                  notes?: Array<{ type?: string; headline?: string }>;
+                };
+                const typeAbbrev = (
+                  rawComp.type?.abbreviation ||
+                  rawComp.season?.type?.abbreviation || ''
+                ).toUpperCase().trim();
+                const typeText = (rawComp.type?.text || rawComp.type?.description || '').toLowerCase();
+
+                let actualLeague = cfg.league;
+                // Override from competition type abbreviation (most reliable)
+                if (typeAbbrev && COMP_TYPE_TO_LEAGUE[typeAbbrev]) {
+                  actualLeague = COMP_TYPE_TO_LEAGUE[typeAbbrev];
+                }
+                // Override from competition type free-text description
+                else if (/friendly|preseason|pre-season|pre season/i.test(typeText)) {
+                  actualLeague = 'club.friendly';
+                }
+                // Safety net: if ESPN returned data for a completely different
+                // domestic league (e.g. bel.1) but the competition type isn't
+                // one of our domestic leagues — trust cfg.league only when
+                // it matches a known competition abbreviation OR the probing
+                // league matches the competition abbreviation.
+                // In practice this means: if bel.1 returns a UCL/friendly match,
+                // we correctly override the league to the real competition.
+
+                candidates.push({
+                  id: `espn_${actualLeague.replace(/[^a-z0-9]/gi, '')}_${numericId}`,
+                  date: matchDate,
+                });
+                // Once we have at least 1 result, resolve quickly to avoid waiting
+                // for slow leagues — but delay 300 ms to catch near-simultaneous
+                // responses so the collision guard can pick the most recent.
+                if (candidates.length === 1 && !settled) {
+                  setTimeout(finish, 300);
+                }
+              }
+            }
+          }).catch(() => { /* league doesn't have this event */ }).finally(() => {
+            remaining--;
+            // All leagues responded — resolve immediately with best candidate
+            if (remaining === 0) { clearTimeout(timer); finish(); }
+          });
+        }
+      });
+    }
+
+    // ── Tiered league probing ─────────────────────────────────────────────────
+    // Firing ALL 200+ leagues simultaneously opens ESPN's circuit breaker (5
+    // consecutive timeouts → 30 s silence) and causes "Match not found" for
+    // every subsequent request including the very one we're trying to resolve.
+    //
+    // Instead: probe the PRIORITY_LEAGUE_KEYS subset first (~80 leagues,
+    // includes club.friendly / fifa.friendly / all top domestic leagues).
+    // Only if that yields nothing do we fan-out to the long tail.
+    const prioritySoccer = ESPN_LEAGUES.filter(l => l.sport === 'soccer' && PRIORITY_LEAGUE_KEYS.has(l.league));
+    const tailSoccer     = ESPN_LEAGUES.filter(l => l.sport === 'soccer' && !PRIORITY_LEAGUE_KEYS.has(l.league));
+    const otherLeagues   = ESPN_LEAGUES.filter(l => l.sport !== 'soccer');
+
+    let resolvedId: string | null = null;
+    try {
+      // Stage 1: priority soccer + non-soccer in parallel (covers ~95% of matches)
+      resolvedId = await Promise.any([
+        tryLeagues(prioritySoccer).then(r => { if (!r) throw new Error('no result'); return r; }),
+        tryLeagues(otherLeagues).then(r => { if (!r) throw new Error('no result'); return r; }),
+      ]);
+    } catch { resolvedId = null; }
+
+    // Stage 2: only if stage 1 found nothing, try remaining long-tail soccer leagues
+    if (!resolvedId) {
+      try { resolvedId = await tryLeagues(tailSoccer); } catch { resolvedId = null; }
+    }
+    if (!resolvedId) return staleHitFallback;
+
+    return getMatchById(resolvedId);
+  }
+
+  try {
+    // 2) Fallback — direct ESPN lookup. This catches:
+    //    • Older / further-future fixtures outside the cached scoreboard window
+    //    • Past H2H meetings linked from the match-detail page
+    //    • Direct/shared/refreshed match URLs after the league cache rotated
+    const cfg = getEspnLeagueConfigForId(matchId);
+    const eventId = getEspnEventIdFromMatchId(matchId);
+    if (!cfg || !eventId) return null;
+
+    const summary = await fetchESPNSummary(cfg.sport, cfg.league, eventId);
+    const competition = summary?.header?.competitions?.[0];
+    if (!competition) return null;
+
+    const homeComp = competition.competitors?.find(c => c.homeAway === 'home');
+    const awayComp = competition.competitors?.find(c => c.homeAway === 'away');
+    if (!homeComp || !awayComp) return null;
+
+    const noDrawSports: ESPNLeagueConfig['sportType'][] = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
+    const hasDraw = !noDrawSports.includes(cfg.sportType);
+    const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
+    const sHomeTeamName = (homeComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.displayName || (homeComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.name || (homeComp?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Home';
+    const sAwayTeamName = (awayComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.displayName || (awayComp?.team as unknown as { displayName?: string; name?: string } | undefined)?.name || (awayComp?.athlete as unknown as { displayName?: string } | undefined)?.displayName || 'Away';
+    const { odds, markets } = extractEspnOdds(summaryOddsList, hasDraw, cfg.sportType, sHomeTeamName, sAwayTeamName);
+
+    // Best-effort kickoff time — ESPN summary doesn't always include `date`,
+    // so we leave it as "now" if absent (the detail page formats it gracefully).
+    const kickoff = (summary as unknown as { header?: { competitions?: Array<{ date?: string }> } })?.header?.competitions?.[0]?.date;
+
+    // Best-effort status — derive from ESPN's status block on the competition.
+    // We previously used `competitors.some(c => typeof c.winner === 'boolean')`
+    // which matched scheduled games too (`winner: false` is a boolean), so
+    // upcoming fixtures were being shown as FT 0:0. Use the canonical
+    // `status.type.{state,completed}` instead, which is set even for the
+    // direct-summary path.
+    const compStatus = (competition as { status?: { type?: { state?: string; completed?: boolean; name?: string } } }).status
+      || (summary?.header as { competitions?: Array<{ status?: { type?: { state?: string; completed?: boolean; name?: string } } }> })?.competitions?.[0]?.status;
+    const stateRaw = (compStatus?.type?.state || '').toLowerCase();
+    const nameRaw = (compStatus?.type?.name || '').toLowerCase();
+    let status: UnifiedMatch['status'];
+    if (compStatus?.type?.completed || stateRaw === 'post' || nameRaw.includes('final')) {
+      status = 'finished';
+    } else if (stateRaw === 'in' || nameRaw.includes('in_progress') || nameRaw.includes('halftime')) {
+      status = nameRaw.includes('halftime') ? 'halftime' : 'live';
+    } else {
+      status = 'scheduled';
+    }
+
+    // Don't trust score values for unstarted games — ESPN sometimes returns "0"
+    // even before kickoff which makes the UI show 0:0.
+    const isStartedOrFinished = status === 'live' || status === 'halftime' || status === 'finished';
+    const homeScoreNum = isStartedOrFinished && homeComp.score !== undefined && homeComp.score !== null && homeComp.score !== ''
+      ? parseInt(String(homeComp.score), 10) : null;
+    const awayScoreNum = isStartedOrFinished && awayComp.score !== undefined && awayComp.score !== null && awayComp.score !== ''
+      ? parseInt(String(awayComp.score), 10) : null;
+
+    const sportMeta = ALL_SPORTS.find(s => s.id === cfg.sportId);
+    const leagueMeta = ALL_LEAGUES.find(l => l.id === cfg.leagueId);
+
+    return {
+      id: matchId,
+      externalId: eventId,
+      source: 'espn',
+      sportId: cfg.sportId,
+      sportKey: `${cfg.sport}_${cfg.league}`,
+      leagueId: cfg.leagueId,
+      leagueKey: cfg.league,
+      homeTeam: {
+        id: homeComp.team?.id || '',
+        name: homeComp.team?.displayName || 'Home',
+        shortName: homeComp.team?.abbreviation || 'HOM',
+        logo: homeComp.team?.logo,
+        form: homeComp.form,
+        record: homeComp.record?.find(r => r.type === 'total' || !r.type)?.summary,
+      },
+      awayTeam: {
+        id: awayComp.team?.id || '',
+        name: awayComp.team?.displayName || 'Away',
+        shortName: awayComp.team?.abbreviation || 'AWY',
+        logo: awayComp.team?.logo,
+        form: awayComp.form,
+        record: awayComp.record?.find(r => r.type === 'total' || !r.type)?.summary,
+      },
+      kickoffTime: kickoff ? new Date(kickoff) : new Date(),
+      status,
+      homeScore: homeScoreNum,
+      awayScore: awayScoreNum,
+      // Extract HT scores from linescores (soccer only: index 0 = 1st half goals)
+      // Cast required because the summary header competitor type omits linescores
+      htHomeScore: cfg.sportType === 'soccer' && isStartedOrFinished
+        ? ((homeComp as {linescores?: Array<{value: number}>}).linescores?.[0]?.value ?? null) : null,
+      htAwayScore: cfg.sportType === 'soccer' && isStartedOrFinished
+        ? ((awayComp as {linescores?: Array<{value: number}>}).linescores?.[0]?.value ?? null) : null,
+      league: {
+        id: cfg.leagueId,
+        name: cfg.leagueName,
+        slug: leagueMeta?.slug || cfg.league.replace(/\./g, '-'),
+        country: cfg.country,
+        countryCode: cfg.countryCode,
+        tier: 1,
+      },
+      sport: {
+        id: cfg.sportId,
+        name: sportMeta?.name || cfg.sport,
+        slug: sportMeta?.slug || cfg.sport,
+        icon: sportMeta?.icon || cfg.sport,
+      },
+      odds,
+      markets,
+      tipsCount: 0,
+      venue: summary?.gameInfo?.venue?.fullName,
+    };
+  } catch (error) {
+    console.error('[API] Error fetching match by ID:', error);
+    return null;
+  }
+}
+
+export function getSportIcon(slug: string): string {
+  const icons: Record<string, string> = {
+    'football': 'soccer',
+    'soccer': 'soccer',
+    'basketball': 'basketball',
+    'tennis': 'tennis',
+    'cricket': 'cricket',
+    'american-football': 'football',
+    'baseball': 'baseball',
+    'ice-hockey': 'hockey',
+    'rugby': 'rugby',
+    'mma': 'mma',
+    'boxing': 'boxing',
+    'formula-1': 'formula-1',
+    'golf': 'golf',
+    'esports': 'esports',
+  };
+  return icons[slug] || 'trophy';
+}
+
+// Export ESPN leagues config for external use
+export { ESPN_LEAGUES };
+export type { ESPNLeagueConfig };
+
+/**
+ * Wipes all match cache layers so the next getAllMatches() call
+ * does a fresh fetch from ESPN and other sources.
+ * Used by the admin cache-refresh endpoint and deploy scripts.
+ */
+export async function clearMatchCache(): Promise<void> {
+  // 1. Clear in-memory cache
+  g_allMatchesCache.data = null;
+  g_allMatchesCache.ts   = 0;
+  g_allMatchesCache.promise = null;
+
+  // 2. Clear MySQL cache
+  try {
+    const { query } = await import('../db');
+    await query(`DELETE FROM match_cache WHERE cache_key = 'all_matches'`);
+  } catch { /* non-fatal */ }
+
+  // 3. Clear file cache
+  try {
+    const { unlink } = await import('fs/promises');
+    await unlink(ALLMATCHES_PERSIST_FILE);
+  } catch { /* non-fatal */ }
+}

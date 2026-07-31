@@ -1,0 +1,68 @@
+Replit AI asked me: Next, I can add a real-time leaderboard for the voting section that shows which team the community is backing most across all today's matches. Would you like me to do that?
+I answered: Yes please do that...It's still saying save failed and where is the settings so user can change his settings?? or it's just not available for admin??..and hide /admin login page so people won't find it...admin logss in in frontend not in /admin and when logged in can now access /admin ...and do we really need the second menu that appears in homepage with the black background since we have almost everything there in first menu?? in internationals make it show only internationals today like in the dark menu...also first menu make it colorful maybe each tab with it's own color..popular leagues in first menu to start with user country first leagues (not region just country) and then the popular leagues...add the community feed in first menu and the top bookmakers section after internationals with their logos which should also be collapsible....more importantly fix the save everywhere in admin panel so he can save and it works in the whole website anything that is on admin panel etc...fix same for frontend users can save settings etc
+
+Replit was ansering: This is a lot of things to tackle — let me map them out clearly and work through them systematically. First, let me understand the current state of the codebase.
+
+
+18 actions
+Now I have a clear picture. Let me tackle all these in an organized way:
+
+
+2 actions
+Now I have a clear picture of everything. Let me build a session plan and work through all changes:
+
+
+2 actions
+Step 1: Create a shared admin auth utility so all API routes use consistent role checking
+
+
+2 actions
+Now update all admin API routes to use the shared utility. Let me do them systematically:
+
+
+4 actions
+Now remove the local requireAdmin function bodies from each file (they'd conflict with the import):
+
+
+6 actions
+The regex left orphaned lines. Let me clean all files properly:
+
+
+12 actions
+Step 2: Fix the admin login gate — redirect to homepage instead of showing login form
+
+
+4 actions
+Step 3: Fix user settings page save
+
+
+4 actions
+Step 4: Remove the dark SidebarNew from homepage and fix the main layout sidebar
+
+
+24 actions
+Step 5: Now rewrite the main layout sidebar with all the improvements
+
+
+6 actions
+Now I'll rewrite the main layout sidebar with all the improvements. This is the big one:
+
+
+6 actions
+There's an extra closing </div> in the homepage file. Let me fix it:
+
+
+14 actions
+The sidebar is looking great — colorful nav, Community Feed, Sports, Popular Leagues, Internationals, and Top Bookmakers all working. No more dark second sidebar.
+
+Now let me fix the remaining admin route cleanup issues and verify the settings save:
+
+
+16 actions
+Now let me also make sure the admin notification/affiliate-clicks routes have proper auth:
+
+
+3 actions
+You've reached your daily free quota limit. It will reset at 12:00 AM UTC.
+
+So I don't know what was completed because now the site shows 503 service unavailable...can you help us check and complete??

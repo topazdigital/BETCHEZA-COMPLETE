@@ -1,0 +1,228 @@
+[root@server betcheza]# cd /home/admin/apps/betcheza
+[root@server betcheza]#
+[root@server betcheza]# # 1. Pull the latest code (port-5001 fix + mobile UX)
+[root@server betcheza]# git pull
+fatal: not a git repository (or any of the parent directories): .git
+[root@server betcheza]#
+[root@server betcheza]# # 2. Confirm the new start script is in place
+[root@server betcheza]# grep '"start"' package.json
+    "start": "next start -p 5001 -H 127.0.0.1",
+[root@server betcheza]# # Expected:  "start": "next start -p 5001 -H 127.0.0.1",
+[root@server betcheza]#
+[root@server betcheza]# # 3. Install any new deps + rebuild for production
+[root@server betcheza]# npm install --no-audit --no-fund
+ run build
+
+# 4. Kill the broken crash-loop process (id 1, mis-named "dossy")
+pm2 delete 1
+
+# 5. Start betcheza properly with the right name
+cd /home/admin/apps/betcheza
+⠙
+
+# 6. Save so it survives a server reboot
+pm2 save
+
+⠹ses are healthy
+pm2 list
+
+⠸ you want to see "Ready on http://127.0.0.1:5001"
+
+up to date in 2s
+o MySQ[root@server betcheza]# npm run build
+L connection" lines
+pm2 logs betcheza --lines 50
+> my-project@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+- Environments: .env.local
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 73s
+  Skipping validation of types
+✓ Finished TypeScript config validation in 31ms
+✓ Collecting page data using 1 worker in 5.2s
+✓ Generating static pages using 1 worker (59/59) in 2.5s
+✓ Finalizing page optimization in 11ms
+
+Route (app)                                Revalidate  Expire
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /about
+├ ƒ /admin
+├ ƒ /admin/affiliate-clicks
+├ ƒ /admin/auto-tips
+├ ƒ /admin/bookmakers
+├ ƒ /admin/comments
+├ ƒ /admin/competitions
+├ ƒ /admin/database
+├ ƒ /admin/email-config
+├ ƒ /admin/email-templates
+├ ƒ /admin/featured
+├ ƒ /admin/feed
+├ ƒ /admin/matches
+├ ƒ /admin/news
+├ ƒ /admin/notifications
+├ ƒ /admin/payment-gateways
+├ ƒ /admin/payments
+├ ƒ /admin/predictions
+├ ƒ /admin/settings
+├ ƒ /admin/social-login
+├ ƒ /admin/static-pages
+├ ƒ /admin/subscribers
+├ ƒ /admin/tipster-applications
+├ ƒ /admin/tipsters
+├ ƒ /admin/users
+├ ƒ /api/account/2fa
+├ ƒ /api/admin/affiliate-clicks
+├ ƒ /api/admin/auto-tips
+├ ƒ /api/admin/auto-tips/generate
+├ ƒ /api/admin/auto-tips/settle
+├ ƒ /api/admin/bookmakers
+├ ƒ /api/admin/bookmakers/[id]
+├ ƒ /api/admin/comments
+├ ƒ /api/admin/competitions
+├ ƒ /api/admin/competitions/[slug]/settle
+├ ƒ /api/admin/dashboard
+├ ƒ /api/admin/db-config
+├ ƒ /api/admin/email-config
+├ ƒ /api/admin/email-templates
+├ ƒ /api/admin/featured
+├ ƒ /api/admin/featured/tips
+├ ƒ /api/admin/feed/[id]
+├ ƒ /api/admin/matches
+├ ƒ /api/admin/news
+├ ƒ /api/admin/notifications/broadcast
+├ ƒ /api/admin/payment-gateways
+├ ƒ /api/admin/predictions
+├ ƒ /api/admin/seo
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/social-login
+├ ƒ /api/admin/static-pages
+├ ƒ /api/admin/subscribers
+├ ƒ /api/admin/teams
+├ ƒ /api/admin/tipster-applications
+├ ƒ /api/admin/tipster-applications/[id]
+├ ƒ /api/admin/tipsters
+├ ƒ /api/admin/upload
+├ ƒ /api/admin/users
+├ ƒ /api/ai/chat
+├ ƒ /api/auth/check-availability
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/login/verify-2fa
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/oauth/[provider]/callback
+├ ƒ /api/auth/oauth/[provider]/start
+├ ƒ /api/auth/register
+├ ƒ /api/auth/resend-verification
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/verify-email
+├ ƒ /api/bookmakers
+├ ƒ /api/bookmarks
+├ ƒ /api/captcha/challenge
+├ ƒ /api/competitions
+├ ƒ /api/competitions/[slug]
+├ ƒ /api/competitions/[slug]/join
+├ ƒ /api/cron/auto-tips
+├ ƒ /api/cron/match-reminders
+├ ƒ /api/dashboard
+├ ƒ /api/email/subscribe
+├ ƒ /api/email/unsubscribe
+├ ƒ /api/featured
+├ ƒ /api/feed/posts
+├ ƒ /api/feed/posts/[id]/comments
+├ ƒ /api/feed/posts/[id]/like
+├ ƒ /api/feed/recommended-tipsters
+├ ƒ /api/feed/trending
+├ ○ /api/leagues
+├ ƒ /api/leagues/[id]/bracket
+├ ƒ /api/leagues/[id]/outrights
+├ ƒ /api/leagues/[id]/scorers
+├ ƒ /api/leagues/[id]/standings
+├ ƒ /api/matches
+├ ƒ /api/matches/[id]
+├ ƒ /api/matches/[id]/details
+├ ƒ /api/matches/[id]/tips
+├ ƒ /api/matches/[id]/vote
+├ ƒ /api/news/article
+├ ƒ /api/notifications
+├ ƒ /api/notifications/mark-read
+├ ƒ /api/notifications/preferences
+├ ƒ /api/notifications/subscribe
+├ ƒ /api/payments/competition-entry
+├ ƒ /api/players/[id]
+├ ƒ /api/players/search
+├ ƒ /api/predictor
+├ ƒ /api/predictor/recent
+├ ƒ /api/predictor/upcoming
+├ ƒ /api/r/bookmaker/[slug]
+├ ƒ /api/search
+├ ƒ /api/site-settings
+├ ƒ /api/site-settings/maintenance
+├ ƒ /api/site-settings/rewrites
+├ ○ /api/sports
+├ ƒ /api/static-pages/[slug]
+├ ƒ /api/teams/[id]
+├ ƒ /api/teams/[id]/follow
+├ ƒ /api/tips/[id]/comments
+├ ƒ /api/tips/[id]/like
+├ ƒ /api/tipster-applications
+├ ƒ /api/tipsters
+├ ƒ /api/tipsters/[id]
+├ ƒ /api/tipsters/[id]/follow
+├ ƒ /api/users/me/follows
+├ ƒ /api/wallet
+├ ƒ /api/wallet/deposit
+├ ƒ /api/wallet/withdraw
+├ ƒ /become-tipster
+├ ƒ /bookmakers
+├ ƒ /bookmarks
+├ ƒ /competitions
+├ ƒ /competitions/[slug]
+├ ƒ /contact
+├ ƒ /cookies
+├ ƒ /dashboard
+├ ƒ /dashboard/payment-settings
+├ ƒ /dashboard/tips
+├ ƒ /dashboard/wallet
+├ ƒ /faq
+├ ƒ /feed
+├ ƒ /help
+├ ƒ /leaderboard
+├ ƒ /leagues/[slug]
+├ ƒ /live
+├ ƒ /login
+├ ƒ /maintenance
+├ ƒ /matches
+├ ƒ /matches/[id]
+├ ƒ /news/article
+├ ƒ /notifications
+├ ƒ /players/[id]
+├ ƒ /players/compare
+├ ƒ /predictor
+├ ƒ /privacy
+├ ƒ /register
+├ ƒ /responsible-gambling
+├ ƒ /results
+├ ○ /robots.txt
+├ ƒ /settings
+├ ○ /sitemap.xml                                   1h      1y
+├ ƒ /stats
+├ ƒ /teams/[id]
+├ ƒ /terms
+├ ƒ /tipsters
+├ ƒ /tipsters/[id]
+├ ƒ /tipsters/compare
+└ ƒ /verify-email
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+[root@server betcheza]#
