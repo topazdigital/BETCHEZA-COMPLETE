@@ -176,11 +176,11 @@ export function SupportChatWidget() {
     }
   }
 
-  // Stack above the AI chat button on all screen sizes.
-  // Mobile: AI button is h-12 at bottom-20 (80px) → top edge 128px → Support sits at bottom-[9rem] (144px), 16px gap.
-  // Desktop (md): keep original md:bottom-24 — user confirmed desktop was fine.
-  const btnBottom = "bottom-[9rem] md:bottom-24"
-  const panelBottom = "bottom-[9rem] md:bottom-24"
+  // Mobile: side-by-side with the AI button at the same bottom level (bottom-20).
+  //   AI button is at right-4; Support sits at right-[7.5rem] so they clear each other.
+  // Desktop (md): stacked — Support above AI, original md:bottom-24 position.
+  const btnBottom = "bottom-20 right-[7.5rem] md:right-4 md:bottom-24"
+  const panelBottom = "bottom-20 md:bottom-24"
 
   return (
     <>
@@ -191,7 +191,7 @@ export function SupportChatWidget() {
           if (!open && !session) startSession()
         }}
         className={cn(
-          "fixed right-4 z-50 flex items-center gap-2 h-10 pl-3 pr-4 rounded-full shadow-lg transition-all",
+          "fixed z-50 flex items-center gap-2 h-10 pl-3 pr-4 rounded-full shadow-lg transition-all",
           "bg-emerald-600 hover:bg-emerald-700 text-white",
           btnBottom,
           open && "opacity-0 pointer-events-none",
