@@ -183,14 +183,14 @@ export function SupportChatWidget() {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — pill shape with label */}
       <button
         onClick={() => {
           setOpen(o => !o)
           if (!open && !session) startSession()
         }}
         className={cn(
-          "fixed right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-all",
+          "fixed right-4 z-50 flex items-center gap-2 h-10 pl-3 pr-4 rounded-full shadow-lg transition-all",
           "bg-emerald-600 hover:bg-emerald-700 text-white",
           btnBottom,
           open && "opacity-0 pointer-events-none",
@@ -198,15 +198,13 @@ export function SupportChatWidget() {
         aria-label="Open support chat"
       >
         {/* Emerald sonar rings — distinguishes live support from the AI chat */}
-        {!open && (
-          <>
-            <span className="sonar-ring absolute inset-0 rounded-full bg-emerald-400/45 pointer-events-none" />
-            <span className="sonar-ring-delay absolute inset-0 rounded-full bg-emerald-300/30 pointer-events-none" />
-          </>
-        )}
-        <MessageCircle className="h-5 w-5" />
+        <span className="sonar-ring absolute inset-0 rounded-full bg-emerald-400/45 pointer-events-none" />
+        <span className="sonar-ring-delay absolute inset-0 rounded-full bg-emerald-300/30 pointer-events-none" />
+
+        <MessageCircle className="h-4 w-4 shrink-0" />
+        <span className="text-xs font-semibold whitespace-nowrap">Support</span>
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold">
             {unread > 9 ? "9+" : unread}
           </span>
         )}

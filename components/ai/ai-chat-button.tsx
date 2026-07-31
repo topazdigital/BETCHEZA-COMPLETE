@@ -256,40 +256,46 @@ export function AIChatButton() {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — pill shape with label */}
       <button
         onClick={toggle}
         aria-label={open ? "Close AI chat" : "Open AI chat"}
         className={cn(
           "fixed z-40 right-4 md:right-6 transition-all duration-300",
-          // Sit above the bottom mobile nav
           "bottom-20 md:bottom-6",
-          "h-14 w-14 rounded-full shadow-2xl",
+          "h-12 pl-3 pr-4 rounded-full shadow-2xl",
           "bg-gradient-to-br from-violet-500 via-fuchsia-500 to-rose-500",
-          "hover:scale-110 active:scale-95",
-          "flex items-center justify-center group",
-          open && "scale-90 opacity-90"
+          "hover:scale-105 active:scale-95",
+          "flex items-center gap-2 group",
+          open && "scale-95 opacity-90"
         )}
       >
-        {/* Violet sonar rings — only when closed so they don't distract while chatting */}
+        {/* Violet sonar rings — only when closed */}
         {!open && (
           <>
             <span className="sonar-ring absolute inset-0 rounded-full bg-violet-500/40 pointer-events-none" />
             <span className="sonar-ring-delay absolute inset-0 rounded-full bg-fuchsia-500/30 pointer-events-none" />
           </>
         )}
+
         {open ? (
-          <X className="h-6 w-6 text-white" />
+          <>
+            <X className="h-5 w-5 text-white shrink-0" />
+            <span className="text-sm font-semibold text-white whitespace-nowrap">Close</span>
+          </>
         ) : (
           <>
-            <Brain className="h-6 w-6 text-white" />
-            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-black text-black ring-2 ring-background animate-pulse">
-              AI
-            </span>
+            <div className="relative shrink-0">
+              <Brain className="h-5 w-5 text-white" />
+              <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-[8px] font-black text-black ring-1 ring-white/60 animate-pulse">
+                AI
+              </span>
+            </div>
+            <span className="text-sm font-semibold text-white whitespace-nowrap">Ask AI</span>
             {unread && (
-              <span className="absolute top-0 right-0 flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75 animate-ping" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-500" />
+              <span className="flex h-2.5 w-2.5 shrink-0">
+                <span className="absolute inline-flex h-2.5 w-2.5 rounded-full bg-rose-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
               </span>
             )}
           </>
