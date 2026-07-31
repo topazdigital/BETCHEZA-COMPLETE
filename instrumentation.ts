@@ -254,6 +254,35 @@ export async function register() {
       await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`).catch(() => {});
       await query(`ALTER TABLE tipster_profiles ADD COLUMN IF NOT EXISTS is_verified TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
 
+      // ── support_chat_sessions + support_chat_messages ─────────────────────
+      await query(`
+        CREATE TABLE IF NOT EXISTS support_chat_sessions (
+          id               INT AUTO_INCREMENT PRIMARY KEY,
+          session_token    VARCHAR(64) NOT NULL,
+          user_id          INT DEFAULT NULL,
+          visitor_name     VARCHAR(100) DEFAULT NULL,
+          visitor_email    VARCHAR(200) DEFAULT NULL,
+          status           ENUM('open','closed') NOT NULL DEFAULT 'open',
+          last_message_at  TIMESTAMP NULL DEFAULT NULL,
+          created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_scs_token  (session_token),
+          INDEX idx_scs_user   (user_id),
+          INDEX idx_scs_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `).catch(() => {});
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS support_chat_messages (
+          id          INT AUTO_INCREMENT PRIMARY KEY,
+          session_id  INT NOT NULL,
+          sender      ENUM('user','admin') NOT NULL,
+          body        TEXT NOT NULL,
+          created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_scm_session    (session_id),
+          INDEX idx_scm_session_id (session_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `).catch(() => {});
+
       // ── career_applications: applications from the /careers page ──────────
       await query(`
         CREATE TABLE IF NOT EXISTS career_applications (

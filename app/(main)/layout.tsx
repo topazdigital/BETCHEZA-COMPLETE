@@ -64,6 +64,10 @@ const WorldCupBanner = dynamicImport(
   () => import("@/components/layout/header").then(m => ({ default: m.WorldCupBanner })),
   { ssr: false }
 )
+const SupportChatWidget = dynamicImport(
+  () => import("@/components/support/chat-widget").then(m => ({ default: m.SupportChatWidget })),
+  { ssr: false }
+)
 
 const POPULAR_LEAGUE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 const INTERNATIONAL_LEAGUE_IDS = [9, 10, 26, 102, 24, 29, 30, 31];
@@ -600,6 +604,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
         <WelcomeModal />
         <SocialOnboardingModal />
         <PushPromptBanner />
+        <SupportChatWidget />
       </div>
     </div>
   )

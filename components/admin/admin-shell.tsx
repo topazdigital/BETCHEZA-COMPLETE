@@ -8,7 +8,7 @@ import {
   Bell, LogOut, Menu, X, Shield, MessageSquare, Newspaper, Wallet, Mail,
   Rss, KeyRound, Star, CreditCard, Database, FileText, BarChart3, Wand2,
   UserPlus, Globe, MousePointerClick, Gem, TrendingUp, Megaphone, Activity,
-  DoorOpen, ChevronDown, ChevronRight,
+  DoorOpen, ChevronDown, ChevronRight, HeadphonesIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderSearch } from "@/components/layout/header-search"
@@ -114,6 +114,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Community",
     icon: Rss,
     items: [
+      { href: "/admin/live-chat", label: "Live Chat", icon: HeadphonesIcon },
       { href: "/admin/feed", label: "Feed", icon: Rss },
       { href: "/admin/rooms", label: "Rooms", icon: DoorOpen },
       { href: "/admin/comments", label: "Comments", icon: MessageSquare },
@@ -169,6 +170,27 @@ interface AdminShellProps {
 
 function SidebarNav({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
+  const [chatUnread, setChatUnread] = useState(0)
+
+  // Poll for unread support-chat messages; clear badge when on the live-chat page
+  useEffect(() => {
+    if (pathname === '/admin/live-chat') {
+      setChatUnread(0)
+      return
+    }
+    let mounted = true
+    async function poll() {
+      try {
+        const r = await fetch('/api/admin/support-chat')
+        if (!r.ok || !mounted) return
+        const d = await r.json()
+        if (mounted) setChatUnread(d.unread ?? 0)
+      } catch {}
+    }
+    poll()
+    const id = setInterval(poll, 30_000)
+    return () => { mounted = false; clearInterval(id) }
+  }, [pathname])
 
   // Auto-expand the group that contains the active route
   const activeGroupId = NAV_GROUPS.find(g =>
@@ -242,6 +264,7 @@ function SidebarNav({ onClose }: { onClose?: () => void }) {
                   const Icon = item.icon
                   const isActive = item.href === pathname ||
                     (item.href !== "/admin" && pathname.startsWith(item.href))
+                  const badge = item.href === '/admin/live-chat' && chatUnread > 0 ? chatUnread : 0
                   return (
                     <Link
                       key={item.href}
@@ -255,7 +278,12 @@ function SidebarNav({ onClose }: { onClose?: () => void }) {
                       )}
                     >
                       <Icon className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate flex-1">{item.label}</span>
+                      {badge > 0 && (
+                        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-bold text-white leading-none">
+                          {badge > 99 ? '99+' : badge}
+                        </span>
+                      )}
                     </Link>
                   )
                 })}
