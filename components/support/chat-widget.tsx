@@ -197,6 +197,13 @@ export function SupportChatWidget() {
         )}
         aria-label="Open support chat"
       >
+        {/* Emerald sonar rings — distinguishes live support from the AI chat */}
+        {!open && (
+          <>
+            <span className="sonar-ring absolute inset-0 rounded-full bg-emerald-400/45 pointer-events-none" />
+            <span className="sonar-ring-delay absolute inset-0 rounded-full bg-emerald-300/30 pointer-events-none" />
+          </>
+        )}
         <MessageCircle className="h-5 w-5" />
         {unread > 0 && (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">

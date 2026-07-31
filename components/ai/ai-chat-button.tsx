@@ -271,6 +271,13 @@ export function AIChatButton() {
           open && "scale-90 opacity-90"
         )}
       >
+        {/* Violet sonar rings — only when closed so they don't distract while chatting */}
+        {!open && (
+          <>
+            <span className="sonar-ring absolute inset-0 rounded-full bg-violet-500/40 pointer-events-none" />
+            <span className="sonar-ring-delay absolute inset-0 rounded-full bg-fuchsia-500/30 pointer-events-none" />
+          </>
+        )}
         {open ? (
           <X className="h-6 w-6 text-white" />
         ) : (
