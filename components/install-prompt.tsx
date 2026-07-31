@@ -134,7 +134,7 @@ export function InstallPrompt() {
             "fixed z-50 flex items-center gap-1.5 rounded-full border border-emerald-500/40",
             "bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-600 shadow-lg",
             "backdrop-blur-sm hover:bg-emerald-500/20 transition-colors",
-            "bottom-20 right-4 md:bottom-6 md:right-6"
+            "bottom-20 left-4 md:bottom-6 md:left-6"
           )}
           title="Install Betcheza App"
         >
