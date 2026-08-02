@@ -104,16 +104,28 @@ export async function GET() {
   const pending = fileStoreGet<PendingPayment[]>('strategy-pending', []);
   const userPending = pending.find(p => p.userId === user.userId);
   if (userPending) {
-    const status = await checkTransactionStatus(userPending.reference);
-    if (status === 'completed') {
-      grantStrategyAccess(userPending.userId, userPending.phone, userPending.reference);
-      const freshResult = checkStrategyAccess(user.userId);
-      const walletBalance = getBalance(user.userId, 'KES');
-      return NextResponse.json({ ...freshResult, walletBalance, autoResolved: true });
+    // Treat any pending payment older than 24 hours as abandoned — clear it
+    const ageMs = Date.now() - new Date(userPending.initiatedAt).getTime();
+    const isStale = ageMs > 24 * 60 * 60 * 1000;
+
+    if (!isStale) {
+      const status = await checkTransactionStatus(userPending.reference);
+      if (status === 'completed') {
+        grantStrategyAccess(userPending.userId, userPending.phone, userPending.reference);
+        const freshResult = checkStrategyAccess(user.userId);
+        const walletBalance = getBalance(user.userId, 'KES');
+        return NextResponse.json({ ...freshResult, walletBalance, autoResolved: true });
+      }
+      if (status === 'pending') {
+        // Still genuinely in-flight — show the banner
+        const walletBalance = getBalance(user.userId, 'KES');
+        return NextResponse.json({ hasAccess: false, walletBalance, pendingReference: userPending.reference, pendingAt: userPending.initiatedAt });
+      }
+      // status === 'failed' — fall through to clear the record below
     }
-    // Return pending info so the UI can show the right state
-    const walletBalance = getBalance(user.userId, 'KES');
-    return NextResponse.json({ hasAccess: false, walletBalance, pendingReference: userPending.reference, pendingAt: userPending.initiatedAt });
+
+    // Payment failed or is stale (>24 h) — remove it so the banner never shows again
+    fileStoreSet('strategy-pending', pending.filter(p => p.reference !== userPending.reference));
   }
 
   const walletBalance = getBalance(user.userId, 'KES');
@@ -139,6 +151,11 @@ export async function POST(req: NextRequest) {
       if (p) grantStrategyAccess(p.userId, p.phone, p.reference!);
       const access = checkStrategyAccess(user.userId);
       return NextResponse.json({ hasAccess: true, status, ...access });
+    }
+    if (status === 'failed') {
+      // Remove the stale record so the banner never reappears on next page load
+      const pending = fileStoreGet<PendingPayment[]>('strategy-pending', []);
+      fileStoreSet('strategy-pending', pending.filter(p => p.reference !== body.reference));
     }
     return NextResponse.json({ hasAccess: false, status });
   }
