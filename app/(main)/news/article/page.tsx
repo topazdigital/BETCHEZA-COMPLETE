@@ -5,7 +5,11 @@ import ArticleReader from './_article-reader';
 
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+// Production Apache redirects the bare domain to www. Keep article canonicals
+// on the final host so Google does not have to reconcile two host variants.
+const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke')
+  .replace(/\/$/, '')
+  .replace(/^https?:\/\/(?!www\.)/, (match) => `${match}www.`);
 
 type SearchParams = Promise<{
   headline?: string;
@@ -16,20 +20,46 @@ type SearchParams = Promise<{
   source_url?: string;
 }>;
 
-function makeSlug(headline: string) {
-  return headline
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .slice(0, 80);
+/**
+ * The reader is intentionally a query-string route: the news feed passes the
+ * article snapshot in the URL and uses source_url only to fetch the full
+ * source text. source_url must never become our canonical — that tells Google
+ * the external publisher is the primary page.
+ *
+ * Keep all render-affecting values in the canonical URL because removing them
+ * would produce a different (thin) page when Google crawls the canonical.
+ */
+function buildArticleCanonical(params: {
+  headline?: string;
+  description?: string;
+  image?: string;
+  published?: string;
+  source_url?: string;
+  source?: string;
+}): string {
+  const query = new URLSearchParams();
+  const fields: Array<[string, string | undefined]> = [
+    ['headline', params.headline],
+    ['description', params.description],
+    ['image', params.image],
+    ['published', params.published],
+    ['source_url', params.source_url],
+    ['source', params.source],
+  ];
+
+  for (const [key, value] of fields) {
+    if (value) query.set(key, value);
+  }
+
+  const queryString = query.toString();
+  return `${BASE_URL}/news/article${queryString ? `?${queryString}` : ''}`;
 }
 
 // generateMetadata MUST live in the page (not layout) to receive searchParams.
 // Layouts in Next.js App Router do not receive searchParams.
 export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
   const params = await searchParams;
-  const { headline, description, source, published, image, source_url } = params;
+  const { headline, description, source, published, image } = params;
 
   const s = await getSiteSettings();
   const siteName = s.site_name || 'Betcheza';
@@ -42,8 +72,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
     ? description.slice(0, 160)
     : `Full sports news on ${siteName} — football, tennis, basketball, cricket and all major sports in Kenya.`;
 
-  const slug = headline ? makeSlug(headline) : '';
-  const canonical = source_url || (slug ? `${BASE_URL}/news/article/${slug}` : `${BASE_URL}/news`);
+  const canonical = buildArticleCanonical(params);
 
   const headlineKeywords = (headline || '')
     .toLowerCase()
@@ -93,8 +122,7 @@ export default async function NewsArticlePage({ searchParams }: { searchParams: 
 
   const s = await getSiteSettings();
   const siteName = s.site_name || 'Betcheza';
-  const slug = headline ? makeSlug(headline) : '';
-  const canonical = source_url || (slug ? `${BASE_URL}/news/article/${slug}` : `${BASE_URL}/news`);
+  const canonical = buildArticleCanonical(params);
 
   // Schema.org JSON-LD injected server-side so Google sees it on first crawl.
   const articleSchema = headline ? {
@@ -112,6 +140,13 @@ export default async function NewsArticlePage({ searchParams }: { searchParams: 
     },
     ...(image ? { image: { '@type': 'ImageObject', url: image, width: 1200, height: 630 } } : {}),
     author: { '@type': 'Organization', name: source || siteName },
+    ...(source_url ? {
+      isBasedOn: {
+        '@type': 'NewsArticle',
+        url: source_url,
+        publisher: { '@type': 'Organization', name: source || 'Original publisher' },
+      },
+    } : {}),
     isPartOf: { '@id': `${BASE_URL}/#website` },
     mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
   } : null;
@@ -121,7 +156,7 @@ export default async function NewsArticlePage({ searchParams }: { searchParams: 
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: siteName, item: BASE_URL },
-      { '@type': 'ListItem', position: 2, name: 'News', item: `${BASE_URL}/news` },
+      { '@type': 'ListItem', position: 2, name: 'Matches', item: `${BASE_URL}/matches` },
       ...(headline ? [{ '@type': 'ListItem', position: 3, name: headline.slice(0, 60), item: canonical }] : []),
     ],
   };
