@@ -4331,6 +4331,12 @@ const TEAM_NAME_ALIASES: Record<string, string> = {
   internacionalrs: 'internacional',
   // Generic suffix collisions
   athleticclub: 'athleticbilbao',
+  // Greek clubs (sources often append city name)
+  paoksaloniki: 'paok',
+  paokthessaloniki: 'paok',
+  omonianicosia: 'omonia',
+  // Scottish (Hearts appears both ways)
+  heartofmidlothianfc: 'heartofmidlothian',
 };
 
 // Normalize team name for fuzzy matching
@@ -5358,6 +5364,11 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
       const lower = raw.toLowerCase()
         .replace(/ñ/g, 'n').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i')
         .replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ü/g, 'u').replace(/ä/g, 'a').replace(/ö/g, 'o')
+        // Normalise dotted abbreviations BEFORE word-boundary stripping so that
+        // "F.C." → "fc" and "A.F.C." → "afc" are matched by the \bfc\b pattern.
+        // Pattern: remove a dot that follows a letter when it's immediately followed
+        // by another letter, whitespace, or end-of-string.
+        .replace(/([a-z])\.(?=[a-z]|\s|$)/g, '$1')
         .trim();
 
       // Strip trailing FC/AFC/SC/CF BEFORE alias lookup so "Manchester City FC"
@@ -5372,7 +5383,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
       if (TEAM_ALIASES[aliasKey]) return TEAM_ALIASES[aliasKey];
 
       const wordStripped = lower
-        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk|vigo|madrid|milan|london|paris|rome|roma|lyon|porto|lisbon|zagreb|moscow|amsterdam|brussels|brussels|vienna|warsaw|bucharest|sofia|budapest|prague|belgrade|athens)\b/g, '')
+        .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk|vigo|madrid|milan|london|paris|rome|roma|lyon|porto|lisbon|zagreb|moscow|amsterdam|brussels|vienna|warsaw|bucharest|sofia|budapest|prague|belgrade|athens|saloniki|thessaloniki|nicosia|valletta|reykjavik|tirana|podgorica|sarajevo|skopje|chisinau|yerevan|baku|tbilisi|astana|almaty)\b/g, '')
         .replace(/[^a-z0-9]/g, '');
       // Apply module-level alias map so e.g. "Hearts" (odds API short name)
       // deduplicates correctly against "Heart of Midlothian F.C." (ESPN full name).
