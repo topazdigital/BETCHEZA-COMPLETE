@@ -4864,6 +4864,10 @@ export async function fetchAllMarketsForEvent(
 
 const ALLMATCHES_CACHE_TTL  = 90 * 1000;          // 90 sec — serve from memory
 const ALLMATCHES_STALE_TTL  = 60 * 60 * 1000;     // 60 min — serve stale before forcing a cold-start live fetch
+// A provider can return a small partial scoreboard when it is rate-limited.
+// Never load or persist that partial response as the canonical all-matches
+// snapshot. This must match the write-side cache-poisoning floor below.
+const MIN_MEANINGFUL_MATCH_CACHE = 50;
 // Note: live match statuses/scores are patched every 5 min by the live-scores cron
 // (patchLiveScoresInMainCache), so a longer stale TTL doesn't affect score accuracy.
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
@@ -4902,7 +4906,7 @@ async function _readDbCache(): Promise<{ data: UnifiedMatch[]; ts: number } | nu
     if (!r.rows.length) return null;
     const row = r.rows[0];
     const data: UnifiedMatch[] = JSON.parse(row.payload);
-    if (!data?.length) return null;
+    if (!data || data.length < MIN_MEANINGFUL_MATCH_CACHE) return null;
     return { data, ts: Number(row.cached_at) };
   } catch { return null; }
 }
@@ -4927,7 +4931,7 @@ async function _readFileCache(): Promise<{ data: UnifiedMatch[]; ts: number } | 
     const { readFile } = await import('fs/promises');
     const raw = await readFile(ALLMATCHES_PERSIST_FILE, 'utf8');
     const parsed: { ts: number; data: UnifiedMatch[] } = JSON.parse(raw);
-    if (!parsed?.data?.length) return null;
+    if (!parsed?.data || parsed.data.length < MIN_MEANINGFUL_MATCH_CACHE) return null;
     return { data: parsed.data, ts: parsed.ts };
   } catch { return null; }
 }
@@ -4951,7 +4955,7 @@ _initPromise = (async () => {
   // ① FAST PATH — file cache has zero network dependency, always < 50ms.
   //    Load it first so the very first request never blocks on a DB connection.
   const fileResult = await _readFileCache();
-  if (fileResult && fileResult.data.length >= 5) {
+  if (fileResult && fileResult.data.length >= MIN_MEANINGFUL_MATCH_CACHE) {
     // Only use file cache if it has meaningful data (cache poisoning guard)
     // AND is recent enough. Caches older than ALLMATCHES_STALE_TTL (4 hours)
     // are almost certainly from a previous day — loading them would serve
@@ -4996,12 +5000,12 @@ _initPromise = (async () => {
   //    first time we still serve cached matches once the pool stabilises.
   //    Only runs if memory cache is still empty after init.
   setTimeout(async () => {
-    if (g_allMatchesCache.data && g_allMatchesCache.data.length >= 50) return;
+    if (g_allMatchesCache.data && g_allMatchesCache.data.length >= MIN_MEANINGFUL_MATCH_CACHE) return;
     try {
       const { resetPool } = await import('../db');
       resetPool(); // clear any stale circuit-breaker state
       const dbResult = await _readDbCache();
-      if (dbResult && dbResult.data.length >= 50) {
+      if (dbResult && dbResult.data.length >= MIN_MEANINGFUL_MATCH_CACHE) {
         g_allMatchesCache.data = dbResult.data;
         g_allMatchesCache.ts   = Date.now();
       }
@@ -5595,7 +5599,10 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // wrote empty data on cold start (when previousCount === 0 and ESPN returned
   // nothing), poisoning the DB + file cache and causing persistent 0-match pages.
   const previousCount = g_allMatchesCache.data?.length ?? 0;
-  const MIN_MATCHES_TO_PERSIST = Math.max(50, Math.floor(previousCount * 0.25));
+  const MIN_MATCHES_TO_PERSIST = Math.max(
+    MIN_MEANINGFUL_MATCH_CACHE,
+    Math.floor(previousCount * 0.25),
+  );
   if (sorted.length >= MIN_MATCHES_TO_PERSIST) {
     g_allMatchesCache.data = sorted;
     g_allMatchesCache.ts = Date.now();

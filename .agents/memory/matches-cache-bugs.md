@@ -18,6 +18,17 @@ All subsequent requests served 0 matches until ESPN returned good data again.
 On cold start with bad ESPN response, leave `g_allMatchesCache.ts = 0` (don't update it)
 so the next `getAllMatches()` call triggers a retry immediately instead of waiting 90s.
 
+### 1b. Persistent cache reads must use the same floor — FIXED
+Write-side protection alone is insufficient: a previously poisoned small file or DB
+snapshot can be loaded again after a restart and reintroduce the outage.
+
+**Fix:** Apply the same meaningful-result floor to every DB/file cache read as well as
+every write. A partial provider response must be rejected consistently at both sides
+of the persistence boundary.
+
+**Why:** ESPN/FotMob/SofaScore can be simultaneously rate-limited or blocked; a
+five-match snapshot is not a trustworthy replacement for a multi-sport cache.
+
 ### 2. deploy.sh cleared match_cache on every deploy — FIXED
 Step 4e ran `DELETE FROM match_cache WHERE cache_key='all_matches'` on every deploy.
 Combined with bug #1, this guaranteed every deploy ended with empty caches:

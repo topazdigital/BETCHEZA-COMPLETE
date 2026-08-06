@@ -425,6 +425,26 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
   const { matches: swrAllMatches } = useMatches();
   const allMatches = swrAllMatches.length > 0 ? swrAllMatches : (initialMatches || []);
   const stats = useMatchStats();
+  // Keep the counters in sync with the list currently on screen. The
+  // independent stats request can still be loading while SWR has already
+  // supplied cached matches, which briefly made a populated page say
+  // "Today 0".
+  const displayStats = useMemo(() => {
+    if (allMatches.length === 0) return stats;
+    const todayKey = toLocalISODate(new Date());
+    const tomorrowKey = toLocalISO(1);
+    const today = allMatches.filter(m => {
+      if (m.status === 'cancelled') return false;
+      const kickoff = new Date(m.kickoffTime);
+      const key = toLocalISODate(kickoff);
+      return key === todayKey || (key === tomorrowKey && kickoff.getHours() < 6);
+    }).length;
+    const live = allMatches.filter(m => isLiveMatchStatus(m.status)).length;
+    const upcoming = allMatches.filter(m =>
+      m.status === 'scheduled' && new Date(m.kickoffTime).getTime() > Date.now()
+    ).length;
+    return { ...stats, total: allMatches.length, today, live, upcoming };
+  }, [allMatches, stats]);
 
   const matchCounts = useMemo(() => {
     const counts: Record<number, number> = {};
@@ -558,8 +578,8 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
         selectedSportId={selectedSportId}
         onSelectSport={handleSelectSport}
         matchCounts={matchCounts}
-        liveCount={stats.live}
-        todayCount={stats.today}
+        liveCount={displayStats.live}
+        todayCount={displayStats.today}
         dateTab={dateTab}
         onDateTab={handleDateTab}
         calendarDate={calendarDate}
@@ -609,11 +629,11 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-75" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-live" />
                 </span>
-                {stats.live} Live
+                {displayStats.live} Live
               </Badge>
               <Badge variant="outline" className="gap-1 h-6 text-[10px]">
                 <Clock className="h-3 w-3" />
-                {dateTab === 'upcoming' ? `${stats.upcoming} Upcoming` : `${stats.today} Today`}
+                {dateTab === 'upcoming' ? `${displayStats.upcoming} Upcoming` : `${displayStats.today} Today`}
               </Badge>
             </div>
           </div>
@@ -681,7 +701,7 @@ function MatchesContent({ initialMatches }: { initialMatches?: Match[] }) {
           {/* Results count */}
           <div className="mb-2 text-[10px] uppercase tracking-wide text-muted-foreground">
             {filteredMatches.length} match{filteredMatches.length !== 1 ? 'es' : ''} found
-            {statusFilter === 'live' && <span className="ml-2 text-live">• Updating every 10s</span>}
+          {statusFilter === 'live' && <span className="ml-2 text-live">• Updating every 10s</span>}
           </div>
 
           {/* Match list */}
