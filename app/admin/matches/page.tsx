@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Search, Plus, MoreHorizontal, Edit, Trash2, Loader2, X, CheckCircle2, ExternalLink } from "lucide-react"
+import { Search, Plus, MoreHorizontal, Edit, Trash2, Loader2, X, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -54,6 +54,32 @@ export default function AdminMatchesPage() {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState("")
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshMessage, setRefreshMessage] = useState("")
+
+  const handleRefreshCache = async () => {
+    setIsRefreshing(true)
+    setRefreshMessage("")
+    try {
+      const r = await fetch('/api/admin/matches/refresh-cache', { method: 'POST' })
+      const data = await r.json()
+      if (r.ok) {
+        setRefreshMessage(`✓ ${data.message}`)
+        // Reload match list
+        const r2 = await fetch('/api/admin/matches?limit=200')
+        const data2 = await r2.json()
+        setMatches(data2.matches || [])
+        setSource(data2.source || "")
+      } else {
+        setRefreshMessage(`✗ ${data.error || 'Refresh failed'}`)
+      }
+    } catch {
+      setRefreshMessage("✗ Network error")
+    } finally {
+      setIsRefreshing(false)
+      setTimeout(() => setRefreshMessage(""), 8000)
+    }
+  }
 
   const [newMatch, setNewMatch] = useState({
     sportId: "", leagueId: "", homeTeamId: "", awayTeamId: "",
@@ -185,11 +211,22 @@ export default function AdminMatchesPage() {
           </h1>
           <p className="text-xs text-muted-foreground">Add matches manually or browse the live feed</p>
         </div>
-        <Button className="gap-1.5" onClick={() => setShowAddDialog(true)} size="sm">
-          <Plus className="h-3.5 w-3.5" />
-          Add match
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleRefreshCache} disabled={isRefreshing}>
+            {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {isRefreshing ? 'Refreshing…' : 'Refresh Cache'}
+          </Button>
+          <Button className="gap-1.5" onClick={() => setShowAddDialog(true)} size="sm">
+            <Plus className="h-3.5 w-3.5" />
+            Add match
+          </Button>
+        </div>
       </div>
+      {refreshMessage && (
+        <p className={`text-xs px-1 ${refreshMessage.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>
+          {refreshMessage}
+        </p>
+      )}
 
       <div className="grid gap-2 grid-cols-2 md:grid-cols-4">
         <Card><CardContent className="p-2.5"><div className="text-[10px] uppercase text-muted-foreground">Total</div><div className="text-base font-bold tabular-nums">{matches.length}</div></CardContent></Card>

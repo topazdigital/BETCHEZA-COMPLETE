@@ -4992,12 +4992,12 @@ _initPromise = (async () => {
   //    first time we still serve cached matches once the pool stabilises.
   //    Only runs if memory cache is still empty after init.
   setTimeout(async () => {
-    if (g_allMatchesCache.data && g_allMatchesCache.data.length >= 5) return;
+    if (g_allMatchesCache.data && g_allMatchesCache.data.length >= 50) return;
     try {
       const { resetPool } = await import('../db');
       resetPool(); // clear any stale circuit-breaker state
       const dbResult = await _readDbCache();
-      if (dbResult && dbResult.data.length >= 5) {
+      if (dbResult && dbResult.data.length >= 50) {
         g_allMatchesCache.data = dbResult.data;
         g_allMatchesCache.ts   = Date.now();
       }
@@ -5576,19 +5576,22 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // NEVER overwrite a good cache — that would blank out the site for every
   // subsequent user until the next successful fetch.
   //
-  // Threshold: max(5, 25% of previous count).
-  // Using a fixed low threshold (e.g. 5) was dangerous: if ESPN is rate-limited
-  // and returns only today's 5 live matches, `5 >= 5` passed and the entire
-  // 700+ match cache got overwritten. The 25% floor means a partial refresh
-  // from a rate-limited ESPN (returning ~5 matches when we had 700) is always
-  // rejected, while a genuine first-ever cold start (previousCount=0, floor=5)
-  // still writes as soon as any data arrives.
+  // Threshold: max(50, 25% of previous count).
+  // The absolute floor is 50 — not 5. A floor of 5 was dangerous in two ways:
+  //   1. Rate-limited ESPN returning 5 matches on a big cache: `5 >= 5` passed
+  //      and the entire 700+ match cache got overwritten.
+  //   2. Cold start (previousCount=0) with rate-limited ESPN returning 5 matches:
+  //      `5 >= max(5,0) = 5` passed → cache poisoned with 5 matches → every
+  //      subsequent cron tick found previousCount=5 → threshold=5 → 5 >= 5 →
+  //      permanently stuck at 5 matches.
+  // With floor=50: cold start returns 5 → rejected → ts stays 0 → next request
+  // retries immediately. First non-rate-limited ESPN run returns 500+ → stored.
   //
   // CRITICAL: Do NOT use `|| previousCount === 0` here — that was a bug that
   // wrote empty data on cold start (when previousCount === 0 and ESPN returned
   // nothing), poisoning the DB + file cache and causing persistent 0-match pages.
   const previousCount = g_allMatchesCache.data?.length ?? 0;
-  const MIN_MATCHES_TO_PERSIST = Math.max(5, Math.floor(previousCount * 0.25));
+  const MIN_MATCHES_TO_PERSIST = Math.max(50, Math.floor(previousCount * 0.25));
   if (sorted.length >= MIN_MATCHES_TO_PERSIST) {
     g_allMatchesCache.data = sorted;
     g_allMatchesCache.ts = Date.now();
