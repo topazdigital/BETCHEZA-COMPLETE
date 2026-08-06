@@ -237,8 +237,35 @@ function marketKeyLabel(key: string): string {
   return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// Keep in sync with TEAM_NAME_ALIASES in unified-sports-api.ts and sportsgameodds.ts
+const TEAM_NAME_ALIASES: Record<string, string> = {
+  hearts: 'heartofmidlothian',
+  hibs: 'hibernian',
+  wolves: 'wolverhampton',
+  spurs: 'tottenham',
+  tottenhamspur: 'tottenham',
+  tottenhamhotspur: 'tottenham',
+  manunited: 'manchesterunited',
+  manutd: 'manchesterunited',
+  manchesterutd: 'manchesterunited',
+  mancity: 'manchestercity',
+  westbrom: 'westbromwichalbion',
+  westbromwich: 'westbromwichalbion',
+  atletico: 'atleticomadrid',
+  atleticomadrid: 'atleticomadrid',
+  atleticdemadrid: 'atleticomadrid',
+  dortmund: 'borussiadortmund',
+  internacionalrs: 'internacional',
+  athleticclub: 'athleticbilbao',
+};
+
 function normalizeTeam(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+  const stripped = name
+    .toLowerCase()
+    .replace(/\b(fc|cf|sc|afc|cfc|acf|ac|as|ss|bsc|fk|sk|rc|club|the)\b/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+  return TEAM_NAME_ALIASES[stripped] ?? stripped;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────

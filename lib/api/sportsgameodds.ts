@@ -337,16 +337,39 @@ export async function getSgoBookmakerLines(
 
 // ─── Bulk match odds for the match list ───────────────────────────────
 
+// Keep in sync with TEAM_NAME_ALIASES in unified-sports-api.ts
+const TEAM_NAME_ALIASES: Record<string, string> = {
+  hearts: 'heartofmidlothian',
+  hibs: 'hibernian',
+  wolves: 'wolverhampton',
+  spurs: 'tottenham',
+  tottenhamspur: 'tottenham',
+  tottenhamhotspur: 'tottenham',
+  manunited: 'manchesterunited',
+  manutd: 'manchesterunited',
+  manchesterutd: 'manchesterunited',
+  mancity: 'manchestercity',
+  westbrom: 'westbromwichalbion',
+  westbromwich: 'westbromwichalbion',
+  atletico: 'atleticomadrid',
+  atleticomadrid: 'atleticomadrid',
+  atleticdemadrid: 'atleticomadrid',
+  dortmund: 'borussiadortmund',
+  internacionalrs: 'internacional',
+  athleticclub: 'athleticbilbao',
+};
+
 /**
  * Simple per-match normalization that matches `normalizeTeamName()` in
  * unified-sports-api.ts so index keys are compatible.
  */
 function normalizeForIndex(name: string): string {
-  return (name || '')
+  const stripped = (name || '')
     .toLowerCase()
     .replace(/\b(fc|cf|sc|afc|cfc|acf|ac|as|ss|bsc|fk|sk|rc|club|the)\b/g, '')
     .replace(/[^a-z0-9]/g, '')
     .trim();
+  return TEAM_NAME_ALIASES[stripped] ?? stripped;
 }
 
 export interface SgoMatchOddsEntry {

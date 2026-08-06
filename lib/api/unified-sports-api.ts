@@ -4298,13 +4298,49 @@ interface TheOddsApiEvent {
   }>;
 }
 
+// Known short-name / nickname → canonical normalized key.
+// Both sides of a fixture are run through normalizeTeamName first, THEN this
+// alias lookup is applied so that e.g. "Hearts" (odds API) and
+// "Heart of Midlothian F.C." (ESPN) both resolve to "heartofmidlothian".
+const TEAM_NAME_ALIASES: Record<string, string> = {
+  // Scottish
+  hearts: 'heartofmidlothian',
+  hibs: 'hibernian',
+  // English
+  wolves: 'wolverhampton',
+  spurs: 'tottenham',
+  tottenhamspur: 'tottenham',
+  tottenhamhotspur: 'tottenham',
+  manunited: 'manchesterunited',
+  manutd: 'manchesterunited',
+  manchesterutd: 'manchesterunited',
+  mancity: 'manchestercity',
+  westbrom: 'westbromwichalbion',
+  westbromwich: 'westbromwichalbion',
+  // Spanish
+  atletico: 'atleticomadrid',
+  atleticomadrid: 'atleticomadrid',
+  atleticdemadrid: 'atleticomadrid',
+  // German
+  dortmund: 'borussiadortmund',
+  // Italian
+  inter: 'inter',        // already fine — just keep as-is
+  // Turkish
+  besiktas: 'besiktas',
+  // Brazilian
+  internacionalrs: 'internacional',
+  // Generic suffix collisions
+  athleticclub: 'athleticbilbao',
+};
+
 // Normalize team name for fuzzy matching
 function normalizeTeamName(name: string): string {
-  return name
+  const stripped = name
     .toLowerCase()
     .replace(/\b(fc|cf|sc|afc|cfc|acf|ac|as|ss|bsc|fk|sk|rc|club|the)\b/g, '')
     .replace(/[^a-z0-9]/g, '')
     .trim();
+  return TEAM_NAME_ALIASES[stripped] ?? stripped;
 }
 
 // Compute average odds across bookmakers (best of)
