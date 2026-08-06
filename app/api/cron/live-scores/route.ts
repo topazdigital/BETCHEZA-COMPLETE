@@ -66,6 +66,13 @@ export async function GET(req: NextRequest) {
       console.warn('[live-scores] past-pick settlement failed:', e?.message ?? e)
     );
 
+    // Proactively warm the full match cache every cron tick.
+    // getAllMatches() returns the stale-cached data instantly and triggers a
+    // background rebuild if the cache is > 90 s old — so no matter how quiet
+    // the server is between user visits, the match list is never more than
+    // ~5 min stale when the next visitor arrives.
+    getAllMatches().catch(() => {});
+
     const matches = await getLiveMatches();
 
     // Even when ESPN is down (0 live matches), try supplementary sources for scores.

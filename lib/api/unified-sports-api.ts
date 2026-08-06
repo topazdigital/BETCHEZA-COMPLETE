@@ -4853,7 +4853,9 @@ export async function fetchAllMarketsForEvent(
 // after PM2 restarts — serves data in < 50ms.
 
 const ALLMATCHES_CACHE_TTL  = 90 * 1000;          // 90 sec — serve from memory
-const ALLMATCHES_STALE_TTL  = 20 * 60 * 1000;     // 20 min — serve stale if ESPN is down (was 4h; reduced so stale statuses don't persist for hours)
+const ALLMATCHES_STALE_TTL  = 60 * 60 * 1000;     // 60 min — serve stale before forcing a cold-start live fetch
+// Note: live match statuses/scores are patched every 5 min by the live-scores cron
+// (patchLiveScoresInMainCache), so a longer stale TTL doesn't affect score accuracy.
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and
 // survives all subsequent restarts so cold-start delays never recur.
