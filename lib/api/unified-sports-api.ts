@@ -1406,6 +1406,7 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '5454': { name: 'Copa Libertadores', country: 'South America', countryCode: 'SA' },
   '5337': { name: 'US Open Cup', country: 'United States', countryCode: 'US' },
   '5699': { name: 'CONCACAF Champions Cup', country: 'North America', countryCode: 'NA' },
+  '22947': { name: 'Leagues Cup', country: 'North America', countryCode: 'NA' },
   '3903': { name: 'Argentine Primera B Metropolitana', country: 'Argentina', countryCode: 'AR' },
   // LATAM leagues — numeric IDs as observed in /all/scoreboard uid (l:<id>)
   '4310': { name: 'Argentine Primera Nacional', country: 'Argentina', countryCode: 'AR' },
@@ -1696,7 +1697,10 @@ const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
 function leagueNameFromSeasonSlug(slug?: string): string | null {
   if (!slug) return null;
   // Skip generic slugs that don't carry league info.
-  const generic = new Set(['regular-season', 'group-stage', 'semifinals', 'quarterfinals', 'round-of-16', 'first-round', 'second-round', 'final', 'playoffs', 'preseason', 'postseason', 'promotion-quarterfinals']);
+  const generic = new Set(['regular-season', 'group-stage', 'semifinals', 'quarterfinals', 'round-of-16', 'first-round', 'second-round', 'final', 'playoffs', 'preseason', 'postseason', 'promotion-quarterfinals',
+    // ESPN uses these as season-type slugs, not league names — ignore them so the
+    // code falls through to ESPN's actual league name (e.g. "Leagues Cup").
+    'league-phase', 'group-phase', 'knockout-phase', 'knockout-round', 'playoff-round', 'conference-semifinals', 'conference-finals', 'wild-card']);
   if (generic.has(slug)) return null;
   // Strip leading year prefix (e.g. "2025-26-" or "2025-").
   const stripped = slug.replace(/^\d{4}(-\d{2})?-/, '');
