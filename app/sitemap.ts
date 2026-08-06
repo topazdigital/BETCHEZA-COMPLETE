@@ -5,6 +5,7 @@ import { getPool } from '@/lib/db';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { getAllOutrightSlugs } from '@/lib/api/outright-discovery';
 import { SPECIALS } from '@/lib/api/specials';
+import { articleToUrl, getIndexedNewsArticles } from '@/lib/news-article-index';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -83,7 +84,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/bookmakers`,           lastModified: now, changeFrequency: 'weekly',  priority: 0.68 },
     { url: `${base}/competitions`,         lastModified: now, changeFrequency: 'daily',   priority: 0.88 },
     { url: `${base}/sports`,              lastModified: now, changeFrequency: 'weekly',  priority: 0.60 },
-    { url: `${base}/news`,                 lastModified: now, changeFrequency: 'hourly',  priority: 0.60 },
     { url: `${base}/predictor/h2h`,        lastModified: now, changeFrequency: 'daily',   priority: 0.58 },
     { url: `${base}/players/compare`,      lastModified: now, changeFrequency: 'weekly',  priority: 0.52 },
     { url: `${base}/aviator`,              lastModified: now, changeFrequency: 'weekly',  priority: 0.90 },
@@ -291,6 +291,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.78,
   }));
 
+  // Keep discovered articles in the regular sitemap after they leave the
+  // two-day Google News sitemap window. The article index is refreshed by
+  // the news sitemap and by every match-details response that contains news.
+  const articleEntries: MetadataRoute.Sitemap = getIndexedNewsArticles().map(article => ({
+    url: articleToUrl(article, base),
+    lastModified: new Date(article.published || article.indexedAt),
+    changeFrequency: 'weekly' as const,
+    priority: 0.62,
+  }));
+
   return [
     ...staticEntries,
     ...jackpotTypeEntries,
@@ -302,5 +312,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...competitionEntries,
     ...tipsterEntries,
     ...matchEntries,
+    ...articleEntries,
   ];
 }

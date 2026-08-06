@@ -15,6 +15,7 @@ import {
 } from '@/lib/api/unified-sports-api';
 import { fetchCamel1Matches } from '@/lib/api/camel1';
 import { slugToMatchId } from '@/lib/utils/match-url';
+import { upsertNewsArticles } from '@/lib/news-article-index';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 30;
@@ -1426,6 +1427,17 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const standings = summary ? buildStandings(summary, cfg?.sport || 'soccer') : null;
     const news = summary ? buildNews(summary) : [];
+    if (news.length > 0) {
+      void upsertNewsArticles(news.map(article => ({
+        id: String(article.id || ''),
+        headline: article.headline || '',
+        description: article.description || '',
+        image: article.image || '',
+        published: article.published || '',
+        sourceUrl: article.link || '',
+        source: article.source || 'ESPN',
+      })));
+    }
     const leaders = summary ? buildLeaders(summary) : [];
     const header = summary ? buildHeader(summary) : null;
     let teamStats = summary ? buildTeamStats(summary) : null;

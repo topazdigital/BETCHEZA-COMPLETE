@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { upsertNewsArticles } from '@/lib/news-article-index';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 600;
@@ -49,5 +50,14 @@ export async function GET() {
   }));
 
   out.sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
+  await upsertNewsArticles(out.map(article => ({
+    id: article.id,
+    headline: article.headline,
+    description: article.description,
+    image: article.image || '',
+    published: article.published,
+    sourceUrl: article.source_url,
+    source: article.source,
+  })));
   return NextResponse.json({ articles: out.slice(0, 50) });
 }
