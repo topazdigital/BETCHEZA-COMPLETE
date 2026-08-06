@@ -5371,9 +5371,12 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
       if (TEAM_ALIASES[preAlias]) return TEAM_ALIASES[preAlias];
       if (TEAM_ALIASES[aliasKey]) return TEAM_ALIASES[aliasKey];
 
-      return lower
+      const wordStripped = lower
         .replace(/\b(fc|afc|cfc|acf|sc|cf|bsc|fk|sk|ac|as|ss|rcd|rc|vfb|sv|bv|vfl|1\.?|hsv|club|the|association|football|soccer|city|united|utd|town|rovers|wanderers|athletic|albion|hotspur|munchen|munich|real|atletico|deportivo|sporting|union|inter|calcio|sports|sport|ud|sd|cd|ssc|asd|de|la|el|los|las|del|al|af|if|bf|hk|vigo|madrid|milan|london|paris|rome|roma|lyon|porto|lisbon|zagreb|moscow|amsterdam|brussels|brussels|vienna|warsaw|bucharest|sofia|budapest|prague|belgrade|athens)\b/g, '')
         .replace(/[^a-z0-9]/g, '');
+      // Apply module-level alias map so e.g. "Hearts" (odds API short name)
+      // deduplicates correctly against "Heart of Midlothian F.C." (ESPN full name).
+      return TEAM_NAME_ALIASES[wordStripped] ?? wordStripped;
     };
 
     const homeNorm = stripSuffixes(match.homeTeam.name);
@@ -5561,12 +5564,20 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // meaningful result. A failed/rate-limited fetch returning 0 matches must
   // NEVER overwrite a good cache — that would blank out the site for every
   // subsequent user until the next successful fetch.
-  // Threshold: 5 matches. If all sources are down we keep the last good data.
+  //
+  // Threshold: max(5, 25% of previous count).
+  // Using a fixed low threshold (e.g. 5) was dangerous: if ESPN is rate-limited
+  // and returns only today's 5 live matches, `5 >= 5` passed and the entire
+  // 700+ match cache got overwritten. The 25% floor means a partial refresh
+  // from a rate-limited ESPN (returning ~5 matches when we had 700) is always
+  // rejected, while a genuine first-ever cold start (previousCount=0, floor=5)
+  // still writes as soon as any data arrives.
+  //
   // CRITICAL: Do NOT use `|| previousCount === 0` here — that was a bug that
   // wrote empty data on cold start (when previousCount === 0 and ESPN returned
   // nothing), poisoning the DB + file cache and causing persistent 0-match pages.
   const previousCount = g_allMatchesCache.data?.length ?? 0;
-  const MIN_MATCHES_TO_PERSIST = 5;
+  const MIN_MATCHES_TO_PERSIST = Math.max(5, Math.floor(previousCount * 0.25));
   if (sorted.length >= MIN_MATCHES_TO_PERSIST) {
     g_allMatchesCache.data = sorted;
     g_allMatchesCache.ts = Date.now();
