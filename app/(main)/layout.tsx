@@ -27,6 +27,10 @@ import { BottomNav } from "@/components/layout/bottom-nav"
 import { useMatchStats } from "@/lib/hooks/use-matches"
 import { ALL_SPORTS as SPORTS_LIST, ALL_LEAGUES, getSportIcon } from "@/lib/sports-data"
 import { FlagIcon } from "@/components/ui/flag-icon"
+import { WhatsAppMarkIcon } from "@/components/home/whatsapp-community-cta"
+
+const WHATSAPP_GROUP_URL =
+  'https://chat.whatsapp.com/CiQQ3J6o0A4E8eXZ4Y9QaN?s=cl&p=a&mlu=4';
 
 const NotificationBell = dynamicImport(
   () => import("@/components/notifications/notification-bell").then(m => ({ default: m.NotificationBell })),
@@ -495,6 +499,16 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="ml-auto flex items-center gap-1">
+            <a
+              href={WHATSAPP_GROUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Join the Betcheza WhatsApp community"
+              className="mr-1 hidden items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 sm:flex"
+            >
+              <WhatsAppMarkIcon className="h-4 w-4" />
+              <span className="hidden lg:inline">Join WhatsApp</span>
+            </a>
             <ThemeToggle />
             <NotificationBell />
             <Button variant="ghost" size="icon" className="h-8 w-8" asChild>

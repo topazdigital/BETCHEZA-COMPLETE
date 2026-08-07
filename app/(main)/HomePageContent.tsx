@@ -42,6 +42,7 @@ import { useAuthModal } from '@/contexts/auth-modal-context';
 import { useAuth } from '@/contexts/auth-context';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { tipsterHref } from '@/lib/utils/slug';
+import { WhatsAppCommunityCta } from '@/components/home/whatsapp-community-cta';
 
 const PanelSkeleton = () => (
   <div className="space-y-2 p-1">
@@ -282,6 +283,7 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                 <p className="mb-3 text-pretty text-sm text-muted-foreground">
                   Expert predictions across 35+ sports — track performance and compete worldwide.
                 </p>
+                <WhatsAppCommunityCta />
                 {isAuthenticated && user ? (
                   <div className="flex flex-col gap-2">
                     <p className="text-xs text-muted-foreground">
