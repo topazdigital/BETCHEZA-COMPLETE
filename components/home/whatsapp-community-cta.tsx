@@ -30,22 +30,22 @@ export function WhatsAppCommunityCta() {
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Join the Betcheza WhatsApp community"
-      className="group relative mb-4 flex max-w-xl items-center gap-3 overflow-hidden rounded-2xl border border-emerald-400/30 bg-[linear-gradient(105deg,#064e3b_0%,#087f5b_52%,#16a36b_100%)] px-3 py-3 text-white shadow-[0_10px_35px_-14px_rgba(16,185,129,0.9)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-12px_rgba(16,185,129,0.9)] focus-visible:outline-white sm:gap-4 sm:px-4"
+      className="group relative mb-4 grid max-w-xl grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 overflow-hidden rounded-2xl border border-emerald-400/30 bg-[linear-gradient(105deg,#064e3b_0%,#087f5b_52%,#16a36b_100%)] px-3 py-3 text-white shadow-[0_10px_35px_-14px_rgba(16,185,129,0.9)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-12px_rgba(16,185,129,0.9)] focus-visible:outline-white sm:flex sm:items-center sm:gap-4 sm:px-4"
     >
       <span className="pointer-events-none absolute -right-8 -top-12 h-28 w-28 rounded-full bg-white/15 blur-2xl transition-transform duration-500 group-hover:scale-150" />
-      <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[#087f5b] shadow-lg shadow-black/15">
+      <span className="relative row-span-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[#087f5b] shadow-lg shadow-black/15 sm:row-span-1">
         <WhatsAppMark className="h-7 w-7" />
         <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-[#087f5b] bg-lime-300" />
       </span>
-      <span className="relative min-w-0 flex-1">
+      <span className="relative min-w-0 self-center">
         <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-100">
           Betcheza community
         </span>
-        <span className="mt-0.5 block truncate text-sm font-bold sm:text-[15px]">
+        <span className="mt-0.5 block text-sm font-bold leading-tight sm:text-[15px]">
           Get the conversation, picks &amp; match energy
         </span>
       </span>
-      <span className="relative flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs font-black text-[#087f5b] shadow-sm transition-colors group-hover:bg-emerald-50">
+      <span className="relative col-start-2 flex w-fit items-center gap-1 rounded-full bg-white px-3 py-2 text-xs font-black text-[#087f5b] shadow-sm transition-colors group-hover:bg-emerald-50 sm:col-auto">
         Join now
         <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
       </span>

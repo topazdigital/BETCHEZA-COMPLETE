@@ -504,7 +504,8 @@ function MainLayout({ children }: { children: React.ReactNode }) {
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Join the Betcheza WhatsApp community"
-              className="mr-1 hidden items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 sm:flex"
+              title="Join the Betcheza WhatsApp community"
+              className="mr-1 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 sm:h-auto sm:w-auto sm:gap-1.5 sm:px-2.5 sm:py-1.5"
             >
               <WhatsAppMarkIcon className="h-4 w-4" />
               <span className="hidden lg:inline">Join WhatsApp</span>
