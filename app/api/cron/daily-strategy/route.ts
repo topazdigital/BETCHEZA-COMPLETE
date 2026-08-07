@@ -5,6 +5,7 @@ import { query, execute } from '@/lib/db';
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/api-keys';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '@/app/api/strategy/predictions/route';
+import { selectStrategyMatchPool } from '@/lib/strategy-match-selection';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -149,7 +150,7 @@ function safestPick(
     awayTeam: { name: string };
     league: { name: string };
     kickoffTime: Date;
-    odds?: { home: number; draw: number; away: number } | null
+    odds?: { home: number; draw?: number; away: number } | null
   },
   idx: number,
 ): StrategyPick & { safetyScore: number; leagueScore: number } {
@@ -160,7 +161,8 @@ function safestPick(
   const lScore = leagueScore(match.league.name);
 
   if (match.odds) {
-    const { home, draw, away } = match.odds;
+    const { home, away } = match.odds;
+    const draw = match.odds.draw ?? 3.5;
 
     // Validate odds are real (bookmakers don't give odds below 1.01 or above 100)
     if (home < 1.01 || away < 1.01 || draw < 1.01) {
@@ -380,34 +382,22 @@ async function generatePicksForDate(
 
   try {
     const upcoming = await getUpcomingMatches();
-    const soccerMatches = upcoming.filter(
-      (m) => m.sport.slug === 'soccer' || m.sport.slug === 'football'
-    );
-
-    // Filter to matches today (EAT)
-    const dayMatches = soccerMatches.filter((m) => {
-      const kickoffEAT = toEATDate(new Date(m.kickoffTime));
-      return kickoffEAT.toISOString().slice(0, 10) === getTodayStrEAT(targetDate);
-    });
-
-    // Sort by league quality — all kick-off times are acceptable (midnight through late night).
-    // Subscribers want picks at any hour as long as they belong to that calendar day in EAT.
-    const sortedDay = [...dayMatches].sort((a, b) => {
-      return leagueScore(a.league.name) - leagueScore(b.league.name); // league quality only
-    });
+    const targetDateEAT = getTodayStrEAT(targetDate);
+    // Keep every future kickoff on the EAT calendar day, then balance the
+    // pool across morning, afternoon, and evening/night before ranking picks.
+    const sortedDay = selectStrategyMatchPool(upcoming, targetDateEAT, {
+      maxMatches: 30,
+    }).sort((a, b) => leagueScore(a.league.name) - leagueScore(b.league.name));
 
     // Prefer matches WITH real bookmaker odds in top leagues
     const withOdds = sortedDay.filter(m => m.odds && m.odds.home > 1.05 && m.odds.away > 1.05);
 
     // Build the candidate pool: prioritise today's games with real odds
+    // Do not fall back to another date. A wrong-date pick is worse than an
+    // empty result that retries on the next cron tick.
     const pool = withOdds.length >= 3
       ? withOdds.slice(0, 30)
-      : sortedDay.length >= 2
-        ? sortedDay.slice(0, 30)
-        : soccerMatches
-            .filter(m => m.odds && m.odds.home > 1.05)
-            .sort((a, b) => leagueScore(a.league.name) - leagueScore(b.league.name))
-            .slice(0, 30);
+      : sortedDay.slice(0, 30);
 
     // Build a rich match description for AI analysis
     const matchList = pool.map((m) => {

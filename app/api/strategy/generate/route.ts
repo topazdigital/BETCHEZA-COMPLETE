@@ -6,6 +6,11 @@ import type { Market } from '@/lib/api/unified-sports-api';
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/api-keys';
 import type { WeeklyStrategy, StrategyPick, DayPrediction } from '../predictions/route';
+import {
+  normalizeStrategyTeamName,
+  selectStrategyMatchPool,
+  strategyMatchKey,
+} from '@/lib/strategy-match-selection';
 
 // EAT = UTC+3
 const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -216,6 +221,11 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const targetDay: number = body.day || 1;
+  const excludedMatches = Array.isArray(body.excludeMatches)
+    ? body.excludeMatches
+        .filter((m: unknown): m is { homeTeam?: string; awayTeam?: string } => !!m && typeof m === 'object')
+        .map((m: { homeTeam?: string; awayTeam?: string }) => strategyMatchKey(m.homeTeam || '', m.awayTeam || ''))
+    : [];
   const weekId = getWeekId(new Date());
   let stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
 
@@ -271,32 +281,24 @@ export async function POST(req: NextRequest) {
 
   try {
     // Use getAllMatches (not getUpcomingMatches) so live matches are included —
-    // today's games may already be in-progress when the admin clicks Override.
+    // but the selector below removes live/finished/past events before analysis.
     const allMatches = await getAllMatches();
     const targetDateEAT = dayData.date; // YYYY-MM-DD in EAT
 
-    const soccerToday = allMatches.filter(
-      (m) =>
-        (m.sport.slug === 'soccer' || m.sport.slug === 'football') &&
-        toEATDateStr(new Date(m.kickoffTime)) === targetDateEAT
-    ).slice(0, 30);
-
-    // If fewer than 2 soccer matches, extend with all-sport matches for that EAT day
-    let extendedPool = soccerToday;
-    if (soccerToday.length < 2) {
-      const allToday = allMatches.filter(
-        (m) => toEATDateStr(new Date(m.kickoffTime)) === targetDateEAT
-      );
-      extendedPool = [
-        ...soccerToday,
-        ...allToday.filter(m => m.sport.slug !== 'soccer' && m.sport.slug !== 'football'),
-      ].slice(0, 30);
+    let extendedPool = selectStrategyMatchPool(allMatches, targetDateEAT, {
+      maxMatches: 30,
+      excludeMatches: excludedMatches,
+    });
+    // If regeneration excluded every available alternative, use the eligible
+    // pool rather than returning a misleading "no matches" error.
+    if (extendedPool.length === 0 && excludedMatches.length > 0) {
+      extendedPool = selectStrategyMatchPool(allMatches, targetDateEAT, { maxMatches: 30 });
     }
 
-    // If still no matches for this date, return a clear error — never use other days' games.
+    // Never use another date's games or already-started matches.
     if (extendedPool.length === 0) {
       return NextResponse.json(
-        { error: `No matches found for ${targetDateEAT}. The sports cache may still be warming up — try again in a minute.` },
+        { error: `No future scheduled football matches found for ${targetDateEAT}. Try again when that day's fixtures are available.` },
         { status: 404 }
       );
     }
@@ -441,13 +443,28 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
             parsed = Array.isArray(obj) ? obj : (obj.picks || obj.selections || []);
           } catch { /* try next provider */ }
 
-          if (parsed.length >= 1) {
-            const candidates = parsed.slice(0, 10).map((p, i) => ({
-              ...p,
-              id: `${weekId}-d${targetDay}-${i}`,
-              odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
-              result: 'pending' as const,
-            }));
+           if (parsed.length >= 1) {
+             const candidates = parsed.slice(0, 10).flatMap((p, i) => {
+               const home = normalizeStrategyTeamName(String(p.homeTeam || ''));
+               const away = normalizeStrategyTeamName(String(p.awayTeam || ''));
+               const source = extendedPool.find((m) =>
+                 normalizeStrategyTeamName(m.homeTeam.name) === home &&
+                 normalizeStrategyTeamName(m.awayTeam.name) === away
+               );
+               // Never persist an AI-invented fixture or a kickoff time that
+               // differs from the real provider event.
+               if (!source) return [];
+               return [{
+                 ...p,
+                 id: `${weekId}-d${targetDay}-${i}`,
+                 homeTeam: source.homeTeam.name,
+                 awayTeam: source.awayTeam.name,
+                 league: source.league.name,
+                 matchTime: new Date(source.kickoffTime).toISOString(),
+                 odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
+                 result: 'pending' as const,
+               }];
+             });
             const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
             // Accept if combined odds land in 2.90–4.50 (target 3.00–4.00, small buffer for rounding).
             // 2.59 and below is too low — reject and fall through to rules-based.

@@ -223,7 +223,15 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
       const res = await fetch('/api/strategy/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ day: day.day }),
+        body: JSON.stringify({
+          day: day.day,
+          // Give the server the current fixtures so regeneration chooses
+          // alternatives whenever the day's feed has enough future matches.
+          excludeMatches: day.picks.map((p) => ({
+            homeTeam: p.homeTeam,
+            awayTeam: p.awayTeam,
+          })),
+        }),
       });
       const d = await res.json();
       if (d.success) {
