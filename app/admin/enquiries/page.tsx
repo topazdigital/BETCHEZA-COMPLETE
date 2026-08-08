@@ -85,18 +85,33 @@ function ReplyComposer({ email, onSent, onCancel }: { email: InboxEmail; onSent:
       const r = await fetch('/api/admin/inbox/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: email.fromEmail, subject, body, inReplyTo: email.messageId }),
+        body: JSON.stringify({
+          to: email.fromEmail,
+          from: email.accountEmail,
+          subject,
+          body,
+          inReplyTo: email.messageId,
+        }),
       })
       const data = await r.json()
       if (!r.ok || !data.ok) { setError(data.error || 'Failed to send'); return }
-      setSent(true); onSent()
+      setSent(true)
     } catch (e: any) { setError(e.message || 'Network error') }
     finally { setSending(false) }
   }
 
   if (sent) return (
-    <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
-      <Send className="h-4 w-4 shrink-0" /> Reply sent to {email.fromEmail}
+    <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400">
+      <p className="flex items-center gap-2 font-medium">
+        <Send className="h-4 w-4 shrink-0" /> Reply accepted for delivery
+      </p>
+      <p className="text-xs">
+        Sent from <strong>{email.accountEmail}</strong> to <strong>{email.fromEmail}</strong>.
+        Check the recipient&apos;s spam or promotions folder if it does not arrive shortly.
+      </p>
+      <Button onClick={onCancel} variant="outline" size="sm" className="h-7 text-xs">
+        Close
+      </Button>
     </div>
   )
 

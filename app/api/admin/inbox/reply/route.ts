@@ -12,10 +12,19 @@ export async function POST(req: NextRequest) {
   } catch { return NextResponse.json({ error: 'Forbidden' }, { status: 403 }); }
 
   try {
-    const { to, subject, body, inReplyTo } = await req.json();
+    const { to, subject, body, inReplyTo, from } = await req.json();
     if (!to || !subject || !body) {
       return NextResponse.json({ error: 'to, subject, and body are required' }, { status: 400 });
     }
+    const allowedFrom = new Set([
+      'support@betcheza.co.ke',
+      'partnerships@betcheza.co.ke',
+      'info@betcheza.co.ke',
+      'careers@betcheza.co.ke',
+    ]);
+    const sender = typeof from === 'string' && allowedFrom.has(from.toLowerCase())
+      ? from.toLowerCase()
+      : undefined;
 
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
@@ -29,11 +38,20 @@ export async function POST(req: NextRequest) {
       subject,
       html,
       text: body,
-      ...(inReplyTo ? { headers: { 'In-Reply-To': inReplyTo, 'References': inReplyTo } } : {}),
+      ...(sender ? { from: sender } : {}),
+      ...(inReplyTo ? { headers: { 'In-Reply-To': inReplyTo, References: inReplyTo } } : {}),
     });
 
     if (!result.ok) return NextResponse.json({ error: result.error || 'Send failed' }, { status: 500 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      messageId: result.messageId,
+      accepted: result.accepted ?? [],
+      rejected: result.rejected ?? [],
+      response: result.response,
+      sender: sender || 'configured SMTP sender',
+      notice: 'Accepted by the outgoing mail server. Delivery can still be delayed or filtered by the recipient mailbox.',
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Server error' }, { status: 500 });
   }

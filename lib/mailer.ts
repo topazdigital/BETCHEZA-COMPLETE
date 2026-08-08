@@ -36,6 +36,9 @@ export interface SendMailInput {
   text?: string;
   html?: string;
   replyTo?: string;
+  /** Optional sender override for verified Betcheza mailboxes. */
+  from?: string;
+  headers?: Record<string, string>;
 }
 
 export interface SendMailResult {
@@ -43,6 +46,9 @@ export interface SendMailResult {
   messageId?: string;
   error?: string;
   skipped?: boolean;
+  accepted?: string[];
+  rejected?: string[];
+  response?: string;
 }
 
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
@@ -53,14 +59,23 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   }
   try {
     const info = await ctx.transporter.sendMail({
-      from: ctx.cfg.fromName ? `${ctx.cfg.fromName} <${ctx.cfg.fromEmail}>` : ctx.cfg.fromEmail,
+      from: input.from
+        ? `${ctx.cfg.fromName || 'Betcheza'} <${input.from}>`
+        : (ctx.cfg.fromName ? `${ctx.cfg.fromName} <${ctx.cfg.fromEmail}>` : ctx.cfg.fromEmail),
       to: Array.isArray(input.to) ? input.to.join(',') : input.to,
       subject: input.subject,
       text: input.text,
       html: input.html,
       replyTo: input.replyTo || ctx.cfg.replyTo || undefined,
+      headers: input.headers,
     });
-    return { ok: true, messageId: info.messageId };
+    return {
+      ok: true,
+      messageId: info.messageId,
+      accepted: info.accepted.map(String),
+      rejected: info.rejected.map(String),
+      response: info.response,
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[mailer] send failed:', msg);
