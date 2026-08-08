@@ -35,6 +35,7 @@ const ACCOUNTS = [
   { name: 'support',      email: 'support@betcheza.co.ke' },
   { name: 'partnerships', email: 'partnerships@betcheza.co.ke' },
   { name: 'info',         email: 'info@betcheza.co.ke' },
+  { name: 'careers',      email: 'careers@betcheza.co.ke' },
 ];
 
 /** Resolve IMAP credentials — env var first, then saved Email Config. */

@@ -28,6 +28,7 @@ const ACCOUNT_COLORS: Record<string, string> = {
   partnerships: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   support:      'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
   info:         'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  careers:      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
 }
 function accountColor(name: string) {
   return ACCOUNT_COLORS[name] ?? 'bg-muted text-muted-foreground'
@@ -100,27 +101,29 @@ function ReplyComposer({ email, onSent, onCancel }: { email: InboxEmail; onSent:
   )
 
   return (
-    <div className="border-t pt-3 mt-3 space-y-2.5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Reply to {email.fromEmail}
-        </p>
-        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
-          <X className="h-3.5 w-3.5" />
-        </button>
+    <div className="mt-3 flex min-h-0 max-h-[min(46vh,420px)] flex-col border-t pt-3">
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain pr-1">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Reply to {email.fromEmail}
+          </p>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Subject</Label>
+          <Input value={subject} onChange={e => setSubject(e.target.value)} className="h-7 text-xs" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Message</Label>
+          <Textarea value={body} onChange={e => setBody(e.target.value)}
+            placeholder={`Hi ${email.from.split(' ')[0]},\n\nThank you for reaching out...`}
+            rows={4} className="min-h-24 text-sm resize-y" />
+        </div>
+        {error && <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3" />{error}</p>}
       </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Subject</Label>
-        <Input value={subject} onChange={e => setSubject(e.target.value)} className="h-7 text-xs" />
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Message</Label>
-        <Textarea value={body} onChange={e => setBody(e.target.value)}
-          placeholder={`Hi ${email.from.split(' ')[0]},\n\nThank you for reaching out...`}
-          rows={5} className="text-sm resize-none" />
-      </div>
-      {error && <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3" />{error}</p>}
-      <Button onClick={send} disabled={sending} size="sm" className="w-full">
+      <Button onClick={send} disabled={sending} size="sm" className="mt-2 w-full shrink-0">
         {sending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
         {sending ? 'Sending…' : 'Send Reply'}
       </Button>
