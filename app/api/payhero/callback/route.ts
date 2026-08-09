@@ -4,6 +4,7 @@ import { credit, debit } from '@/lib/wallet-store';
 import { onReferralDeposit } from '@/lib/referral-store';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { grantStrategyAccess, type PendingPayment as StrategyPendingPayment } from '@/app/api/strategy/access/route';
+import { grantJackpotAccess, type JackpotPendingPayment } from '@/app/api/jackpot/access/route';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -62,6 +63,15 @@ export async function POST(req: NextRequest) {
 
     // Strategy reference not in pending list (may have already been granted)
     console.log(`[payhero/callback] strategy ref ${reference} not in pending list — may already be granted`);
+    return NextResponse.json({ ok: true });
+  }
+
+  // Jackpot picks unlock payments
+  if (reference.startsWith('JPT-')) {
+    const pending = fileStoreGet<JackpotPendingPayment[]>('jackpot-pending', []);
+    const item = pending.find(p => p.reference === reference);
+    if (item && status === 'SUCCESS') grantJackpotAccess(item.userId, item.phone, reference);
+    if (item && status !== 'SUCCESS') fileStoreSet('jackpot-pending', pending.filter(p => p.reference !== reference));
     return NextResponse.json({ ok: true });
   }
 

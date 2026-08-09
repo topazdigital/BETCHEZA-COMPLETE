@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Jackpot, Bookmaker } from '@/lib/jackpot-types';
 import { SUPPORTED_BOOKMAKERS } from '@/lib/jackpot-types';
+import { JackpotLockedGames, JackpotUnlockModal, useJackpotAccess } from '@/components/jackpots/jackpot-unlock';
 
 const PICK_COLORS: Record<string, string> = {
   '1':  'bg-green-500/10 text-green-700 border-green-200 dark:border-green-800 dark:text-green-400',
@@ -67,9 +68,13 @@ function CopyPicksButton({ jackpot }: { jackpot: Jackpot }) {
 
 function JackpotCard({ jackpot, bookmakerColor }: { jackpot: Jackpot; bookmakerColor: string }) {
   const [expanded, setExpanded] = useState(true);
+  const { hasAccess, walletBalance, openUnlock, closeUnlock, unlockOpen, setAccess } = useJackpotAccess();
   const hasPredictions = jackpot.games.some(g => g.aiPrediction || g.prediction);
   const avgConfidence = hasPredictions ? Math.round(jackpot.games.reduce((s, g) => s + (g.aiConfidence || 60), 0) / jackpot.games.length) : null;
+  const lockedCount = Math.min(5, jackpot.games.length);
+  const visibleGames = hasAccess ? jackpot.games : jackpot.games.slice(0, Math.max(0, jackpot.games.length - lockedCount));
   return (
+    <>
     <Card className="overflow-hidden border-border/60">
       <CardContent className="p-0">
         <div className="h-1 w-full" style={{ background: bookmakerColor }} />
@@ -88,7 +93,7 @@ function JackpotCard({ jackpot, bookmakerColor }: { jackpot: Jackpot; bookmakerC
               </div>
             </div>
             <div className="flex flex-col items-end gap-1.5 shrink-0">
-              {hasPredictions && <CopyPicksButton jackpot={jackpot} />}
+              {hasPredictions && hasAccess && <CopyPicksButton jackpot={jackpot} />}
               <Button variant="ghost" size="sm" onClick={() => setExpanded(e => !e)} className="h-8 text-xs gap-1">
                 {expanded ? <><ChevronUp className="h-3.5 w-3.5" />Hide picks</> : <><ChevronDown className="h-3.5 w-3.5" />Show picks</>}
               </Button>
@@ -109,7 +114,7 @@ function JackpotCard({ jackpot, bookmakerColor }: { jackpot: Jackpot; bookmakerC
                   <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
                   <p className="text-xs text-muted-foreground">AI predictions coming soon — check back shortly.</p>
                 </div>
-              ) : jackpot.games.map((game, i) => {
+              ) : visibleGames.map((game, i) => {
                 const pick = game.aiPrediction || game.prediction;
                 return (
                   <div key={game.id} className="flex items-center gap-2 py-1.5 border-b last:border-0">
@@ -125,12 +130,15 @@ function JackpotCard({ jackpot, bookmakerColor }: { jackpot: Jackpot; bookmakerC
                     </div>
                   </div>
                 );
-              })}
+               })}
+               {!hasAccess && <JackpotLockedGames count={lockedCount} onUnlock={openUnlock} />}
             </div>
           )}
         </div>
       </CardContent>
     </Card>
+    <JackpotUnlockModal open={unlockOpen} onClose={closeUnlock} walletBalance={walletBalance} onUnlocked={() => setAccess({ hasAccess: true })} />
+    </>
   );
 }
 
