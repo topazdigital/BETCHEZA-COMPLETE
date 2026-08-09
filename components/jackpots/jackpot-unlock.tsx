@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Lock, Loader2, Phone, Wallet, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/contexts/auth-context';
+import { useAuthModal } from '@/contexts/auth-modal-context';
 
 export function useJackpotAccess() {
   const [access, setAccess] = useState<{ hasAccess: boolean; walletBalance?: number; pendingReference?: string }>({ hasAccess: false });
@@ -18,6 +20,8 @@ export function useJackpotAccess() {
 export function JackpotUnlockModal({ open, onClose, walletBalance = 0, onUnlocked }: {
   open: boolean; onClose: () => void; walletBalance?: number; onUnlocked: () => void;
 }) {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { open: openAuthModal } = useAuthModal();
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +48,9 @@ export function JackpotUnlockModal({ open, onClose, walletBalance = 0, onUnlocke
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={onClose}>
     <div className="w-full max-w-sm rounded-xl border bg-background p-5 shadow-xl" onMouseDown={e => e.stopPropagation()}>
       <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold">Unlock all jackpot games</h2><p className="mt-1 text-xs text-muted-foreground">Get the final five predictions for 7 days.</p></div><button onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></button></div>
-      {pending ? <div className="py-7 text-center space-y-2"><Phone className="mx-auto h-8 w-8 text-primary animate-pulse" /><p className="font-semibold">Check your phone</p><p className="text-xs text-muted-foreground">Enter your M-Pesa PIN. We’ll unlock the games automatically after confirmation.</p></div> :
+      {authLoading ? <div className="flex flex-col items-center justify-center gap-3 py-8 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /><span className="text-sm">Checking your sign-in…</span></div> :
+       !isAuthenticated ? <div className="space-y-4 py-4"><p className="text-center text-sm text-muted-foreground">Sign in to continue with your jackpot unlock.</p><Button className="w-full" onClick={() => { onClose(); openAuthModal('login'); }}>Sign In / Register</Button></div> :
+       pending ? <div className="py-7 text-center space-y-2"><Phone className="mx-auto h-8 w-8 text-primary animate-pulse" /><p className="font-semibold">Check your phone</p><p className="text-xs text-muted-foreground">Enter your M-Pesa PIN. We’ll unlock the games automatically after confirmation.</p></div> :
         <div className="mt-5 space-y-3">
           {walletBalance >= 100 && <Button className="w-full gap-2" disabled={busy} onClick={() => pay('wallet')}><Wallet className="h-4 w-4" />Pay KES 100 from wallet</Button>}
           <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><span className="relative mx-auto block w-fit bg-background px-2 text-[10px] text-muted-foreground">OR M-PESA</span></div>
