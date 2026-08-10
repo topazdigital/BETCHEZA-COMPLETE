@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getLiveMatches, getAllMatches, patchLiveScoresInMainCache, patchScoresFromSupplementary, mergeNewMatchesIntoCache } from '@/lib/api/unified-sports-api';
+import { settleFinishedJackpots } from '@/lib/jackpot-settle';
 import { fetchCamel1Matches } from '@/lib/api/camel1';
 import { fetchSofaScoreLiveMatches, fetchSofaScoreTodaySchedule } from '@/lib/api/sofascore';
 import { fetchAllSportsLiveFootball } from '@/lib/api/allsports';
@@ -71,9 +72,18 @@ export async function GET(req: NextRequest) {
     // background rebuild if the cache is > 90 s old — so no matter how quiet
     // the server is between user visits, the match list is never more than
     // ~5 min stale when the next visitor arrives.
-    getAllMatches().catch(() => {});
+    const allMatches = await getAllMatches();
+    const matches = allMatches.filter(m =>
+      m.status === 'live' ||
+      m.status === 'halftime' ||
+      (m.status as string) === 'extra_time' ||
+      (m.status as string) === 'penalties'
+    );
 
-    const matches = await getLiveMatches();
+    // Finished matches leave the live-only list, so use the full cache here.
+    // The settlement helper requires every fixture to have a confirmed final
+    // score before it changes an active jackpot to settled.
+    const jackpotSettlement = settleFinishedJackpots(allMatches);
 
     // Even when ESPN is down (0 live matches), try supplementary sources for scores.
     // Both run fire-and-forget so they don't block the cron response.
@@ -100,7 +110,12 @@ export async function GET(req: NextRequest) {
       .catch(() => {});
 
     if (matches.length === 0) {
-      return NextResponse.json({ ok: true, live: 0, goals: 0 });
+      return NextResponse.json({
+        ok: true,
+        live: 0,
+        goals: 0,
+        jackpotsSettled: jackpotSettlement.settled,
+      });
     }
 
     // Immediately patch updated scores into the main /api/matches cache so
@@ -286,7 +301,14 @@ export async function GET(req: NextRequest) {
       console.warn('[live-scores] strategy live-score update failed:', e?.message ?? e)
     );
 
-    return NextResponse.json({ ok: true, live: matches.length, goals: goals.length, pushed, finished: justFinished.length });
+    return NextResponse.json({
+      ok: true,
+      live: matches.length,
+      goals: goals.length,
+      pushed,
+      finished: justFinished.length,
+      jackpotsSettled: jackpotSettlement.settled,
+    });
   } catch (e) {
     console.warn('[cron/live-scores] error:', e instanceof Error ? e.message : e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
