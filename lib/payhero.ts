@@ -79,7 +79,14 @@ export function normalizeKenyanPhone(phone: string): string {
   return digits;
 }
 
-export interface StkPushResult { ok: boolean; reference: string; checkoutRequestId?: string; error?: string; }
+export interface StkPushResult {
+  ok: boolean;
+  reference: string;
+  /** PayHero's transaction reference, required by /transaction-status. */
+  providerReference?: string;
+  checkoutRequestId?: string;
+  error?: string;
+}
 
 export async function initiateStkPush(amount: number, phone: string, reference: string): Promise<StkPushResult> {
   const token = getToken();
@@ -100,7 +107,12 @@ export async function initiateStkPush(amount: number, phone: string, reference: 
     if (res.status === 401) return { ok: false, reference, error: 'PayHero authentication failed — check your Basic Token in Admin → Gateways.' };
     const errMsg = extractPayHeroError(data, res.status);
     if (!res.ok || data.success === false) return { ok: false, reference, error: errMsg };
-    return { ok: true, reference, checkoutRequestId: (data.CheckoutRequestID || data.checkout_request_id) as string | undefined };
+    return {
+      ok: true,
+      reference,
+      providerReference: (data.reference || data.transaction_reference) as string | undefined,
+      checkoutRequestId: (data.CheckoutRequestID || data.checkout_request_id) as string | undefined,
+    };
   } catch (e: unknown) {
     console.error('[payhero] STK push error:', e);
     return { ok: false, reference, error: String(e) };
@@ -116,25 +128,31 @@ export async function checkTransactionStatus(reference: string): Promise<'pendin
   const token = getToken();
   if (!token) return 'pending';
   try {
-    const res = await fetch(`${BASE_URL}/payments?external_reference=${encodeURIComponent(reference)}`, {
+    // PayHero's status endpoint expects the provider reference returned by
+    // the original /payments request. The old /payments?external_reference
+    // query can return an empty/ambiguous result even after a successful STK.
+    const res = await fetch(`${BASE_URL}/transaction-status?reference=${encodeURIComponent(reference)}`, {
       headers: { 'Authorization': token, 'Accept': 'application/json' },
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return 'pending';
-    const data = await res.json() as { results?: Array<{ status?: string; transaction_status?: string }>; status?: string; transaction_status?: string };
+    const data = await res.json() as {
+      status?: string | boolean;
+      transaction_status?: string;
+      ResultCode?: number | string;
+      response?: { Status?: string; ResultCode?: number | string };
+    };
+    const nested = data.response;
+    const resultCode = nested?.ResultCode ?? data.ResultCode;
+    const statusValue = nested?.Status ?? data.status ?? data.transaction_status;
+    const statusStr = typeof statusValue === 'string' ? statusValue.toUpperCase() : '';
 
-    // Handle paginated response { results: [...] }
-    let statusStr: string | undefined;
-    if (Array.isArray(data.results) && data.results.length > 0) {
-      statusStr = data.results[0].status || data.results[0].transaction_status;
-    } else {
-      statusStr = data.status || data.transaction_status;
+    if (resultCode === 0 || resultCode === '0' || statusStr === 'SUCCESS' || statusStr === 'COMPLETED' || statusStr === 'COMPLETE') {
+      return 'completed';
     }
-
-    if (!statusStr) return 'pending';
-    const s = statusStr.toUpperCase();
-    if (s === 'SUCCESS' || s === 'COMPLETED' || s === 'COMPLETE') return 'completed';
-    if (s === 'FAILED' || s === 'CANCELLED' || s === 'CANCELED' || s === 'REJECTED') return 'failed';
+    if (statusStr === 'FAILED' || statusStr === 'CANCELLED' || statusStr === 'CANCELED' || statusStr === 'REJECTED') {
+      return 'failed';
+    }
     return 'pending';
   } catch {
     return 'pending';

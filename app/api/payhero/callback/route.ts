@@ -27,11 +27,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const reference = (body.external_reference as string) || '';
-  const status = ((body.status as string) || '').toUpperCase();
-  const amount = Number(body.amount) || 0;
+  // PayHero currently wraps Daraja's callback in `response`:
+  // { status: true, response: { ExternalReference, Status, ResultCode, Amount } }.
+  // Older integrations sent these fields at the top level, so support both.
+  const response = body.response && typeof body.response === 'object'
+    ? body.response as Record<string, unknown>
+    : {};
+  const reference = String(
+    body.external_reference ||
+    body.ExternalReference ||
+    response.external_reference ||
+    response.ExternalReference ||
+    '',
+  );
+  const status = String(
+    body.status_text ||
+    body.payment_status ||
+    body.Status ||
+    response.status ||
+    response.Status ||
+    '',
+  ).toUpperCase();
+  const resultCode = response.ResultCode ?? body.ResultCode;
+  const amount = Number(response.Amount ?? body.amount ?? body.Amount) || 0;
+  const succeeded = resultCode === 0 || resultCode === '0' || status === 'SUCCESS' || status === 'COMPLETED';
 
-  console.log(`[payhero/callback] ref=${reference} status=${status} amount=${amount}`);
+  console.log(`[payhero/callback] ref=${reference} status=${status} resultCode=${String(resultCode ?? '')} amount=${amount}`);
 
   if (!reference) {
     return NextResponse.json({ ok: false, error: 'Missing reference' }, { status: 400 });
@@ -43,7 +64,7 @@ export async function POST(req: NextRequest) {
     const stratPending = strategyPending.find(p => p.reference === reference);
 
     if (stratPending) {
-      if (status === 'SUCCESS') {
+      if (succeeded) {
         console.log(`[payhero/callback] granting strategy access for user ${stratPending.userId} ref=${reference}`);
         grantStrategyAccess(stratPending.userId, stratPending.phone, reference);
       } else {
@@ -70,8 +91,8 @@ export async function POST(req: NextRequest) {
   if (reference.startsWith('JPT-')) {
     const pending = fileStoreGet<JackpotPendingPayment[]>('jackpot-pending', []);
     const item = pending.find(p => p.reference === reference);
-    if (item && status === 'SUCCESS') grantJackpotAccess(item.userId, item.phone, reference);
-    if (item && status !== 'SUCCESS') fileStoreSet('jackpot-pending', pending.filter(p => p.reference !== reference));
+    if (item && succeeded) grantJackpotAccess(item.userId, item.phone, reference);
+    if (item && !succeeded) fileStoreSet('jackpot-pending', pending.filter(p => p.reference !== reference));
     return NextResponse.json({ ok: true });
   }
 
@@ -83,7 +104,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, message: 'Unknown reference, ignoring' });
   }
 
-  if (status === 'SUCCESS') {
+  if (succeeded) {
     if (pending.type === 'deposit') {
       const depositAmount = amount || pending.amount;
       credit(pending.userId, depositAmount, {

@@ -10,7 +10,14 @@ const COST = 100;
 const DAYS = 7;
 
 interface AccessRecord { userId: number; paidAt: string; expiresAt: string; phone: string; reference: string }
-export interface JackpotPendingPayment { userId: number; phone: string; reference: string; initiatedAt: string }
+export interface JackpotPendingPayment {
+  userId: number;
+  phone: string;
+  reference: string;
+  initiatedAt: string;
+  providerReference?: string;
+  checkoutRequestId?: string;
+}
 
 export function grantJackpotAccess(userId: number, phone: string, reference: string) {
   const now = new Date();
@@ -42,7 +49,7 @@ export async function GET() {
   const pending = fileStoreGet<JackpotPendingPayment[]>('jackpot-pending', []);
   const mine = pending.find(p => p.userId === user.userId);
   if (mine && Date.now() - new Date(mine.initiatedAt).getTime() < 86400000) {
-    const status = await checkTransactionStatus(mine.reference);
+    const status = await checkTransactionStatus(mine.providerReference || mine.checkoutRequestId || mine.reference);
     if (status === 'completed') {
       grantJackpotAccess(user.userId, mine.phone, mine.reference);
       return NextResponse.json({ ...accessFor(user.userId), walletBalance: getBalance(user.userId, 'KES'), autoResolved: true });
@@ -59,11 +66,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as { action?: string; phone?: string; reference?: string };
 
   if (body.action === 'check' && body.reference) {
-    const status = await checkTransactionStatus(body.reference);
+    const pending = fileStoreGet<JackpotPendingPayment[]>('jackpot-pending', []);
+    const mine = pending.find(p => p.reference === body.reference);
+    const status = await checkTransactionStatus(mine?.providerReference || mine?.checkoutRequestId || body.reference);
     if (status === 'completed') {
-      const pending = fileStoreGet<JackpotPendingPayment[]>('jackpot-pending', []);
-      const mine = pending.find(p => p.reference === body.reference);
       if (mine) grantJackpotAccess(mine.userId, mine.phone, mine.reference);
+    }
+    if (status === 'failed' && mine) {
+      fileStoreSet('jackpot-pending', pending.filter(p => p.reference !== mine.reference));
     }
     return NextResponse.json({ ...accessFor(user.userId), status });
   }
@@ -83,6 +93,18 @@ export async function POST(req: NextRequest) {
   const result = await initiateStkPush(COST, phone, reference);
   if (!result.ok) return NextResponse.json({ error: result.error || 'Payment initiation failed.' }, { status: 502 });
   const pending = fileStoreGet<JackpotPendingPayment[]>('jackpot-pending', []);
-  fileStoreSet('jackpot-pending', [...pending.filter(p => p.userId !== user.userId), { userId: user.userId, phone, reference, initiatedAt: new Date().toISOString() }]);
-  return NextResponse.json({ success: true, reference, message: 'M-Pesa prompt sent. Enter your PIN to unlock the final five games.' });
+  fileStoreSet('jackpot-pending', [...pending.filter(p => p.userId !== user.userId), {
+    userId: user.userId,
+    phone,
+    reference,
+    initiatedAt: new Date().toISOString(),
+    providerReference: result.providerReference,
+    checkoutRequestId: result.checkoutRequestId,
+  }]);
+  return NextResponse.json({
+    success: true,
+    reference,
+    checkoutRequestId: result.checkoutRequestId,
+    message: 'M-Pesa prompt sent. Enter your PIN to unlock the final five games.',
+  });
 }
