@@ -11,10 +11,17 @@ export function useJackpotAccess() {
   const [access, setAccess] = useState<{ hasAccess: boolean; walletBalance?: number; pendingReference?: string }>({ hasAccess: false });
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  async function refreshAccess() {
+    const res = await fetch('/api/jackpot/access', { cache: 'no-store' });
+    if (!res.ok) throw new Error('Could not refresh jackpot access');
+    const data = await res.json();
+    setAccess(data);
+    return data;
+  }
   useEffect(() => {
-    fetch('/api/jackpot/access').then(r => r.json()).then(setAccess).catch(() => {}).finally(() => setLoading(false));
+    refreshAccess().catch(() => {}).finally(() => setLoading(false));
   }, []);
-  return { ...access, loading, openUnlock: () => setOpen(true), closeUnlock: () => setOpen(false), setAccess, unlockOpen: open };
+  return { ...access, loading, openUnlock: () => setOpen(true), closeUnlock: () => setOpen(false), setAccess, refreshAccess, unlockOpen: open };
 }
 
 export function JackpotUnlockModal({ open, onClose, walletBalance = 0, onUnlocked }: {
@@ -32,6 +39,7 @@ export function JackpotUnlockModal({ open, onClose, walletBalance = 0, onUnlocke
       const res = await fetch('/api/jackpot/access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'check', reference: pending }) });
       const data = await res.json();
       if (data.hasAccess) { clearInterval(timer); onUnlocked(); onClose(); }
+      if (data.status === 'failed') { clearInterval(timer); setPending(''); setError('Payment was not completed. Please try again.'); }
     }, 4000);
     return () => clearInterval(timer);
   }, [open, pending, onClose, onUnlocked]);

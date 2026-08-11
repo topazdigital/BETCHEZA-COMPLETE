@@ -43,12 +43,17 @@ export async function POST(req: NextRequest) {
   const status = String(
     body.status_text ||
     body.payment_status ||
+    body.status ||
     body.Status ||
     response.status ||
     response.Status ||
     '',
   ).toUpperCase();
-  const resultCode = response.ResultCode ?? body.ResultCode;
+  const resultCode =
+    response.ResultCode ??
+    response.result_code ??
+    body.ResultCode ??
+    body.result_code;
   const amount = Number(response.Amount ?? body.amount ?? body.Amount) || 0;
   const succeeded = resultCode === 0 || resultCode === '0' || status === 'SUCCESS' || status === 'COMPLETED';
 

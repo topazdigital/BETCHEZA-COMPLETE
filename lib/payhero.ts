@@ -107,11 +107,26 @@ export async function initiateStkPush(amount: number, phone: string, reference: 
     if (res.status === 401) return { ok: false, reference, error: 'PayHero authentication failed — check your Basic Token in Admin → Gateways.' };
     const errMsg = extractPayHeroError(data, res.status);
     if (!res.ok || data.success === false) return { ok: false, reference, error: errMsg };
+    const response = data.response && typeof data.response === 'object'
+      ? data.response as Record<string, unknown>
+      : {};
     return {
       ok: true,
       reference,
-      providerReference: (data.reference || data.transaction_reference) as string | undefined,
-      checkoutRequestId: (data.CheckoutRequestID || data.checkout_request_id) as string | undefined,
+      providerReference: (
+        data.reference ||
+        data.transaction_reference ||
+        data.TransactionReference ||
+        response.reference ||
+        response.transaction_reference ||
+        response.TransactionReference
+      ) as string | undefined,
+      checkoutRequestId: (
+        data.CheckoutRequestID ||
+        data.checkout_request_id ||
+        response.CheckoutRequestID ||
+        response.checkout_request_id
+      ) as string | undefined,
     };
   } catch (e: unknown) {
     console.error('[payhero] STK push error:', e);
@@ -140,11 +155,17 @@ export async function checkTransactionStatus(reference: string): Promise<'pendin
       status?: string | boolean;
       transaction_status?: string;
       ResultCode?: number | string;
-      response?: { Status?: string; ResultCode?: number | string };
+      result_code?: number | string;
+      response?: {
+        Status?: string;
+        status?: string;
+        ResultCode?: number | string;
+        result_code?: number | string;
+      };
     };
     const nested = data.response;
-    const resultCode = nested?.ResultCode ?? data.ResultCode;
-    const statusValue = nested?.Status ?? data.status ?? data.transaction_status;
+    const resultCode = nested?.ResultCode ?? nested?.result_code ?? data.ResultCode ?? data.result_code;
+    const statusValue = nested?.Status ?? nested?.status ?? data.status ?? data.transaction_status;
     const statusStr = typeof statusValue === 'string' ? statusValue.toUpperCase() : '';
 
     if (resultCode === 0 || resultCode === '0' || statusStr === 'SUCCESS' || statusStr === 'COMPLETED' || statusStr === 'COMPLETE') {
