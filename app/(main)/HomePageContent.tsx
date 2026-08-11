@@ -353,7 +353,7 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                 <div className="relative w-full max-w-md">
                   <HeroCarousel
                     liveMatches={liveMatches.slice(0, 3)}
-                    featuredMatches={upcomingMatches}
+                    featuredMatches={upcomingMatches.slice(0, 3)}
                     isLoading={isLoading}
                   />
                 </div>
