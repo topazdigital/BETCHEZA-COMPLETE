@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Clock, Sparkles, ChevronRight } from 'lucide-react';
+import { CalendarDays, Clock, Sparkles, ChevronRight, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { TeamLogo } from '@/components/ui/team-logo';
@@ -69,7 +69,128 @@ function LiveSlide({ matches, totalCount }: { matches: Match[]; totalCount: numb
   );
 }
 
+function useMatchCountdown(kickoffTime: string | Date, enabled: boolean) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, new Date(kickoffTime).getTime() - Date.now()));
+
+  useEffect(() => {
+    if (!enabled) return;
+    const update = () => setRemaining(Math.max(0, new Date(kickoffTime).getTime() - Date.now()));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [kickoffTime, enabled]);
+
+  const totalSeconds = Math.floor(remaining / 1000);
+  return {
+    days: Math.floor(totalSeconds / 86400),
+    hours: Math.floor((totalSeconds % 86400) / 3600),
+    minutes: Math.floor((totalSeconds % 3600) / 60),
+    seconds: totalSeconds % 60,
+    done: remaining <= 0,
+  };
+}
+
+function CountdownUnit({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="min-w-[42px] rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-center backdrop-blur-sm">
+      <div className="font-mono text-lg font-black leading-none tabular-nums text-white">
+        {String(value).padStart(2, '0')}
+      </div>
+      <div className="mt-1 text-[8px] font-bold uppercase tracking-widest text-white/55">{label}</div>
+    </div>
+  );
+}
+
+function HeadlineFixture({ match }: { match: Match }) {
+  const countdown = useMatchCountdown(match.kickoffTime, match.status === 'scheduled');
+  const kickoff = new Date(match.kickoffTime);
+  const dateLabel = kickoff.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+  const timeLabel = kickoff.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const slug = matchToSlug(match.id, match.homeTeam.name, match.awayTeam.name);
+
+  return (
+    <Link
+      href={`/matches/${slug}`}
+      className="group block overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-slate-950 via-primary/30 to-slate-900 p-4 text-white shadow-xl shadow-primary/10 transition-all hover:border-primary/60 hover:shadow-primary/20"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/75">
+          <Sparkles className="h-3 w-3 text-amber-300" />
+          Featured fixture
+        </span>
+        <span className="flex items-center gap-1 text-[10px] font-medium text-white/60">
+          <CalendarDays className="h-3 w-3" />
+          {dateLabel} · {timeLabel}
+        </span>
+      </div>
+
+      <div className="mt-3 flex items-center justify-center gap-3 sm:gap-5">
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/95 p-1.5 shadow-lg shadow-black/20 sm:h-16 sm:w-16">
+            <TeamLogo teamName={match.homeTeam.name} logoUrl={match.homeTeam.logo} teamId={Number(match.homeTeam.id) || undefined} sportSlug={match.sport?.slug} size="xl" className="!h-12 !w-12 bg-transparent sm:!h-14 sm:!w-14" />
+          </div>
+          <span className="mt-2 max-w-[120px] truncate text-xs font-bold sm:text-sm">{match.homeTeam.name}</span>
+        </div>
+        <div className="flex shrink-0 flex-col items-center">
+          <span className="text-[10px] font-black uppercase tracking-widest text-white/45">VS</span>
+          <span className="mt-1 rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-semibold text-white/70">
+            {match.league?.name || 'Football'}
+          </span>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/95 p-1.5 shadow-lg shadow-black/20 sm:h-16 sm:w-16">
+            <TeamLogo teamName={match.awayTeam.name} logoUrl={match.awayTeam.logo} teamId={Number(match.awayTeam.id) || undefined} sportSlug={match.sport?.slug} size="xl" className="!h-12 !w-12 bg-transparent sm:!h-14 sm:!w-14" />
+          </div>
+          <span className="mt-2 max-w-[120px] truncate text-xs font-bold sm:text-sm">{match.awayTeam.name}</span>
+        </div>
+      </div>
+
+      {!countdown.done && match.status === 'scheduled' ? (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.18em] text-white/55">
+            <Timer className="h-3 w-3 text-primary-foreground/70" />
+            Kick-off in
+          </div>
+          <div className="flex justify-center gap-1.5 sm:gap-2">
+            <CountdownUnit value={countdown.days} label="Days" />
+            <CountdownUnit value={countdown.hours} label="Hrs" />
+            <CountdownUnit value={countdown.minutes} label="Min" />
+            <CountdownUnit value={countdown.seconds} label="Sec" />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-lg bg-white/10 py-2 text-center text-xs font-bold text-white/75">
+          Match centre
+        </div>
+      )}
+
+      {match.odds && (
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-center text-[10px]">
+          <div className="rounded-md bg-white/10 px-1 py-1.5"><span className="block text-white/45">Arsenal</span><b>{match.odds.home.toFixed(2)}</b></div>
+          <div className="rounded-md bg-white/10 px-1 py-1.5"><span className="block text-white/45">Draw</span><b>{match.odds.draw?.toFixed(2) ?? '–'}</b></div>
+          <div className="rounded-md bg-white/10 px-1 py-1.5"><span className="block text-white/45">Man City</span><b>{match.odds.away.toFixed(2)}</b></div>
+        </div>
+      )}
+    </Link>
+  );
+}
+
 function FeaturedSlide({ matches }: { matches: Match[] }) {
+  const headline = matches.find(match => {
+    const teams = `${match.homeTeam.name} ${match.awayTeam.name}`.toLowerCase();
+    return teams.includes('arsenal') && teams.includes('manchester city');
+  });
+
+  if (headline) return <HeadlineFixture match={headline} />;
+
   return (
     <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 to-transparent p-6 shadow-xl shadow-primary/10">
       <div className="mb-2 flex items-center gap-2">

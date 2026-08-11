@@ -225,9 +225,6 @@ export function Header() {
 
   return (
     <div className="sticky top-0 z-50 w-full">
-      {/* World Cup 2026 countdown banner */}
-      <WorldCupBanner />
-
       <header className="w-full border-b border-border bg-card">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4">
           {/* Logo */}

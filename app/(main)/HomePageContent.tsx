@@ -64,10 +64,6 @@ const NewsletterSection = dynamic(
   () => import('@/components/sections/newsletter').then(m => ({ default: m.NewsletterSection })),
   { ssr: false, loading: () => <div className="h-24 rounded-xl bg-muted/30 animate-pulse" /> }
 );
-const WorldCupOddsCard = dynamic(
-  () => import('@/components/home/world-cup-odds-card').then(m => ({ default: m.WorldCupOddsCard })),
-  { ssr: false, loading: () => <div className="h-28 rounded-xl bg-emerald-500/5 border border-emerald-500/20 animate-pulse mb-4" /> }
-);
 const HeroCarousel = dynamic(
   () => import('@/components/home/hero-carousel').then(m => ({ default: m.HeroCarousel })),
   { ssr: false, loading: () => (
@@ -357,7 +353,7 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                 <div className="relative w-full max-w-md">
                   <HeroCarousel
                     liveMatches={liveMatches.slice(0, 3)}
-                    featuredMatches={upcomingMatches.slice(0, 3)}
+                    featuredMatches={upcomingMatches}
                     isLoading={isLoading}
                   />
                 </div>
@@ -637,9 +633,6 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
                   </Link>
                 </section>
               )}
-
-              {/* World Cup 2026 Featured Odds */}
-              <WorldCupOddsCard />
 
               {/* BetWinners affiliate leaderboard banner */}
               <div className="mb-4">

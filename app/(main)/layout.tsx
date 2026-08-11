@@ -64,10 +64,6 @@ const HeaderSearch = dynamicImport(
   () => import("@/components/layout/header-search").then(m => ({ default: m.HeaderSearch })),
   { ssr: false, loading: () => <div className="h-8 w-full rounded-md bg-muted/50 animate-pulse" /> }
 )
-const WorldCupBanner = dynamicImport(
-  () => import("@/components/layout/header").then(m => ({ default: m.WorldCupBanner })),
-  { ssr: false }
-)
 const SupportChatWidget = dynamicImport(
   () => import("@/components/support/chat-widget").then(m => ({ default: m.SupportChatWidget })),
   { ssr: false }
@@ -482,9 +478,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="lg:pl-56">
-        {/* World Cup 2026 countdown banner */}
         <div className="sticky top-0 z-40 w-full">
-          <WorldCupBanner />
           {/* Header */}
           <header className="flex h-12 items-center gap-2 border-b border-border bg-card px-3">
           <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden" onClick={() => setSidebarOpen(true)}>

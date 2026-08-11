@@ -1335,6 +1335,10 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '8296': { name: 'EFL Championship', country: 'England', countryCode: 'GB-ENG' },
   '8297': { name: 'EFL League Cup', country: 'England', countryCode: 'GB-ENG' },
   '8299': { name: 'FA Cup', country: 'England', countryCode: 'GB-ENG' },
+  // ESPN's global scoreboard ID for the English FA Community Shield.
+  // Without this explicit mapping the global fallback derives "World" from
+  // the generic league path, even though this is an English domestic cup.
+  '5329': { name: 'FA Community Shield', country: 'England', countryCode: 'GB-ENG' },
   // NOTE: ESPN global soccer scoreboard uses 8301 for NWSL — NOT Copa del Rey.
   // Copa del Rey is fetched via the esp.copa_del_rey LEAGUE_CONFIGS path and
   // does not appear on the global scoreboard with this ID.
@@ -1659,6 +1663,7 @@ const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
   '17163': 200, // UEFA Women's Champions League
   '8301':  79,  // NWSL (ESPN global uses 8301 for NWSL, confirmed from scoreboard)
   '16980': 79,  // NWSL alternate ESPN numeric ID
+  '5329':  221, // English FA Community Shield
   // FIFA World Cup numeric IDs
   '606':   29,  // FIFA World Cup 2026 (ESPN global scoreboard league id)
   '607':   29,  // FIFA World Cup alt id
