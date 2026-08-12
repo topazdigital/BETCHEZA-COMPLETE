@@ -56,6 +56,13 @@ export async function POST(req: NextRequest) {
     body.result_code;
   const amount = Number(response.Amount ?? body.amount ?? body.Amount) || 0;
   const succeeded = resultCode === 0 || resultCode === '0' || status === 'SUCCESS' || status === 'COMPLETED';
+  const callbackPhone = String(
+    body.phone_number ||
+    body.phone ||
+    response.phone_number ||
+    response.PhoneNumber ||
+    '',
+  );
 
   console.log(`[payhero/callback] ref=${reference} status=${status} resultCode=${String(resultCode ?? '')} amount=${amount}`);
 
@@ -96,7 +103,15 @@ export async function POST(req: NextRequest) {
   if (reference.startsWith('JPT-')) {
     const pending = fileStoreGet<JackpotPendingPayment[]>('jackpot-pending', []);
     const item = pending.find(p => p.reference === reference);
-    if (item && succeeded) grantJackpotAccess(item.userId, item.phone, reference);
+    // The callback can land on a different process than the one that started
+    // the payment, so do not require the local pending file to be present.
+    // JPT references contain the authenticated user id and are only accepted
+    // here when PayHero confirms a successful payment.
+    const referenceUserId = Number(reference.match(/^JPT-(\d+)-\d+$/)?.[1] || 0);
+    const userId = item?.userId || referenceUserId;
+    if (succeeded && userId > 0 && (item || amount >= 100)) {
+      grantJackpotAccess(userId, item?.phone || callbackPhone || 'mpesa', reference);
+    }
     if (item && !succeeded) fileStoreSet('jackpot-pending', pending.filter(p => p.reference !== reference));
     return NextResponse.json({ ok: true });
   }

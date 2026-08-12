@@ -5,6 +5,18 @@ BOLD='\033[1m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
+# Runtime jackpot data is intentionally outside git, but keep an explicit
+# deploy backup as a guard against a file-copy/reset step removing ignored
+# state. Upcoming jackpots are user-facing content and must survive deploys.
+JACKPOT_STATE_FILE="$APP_DIR/.local/state/jackpots.json"
+JACKPOT_DEPLOY_BACKUP="/tmp/betcheza-jackpots.json.deploy-backup"
+if [ -f "$JACKPOT_STATE_FILE" ]; then
+  mkdir -p "$(dirname "$JACKPOT_DEPLOY_BACKUP")"
+  cp -f "$JACKPOT_STATE_FILE" "$JACKPOT_DEPLOY_BACKUP" 2>/dev/null || true
+else
+  rm -f "$JACKPOT_DEPLOY_BACKUP" 2>/dev/null || true
+fi
+
 # ── NVM / Node PATH bootstrap ─────────────────────────────────────────────────
 # GitHub Actions runners and cron shells don't source ~/.bashrc / ~/.bash_profile
 # so NVM and the node/npm/pm2 binaries are missing from PATH. Source NVM here
@@ -39,6 +51,12 @@ if [ -z "$BETCHEZA_DEPLOY_REEXECED" ]; then
   # The server should always mirror origin/main exactly.
   git fetch origin
   git reset --hard origin/main
+# Restore jackpot content if a deployment/reset step removed the ignored file.
+if [ ! -f "$JACKPOT_STATE_FILE" ] && [ -f "$JACKPOT_DEPLOY_BACKUP" ]; then
+  mkdir -p "$(dirname "$JACKPOT_STATE_FILE")"
+  cp -f "$JACKPOT_DEPLOY_BACKUP" "$JACKPOT_STATE_FILE"
+  echo -e "${GREEN}  ✓ Restored upcoming jackpot state after pull${NC}"
+fi
   export BETCHEZA_DEPLOY_REEXECED=1
   exec bash "$APP_DIR/deploy.sh" "$@"
 fi

@@ -285,32 +285,27 @@ export async function GET(req: NextRequest) {
       },
     ];
 
-    // Clear active jackpots, keep settled ones (history)
-    const existing = (await import('@/lib/jackpot-store')).getJackpots();
-    const settled = existing.filter(j => j.status === 'settled');
-    // Reset in-memory state
+    // Never clear active jackpots here. This endpoint is also used by the admin
+    // refresh button, and a temporary bookmaker outage must not erase jackpots
+    // that were already posted. An upcoming record with the same title is the
+    // source of truth until its deadline passes; missing/partial scraper data
+    // is never a reason to remove it.
     const store = await import('@/lib/jackpot-store');
-    store.resetJackpots();
-    // Re-add settled jackpots
-    for (const s of settled) {
-      store.createJackpot({ ...s, id: undefined as unknown as string } as Parameters<typeof store.createJackpot>[0]);
-      // Fix: we need to restore the original ID
-    }
-
-    // Actually the above won't restore IDs. Let's use a different approach:
-    // Just reset and re-import settled ones with their original IDs via updateJackpot
-    // Simpler: clear and recreate only active jackpots, preserving settled ones differently.
-    // The settled ones are already saved in the JSON file, resetJackpots() wipes them.
-    // Let me fix this approach:
-
-    // Better approach: track active jackpot IDs separately and only delete active ones
-    const { deleteJackpot, getActiveJackpots } = await import('@/lib/jackpot-store');
-    for (const j of getActiveJackpots()) { deleteJackpot(j.id); }
+    const activeByTitle = new Map(
+      store.getActiveJackpots().map(j => [j.title.toLowerCase(), j]),
+    );
 
     const sources: Record<string, string> = {};
     let created = 0;
+    let preserved = 0;
     for (const def of jackpotDefs) {
       if (!def.rawGames || def.rawGames.length === 0) continue;
+      const existing = activeByTitle.get(def.title.toLowerCase());
+      if (existing && new Date(existing.deadline).getTime() > Date.now()) {
+        preserved++;
+        continue;
+      }
+      if (existing) store.deleteJackpot(existing.id);
       const games = toJackpotGames(def.rawGames, def.bookmakerSlug, created * 100);
       store.createJackpot({
         bookmakerSlug: def.bookmakerSlug,
@@ -330,6 +325,7 @@ export async function GET(req: NextRequest) {
       success: true,
       message: `Scraped ${created} jackpots from live bookmaker data`,
       created,
+      preserved,
       sources,
     });
   } catch (e) {

@@ -1040,17 +1040,11 @@ export async function GET(req: NextRequest) {
       },
     ];
 
-    // Remove any stale jackpots that may contain fake data (detected by ESPN league names)
+    // Do not remove active jackpots based on their contents. Admin-posted
+    // upcoming records are authoritative and must survive a provider outage or
+    // a deploy. The normal title/deadline reconciliation below only replaces a
+    // record after its deadline has passed.
     const existing = getJackpots();
-    for (const j of existing) {
-      if (j.status === 'active') {
-        const wcCount = j.games.filter(g => g.league?.includes('World Cup') || g.league?.includes('FIFA')).length;
-        if (wcCount >= 3) {
-          console.log(`[jackpot-sync] Removing stale fake-data jackpot: ${j.title}`);
-          deleteJackpot(j.id);
-        }
-      }
-    }
 
     const activeByTitle = new Map(getJackpots().filter(j => j.status === 'active').map(j => [j.title, j]));
 

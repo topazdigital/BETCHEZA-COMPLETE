@@ -70,7 +70,14 @@ export async function POST(req: NextRequest) {
     const mine = pending.find(p => p.reference === body.reference);
     const status = await checkTransactionStatus(mine?.providerReference || mine?.checkoutRequestId || body.reference);
     if (status === 'completed') {
-      if (mine) grantJackpotAccess(mine.userId, mine.phone, mine.reference);
+      const referenceUserId = Number(body.reference.match(/^JPT-(\d+)-\d+$/)?.[1] || 0);
+      if (mine && mine.userId === user.userId) {
+        grantJackpotAccess(mine.userId, mine.phone, mine.reference);
+      } else if (referenceUserId === user.userId) {
+        // Recover a successful payment if the pending file was lost during a
+        // deploy or the provider callback was handled by another process.
+        grantJackpotAccess(user.userId, 'mpesa', body.reference);
+      }
     }
     if (status === 'failed' && mine) {
       fileStoreSet('jackpot-pending', pending.filter(p => p.reference !== mine.reference));
