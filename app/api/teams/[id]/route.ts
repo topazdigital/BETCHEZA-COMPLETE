@@ -389,6 +389,90 @@ async function resolveFdTeamId(fdId: string): Promise<{ espnId: string; name: st
   return null;
 }
 
+type EspnSearchTeam = {
+  uid?: string;
+  type?: string;
+  displayName?: string;
+  sport?: string;
+  defaultLeagueSlug?: string;
+};
+
+const searchedTeamCache = new Map<string, { espnId: string; name: string; slug: string; sport?: string; league?: string } | null>();
+
+function teamNameSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s-]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// Resolve a provider-neutral `/teams/<name-slug>` URL through ESPN. This is
+// intentionally name-based: supplementary feeds do not share ESPN's team
+// ids, but the display name is the common identity users see.
+async function resolveTeamName(nameSlug: string): Promise<{
+  espnId: string;
+  name: string;
+  slug: string;
+  sport?: string;
+  league?: string;
+} | null> {
+  const cached = searchedTeamCache.get(nameSlug);
+  if (cached !== undefined) return cached;
+
+  const query = nameSlug.replace(/-/g, ' ').trim();
+  if (!query) {
+    searchedTeamCache.set(nameSlug, null);
+    return null;
+  }
+
+  try {
+    const url = `https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(query)}&limit=10&type=team`;
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      next: { revalidate: 86400 },
+    });
+    if (!response.ok) throw new Error(`ESPN team search returned ${response.status}`);
+
+    const data = (await response.json()) as {
+      results?: Array<{ type?: string; contents?: EspnSearchTeam[] }>;
+    };
+    const teams = (data.results || [])
+      .filter((result) => result.type === 'team')
+      .flatMap((result) => result.contents || [])
+      .filter((team) => team.type === 'team' && team.uid?.match(/t:\d+/));
+
+    // Prefer an exact normalized name, then soccer, then the first valid hit.
+    // The exact-name check prevents Arsenal Women from winning an Arsenal
+    // lookup simply because both appear in ESPN search results.
+    const exact = teams.find((team) => teamNameSlug(team.displayName || '') === nameSlug);
+    const selected = exact || teams.find((team) => team.sport === 'soccer') || teams[0];
+    const numericId = selected?.uid?.match(/t:(\d+)/)?.[1];
+    if (!selected || !numericId) {
+      searchedTeamCache.set(nameSlug, null);
+      return null;
+    }
+
+    const result = {
+      espnId: numericId,
+      name: selected.displayName || query,
+      slug: teamNameSlug(selected.displayName || query),
+      sport: selected.sport,
+      league: selected.defaultLeagueSlug,
+    };
+    searchedTeamCache.set(nameSlug, result);
+    return result;
+  } catch {
+    searchedTeamCache.set(nameSlug, null);
+    return null;
+  }
+}
+
 async function fetchTeamInfo(sport: string, league: string, teamId: string) {
   const url = `${ESPN_BASE}/${sport}/${league}/teams/${teamId}`;
   try {
@@ -767,7 +851,18 @@ export async function GET(
     workingId = `${resolved.slug}-${resolved.espnId}`;
   }
 
-  const parsed = parseTeamId(workingId);
+  let parsed = parseTeamId(workingId);
+  // Name-only URLs are produced for teams coming from providers whose ids
+  // are not ESPN ids (camel1, and any future supplementary source). Resolve
+  // them before parsing so every source converges on one canonical page.
+  if (!parsed) {
+    const resolved = await resolveTeamName(decodeURIComponent(id).toLowerCase());
+    if (!resolved) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    }
+    workingId = `${resolved.slug}-${resolved.espnId}`;
+    parsed = parseTeamId(workingId);
+  }
   if (!parsed) {
     return NextResponse.json({ error: 'Invalid team ID format' }, { status: 400 });
   }

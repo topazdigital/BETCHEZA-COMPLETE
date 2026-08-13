@@ -42,7 +42,12 @@ export function teamHref(
   const numeric = extractNumericTeamId(String(id));
   const slug = slugify(name);
   if (!numeric) {
-    // Fall back to whatever id we have so links still work for legacy data.
+    // Supplementary providers (for example camel1.tv) use provider-local
+    // team ids such as `camel1_h_...` rather than ESPN ids. A raw provider id
+    // cannot be resolved by the team page, so use the stable team name and let
+    // the API resolve it to the canonical ESPN team id.
+    if (slug) return `/teams/${slug}`;
+    // Keep a usable legacy URL when there is no team name to resolve.
     return `/teams/${encodeURIComponent(String(id))}`;
   }
   if (sportTag) {
