@@ -41,3 +41,4 @@
 - [tryLeagues name-hint validation](tryleagues-name-validation.md) — getMatchById accepts nameHints; tryLeagues validates ESPN team names against hints (slugify both sides) to reject wrong-league collisions; club.friendly added to PRIORITY_LEAGUE_KEYS
 - [ESPN league name persistence](espn-league-name-persistence.md) — disk cache at .local/data/espn-league-names-cache.json accumulates ESPN displayNames; step 4 in resolveGlobalLeagueInfo; eliminates "League XXXXX" for any league ESPN ever names
 - [News crawl discovery](news-crawl-discovery.md) — persist real article URLs; recent stories go to Google News sitemap and older stories remain in the regular sitemap
+- [Imported project dependency setup](imported-project-dependencies.md) — imported Next.js projects may lack node_modules; restore declared packages before diagnosing app code
