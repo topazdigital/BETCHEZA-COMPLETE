@@ -170,6 +170,12 @@ export interface Market {
   key: string;
   name: string;
   outcomes: Outcome[];
+  /**
+   * True when the market is a probability estimate derived from another
+   * market, rather than a price returned by a bookmaker.  Derived prices
+   * must never be presented as live bookmaker odds.
+   */
+  isDerived?: boolean;
 }
 
 export interface Outcome {
@@ -2874,7 +2880,10 @@ export function deriveSoccerMarkets(
     ],
   });
 
-  return markets;
+  // These are useful model estimates for predictions, but they are not
+  // bookmaker quotes. Keep that distinction in the API so consumers can
+  // avoid showing a synthetic BTTS/total price as if it were real odds.
+  return markets.map(market => ({ ...market, isDerived: true }));
 }
 
 // ─── Basketball markets (NBA / WNBA / NCAA) ──────────────────────────────────
@@ -4528,9 +4537,12 @@ async function fetchOddsForSport(sportKey: string): Promise<TheOddsApiEvent[]> {
  */
 let _sgoIndexCache: Map<string, { odds: MatchOdds; markets: Market[] }> | null = null;
 let _sgoIndexCachedAt = 0;
-// Rebuild every 10 min; if cache was empty (rate-limit at startup), retry after 2 min
-const SGO_INDEX_CACHE_MS = 10 * 60 * 1000;
+// Odds are volatile. Rebuild often enough for normal price changes to appear
+// on the next match-list refresh, without turning every browser poll into a
+// provider request.
+const SGO_INDEX_CACHE_MS = 60 * 1000;
 const SGO_INDEX_EMPTY_RETRY_MS = 2 * 60 * 1000;
+const SGO_STALE_FALLBACK_MS = 5 * 60 * 1000;
 
 async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdds; markets: Market[] }>> {
   // If we have a non-empty cache and it's still fresh, return it
@@ -4572,7 +4584,7 @@ async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdd
           ...(entry.draw !== undefined ? [{ name: 'Draw', price: entry.draw }] : []),
           { name: 'Away', price: entry.away },
         ],
-      }];
+      }, ...(entry.markets ?? [])];
       // Index both orderings so ESPN home/away flips are caught
       index.set(`${entry.homeNorm}_${entry.awayNorm}_${entry.dateKey}`, { odds, markets });
       index.set(`${entry.awayNorm}_${entry.homeNorm}_${entry.dateKey}`, { odds, markets });
@@ -4582,11 +4594,13 @@ async function buildSgoOddsIndexFallback(): Promise<Map<string, { odds: MatchOdd
       console.log(`[SGO] Bulk odds index built: ${entries.length} fixtures`);
       _sgoIndexCache = index;
       _sgoIndexCachedAt = Date.now();
-    } else if (_sgoIndexCache) {
-      // API returned nothing (likely rate-limited) — keep stale cache so
-      // match cards don't lose their odds display
-      console.log('[SGO] Bulk fetch empty — reusing stale odds index');
-      // Refresh timestamp so we don't retry immediately
+    } else if (_sgoIndexCache && age < SGO_STALE_FALLBACK_MS) {
+      // Keep a short bounded fallback during a transient empty response.
+      // Do not reset _sgoIndexCachedAt: doing so kept stale odds alive forever.
+      console.log(`[SGO] Bulk fetch empty — reusing odds for ${Math.round((SGO_STALE_FALLBACK_MS - age) / 1000)}s`);
+    } else {
+      console.warn('[SGO] Bulk fetch empty — discarding expired odds index');
+      _sgoIndexCache = new Map();
       _sgoIndexCachedAt = Date.now();
     }
     return _sgoIndexCache ?? new Map();
@@ -5155,6 +5169,13 @@ export async function getAllMatches(): Promise<UnifiedMatch[]> {
 async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   const allMatches: UnifiedMatch[] = [];
   const seenMatchKeys = new Set<string>();
+  const seenMatchFixtures: Array<{
+    sportId: number;
+    home: string;
+    away: string;
+    kickoffMs: number;
+  }> = [];
+  const DUPLICATE_KICKOFF_TOLERANCE_MS = 6 * 60 * 60 * 1000;
   // Also track by ESPN event ID (extracted from match.id like "espn_eng1_740936")
   // to catch the case where two feeds return the same match with different team
   // name formatting (e.g. "Manchester City" vs "Manchester City FC").
@@ -5436,9 +5457,24 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     const awayNormR = key.slice(secondLastUnderscore + 1, lastUnderscore);
     const dateKeyR  = key.slice(lastUnderscore + 1);
     const reverseKey = `${awayNormR}_${homeNormR}_${dateKeyR}`;
-    if (!seenMatchKeys.has(key) && !seenMatchKeys.has(reverseKey)) {
+    const kickoffMs = new Date(match.kickoffTime).getTime();
+    const nearDuplicate = seenMatchFixtures.some(existing =>
+      existing.sportId === match.sportId &&
+      Number.isFinite(existing.kickoffMs) &&
+      Number.isFinite(kickoffMs) &&
+      Math.abs(existing.kickoffMs - kickoffMs) <= DUPLICATE_KICKOFF_TOLERANCE_MS &&
+      ((existing.home === homeNormR && existing.away === awayNormR) ||
+        (existing.home === awayNormR && existing.away === homeNormR)),
+    );
+    if (!nearDuplicate && !seenMatchKeys.has(key) && !seenMatchKeys.has(reverseKey)) {
       seenMatchKeys.add(key);
       seenMatchKeys.add(reverseKey);
+      seenMatchFixtures.push({
+        sportId: match.sportId,
+        home: homeNormR,
+        away: awayNormR,
+        kickoffMs,
+      });
       allMatches.push(match);
     }
   };
@@ -6028,17 +6064,39 @@ export function patchScoresFromSupplementary(supplementaryMatches: UnifiedMatch[
 export function mergeNewMatchesIntoCache(newMatches: UnifiedMatch[]): void {
   if (!newMatches.length || !g_allMatchesCache.data) return;
 
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const norm = (s: string) => {
+    const normalized = s
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\b(fc|cf|sc|afc|cfc|acf|ac|as|ss|bsc|fk|sk|rc|club|the)\b/g, '')
+      .replace(/[^a-z0-9]/g, '');
+    const aliases: Record<string, string> = {
+      bayernmunich: 'bayern',
+      bayernmunchen: 'bayern',
+      fkbodoglimt: 'bodoglimt',
+      comocalcio: 'como',
+    };
+    return aliases[normalized] ?? normalized;
+  };
   const dateOf = (m: UnifiedMatch) => new Date(m.kickoffTime).toISOString().slice(0, 10);
+  const DUPLICATE_KICKOFF_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 
   // Build lookup of every match already in cache (both forward and reverse key)
   const existingKeys = new Set<string>();
+  const existingFixtures: Array<{ sportId: number; home: string; away: string; kickoffMs: number }> = [];
   for (const m of g_allMatchesCache.data) {
     const d = dateOf(m);
     const h = norm(m.homeTeam.name);
     const a = norm(m.awayTeam.name);
     existingKeys.add(`${h}|${a}|${d}`);
     existingKeys.add(`${a}|${h}|${d}`);
+    existingFixtures.push({
+      sportId: m.sportId,
+      home: h,
+      away: a,
+      kickoffMs: new Date(m.kickoffTime).getTime(),
+    });
   }
 
   // Build a quick score-patch index keyed by home|away|date
@@ -6085,10 +6143,20 @@ export function mergeNewMatchesIntoCache(newMatches: UnifiedMatch[]): void {
     const a = norm(m.awayTeam.name);
     const fwd = `${h}|${a}|${d}`;
     const rev = `${a}|${h}|${d}`;
-    if (!existingKeys.has(fwd) && !existingKeys.has(rev)) {
+    const kickoffMs = new Date(m.kickoffTime).getTime();
+    const nearDuplicate = existingFixtures.some(existing =>
+      existing.sportId === m.sportId &&
+      Number.isFinite(existing.kickoffMs) &&
+      Number.isFinite(kickoffMs) &&
+      Math.abs(existing.kickoffMs - kickoffMs) <= DUPLICATE_KICKOFF_TOLERANCE_MS &&
+      ((existing.home === h && existing.away === a) ||
+        (existing.home === a && existing.away === h)),
+    );
+    if (!nearDuplicate && !existingKeys.has(fwd) && !existingKeys.has(rev)) {
       toAdd.push(m);
       existingKeys.add(fwd);
       existingKeys.add(rev);
+      existingFixtures.push({ sportId: m.sportId, home: h, away: a, kickoffMs });
     }
   }
 

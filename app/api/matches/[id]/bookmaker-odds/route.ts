@@ -69,7 +69,7 @@ export async function GET(
     if (isFinished) {
       return NextResponse.json(
         { lines: [], hasDraw, status, isFinished: true },
-        { headers: { 'Cache-Control': 'public, s-maxage=3600' } },
+        { headers: { 'Cache-Control': 'no-store, max-age=0' } },
       );
     }
 
@@ -210,14 +210,13 @@ export async function GET(
       if (sharpLines.length > 0) lines = sharpLines;
     }
 
-    // Cache: 60s for live, 10 min for pre-match
-    const cacheSeconds = isLive ? 60 : 600;
-
     return NextResponse.json(
       { lines, hasDraw, status, isFinished: false, isLive },
       {
         headers: {
-          'Cache-Control': `public, s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 2}`,
+          // SWR polls this endpoint; CDN caching would make a refresh return
+          // the previous bookmaker snapshot even after the provider changed.
+          'Cache-Control': 'no-store, max-age=0',
         },
       },
     );

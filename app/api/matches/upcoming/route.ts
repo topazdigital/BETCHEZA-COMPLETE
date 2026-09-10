@@ -104,6 +104,7 @@ export async function GET(request: NextRequest) {
         icon: m.sport.icon,
       },
       odds: m.odds ? { home: m.odds.home, draw: m.odds.draw, away: m.odds.away } : undefined,
+      markets: m.markets,
       tipsCount: 0,
       source: m.source,
       venue: m.venue,
@@ -112,7 +113,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(shaped, {
       headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
       },
     });
   } catch (error) {

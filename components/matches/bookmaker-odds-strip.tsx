@@ -101,7 +101,11 @@ export function BookmakerOddsStrip({ matchId, matchSlug, hasDraw }: BookmakerOdd
   const { data, isLoading } = useSWR<{ lines: BookmakerLine[]; hasDraw: boolean }>(
     open ? `/api/matches/${matchId}/bookmaker-odds` : null,
     fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 120_000 },
+    {
+      refreshInterval: open ? 60_000 : 0,
+      revalidateOnFocus: true,
+      dedupingInterval: 5_000,
+    },
   );
 
   const lines = data?.lines ?? [];

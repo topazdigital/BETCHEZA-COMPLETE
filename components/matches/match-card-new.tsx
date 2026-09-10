@@ -53,6 +53,7 @@ interface MatchMarket {
   key?: string;
   name: string;
   outcomes: MarketOutcome[];
+  isDerived?: boolean;
 }
 
 interface Match {
@@ -323,12 +324,15 @@ export function MatchCardNew({
 
           {/* Odds — 1X2 always first, then O/U 2.5 and BTTS on xl screens (all clickable) */}
           {match.odds && !isFinished && !isLikelyEnded && (() => {
-            const ouMkt = !isLive && match.markets ? match.markets.find(m =>
-              (m.key ?? '').toLowerCase().includes('total') ||
-              m.name.toLowerCase().includes('over') ||
-              m.name.toLowerCase().includes('total goals')
-            ) : undefined;
-            const bttsMkt = !isLive && match.markets ? match.markets.find(m =>
+            const bookmakerMarkets = match.markets?.filter(m => !m.isDerived) ?? [];
+            const ouMkt = !isLive
+              ? bookmakerMarkets.find(m => m.key === 'totals_2_5') ??
+                bookmakerMarkets.find(m =>
+                  (m.key ?? '').toLowerCase() === 'totals' ||
+                  m.name.toLowerCase().includes('over/under 2.5')
+                )
+              : undefined;
+            const bttsMkt = !isLive ? bookmakerMarkets.find(m =>
               (m.key ?? '').toLowerCase().includes('btts') ||
               m.name.toLowerCase().includes('both teams')
             ) : undefined;

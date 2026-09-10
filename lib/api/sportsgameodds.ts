@@ -27,7 +27,7 @@ const BASE = 'https://api.sportsgameodds.com/v2';
 // ─── In-memory cache ────────────────────────────────────────────────────
 type CacheEntry<T> = { value: T; ts: number };
 const sgoCache = new Map<string, CacheEntry<unknown>>();
-const SGO_MEM_TTL_MS  = 5 * 60 * 1000;   // 5 min — hot data
+const SGO_MEM_TTL_MS  = 60 * 1000;       // odds can move quickly
 
 function getMemCached<T>(key: string): T | null {
   const e = sgoCache.get(key) as CacheEntry<T> | undefined;
@@ -41,7 +41,7 @@ function setMemCached<T>(key: string, value: T): void {
 
 // ─── File cache — survives restarts ────────────────────────────────────
 const SGO_FILE_CACHE_DIR = path.join(process.cwd(), '.local', 'data', 'sgo-cache');
-const SGO_FILE_TTL_MS    = 2 * 60 * 60 * 1000; // 2 hours
+const SGO_FILE_TTL_MS    = 90 * 1000;          // restart-safe, but not stale
 
 /** Stable filename from URL — base64url, max 80 chars. */
 function urlToFilename(url: string): string {
@@ -381,6 +381,12 @@ export interface SgoMatchOddsEntry {
   draw?: number;
   away: number;
   bookmaker: string;
+  /** Real bookmaker-backed markets present in the SGO event payload. */
+  markets?: Array<{
+    key: string;
+    name: string;
+    outcomes: Array<{ name: string; price: number; point?: number }>;
+  }>;
 }
 
 /**
@@ -418,6 +424,10 @@ export async function fetchSgoBulkMatchOdds(
   startsAfter: string,
   startsBefore: string,
 ): Promise<SgoMatchOddsEntry[]> {
+  // This map is populated from the current bulk snapshot. Clear it before
+  // every refresh so an empty/expired response cannot leave old bookmaker
+  // lines attached to a different or removed fixture.
+  _bulkBookmakerLines.clear();
   const data = await sgoFetch('/events', {
     startsAfter,
     startsBefore,
@@ -479,6 +489,65 @@ export async function fetchSgoBulkMatchOdds(
     const dp = drawOdd ? bestPrice(drawOdd) : null;
     if (!hp || !ap) continue;
 
+    // Preserve real BTTS and totals markets when SGO supplies them. Do not
+    // derive these from 1X2: that produces plausible-looking prices that can
+    // be materially different from the bookmaker's actual quote.
+    const realMarketGroups = new Map<string, {
+      name: string;
+      outcomes: Map<string, { name: string; price: number; point?: number }>;
+    }>();
+    for (const odd of oddsValues) {
+      const text = `${odd.oddID} ${odd.marketName ?? ''} ${odd.statID ?? ''}`.toLowerCase();
+      const side = (odd.sideID ?? '').toLowerCase();
+      const price = bestPrice(odd);
+      if (!price) continue;
+
+      if (/\bbtts\b|both.?teams|both.?to.?score/.test(text)) {
+        const outcome = side.includes('yes') || /\byes\b/.test(text)
+          ? 'Yes'
+          : side.includes('no') || /\bno\b/.test(text) ? 'No' : '';
+        if (!outcome) continue;
+        const group = realMarketGroups.get('btts') ?? {
+          name: 'Both Teams to Score',
+          outcomes: new Map(),
+        };
+        const existing = group.outcomes.get(outcome);
+        if (!existing || price > existing.price) {
+          group.outcomes.set(outcome, { name: outcome, price });
+        }
+        realMarketGroups.set('btts', group);
+        continue;
+      }
+
+      if (!/\btotal|\bover\b|\bunder\b|over.?under/.test(text)) continue;
+      const outcomeName = side.includes('over') || /\bover\b/.test(text)
+        ? 'Over'
+        : side.includes('under') || /\bunder\b/.test(text) ? 'Under' : '';
+      if (!outcomeName) continue;
+      const point = odd.closeBookOverUnder ??
+        Object.values(odd.byBookmaker ?? {}).map(o => o.line).find((v): v is number => typeof v === 'number') ??
+        Number(text.match(/(?:over|under)\s*([0-9]+(?:\.[0-9]+)?)/)?.[1]);
+      if (!Number.isFinite(point)) continue;
+      const pointKey = Number(point).toString().replace('.', '_');
+      const marketKey = `totals_${pointKey}`;
+      const group = realMarketGroups.get(marketKey) ?? {
+        name: `Over/Under ${point}`,
+        outcomes: new Map(),
+      };
+      const existing = group.outcomes.get(outcomeName);
+      if (!existing || price > existing.price) {
+        group.outcomes.set(outcomeName, { name: `${outcomeName} ${point}`, price, point });
+      }
+      realMarketGroups.set(marketKey, group);
+    }
+    const markets = Array.from(realMarketGroups.entries())
+      .map(([key, group]) => ({
+        key,
+        name: group.name,
+        outcomes: Array.from(group.outcomes.values()),
+      }))
+      .filter(market => market.outcomes.length >= 2);
+
     // Pick a display bookmaker name from whatever books quoted the home side
     const topBook = homeOdd.byBookmaker
       ? (Object.keys(homeOdd.byBookmaker)[0] ?? 'SportsGameOdds')
@@ -492,6 +561,7 @@ export async function fetchSgoBulkMatchOdds(
       draw: dp ?? undefined,
       away: ap,
       bookmaker: prettyBookName(topBook),
+      markets: markets.length > 0 ? markets : undefined,
     });
 
     // ── Side-effect: build per-bookmaker comparison lines from bulk payload ──

@@ -50,6 +50,12 @@ export interface Match {
     draw?: number;
     away: number;
   };
+  markets?: Array<{
+    key?: string;
+    name: string;
+    outcomes: Array<{ name: string; price: number; point?: number }>;
+    isDerived?: boolean;
+  }>;
   tipsCount: number;
   source?: string;
   venue?: string;
