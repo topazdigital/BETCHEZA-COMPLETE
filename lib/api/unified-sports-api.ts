@@ -2544,58 +2544,9 @@ export function extractEspnOdds(
     }
   }
 
-  // ─── Sport-specific derived markets ──────────────────────────────────────────
-  // All derived prices are mathematically grounded in the real ESPN moneyline —
-  // never random. Each sport gets its own set of contextually correct markets.
-  switch (sportType) {
-    case 'soccer': {
-      // Soccer: full 1X2 derived suite (Double Chance, BTTS, O/U, Correct Score…)
-      let drawForDerivation = draw;
-      if (!drawForDerivation) {
-        const pH = 1 / home;
-        const pA = 1 / away;
-        const fairH = pH / 1.05;
-        const fairA = pA / 1.05;
-        const drawProb = Math.max(0.15, Math.min(0.40, 1 - fairH - fairA));
-        drawForDerivation = Math.round((1 / drawProb) * 100) / 100;
-      }
-      deriveSoccerMarkets(home, drawForDerivation, away).forEach(m => markets.push(m));
-      break;
-    }
-    case 'basketball':
-      deriveBasketballMarkets(home, away, spreadLine, totalLine, h1, h2).forEach(m => markets.push(m));
-      break;
-    case 'baseball':
-      deriveBaseballMarkets(home, away, totalLine, h1, h2).forEach(m => markets.push(m));
-      break;
-    case 'hockey':
-    case 'icehockey':
-      deriveHockeyMarkets(home, draw, away, totalLine, h1, h2).forEach(m => markets.push(m));
-      break;
-    case 'football': // American Football (NFL/NCAA)
-      deriveAmericanFootballMarkets(home, away, spreadLine, totalLine, h1, h2).forEach(m => markets.push(m));
-      break;
-    case 'tennis':
-      deriveTennisMarkets(home, away, h1, h2).forEach(m => markets.push(m));
-      break;
-    case 'cricket':
-      deriveCricketMarkets(home, draw, away, h1, h2).forEach(m => markets.push(m));
-      break;
-    // rugby, mma, boxing, golf, racing: keep only real ESPN markets (no derivation)
-    default:
-      if (hasDraw && sportType !== 'cricket') {
-        // Fallback for unknown draw sports: basic soccer-style derivation
-        let drawFallback = draw;
-        if (!drawFallback) {
-          const pH = 1 / home, pA = 1 / away;
-          const drawProb = Math.max(0.15, Math.min(0.35, 1 - pH / 1.05 - pA / 1.05));
-          drawFallback = Math.round((1 / drawProb) * 100) / 100;
-        }
-        deriveSoccerMarkets(home, drawFallback, away).forEach(m => markets.push(m));
-      }
-      break;
-  }
-
+  // Do not calculate markets from 1X2 or any other base price. The only
+  // markets returned here are the markets explicitly supplied by ESPN's
+  // bookmaker payload above. Other providers are merged separately.
   return { odds, markets };
 }
 

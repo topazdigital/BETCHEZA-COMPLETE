@@ -6,7 +6,6 @@ import {
   getEspnLeagueConfigForId,
   getEspnEventIdFromMatchId,
   extractEspnOdds,
-  deriveSoccerMarkets,
   getOddsIndexMarketsForMatch,
   getOddsApiEventEntry,
   fetchAllMarketsForEvent,
@@ -1231,33 +1230,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     // Only use real odds — never fall back to computed/estimated odds
     const finalOdds = realOdds || null;
-    const isSoccer = sportType === 'soccer';
-
-    // For soccer: derive additional markets (BTTS, correct score, etc.) from
-    // the real 1X2 odds using a statistical model — this is the established
-    // feature and the odds are clearly model-derived.
-    // For all other sports: NEVER derive fake computed odds. Only show what
-    // ESPN pickcenter returns as real bookmaker data (moneyline, spread, total).
-    let derivedMarkets: ReturnType<typeof deriveSoccerMarkets> = [];
-    if (isSoccer && finalOdds?.home && finalOdds?.draw !== undefined && finalOdds?.away) {
-      derivedMarkets = deriveSoccerMarkets(
-        finalOdds.home,
-        finalOdds.draw,
-        finalOdds.away,
-        match.homeTeam.name,
-        match.awayTeam.name,
-      );
-    }
-
-    // Merge strategy:
-    // 1. ESPN pickcenter markets (h2h, asian_handicap, totals) — real provider odds → always kept.
-    // 2. Derived soccer markets supplement when ESPN doesn't cover a market key.
-    // 3. Non-soccer: only real ESPN markets shown; empty list if none available.
-    const espnMarketKeys = new Set((summaryMarkets || []).map((m: { key: string }) => m.key));
-    const supplementary = derivedMarkets.filter(m => !espnMarketKeys.has(m.key));
-    const baseMarkets = summaryMarkets && summaryMarkets.length > 0
-      ? [...summaryMarkets, ...supplementary]
-      : (isSoccer && finalOdds ? derivedMarkets : []);
+    // Only bookmaker-backed markets are allowed into the detail response.
+    // Never manufacture BTTS, totals, handicap, or correct-score prices from
+    // 1X2 probabilities.
+    const baseMarkets = (summaryMarkets || []).filter(m => !m.isDerived);
 
     // Inject additional Asian Handicap lines from the real-odds index (TheOddsAPI
     // bookmakers aggregated in the bulk fetch). Only add lines not already present.
@@ -1294,17 +1270,16 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     let finalMarkets: typeof baseMarkets;
     if (realEventMarkets.length > 0) {
-      // Real per-event markets are highest quality — override any ESPN/derived market
-      // with the same key, and supplement with ESPN markets not covered by real data.
+      // Real per-event markets are highest quality and supplement ESPN markets
+      // not covered by the event response.
       const realKeys = new Set(realEventMarkets.map(m => m.key));
       finalMarkets = [
         ...realEventMarkets,
         ...baseMarkets.filter(m => !realKeys.has(m.key)),
       ];
     } else {
-      // No per-event real markets available (event not in The Odds API index yet, or
-      // quota exhausted). Fall back to ESPN pickcenter + derived markets + extra AH lines.
-      // Only strip markets that are provably jitter/model-only (never real bookmaker data).
+      // No per-event real markets available. Fall back to the real ESPN
+      // pickcenter markets plus any real index markets.
       const FAKE_PREFIXES = ['corners_', 'corners_total_', 'cards_total_', 'race_corners'];
       const FAKE_EXACT = new Set(['red_card', 'penalty_awarded', 'booking_points']);
       const isFake = (key: string) =>

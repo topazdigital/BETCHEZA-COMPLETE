@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
-import { getAllMatches, deriveSoccerMarkets } from '@/lib/api/unified-sports-api';
+import { getAllMatches } from '@/lib/api/unified-sports-api';
 import type { Market } from '@/lib/api/unified-sports-api';
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/api-keys';
@@ -134,20 +134,11 @@ function buildRulesBasedPicks(
     const isSoccer = m.sport.slug === 'soccer' || m.sport.slug === 'football';
     if (!isSoccer || !m.odds) continue;
     const { home, away } = m.odds;
-    const draw = m.odds.draw ?? 3.5;
     if (!home || !away) continue;
 
-    // Derive full market suite from 1X2 via Poisson model
-    const derived = deriveSoccerMarkets(home, draw, away, m.homeTeam.name, m.awayTeam.name);
-
-    // Merge real bookmaker markets (they take priority)
-    const markets = [...derived];
-    if (m.markets?.length) {
-      for (const bk of m.markets) {
-        const idx = markets.findIndex(d => d.key === bk.key);
-        if (idx >= 0) markets[idx] = bk; else markets.push(bk);
-      }
-    }
+    // Strategy picks may use only markets explicitly returned by a provider.
+    // A 1X2 price must never be used to invent BTTS, totals, or handicap odds.
+    const markets = (m.markets || []).filter(market => !market.isDerived);
 
     const matchKey = `${m.homeTeam.name}|${m.awayTeam.name}`;
 
@@ -332,30 +323,15 @@ export async function POST(req: NextRequest) {
           oddsStr = ` | 1X2: H=${home}(${implH}%)${drawPart} A=${away}(${implA}%)`;
         }
 
-        // ── Derive useful markets (soccer only) ──────────────────────────────
+        // ── Include useful markets returned by bookmakers ────────────────────
         const mkParts: string[] = [];
-        if (isSoccer && m.odds) {
-          const { home, away } = m.odds;
-          const draw = m.odds.draw ?? 3.5;
-          if (home > 1 && away > 1) {
-            const derived = deriveSoccerMarkets(home, draw, away, m.homeTeam.name, m.awayTeam.name);
-
-            // Merge bookmaker markets over derived ones
-            const merged = [...derived];
-            if (m.markets?.length) {
-              for (const bk of m.markets) {
-                const idx = merged.findIndex(d => d.key === bk.key);
-                if (idx >= 0) merged[idx] = bk; else merged.push(bk);
-              }
-            }
-
-            // Only output the AI-useful keys, compact format
-            for (const key of AI_MARKET_KEYS) {
-              const mk = merged.find(x => x.key === key);
-              if (!mk) continue;
-              const outcomes = mk.outcomes.map(o => `${o.name}=${o.price}`).join(' ');
-              mkParts.push(`${mk.name}: ${outcomes}`);
-            }
+        if (isSoccer && m.markets?.length) {
+          const realMarkets = m.markets.filter(market => !market.isDerived);
+          for (const key of AI_MARKET_KEYS) {
+            const mk = realMarkets.find(x => x.key === key);
+            if (!mk) continue;
+            const outcomes = mk.outcomes.map(o => `${o.name}=${o.price}`).join(' ');
+            mkParts.push(`${mk.name}: ${outcomes}`);
           }
         }
 
