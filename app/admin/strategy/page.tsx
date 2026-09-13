@@ -165,6 +165,22 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
   const [isApproved, setIsApproved] = useState(!!day.isApproved);
   const [publishingResult, setPublishingResult] = useState(false);
   const [resultPublished, setResultPublished] = useState(!!day.resultPublished);
+  // A day can still be labelled "Today" after one or more fixtures have
+  // kicked off. Never offer regeneration once a pick has a score/result or its
+  // kickoff has passed — replacing it would be a retroactive change to a
+  // subscriber-facing strategy.
+  const hasStartedOrSettledPick = Boolean(day.result) || day.picks.some((pick) => {
+    const kickoffMs = new Date(pick.matchTime).getTime();
+    return (
+      (pick.result && pick.result !== 'pending') ||
+      Boolean(pick.actualScore || pick.liveScore) ||
+      pick.liveStatus === 'live' ||
+      pick.liveStatus === 'finished' ||
+      (Number.isFinite(kickoffMs) && kickoffMs <= Date.now())
+    );
+  });
+  const todayEAT = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const canGenerateAI = !hasStartedOrSettledPick && day.date >= todayEAT;
 
   const handlePublishResult = async () => {
     setPublishingResult(true);
@@ -355,6 +371,12 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
             <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">{msg}</div>
           )}
 
+          {hasStartedOrSettledPick && day.picks.length > 0 && (
+            <div className="rounded-lg border border-red-400/40 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              These fixtures have already started or been settled, so AI regeneration is disabled. This prevents replacing picks after subscribers could have acted on them. Use an upcoming strategy day for new picks.
+            </div>
+          )}
+
           {/* Pending approval banner — new picks not yet sent */}
           {day.picks.length > 0 && !isApproved && day.status === 'active' && mode === 'view' && (
             <div className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 flex items-start gap-2">
@@ -389,13 +411,13 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
               <Button size="sm" variant="outline" onClick={() => { setMode('manual'); setManualPicks(day.picks.length > 0 ? day.picks.map(p => ({ ...p })) : [EMPTY_PICK()]); }} className="gap-1 text-xs h-7">
                 <PenLine className="h-3 w-3" /> {day.picks.length > 0 ? 'Edit Manually' : 'Post Manually'}
               </Button>
-              {!day.isManual && day.date >= new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10) && (
+              {!day.isManual && canGenerateAI && (
                 <Button size="sm" variant="outline" onClick={handleGenerateAI} disabled={generating} className="gap-1 text-xs h-7">
                   {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
                   {day.picks.length > 0 ? 'Regenerate AI' : 'Generate AI Picks'}
                 </Button>
               )}
-              {day.isManual && day.date >= new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10) && (
+              {day.isManual && canGenerateAI && (
                 <Button size="sm" variant="outline" onClick={handleGenerateAI} disabled={generating} className="gap-1 text-xs h-7 text-muted-foreground">
                   {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
                   Override with AI
