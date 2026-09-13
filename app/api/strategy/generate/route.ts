@@ -324,6 +324,12 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  if (dayData.isApproved || dayData.resultPublished) {
+    return NextResponse.json(
+      { error: 'This strategy has already been approved or published and cannot be regenerated.' },
+      { status: 409 }
+    );
+  }
 
   let picks: StrategyPick[] = [];
 

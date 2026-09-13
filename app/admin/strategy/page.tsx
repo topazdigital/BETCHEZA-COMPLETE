@@ -165,22 +165,11 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
   const [isApproved, setIsApproved] = useState(!!day.isApproved);
   const [publishingResult, setPublishingResult] = useState(false);
   const [resultPublished, setResultPublished] = useState(!!day.resultPublished);
-  // A day can still be labelled "Today" after one or more fixtures have
-  // kicked off. Never offer regeneration once a pick has a score/result or its
-  // kickoff has passed — replacing it would be a retroactive change to a
-  // subscriber-facing strategy.
-  const hasStartedOrSettledPick = Boolean(day.result) || day.picks.some((pick) => {
-    const kickoffMs = new Date(pick.matchTime).getTime();
-    return (
-      (pick.result && pick.result !== 'pending') ||
-      Boolean(pick.actualScore || pick.liveScore) ||
-      pick.liveStatus === 'live' ||
-      pick.liveStatus === 'finished' ||
-      (Number.isFinite(kickoffMs) && kickoffMs <= Date.now())
-    );
-  });
   const todayEAT = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const canGenerateAI = !hasStartedOrSettledPick && day.date >= todayEAT;
+  // Admins may replace an unapproved strategy for the current day, even when
+  // an earlier draft has already settled. Once picks are approved/sent,
+  // regeneration must stop so subscribers never receive a retroactive change.
+  const canGenerateAI = !isApproved && !resultPublished && day.date >= todayEAT;
 
   const handlePublishResult = async () => {
     setPublishingResult(true);
@@ -369,12 +358,6 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
         <div className="border-t border-border p-3 space-y-3">
           {msg && (
             <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">{msg}</div>
-          )}
-
-          {hasStartedOrSettledPick && day.picks.length > 0 && (
-            <div className="rounded-lg border border-red-400/40 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-              These fixtures have already started or been settled, so AI regeneration is disabled. This prevents replacing picks after subscribers could have acted on them. Use an upcoming strategy day for new picks.
-            </div>
           )}
 
           {/* Pending approval banner — new picks not yet sent */}
