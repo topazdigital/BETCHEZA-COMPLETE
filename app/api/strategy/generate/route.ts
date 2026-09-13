@@ -22,10 +22,11 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function getWeekId(date: Date): string {
-  const monday = new Date(date);
-  const day = monday.getDay();
-  const diff = (day === 0 ? -6 : 1 - day);
-  monday.setDate(monday.getDate() + diff);
+  const eat = new Date(date.getTime() + EAT_OFFSET_MS);
+  const monday = new Date(Date.UTC(eat.getUTCFullYear(), eat.getUTCMonth(), eat.getUTCDate()));
+  const day = monday.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  monday.setUTCDate(monday.getUTCDate() + diff);
   return monday.toISOString().slice(0, 10);
 }
 
@@ -103,6 +104,42 @@ const FALLBACK_MARKET_PRIORITY = [
   'totals_3_5',       // Over 3.5 for high-scoring games
 ];
 
+function marketFamily(value: string): string {
+  const normalized = normalizeStrategyTeamName(value);
+  if (normalized.includes('doublechance') || normalized === 'dc') return 'double_chance';
+  if (normalized.includes('drawnobet') || normalized === 'dnb') return 'draw_no_bet';
+  if (normalized.includes('btts') || normalized.includes('bothteamstoscore')) return 'btts';
+  if (normalized.includes('total') || normalized.includes('over') || normalized.includes('under')) return 'totals';
+  if (normalized.includes('asian') || normalized.includes('handicap')) return 'asian_handicap';
+  if (normalized.includes('wintonil') || normalized.includes('cleansheet')) return 'win_to_nil';
+  if (normalized.includes('1x2') || normalized.includes('matchresult') || normalized === '3way' || normalized === 'h2h') return '1x2';
+  return normalized;
+}
+
+function findVerifiedOutcome(
+  source: {
+    markets?: Market[] | null;
+  },
+  requestedMarket: string,
+  requestedPick: string,
+) {
+  const realMarkets = (source.markets || []).filter((market) => !market.isDerived);
+  const family = marketFamily(requestedMarket);
+  const candidateMarkets = realMarkets.filter((market) => marketFamily(market.key) === family || marketFamily(market.name) === family);
+  const markets = requestedMarket ? candidateMarkets : realMarkets;
+  const requested = normalizeStrategyTeamName(requestedPick);
+
+  for (const market of markets) {
+    const outcome = market.outcomes.find((item) => {
+      const name = normalizeStrategyTeamName(item.name);
+      return name === requested || name.includes(requested) || requested.includes(name);
+    });
+    if (outcome) return { market, outcome };
+  }
+
+  return null;
+}
+
 interface MatchCandidate {
   matchKey: string;
   homeTeam: string;
@@ -149,7 +186,7 @@ function buildRulesBasedPicks(
       // Pick the single best outcome from this market
       // "Best" = highest implied probability within a sensible odds range (1.10–2.20)
       const best = mk.outcomes
-        .filter(o => o.price >= 1.10 && o.price <= 2.20)
+         .filter(o => o.price >= 1.40 && o.price <= 2.20)
         .sort((a, b) => a.price - b.price)[0]; // lowest odds = highest probability
 
       if (!best) continue;
@@ -187,7 +224,7 @@ function buildRulesBasedPicks(
     if (combined >= 3.0) break; // target window reached
   }
 
-  if (chosen.length === 0) return [];
+  if (chosen.length < 2 || chosen.length > 4 || combined < 3.0 || combined > 4.2) return [];
 
   return chosen.map((c, i) => ({
     id: `${weekId}-d${targetDay}-rb-${i}`,
@@ -199,7 +236,7 @@ function buildRulesBasedPicks(
     market: c.marketName,
     odds: parseFloat(c.odds.toFixed(2)),
     confidence: c.prob > 0.62 ? 'High' : 'Medium',
-    reasoning: `${c.outcomeName} (${c.marketName}) at ${c.odds.toFixed(2)} — implied probability ${Math.round(c.prob * 100)}%. Selected by rules-based Poisson analysis as the highest-confidence outcome available across all markets for this match.`,
+    reasoning: `${c.outcomeName} (${c.marketName}) at ${c.odds.toFixed(2)} — implied probability ${Math.round(c.prob * 100)}%. Selected from a verified bookmaker market as the highest-confidence qualifying outcome available for this match.`,
     result: 'pending' as const,
   }));
 }
@@ -211,13 +248,20 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const targetDay: number = body.day || 1;
+  const requestedDate = typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+    ? body.date
+    : null;
+  const currentWeekId = getWeekId(new Date());
+  const requestedWeekId = typeof body.weekId === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.weekId)
+    ? body.weekId
+    : currentWeekId;
+  const targetDay: number = Number.isInteger(body.day) ? body.day : 1;
   const excludedMatches = Array.isArray(body.excludeMatches)
     ? body.excludeMatches
         .filter((m: unknown): m is { homeTeam?: string; awayTeam?: string } => !!m && typeof m === 'object')
         .map((m: { homeTeam?: string; awayTeam?: string }) => strategyMatchKey(m.homeTeam || '', m.awayTeam || ''))
     : [];
-  const weekId = getWeekId(new Date());
+  const weekId = requestedWeekId;
   let stored = fileStoreGet<WeeklyStrategy | null>(`strategy-week-${weekId}`, null);
 
   // If no stored week, build one from the week plan so generation always works
@@ -264,9 +308,22 @@ export async function POST(req: NextRequest) {
     fileStoreSet(`strategy-week-${weekId}`, stored);
   }
 
-  const dayIdx = targetDay - 1;
+  const dayIdx = requestedDate
+    ? stored.days.findIndex((day) => day.date === requestedDate)
+    : targetDay - 1;
   const dayData = stored.days[dayIdx];
   if (!dayData) return NextResponse.json({ error: 'Invalid day' }, { status: 400 });
+  if (requestedDate && dayData.date !== requestedDate) {
+    return NextResponse.json({ error: 'The requested strategy date is not in this week.' }, { status: 400 });
+  }
+
+  const todayEAT = toEATDateStr(new Date());
+  if (dayData.date < todayEAT) {
+    return NextResponse.json(
+      { error: `Cannot regenerate ${dayData.date}; that strategy day has already passed. Select today or a future day.` },
+      { status: 400 }
+    );
+  }
 
   let picks: StrategyPick[] = [];
 
@@ -401,7 +458,7 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
   }
 ]`;
 
-      for (const provider of providers) {
+       for (const provider of providers) {
         try {
           const client = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL });
           const completion = await client.chat.completions.create({
@@ -419,8 +476,8 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
             parsed = Array.isArray(obj) ? obj : (obj.picks || obj.selections || []);
           } catch { /* try next provider */ }
 
-           if (parsed.length >= 1) {
-             const candidates = parsed.slice(0, 10).flatMap((p, i) => {
+            if (parsed.length >= 1) {
+              const candidates = parsed.slice(0, 10).flatMap((p, i) => {
                const home = normalizeStrategyTeamName(String(p.homeTeam || ''));
                const away = normalizeStrategyTeamName(String(p.awayTeam || ''));
                const source = extendedPool.find((m) =>
@@ -430,26 +487,33 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
                // Never persist an AI-invented fixture or a kickoff time that
                // differs from the real provider event.
                if (!source) return [];
+                const verified = findVerifiedOutcome(source, String(p.market || ''), String(p.pick || ''));
+                if (!verified || verified.outcome.price < 1.4 || verified.outcome.price > 2.2) return [];
+                if (p.confidence === 'Low') return [];
                return [{
-                 ...p,
+                  ...p,
                  id: `${weekId}-d${targetDay}-${i}`,
                  homeTeam: source.homeTeam.name,
                  awayTeam: source.awayTeam.name,
                  league: source.league.name,
                  matchTime: new Date(source.kickoffTime).toISOString(),
-                 odds: Math.max(1.1, parseFloat(String(p.odds)) || 1.5),
+                  pick: verified.outcome.name,
+                  market: verified.market.name,
+                  odds: parseFloat(verified.outcome.price.toFixed(2)),
                  result: 'pending' as const,
                }];
              });
             const combined = candidates.reduce((acc: number, p: StrategyPick) => acc * p.odds, 1);
-            // Accept if combined odds land in 2.90–4.50 (target 3.00–4.00, small buffer for rounding).
-            // 2.59 and below is too low — reject and fall through to rules-based.
-            if (combined >= 2.9 && combined <= 4.5) {
+             const uniqueMatches = new Set(candidates.map((p) => strategyMatchKey(p.homeTeam, p.awayTeam)));
+             // Require a real 2–4 pick accumulator in the advertised target range.
+             // The provider price, not the number invented by the model, is used.
+             if (candidates.length >= 2 && candidates.length <= 4 &&
+                 uniqueMatches.size === candidates.length && combined >= 3.0 && combined <= 4.2) {
               picks = candidates;
               console.log(`[strategy/generate] ✓ Groq picks via ${provider.name}, combined=${combined.toFixed(2)}`);
               break;
             }
-            console.warn(`[strategy/generate] ✗ ${provider.name} combined=${combined.toFixed(2)} outside 2.90–4.50 — trying next`);
+             console.warn(`[strategy/generate] ✗ ${provider.name} returned ${candidates.length} verified picks, combined=${combined.toFixed(2)} — trying next`);
           }
         } catch (provErr) {
           console.warn(`[strategy/generate] ${provider.name} failed:`, provErr instanceof Error ? provErr.message : provErr);
@@ -480,9 +544,15 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
   }
 
   const combinedOdds = picks.reduce((acc, p) => acc * p.odds, 1);
-  stored.days[dayIdx].picks = picks;
+   stored.days[dayIdx].picks = picks;
   stored.days[dayIdx].combinedOdds = parseFloat(combinedOdds.toFixed(2));
-  fileStoreSet(`strategy-week-${weekId}`, stored);
+   stored.days[dayIdx].result = undefined;
+   stored.days[dayIdx].actualReturn = undefined;
+   stored.days[dayIdx].isManual = false;
+   stored.days[dayIdx].isApproved = false;
+   stored.days[dayIdx].resultPublished = false;
+   stored.days[dayIdx].status = 'active';
+   fileStoreSet(`strategy-week-${weekId}`, stored);
 
   // Persist AI-generated picks to DB with is_approved = 0 (requires admin approval before delivery)
   try {
@@ -509,9 +579,20 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(() => {});
     const dayD = stored.days[dayIdx];
     await dbExecute(
-      `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, is_approved)
+       `INSERT INTO daily_strategy (date, week_id, day_number, stake, save_amount, target_win, combined_odds, status, picks, is_manual, generated_at, is_approved)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, NOW(), 0)
-       ON DUPLICATE KEY UPDATE picks = VALUES(picks), combined_odds = VALUES(combined_odds), generated_at = NOW(), status = 'active', is_approved = 0`,
+        ON DUPLICATE KEY UPDATE
+          picks = VALUES(picks),
+          combined_odds = VALUES(combined_odds),
+          generated_at = NOW(),
+          status = 'active',
+          result = NULL,
+          actual_return = NULL,
+          settled_at = NULL,
+          posted_at = NULL,
+          approved_at = NULL,
+          is_manual = 0,
+          is_approved = 0`,
       [dayD.date, weekId, dayD.day, dayD.stake, dayD.save, dayD.targetWin, dayD.combinedOdds, JSON.stringify(picks)]
     );
   } catch { /* non-fatal — file store is source of truth */ }

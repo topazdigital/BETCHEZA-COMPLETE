@@ -225,6 +225,8 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           day: day.day,
+          date: day.date,
+          weekId,
           // Give the server the current fixtures so regeneration chooses
           // alternatives whenever the day's feed has enough future matches.
           excludeMatches: day.picks.map((p) => ({
@@ -387,13 +389,13 @@ function DayPanel({ day, weekId, onRefresh, isHistorical }: { day: DayPrediction
               <Button size="sm" variant="outline" onClick={() => { setMode('manual'); setManualPicks(day.picks.length > 0 ? day.picks.map(p => ({ ...p })) : [EMPTY_PICK()]); }} className="gap-1 text-xs h-7">
                 <PenLine className="h-3 w-3" /> {day.picks.length > 0 ? 'Edit Manually' : 'Post Manually'}
               </Button>
-              {!day.isManual && (
+              {!day.isManual && day.date >= new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10) && (
                 <Button size="sm" variant="outline" onClick={handleGenerateAI} disabled={generating} className="gap-1 text-xs h-7">
                   {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
                   {day.picks.length > 0 ? 'Regenerate AI' : 'Generate AI Picks'}
                 </Button>
               )}
-              {day.isManual && (
+              {day.isManual && day.date >= new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10) && (
                 <Button size="sm" variant="outline" onClick={handleGenerateAI} disabled={generating} className="gap-1 text-xs h-7 text-muted-foreground">
                   {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
                   Override with AI
