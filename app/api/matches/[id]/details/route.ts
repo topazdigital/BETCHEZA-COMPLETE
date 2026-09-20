@@ -813,41 +813,6 @@ function buildMatchEvents(summary: ESPNSummaryResponse, homeTeamId?: string, awa
   return events;
 }
 
-function generateComputedOdds(homeTeamName: string, awayTeamName: string, sportType = 'soccer') {
-  const hashCode = (str: string) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash);
-  };
-  const matchHash = hashCode(homeTeamName + awayTeamName);
-  const seed = (matchHash % 1000) / 1000;
-  const noDrawSports = ['basketball', 'baseball', 'mma', 'tennis', 'golf', 'racing'];
-  const homeAdv = sportType === 'basketball' ? 0.55 : sportType === 'soccer' ? 0.45 : 0.52;
-  let homeProb = homeAdv + (seed - 0.5) * 0.3;
-  const hasDraw = !noDrawSports.includes(sportType);
-  let drawProb: number | undefined;
-  let awayProb: number;
-  if (hasDraw) {
-    drawProb = 0.25 + (seed * 0.1);
-    homeProb = Math.max(0.2, Math.min(0.55, homeProb));
-    awayProb = 1 - homeProb - drawProb;
-  } else {
-    awayProb = 1 - homeProb;
-  }
-  const margin = 1.06;
-  return {
-    home: Math.round(Math.max(1.15, Math.min((margin / homeProb), 6.0)) * 100) / 100,
-    draw: drawProb ? Math.round(Math.max(2.8, Math.min((margin / drawProb), 5.5)) * 100) / 100 : undefined,
-    away: Math.round(Math.max(1.15, Math.min((margin / awayProb), 8.0)) * 100) / 100,
-    bookmaker: 'Estimated',
-    isComputed: true,
-  };
-}
-
 /**
  * Extract team-name tokens from a human-readable URL slug so we can do a
  * fuzzy cache scan before the expensive ESPN league-probe lookup.
@@ -1049,6 +1014,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .then(m => m.getSgoBookmakerLines(match.homeTeam.name, match.awayTeam.name, isoKickoff, hasDraw))
       .catch(() => []);
 
+    const sgoMarketsPromise = import('@/lib/api/sportsgameodds')
+      .then(m => m.getSgoRealMarkets(match.homeTeam.name, match.awayTeam.name, isoKickoff))
+      .catch(() => []);
+
     // ── SofaScore event details (lineups / statistics / incidents) ─────────────
     // For SofaScore-sourced matches (id starts with ss_) we can fetch rich
     // event data directly. For ESPN matches this path is skipped here and only
@@ -1065,11 +1034,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       : Promise.resolve(null);
 
     const FANOUT_TIMEOUT_MS = 8_000;
-    const fanoutTimeout = new Promise<[null, [], SSDetails]>(resolve =>
-      setTimeout(() => resolve([null, [], null]), FANOUT_TIMEOUT_MS)
+    const fanoutTimeout = new Promise<[null, [], [], SSDetails]>(resolve =>
+      setTimeout(() => resolve([null, [], [], null]), FANOUT_TIMEOUT_MS)
     );
-    const [summary, sgoRaw, ssDetails] = await Promise.race([
-      Promise.all([summaryPromise, sgoPromise, ssDetailsPromise]),
+    const [summary, sgoRaw, sgoMarkets, ssDetails] = await Promise.race([
+      Promise.all([summaryPromise, sgoPromise, sgoMarketsPromise, ssDetailsPromise]),
       fanoutTimeout,
     ]);
 
@@ -1226,19 +1195,40 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const summaryOddsList = [...(summary?.pickcenter || []), ...(summary?.odds || [])];
     const { odds: summaryOdds, markets: summaryMarkets } = extractEspnOdds(summaryOddsList, hasDraw, sportType, match.homeTeam.name, match.awayTeam.name);
-    const realOdds = summaryOdds || match.odds;
+    // A cached odds object is accepted only when it is explicitly backed by a
+    // provider. Older match-cache records could contain model-generated odds;
+    // those must never be promoted to the detail page.
+    const cachedRealOdds = match.odds && !(
+      (match.odds as unknown as { isComputed?: boolean }).isComputed === true ||
+      /estimated|computed|model/i.test(String((match.odds as unknown as { bookmaker?: string }).bookmaker || ''))
+    ) ? match.odds : null;
+    const sgoConsensus = sgoRaw[0]
+      ? {
+          bookmaker: sgoRaw[0].display,
+          home: sgoRaw[0].home,
+          draw: sgoRaw[0].draw,
+          away: sgoRaw[0].away,
+        }
+      : null;
+    const realOdds = summaryOdds || cachedRealOdds || sgoConsensus;
 
     // Only use real odds — never fall back to computed/estimated odds
     const finalOdds = realOdds || null;
     // Only bookmaker-backed markets are allowed into the detail response.
     // Never manufacture BTTS, totals, handicap, or correct-score prices from
     // 1X2 probabilities.
-    const baseMarkets = (summaryMarkets || []).filter(m => !m.isDerived);
+    const realMarketGroups = [
+      (summaryMarkets || []).filter(m => !m.isDerived),
+      sgoMarkets,
+    ];
 
     // Inject additional Asian Handicap lines from the real-odds index (TheOddsAPI
     // bookmakers aggregated in the bulk fetch). Only add lines not already present.
     const indexMarkets = getOddsIndexMarketsForMatch(match.homeTeam.name, match.awayTeam.name);
     const ahIndexLines = indexMarkets.filter(m => m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt'));
+    const indexRealMarkets = indexMarkets.filter(m => !m.isDerived);
+    const baseMarkets = [...realMarketGroups.flat(), ...indexRealMarkets]
+      .filter(m => !m.isDerived);
     const presentAhKeys = new Set(baseMarkets.map(m => m.key));
     const newAhLines: typeof baseMarkets = [];
     for (const ahMkt of ahIndexLines) {
@@ -1505,7 +1495,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         league: match.league,
         sport: match.sport,
         odds: finalOdds,
-        oddsIsComputed: !realOdds,
+        oddsIsComputed: false,
         markets: finalMarkets,
         venue,
         venueCity,

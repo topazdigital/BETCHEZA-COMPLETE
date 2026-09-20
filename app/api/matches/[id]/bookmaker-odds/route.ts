@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMatchById } from '@/lib/api/unified-sports-api';
+import {
+  getMatchById,
+  extractEspnOdds,
+  fetchESPNSummary,
+  getEspnEventIdFromMatchId,
+  getEspnLeagueConfigForId,
+} from '@/lib/api/unified-sports-api';
 import { getSgoBookmakerLines } from '@/lib/api/sportsgameodds';
 import { getSharpApiBookmakerLines } from '@/lib/api/sharpapi';
 import { getTheOddsApiMatchLines } from '@/lib/api/the-odds-api-match';
@@ -47,6 +53,39 @@ function pinnacleLineToBookmakerLine(
   };
 }
 
+function bookmakerKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function mergeBookmakerLines(
+  target: Array<{
+    bookmaker: string;
+    display: string;
+    home: number;
+    draw?: number;
+    away: number;
+    links?: { home?: string; draw?: string; away?: string };
+  }>,
+  incoming: Array<{
+    bookmaker: string;
+    display: string;
+    home: number;
+    draw?: number;
+    away: number;
+    links?: { home?: string; draw?: string; away?: string };
+  }>,
+) {
+  const seen = new Set(target.map(line => bookmakerKey(line.bookmaker || line.display)));
+  for (const line of incoming) {
+    if (!line || !Number.isFinite(line.home) || !Number.isFinite(line.away) ||
+        line.home <= 1 || line.away <= 1) continue;
+    const key = bookmakerKey(line.bookmaker || line.display);
+    if (!key || seen.has(key)) continue;
+    target.push(line);
+    seen.add(key);
+  }
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -90,7 +129,56 @@ export async function GET(
       hasDraw,
     );
 
-    // ── Source 2: TheOddsAPI h2h ─────────────────────────────────────────────
+    // ── Source 2: ESPN embedded odds ─────────────────────────────────────────
+    // The match cache can be older than the detail request, and ESPN often
+    // embeds a live DraftKings/FanDuel line only in the summary response.
+    // Fetch that response directly here so the bookmaker panel does not depend
+    // on a separately refreshed all-matches cache.
+    try {
+      const cfg = getEspnLeagueConfigForId(match.id);
+      const eventId = getEspnEventIdFromMatchId(match.id);
+      const summary = cfg && eventId
+        ? await Promise.race([
+            fetchESPNSummary(cfg.sport, cfg.league, eventId),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 4_000)),
+          ])
+        : null;
+      if (summary) {
+        const { odds } = extractEspnOdds(
+          [...(summary.pickcenter || []), ...(summary.odds || [])],
+          hasDraw,
+          cfg?.sportType || sportSlug,
+          match.homeTeam.name,
+          match.awayTeam.name,
+        );
+        if (odds) {
+          mergeBookmakerLines(lines, [{
+            bookmaker: odds.bookmaker || 'espn',
+            display: odds.bookmaker || 'ESPN',
+            home: odds.home,
+            draw: odds.draw,
+            away: odds.away,
+          }]);
+        }
+      }
+    } catch { /* ESPN is an optional real-provider source */ }
+
+    // Cached match odds are also accepted only when they are provider-backed.
+    const cachedOdds = match.odds && !(
+      (match.odds as unknown as { isComputed?: boolean }).isComputed === true ||
+      /estimated|computed|model/i.test(String((match.odds as unknown as { bookmaker?: string }).bookmaker || ''))
+    ) ? match.odds : null;
+    if (cachedOdds) {
+      mergeBookmakerLines(lines, [{
+        bookmaker: cachedOdds.bookmaker || 'espn',
+        display: cachedOdds.bookmaker || 'ESPN',
+        home: cachedOdds.home,
+        draw: cachedOdds.draw,
+        away: cachedOdds.away,
+      }]);
+    }
+
+    // ── Source 3: TheOddsAPI h2h ─────────────────────────────────────────────
     // Covers ALL sports (tennis, basketball, cricket, NHL, NFL, MMA, rugby…).
     if (lines.length === 0) {
       const leagueName = match.league?.name ?? match.league?.slug ?? '';
@@ -102,10 +190,10 @@ export async function GET(
         hasDraw,
         leagueName,
       );
-      if (theoddsLines.length > 0) lines = theoddsLines;
+      mergeBookmakerLines(lines, theoddsLines);
     }
 
-    // ── Source 3a: Pinnacle LIVE (in-play) ─────────────────────────────────
+    // ── Source 4a: Pinnacle LIVE (in-play) ─────────────────────────────────
     // For live matches: try Pinnacle's isLive=true endpoint first (60s cache).
     // Pinnacle offers live betting on tennis, basketball, football, MMA, etc.
     if (lines.length === 0 && isLive && PINNACLE_SUPPORTED_SPORTS.has(sportSlug)) {
@@ -116,12 +204,12 @@ export async function GET(
           sportSlug,
         );
         if (pinnLive && pinnLive.home > 1 && pinnLive.away > 1) {
-          lines = [pinnacleLineToBookmakerLine(pinnLive, hasDraw, 'Pinnacle (Live)')];
+          mergeBookmakerLines(lines, [pinnacleLineToBookmakerLine(pinnLive, hasDraw, 'Pinnacle (Live)')]);
         }
       } catch { /* silent */ }
     }
 
-    // ── Source 3b: Pinnacle PRE-MATCH ────────────────────────────────────────
+    // ── Source 4b: Pinnacle PRE-MATCH ────────────────────────────────────────
     // For upcoming matches (and as fallback for live if live endpoint is empty).
     if (lines.length === 0 && PINNACLE_SUPPORTED_SPORTS.has(sportSlug)) {
       try {
@@ -132,12 +220,12 @@ export async function GET(
           kickoffMs,
         );
         if (pinnLine && pinnLine.home > 1 && pinnLine.away > 1) {
-          lines = [pinnacleLineToBookmakerLine(pinnLine, hasDraw)];
+          mergeBookmakerLines(lines, [pinnacleLineToBookmakerLine(pinnLine, hasDraw)]);
         }
       } catch { /* silent */ }
     }
 
-    // ── Source 4: Betfair Exchange (live + pre-match) ────────────────────────
+    // ── Source 5: Betfair Exchange (live + pre-match) ────────────────────────
     // Free developer API — exchange odds (no bookmaker margin).
     // Covers football, tennis, cricket, basketball, rugby, MMA, darts, snooker.
     // Activate by setting BETFAIR_APP_KEY + BETFAIR_USERNAME + BETFAIR_PASSWORD.
@@ -151,18 +239,18 @@ export async function GET(
           isLive,
         );
         if (bfOdds && bfOdds.home > 1 && bfOdds.away > 1) {
-          lines = [{
+          mergeBookmakerLines(lines, [{
             bookmaker: 'betfair',
             display:   bfOdds.inPlay ? 'Betfair Exchange (Live)' : 'Betfair Exchange',
             home:  bfOdds.home,
             draw:  hasDraw && bfOdds.draw ? bfOdds.draw : undefined,
             away:  bfOdds.away,
-          }];
+          }]);
         }
       } catch { /* silent */ }
     }
 
-    // ── Source 5: SofaScore odds (free, via CF proxy) ────────────────────────
+    // ── Source 6: SofaScore odds (free, via CF proxy) ────────────────────────
     // Covers ALL sports including cricket. Cross-references ESPN matches by
     // team name + kickoff time when the match ID isn't a SofaScore ID.
     if (lines.length === 0) {
@@ -181,21 +269,8 @@ export async function GET(
 
       if (ssEventId !== null) {
         const ssLines = await getSofaScoreOdds(ssEventId, hasDraw);
-        if (ssLines.length > 0) lines = ssLines;
+        mergeBookmakerLines(lines, ssLines);
       }
-    }
-
-    // ── Source 6: ESPN embedded odds ─────────────────────────────────────────
-    // ESPN's scoreboard sometimes embeds one bookmaker's line (usually DraftKings).
-    if (lines.length === 0 && match.odds?.bookmaker &&
-        typeof match.odds.home === 'number' && typeof match.odds.away === 'number') {
-      lines = [{
-        bookmaker: match.odds.bookmaker.toLowerCase().replace(/\s+/g, ''),
-        display:   match.odds.bookmaker,
-        home:      match.odds.home,
-        draw:      hasDraw && typeof match.odds.draw === 'number' ? match.odds.draw : undefined,
-        away:      match.odds.away,
-      }];
     }
 
     // ── Source 7: SharpAPI (DraftKings + FanDuel free tier) ──────────────────
@@ -207,7 +282,7 @@ export async function GET(
         isoKickoff,
         hasDraw,
       );
-      if (sharpLines.length > 0) lines = sharpLines;
+      mergeBookmakerLines(lines, sharpLines);
     }
 
     return NextResponse.json(
