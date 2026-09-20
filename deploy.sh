@@ -109,9 +109,13 @@ fi
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
 # Strip any Replit-internal package proxy URLs from package-lock.json so that
 # npm install works correctly on the production server (those URLs are only
-# reachable inside Replit's network and cause 404s everywhere else).
-if grep -q "package-firewall.replit.local" package-lock.json 2>/dev/null; then
-  sed -i 's|http://package-firewall.replit.local/npm/|https://registry.npmjs.org/|g' package-lock.json
+# reachable inside Replit's network and cause 404s everywhere else). Replit
+# has used both .local and .internal hostnames over time, so handle both.
+if grep -Eq "package-firewall\\.replit\\.(local|internal)" package-lock.json 2>/dev/null; then
+  sed -i -E \
+    -e 's|http://package-firewall\.replit\.local/npm/|https://registry.npmjs.org/|g' \
+    -e 's|http://package-firewall\.replit\.internal/npm/|https://registry.npmjs.org/|g' \
+    package-lock.json
   echo -e "${GREEN}  ✓ Stripped Replit proxy URLs from package-lock.json${NC}"
 fi
 npm install --prefer-offline
