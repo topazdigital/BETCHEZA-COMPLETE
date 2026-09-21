@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getAllMatches } from '@/lib/api/unified-sports-api';
 import {
   getTopTipsterThisWeek,
   computeRealTipsterStats,
@@ -88,32 +87,13 @@ async function getTopDbTipsters(limit = 4) {
 }
 
 async function buildHomePayload(): Promise<unknown> {
-  // Run all independent data fetches in parallel
-  const [allMatches, featuredConfig, topTipsters] = await Promise.all([
-    getAllMatches().catch(() => [] as UnifiedMatch[]),
+  // Match cards and live scores use their dedicated SWR endpoints. Keeping
+  // the home bootstrap focused on its actual consumers avoids building and
+  // serializing the full multi-sport match list a second time.
+  const [featuredConfig, topTipsters] = await Promise.all([
     getFeaturedConfig().catch(() => null),
     getTopDbTipsters(4),
   ]);
-
-  const LIVE_STATUSES_SET = new Set(['live', 'halftime', 'extra_time', 'penalties']);
-  const liveMatchList = allMatches.filter(m => LIVE_STATUSES_SET.has(m.status as string));
-  const liveCount = liveMatchList.length;
-  const todayStr = new Date().toDateString();
-  const todayCount = allMatches.filter(m => {
-    try { return new Date(m.kickoffTime as string | Date).toDateString() === todayStr; } catch { return false; }
-  }).length;
-
-  const matchesPayload = {
-    matches: allMatches,
-    stats: { total: allMatches.length, live: liveCount, today: todayCount, upcoming: allMatches.filter(m => m.status === 'scheduled').length },
-    timestamp: new Date().toISOString(),
-  };
-
-  const liveMatchesPayload = {
-    matches: liveMatchList.slice(0, 20),
-    stats: { total: liveCount, live: liveCount, today: todayCount, upcoming: 0 },
-    timestamp: new Date().toISOString(),
-  };
 
   // Tipster of the week — run in parallel with featured matches build
   const best = getTopTipsterThisWeek();
@@ -227,7 +207,7 @@ async function buildHomePayload(): Promise<unknown> {
     })(),
   ]);
 
-  return { matches: matchesPayload, liveMatches: liveMatchesPayload, topTipsters: { tipsters: topTipsters }, tipsterOfWeek, featured: featuredPayload };
+  return { topTipsters: { tipsters: topTipsters }, tipsterOfWeek, featured: featuredPayload };
 }
 
 async function getCachedHomePayload(): Promise<unknown> {

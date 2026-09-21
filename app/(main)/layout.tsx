@@ -204,13 +204,26 @@ function MainLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/matches?category=international&limit=50').then(r => r.ok ? r.json() : null).catch(() => null)
-    .then((intlData) => {
-      if (cancelled || !intlData) return
-      const intlMatches = intlData.matches || intlData || []
-      if (Array.isArray(intlMatches)) setIntlMatchCount(intlMatches.length)
-    })
-    return () => { cancelled = true }
+    // This count is decorative and is not needed to paint the navigation.
+    // Fetch it after the first frame so it cannot compete with the page's
+    // primary request during navigation.
+    const load = () => {
+      fetch('/api/matches?category=international&limit=50')
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+        .then((intlData) => {
+          if (cancelled || !intlData) return
+          const intlMatches = intlData.matches || intlData || []
+          if (Array.isArray(intlMatches)) setIntlMatchCount(intlMatches.length)
+        })
+    }
+    const idle = window.requestIdleCallback
+      ? window.requestIdleCallback(load, { timeout: 2500 })
+      : window.setTimeout(load, 900)
+    return () => {
+      cancelled = true
+      if (typeof idle === 'number') window.clearTimeout(idle)
+    }
   }, [])
 
   // Build popular leagues list: user's country leagues first, then global popular

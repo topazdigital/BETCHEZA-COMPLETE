@@ -176,6 +176,14 @@ const nextConfig = {
         source: '/:path((?!_next|api|.*\\.(?:js|css|png|jpg|jpeg|webp|avif|svg|ico|woff2?|ttf|otf|mp4|webm|json|txt|xml|map)).*)',
         headers: [{ key: 'Cache-Control', value: 'no-store' }],
       },
+      // These public pages render user-specific controls on the client, so
+      // their HTML shell is safe to reuse briefly at the edge. This prevents
+      // a slow origin round-trip on repeat navigation while API data remains
+      // independently fresh.
+      ...['/', '/strategy', '/matches', '/live', '/tips', '/feed'].map((source) => ({
+        source,
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=0, s-maxage=15, stale-while-revalidate=60' }],
+      })),
       {
         source: '/(.*)',
         headers: [

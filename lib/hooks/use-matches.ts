@@ -149,6 +149,16 @@ interface MatchesAPIResponse {
   timestamp: string;
 }
 
+interface MatchStatsAPIResponse {
+  stats: {
+    total: number;
+    live: number;
+    today: number;
+    upcoming: number;
+    finished?: number;
+  };
+}
+
 // Fetcher for API calls
 const matchesFetcher = async (url: string): Promise<Match[]> => {
   const res = await fetch(url);
@@ -568,26 +578,31 @@ export function useMatchesBySport() {
 
 // Stats hook
 export function useMatchStats() {
-  const { data, isLoading } = useSWR<Match[]>(
-    '/api/matches',
-    matchesFetcher,
+  const { data, isLoading } = useSWR<MatchStatsAPIResponse>(
+    '/api/matches?view=stats',
+    async (url: string) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch match stats');
+      return res.json();
+    },
     {
-      refreshInterval: 60000,
+      // Navigation should not wait for the full matches list just to paint
+      // sidebar badges. The stats endpoint returns only a few numbers.
+      refreshInterval: 30000,
       revalidateOnFocus: true,
       revalidateOnMount: true,
       dedupingInterval: 10000,
     }
   );
 
-  // Guard against stale/incorrect cache shapes (e.g. object instead of array)
-  const matches = Array.isArray(data) ? data : [];
+  const stats = data?.stats;
 
   return {
-    total: matches.length,
-    live: getLiveMatches(matches).length,
-    today: getTodayMatches(matches).length,
-    upcoming: getUpcomingMatches(matches).length,
-    finished: getFinishedMatches(matches).length,
+    total: stats?.total ?? 0,
+    live: stats?.live ?? 0,
+    today: stats?.today ?? 0,
+    upcoming: stats?.upcoming ?? 0,
+    finished: stats?.finished ?? 0,
     isLoading,
   };
 }

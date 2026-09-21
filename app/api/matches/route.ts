@@ -373,6 +373,7 @@ export async function GET(request: NextRequest) {
   const matchId = searchParams.get('matchId');
   const category = searchParams.get('category');
   const limit = searchParams.get('limit');
+  const statsOnly = searchParams.get('view') === 'stats';
 
   try {
     let matches: MatchData[] = [];
@@ -495,6 +496,16 @@ export async function GET(request: NextRequest) {
       upcoming: matches.filter(m => m.status === 'scheduled').length,
       finished: 0,
     };
+
+    if (statsOnly) {
+      const res = NextResponse.json({
+        stats,
+        source: apiSource,
+        timestamp: new Date().toISOString(),
+      });
+      res.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120');
+      return res;
+    }
 
     const res = NextResponse.json({
       matches,

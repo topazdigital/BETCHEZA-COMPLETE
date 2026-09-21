@@ -1437,10 +1437,26 @@ function CustomPnLTooltip({ active, payload }: { active?: boolean; payload?: Arr
 }
 
 function CumulativePnLChart() {
-  const { data, isLoading } = useSWR<HistoryData>('/api/strategy/history', fetcher, {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    const load = () => setEnabled(true);
+    const idle = window.requestIdleCallback
+      ? window.requestIdleCallback(load, { timeout: 1800 })
+      : window.setTimeout(load, 700);
+    return () => {
+      if (typeof idle === 'number') window.clearTimeout(idle);
+    };
+  }, []);
+
+  const { data, isLoading } = useSWR<HistoryData>(
+    enabled ? '/api/strategy/history' : null,
+    fetcher,
+    {
     revalidateOnFocus: true,
     dedupingInterval: 60_000,
-  });
+    }
+  );
 
   if (isLoading) {
     return (
@@ -1590,7 +1606,7 @@ interface AccessInfo {
 }
 
 export default function StrategyPage() {
-  const { data, isLoading, mutate } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
+  const { data, mutate } = useSWR<{ current: WeeklyStrategy; past: WeeklyStrategy[] }>(
     '/api/strategy/predictions',
     fetcher,
     {
@@ -1963,10 +1979,25 @@ export default function StrategyPage() {
             CENTER — Current week daily picks
             ═══════════════════════════════════════════════ */}
         <main className="min-w-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-sm">Loading picks…</span>
+          {!data ? (
+            <div className="space-y-2">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="h-4 w-36 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-28 animate-pulse rounded bg-muted/70" />
+              </div>
+              {WEEK_PLAN.map((plan) => (
+                <div key={plan.day} className="rounded-xl border border-border bg-card/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+                    <div className="h-4 w-16 animate-pulse rounded bg-muted/70" />
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="h-8 animate-pulse rounded bg-muted/70" />
+                    <div className="h-8 animate-pulse rounded bg-muted/70" />
+                    <div className="h-8 animate-pulse rounded bg-muted/70" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : current ? (
             <div>

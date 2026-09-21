@@ -6,6 +6,9 @@ import { query, execute } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const PUBLIC_PREDICTIONS_TTL = 15_000;
+let publicPredictionsCache: { data: { current: WeeklyStrategy; past: WeeklyStrategy[] }; ts: number } | null = null;
+
 export interface StrategyPick {
   id: string;
   homeTeam: string;
@@ -1220,6 +1223,17 @@ async function overlayLiveScores(days: DayPrediction[]): Promise<DayPrediction[]
 
 export async function GET() {
   try {
+    // Admins can see unpublished picks, so only reuse this response for the
+    // public view. A short server cache removes repeated settlement/live-score
+    // work during navigation without making Strategy data feel stale.
+    const user = await getCurrentUser().catch(() => null);
+    const isAdmin = user?.role === 'admin';
+    if (!isAdmin && publicPredictionsCache && Date.now() - publicPredictionsCache.ts < PUBLIC_PREDICTIONS_TTL) {
+      const cachedResponse = NextResponse.json(publicPredictionsCache.data);
+      cachedResponse.headers.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=15');
+      return cachedResponse;
+    }
+
     const current = await loadCurrentWeek();
     current.days = await autoSettleCompletedPicks(current.days);
     current.days = await overlayLiveScores(current.days);
@@ -1228,8 +1242,6 @@ export async function GET() {
     // Admin approval gates — non-admin users only see what admin has explicitly published.
     // Gate 1: Picks are hidden until admin clicks "Approve & Send to Users".
     // Gate 2: Results (win/loss) are hidden until admin clicks "Publish Result".
-    const user = await getCurrentUser().catch(() => null);
-    const isAdmin = user?.role === 'admin';
     if (!isAdmin) {
       const todayStr = getTodayStrEAT(new Date());
       current.days = current.days.map(day => {
@@ -1259,7 +1271,15 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({ current, past });
+    const data = { current, past };
+    if (!isAdmin) publicPredictionsCache = { data, ts: Date.now() };
+
+    const response = NextResponse.json(data);
+    response.headers.set(
+      'Cache-Control',
+      isAdmin ? 'private, no-store' : 'private, max-age=5, stale-while-revalidate=15'
+    );
+    return response;
   } catch (err) {
     console.error('[strategy/predictions] GET error:', err);
     // Return a safe empty response rather than letting an unhandled error crash the process
