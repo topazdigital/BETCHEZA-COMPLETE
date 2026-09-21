@@ -981,7 +981,13 @@ export function getEspnLeagueConfigForId(matchId: string): ESPNLeagueConfig | nu
   const globalMatch = slug.match(/^global(\d+)$/i);
   if (globalMatch) {
     const leagueId = parseInt(globalMatch[1], 10);
-    return ESPN_LEAGUE_BY_ID.get(leagueId) || null;
+    // Global scoreboard IDs are ESPN's numeric competition IDs (for example
+    // 700 for the Premier League), while ESPN_LEAGUES is keyed by our
+    // internal league IDs (1 for the Premier League). Resolve both forms.
+    const internalLeagueId = ESPN_NUMERIC_TO_OUR_LEAGUE_ID[String(leagueId)];
+    return ESPN_LEAGUE_BY_ID.get(leagueId)
+      || (internalLeagueId !== undefined ? ESPN_LEAGUE_BY_ID.get(internalLeagueId) : undefined)
+      || null;
   }
   // Try the slugified key first (no dots), then the raw key.
   return ESPN_LEAGUE_BY_SLUG.get(slug) || ESPN_LEAGUE_BY_SLUG.get(m[1]) || null;
@@ -4696,6 +4702,95 @@ export function getOddsApiEventEntry(
       return { eventId: value.eventId, sportKey: value.sportKey };
     }
   }
+  return null;
+}
+
+/**
+ * Resolve a The Odds API event even when the last bulk odds index did not
+ * contain it. The bulk index is intentionally sparse (and can be empty after
+ * a restart), but the event-discovery endpoint is cheap and returns the
+ * provider's canonical event ID. The subsequent per-event odds request is
+ * still the only request that retrieves prices.
+ *
+ * This function never creates an event or an odd. If the provider is not
+ * configured, the event is not listed, or the provider is unavailable, it
+ * returns null.
+ */
+export async function resolveOddsApiEventEntry(
+  homeTeam: string,
+  awayTeam: string,
+  sportType?: string,
+  espnLeague?: string,
+): Promise<{ eventId: string; sportKey: string } | null> {
+  const indexed = getOddsApiEventEntry(homeTeam, awayTeam);
+  if (indexed) return indexed;
+
+  const normalizedHome = normalizeTeamName(homeTeam);
+  const normalizedAway = normalizeTeamName(awayTeam);
+  const kickoffWindow = 3 * 86_400_000;
+
+  const soccerLeagueToOddsKey: Record<string, string> = {
+    'eng.1': 'soccer_epl',
+    'esp.1': 'soccer_spain_la_liga',
+    'ger.1': 'soccer_germany_bundesliga',
+    'ita.1': 'soccer_italy_serie_a',
+    'fra.1': 'soccer_france_ligue_one',
+    'uefa.champions': 'soccer_uefa_champs_league',
+    'uefa.europa': 'soccer_uefa_europa_league',
+    'ned.1': 'soccer_netherlands_eredivisie',
+    'por.1': 'soccer_portugal_primeira_liga',
+    'sco.1': 'soccer_scotland_premier_league',
+    'tur.1': 'soccer_turkey_super_league',
+    'bel.1': 'soccer_belgium_first_div',
+    'usa.1': 'soccer_usa_mls',
+    'bra.1': 'soccer_brazil_campeonato',
+    'arg.1': 'soccer_argentina_primera_division',
+    'mex.1': 'soccer_mexico_ligamx',
+    'aus.1': 'soccer_australia_aleague',
+    'jpn.1': 'soccer_japan_j_league',
+    'kor.1': 'soccer_south_korea_kleague',
+    'ksa.1': 'soccer_saudi_premier_league',
+  };
+
+  const candidates = new Set<string>();
+  const mappedSoccerKey = espnLeague ? soccerLeagueToOddsKey[espnLeague] : undefined;
+  if (mappedSoccerKey) candidates.add(mappedSoccerKey);
+
+  // For non-ESPN or unrecognised leagues, use the supported sport family
+  // entries, but keep this bounded rather than querying every sport.
+  if (candidates.size === 0) {
+    const prefix = sportType === 'american-football' ? 'americanfootball_'
+      : sportType === 'ice-hockey' ? 'icehockey_'
+      : sportType ? `${sportType}_`
+      : 'soccer_';
+    for (const key of Object.keys(THE_ODDS_API_SPORTS)) {
+      if (key.startsWith(prefix)) candidates.add(key);
+    }
+  }
+
+  for (const sportKey of candidates) {
+    const events = await fetchTheOddsAPI(`sports/${sportKey}/events`) as TheOddsApiEvent[] | null;
+    if (!Array.isArray(events)) continue;
+
+    const found = events.find(event => {
+      const eventHome = normalizeTeamName(event.home_team);
+      const eventAway = normalizeTeamName(event.away_team);
+      const namesMatch =
+        ((eventHome === normalizedHome || eventHome.includes(normalizedHome) || normalizedHome.includes(eventHome)) &&
+         (eventAway === normalizedAway || eventAway.includes(normalizedAway) || normalizedAway.includes(eventAway))) ||
+        ((eventHome === normalizedAway || eventHome.includes(normalizedAway) || normalizedAway.includes(eventHome)) &&
+         (eventAway === normalizedHome || eventAway.includes(normalizedHome) || normalizedHome.includes(eventAway)));
+      if (!namesMatch) return false;
+      const eventTime = Date.parse(event.commence_time);
+      return !Number.isFinite(eventTime) || Math.abs(eventTime - Date.now()) < kickoffWindow;
+    });
+
+    if (found?.id) {
+      console.log(`[TheOddsAPI] Resolved event ${found.id} via ${sportKey} event discovery`);
+      return { eventId: found.id, sportKey: found.sport_key || sportKey };
+    }
+  }
+
   return null;
 }
 

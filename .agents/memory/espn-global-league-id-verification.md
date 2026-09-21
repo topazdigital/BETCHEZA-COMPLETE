@@ -7,6 +7,7 @@ description: The 8297–8347 range in KNOWN_GLOBAL_LEAGUES was added by assumed 
 Never assume ESPN global numeric league IDs follow a sequential pattern by competition type. Always verify against live ESPN API data (event UID format: `s:600~l:<id>~e:<eventId>`).
 
 ## Known verified mappings
+- `700` = **Premier League** (global scoreboard ID); global IDs must be translated through the numeric-to-internal league map before resolving ESPN request config.
 - `8301` = **NWSL** (US women's soccer) — NOT Copa del Rey. Confirmed from live scoreboard showing Boston Legacy FC, Washington Spirit, Utah Royals etc.
 - `16980` = NWSL (alternate ESPN numeric ID)
 - Copa del Rey is fetched via `esp.copa_del_rey` LEAGUE_CONFIGS slug and does NOT appear on the global scoreboard with ID 8301.

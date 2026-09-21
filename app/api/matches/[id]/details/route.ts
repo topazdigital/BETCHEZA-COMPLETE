@@ -7,7 +7,7 @@ import {
   getEspnEventIdFromMatchId,
   extractEspnOdds,
   getOddsIndexMarketsForMatch,
-  getOddsApiEventEntry,
+  resolveOddsApiEventEntry,
   fetchAllMarketsForEvent,
   type ESPNSummaryResponse,
   type UnifiedMatch,
@@ -1253,7 +1253,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     // per-event endpoint. Covers BTTS, Double Chance, DNB, 1st Half, alternate lines,
     // player props (goalscorers / NBA/NFL props) — every market type The Odds API
     // offers for this sport. Results cached per event for 1 hour to preserve quota.
-    const eventEntry = getOddsApiEventEntry(match.homeTeam.name, match.awayTeam.name);
+    const eventEntry = await resolveOddsApiEventEntry(
+      match.homeTeam.name,
+      match.awayTeam.name,
+      sportType,
+      cfg?.league,
+    );
     const realEventMarkets = eventEntry
       ? await fetchAllMarketsForEvent(eventEntry.sportKey, eventEntry.eventId)
       : [];
