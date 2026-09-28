@@ -1080,6 +1080,68 @@ async function fetchESPNPaginated(
   return data;
 }
 
+/**
+ * ESPN's scoreboard endpoint accepts a single YYYYMMDD date, but returns HTTP
+ * 400 for the seemingly natural YYYYMMDD-YYYYMMDD range form. Fetch bounded
+ * day-by-day windows instead of silently falling back to ESPN's default
+ * scoreboard (which often contains only a small, stale slice of fixtures).
+ */
+async function fetchESPNSingleDateWindow(
+  sport: string,
+  league: string,
+  startDate: Date,
+  endDate: Date,
+  batchSize = 6,
+): Promise<ESPNScoreboardResponseFull | null> {
+  const dates: string[] = [];
+  const cursor = new Date(startDate);
+  cursor.setUTCHours(0, 0, 0, 0);
+  const last = new Date(endDate);
+  last.setUTCHours(0, 0, 0, 0);
+
+  while (cursor <= last) {
+    dates.push(formatYYYYMMDD(cursor));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  const responses: ESPNScoreboardResponseFull[] = [];
+  for (let i = 0; i < dates.length; i += batchSize) {
+    const batch = dates.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map(async (date) => {
+      const url = `${ESPN_BASE_URL}/${sport}/${league}/scoreboard?dates=${date}&limit=300`;
+      const response = await directFetch(url, {
+        headers: { Accept: 'application/json' },
+        timeoutMs: 8_000,
+      });
+      return response.ok ? await response.json() as ESPNScoreboardResponseFull : null;
+    }));
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) responses.push(result.value);
+    }
+  }
+
+  const events: ESPNScoreboardResponseFull['events'] = [];
+  const seenIds = new Set<string>();
+  const leagues = new Map<string, { id: string; name: string; abbreviation: string }>();
+
+  for (const response of responses) {
+    for (const leagueInfo of response.leagues || []) {
+      leagues.set(leagueInfo.id, leagueInfo);
+    }
+    for (const event of response.events || []) {
+      if (!seenIds.has(event.id)) {
+        seenIds.add(event.id);
+        events.push(event);
+      }
+    }
+  }
+
+  return events.length
+    ? { events, leagues: Array.from(leagues.values()) }
+    : null;
+}
+
 // ============================================
 // ESPN Global Catch-all Scoreboard
 // ============================================
@@ -1825,57 +1887,16 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   const cached = getCached<UnifiedMatch[]>(cacheKey, CACHE_DURATION.live);
   if (cached) return cached;
 
-  // Pull a 120-day window (60 back → +60 ahead) so small/regional leagues
-  // whose fixtures are scheduled far in advance are discovered early.
-  // Auto-pagination (below) splits this into two 60-day halves when ESPN's
-  // 300-event cap is hit, giving up to 600 events over the full window.
-  // The supplementary today-only query (also below) ensures today's fixtures
-  // are never squeezed out of the cap by distant future events.
+  // ESPN rejects date ranges on the /all/ scoreboard endpoint. Fetch the
+  // recent/current day plus a short forward window one day at a time. This
+  // keeps today's fixtures from being squeezed out by distant events while
+  // avoiding the invalid range request that previously returned HTTP 400.
   const now = new Date();
-  const start = new Date(now); start.setUTCDate(start.getUTCDate() - 60);
-  const end = new Date(now); end.setUTCDate(end.getUTCDate() + 60);
-  const range = `${formatYYYYMMDD(start)}-${formatYYYYMMDD(end)}`;
-  // Add &limit=300 so ESPN returns all events (default page size is 25).
-  const url = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${range}&limit=300`;
-  // Skip Next.js data-cache for sports whose 60-day scoreboard responses exceed
-  // the 2MB item limit (soccer ~3.6MB, rugby ~2.3MB, and the usual suspects).
-  // Our in-memory setCache/getCache handles TTL for these.
-  const skipDataCache = sport === 'tennis' || sport === 'golf' || sport === 'baseball'
-    || sport === 'basketball' || sport === 'hockey'
-    || sport === 'soccer' || sport === 'rugby';
-  let data: ESPNScoreboardResponseFull | null = null;
-  try {
-    const r = await directFetch(url, {
-      headers: { Accept: 'application/json' },
-      timeoutMs: 10_000,
-    });
-    if (r.ok) data = await r.json() as ESPNScoreboardResponseFull;
-  } catch { /* fall through */ }
-
-  // Auto-paginate: if ESPN returned exactly 300 (its hard cap), split the
-  // date window in half and merge both halves to get all events.
-  if (data?.events?.length === 300) {
-    const midMs = Math.floor((start.getTime() + end.getTime()) / 2);
-    const mid = new Date(midMs);
-    const dayAfterMid = new Date(mid.getTime() + 86_400_000);
-    const fetchHalf = async (s: Date, e: Date): Promise<ESPNScoreboardResponseFull | null> => {
-      const halfRange = `${formatYYYYMMDD(s)}-${formatYYYYMMDD(e)}`;
-      const halfUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${halfRange}&limit=300`;
-      try {
-        const r = await directFetch(halfUrl, { headers: { Accept: 'application/json' }, timeoutMs: 8_000 });
-        return r.ok ? await r.json() as ESPNScoreboardResponseFull : null;
-      } catch { return null; }
-    };
-    const [left, right] = await Promise.all([fetchHalf(start, mid), fetchHalf(dayAfterMid, end)]);
-    const seenIds = new Set<string>();
-    const merged: ESPNScoreboardResponseFull['events'] = [];
-    for (const half of [left, right]) {
-      for (const ev of (half?.events ?? [])) {
-        if (!seenIds.has(ev.id)) { seenIds.add(ev.id); merged.push(ev); }
-      }
-    }
-    if (merged.length > 0) data = { ...data, events: merged } as ESPNScoreboardResponseFull;
-  }
+  const start = new Date(now);
+  start.setUTCDate(start.getUTCDate() - 1);
+  const end = new Date(now);
+  end.setUTCDate(end.getUTCDate() + (sport === 'soccer' ? 7 : 2));
+  let data = await fetchESPNSingleDateWindow(sport, 'all', start, end);
 
   // Soccer supplementary: ALSO fetch today-only to maximise same-day coverage.
   // The 60-day range hits the 300-event cap, meaning smaller LATAM/Asian leagues
@@ -1918,11 +1939,12 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   if (sport === 'tennis') {
     const combined: ESPNScoreboardResponseFull = { events: [...(data?.events || [])] } as ESPNScoreboardResponseFull;
     const seenTennisIds = new Set((data?.events || []).map(ev => ev.id));
+    const todayStr = formatYYYYMMDD(now);
     const tennisEndpoints = [
       `${ESPN_BASE_URL}/tennis/atp/scoreboard`,
       `${ESPN_BASE_URL}/tennis/wta/scoreboard`,
-      `${ESPN_BASE_URL}/tennis/atp/scoreboard?dates=${range}`,
-      `${ESPN_BASE_URL}/tennis/wta/scoreboard?dates=${range}`,
+      `${ESPN_BASE_URL}/tennis/atp/scoreboard?dates=${todayStr}`,
+      `${ESPN_BASE_URL}/tennis/wta/scoreboard?dates=${todayStr}`,
     ];
     await Promise.allSettled(
       tennisEndpoints.map(async (endpoint) => {
@@ -3884,33 +3906,14 @@ async function getESPNMatches(config: ESPNLeagueConfig): Promise<UnifiedMatch[]>
   const cached = getCached<UnifiedMatch[]>(cacheKey, CACHE_DURATION.live);
   if (cached) return cached;
 
-  // Fetch yesterday + next 8 days for every league — matches the 7-day
-  // display window plus a small buffer. Keeping this tight prevents huge
-  // payloads (MLB with a 28-day window exceeds 2MB) while still surfacing
-  // all upcoming fixtures in the rolling window.
-  const isPriority = PRIORITY_LEAGUE_KEYS.has(config.league);
-  let data: ESPNScoreboardResponseFull | null = null;
-  const now = new Date();
-  const start = new Date(now);
-  // High-frequency sports (NBA, NHL, MLB) produce huge payloads over wide
-  // ranges — cap them to 14 days back. Other priority leagues (EPL, La Liga
-  // etc.) have fewer games per day so 60 days back is safe. Smaller leagues
-  // get 14 days back (they have sparse data anyway).
-  const isHighFreq = ['nba', 'nhl', 'mlb', 'nfl'].includes(config.league);
-  const pastDays = isHighFreq ? 14 : isPriority ? 60 : 14;
-  start.setUTCDate(start.getUTCDate() - pastDays);
-  const end = new Date(now);
-  // Priority leagues (top-tier with daily fixtures): 60 days ahead so
-  // fixture lists surface 2 months out. Smaller / cup competitions
-  // (sporadic fixtures): 120 days so tipsters get full visibility.
-  end.setUTCDate(end.getUTCDate() + (isPriority ? 60 : 120));
-  // Use the paginated wrapper so that leagues with >300 events in the window
-  // (e.g. NFL regular season, dense international windows) are fully fetched
-  // by recursively splitting the date range when ESPN's 300-event cap is hit.
-  data = await fetchESPNPaginated(config.sport, config.league, start, end);
-  // Fall back to the default endpoint if range request fails or returns nothing.
+  // ESPN rejects date ranges for league scoreboards. The global daily feed
+  // below supplies the complete current schedule; per-league fetches stay to a
+  // single lightweight request for league-specific metadata and history.
+  let data: ESPNScoreboardResponseFull | null = await fetchESPN(config.sport, config.league);
+  // If the default scoreboard is empty, try today's valid single-date form.
   if (!data?.events?.length) {
-    data = await fetchESPN(config.sport, config.league);
+    const today = formatYYYYMMDD(new Date());
+    data = await fetchESPN(config.sport, config.league, 'scoreboard', today);
   }
 
   if (!data?.events) return [];
@@ -5594,17 +5597,31 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // The global /all/scoreboard returns the same events for leagues we already
   // fetch explicitly (NWSL, MLS, Liga MX, etc.) but maps them through the
   // generic KNOWN_GLOBAL_LEAGUES resolver, which can assign the wrong league
-  // name when a numeric ESPN league ID isn't in the curated map.  By skipping
-  // any global event whose ID is already seen we guarantee the per-league
-  // metadata (correct name, country, countryCode) always wins.
+  // name when a numeric ESPN league ID isn't in the curated map. Keep the
+  // per-league metadata, but still copy bookmaker odds from the global record
+  // when the per-league copy did not include them.
   const seenEspnEventIds = new Set<string>(
     allMatches.map(m => m.externalId).filter((id): id is string => Boolean(id))
   );
+  const existingByEspnEventId = new Map<string, UnifiedMatch>(
+    allMatches
+      .filter((m): m is UnifiedMatch & { externalId: string } => Boolean(m.externalId))
+      .map(m => [m.externalId, m]),
+  );
 
   // Filter global ESPN matches to only those not already covered per-league.
-  const novelGlobalEspnMatches = globalEspnMatches.filter(
-    m => !m.externalId || !seenEspnEventIds.has(m.externalId)
-  );
+  // For duplicates, enrich the retained per-league object with real odds from
+  // the global object. This matters because ESPN sometimes includes odds on
+  // /all/scoreboard but omits them on an individual league scoreboard.
+  const novelGlobalEspnMatches = globalEspnMatches.filter((m) => {
+    if (!m.externalId || !seenEspnEventIds.has(m.externalId)) return true;
+    const existing = existingByEspnEventId.get(m.externalId);
+    if (existing && !existing.odds && m.odds) {
+      existing.odds = m.odds;
+      existing.markets = m.markets;
+    }
+    return false;
+  });
 
   // Merge in supplementary sources (ESPN global catch-all, TheSportsDB,
   // OpenLigaDB, football-data.org, FotMob). Order matters because addMatch()
