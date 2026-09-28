@@ -7,13 +7,9 @@ export const runtime = 'nodejs';
 /**
  * GET /api/warmup
  *
- * Triggers a background ESPN cache refresh so today's matches load quickly
- * for users. Returns immediately without waiting for ESPN to complete —
- * previously this blocked for minutes when ESPN rate-limited the server IP,
- * causing deploy.sh health checks to fail and leaving the site with a 503.
- *
- * The actual data refresh continues in the background; subsequent requests
- * will serve fresh data once it's ready (stale-while-revalidate pattern).
+ * Refreshes the match cache after a deploy. The refresh function has internal
+ * time caps, so awaiting it here gives deploy.sh an honest match count without
+ * allowing a slow ESPN request to hold Apache open indefinitely.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET || 'betcheza-cron-2024';
@@ -23,12 +19,17 @@ export async function GET(request: Request) {
   }
 
   const t0 = Date.now();
-
-  // Fire-and-forget: trigger the ESPN refresh in the background.
-  // Do NOT await it — if ESPN is slow or rate-limiting this server's IP,
-  // waiting here causes Apache to 503 and the deploy to fail entirely.
-  // The 30-second cap in forceRefreshMatches() ensures it eventually resolves.
-  forceRefreshMatches().catch(() => { /* errors logged inside */ });
+  let refreshedMatches = 0;
+  let refreshResult: 'completed' | 'timed-out' | 'failed' = 'completed';
+  try {
+    const refreshed = await forceRefreshMatches();
+    refreshedMatches = refreshed.length;
+    // A sparse response is not a successful warmup. This prevents deploy.sh
+    // from treating the old five-match fallback as a healthy cache.
+    if (refreshedMatches < 50) refreshResult = 'timed-out';
+  } catch {
+    refreshResult = 'failed';
+  }
 
   // Pre-warm the home payload cache (with a short timeout so we don't block).
   const homeT = Date.now();
@@ -46,14 +47,15 @@ export async function GET(request: Request) {
       ? `ok (${Date.now() - homeT}ms)`
       : `http ${homeRes.status} (${Date.now() - homeT}ms)`;
   } catch {
-    homeResult = `timeout/error (${Date.now() - homeT}ms) — matches refreshing in background`;
+    homeResult = `timeout/error (${Date.now() - homeT}ms)`;
   }
 
   return NextResponse.json({
     ok: true,
     totalMs: Date.now() - t0,
     warmed: {
-      matches: 'refreshing in background',
+        matches: refreshedMatches,
+        refresh: refreshResult,
       home: homeResult,
     },
     ts: new Date().toISOString(),

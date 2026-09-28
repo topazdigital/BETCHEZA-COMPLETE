@@ -5537,12 +5537,30 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // fetch to take 15-30 s. With a cap of 15 the total time drops to ~3-5 s
   // because each batch completes cleanly before the next batch starts.
   const { default: pLimit } = await import('p-limit').catch(() => ({ default: null }));
-  const espnFetchFn = pLimit
+  const espnFetchFn: Promise<PromiseSettledResult<UnifiedMatch[]>[]> = pLimit
     ? (() => {
         const limit = pLimit(15);
         return Promise.allSettled(ESPN_LEAGUES.map(config => limit(() => getESPNMatches(config))));
       })()
     : Promise.allSettled(ESPN_LEAGUES.map(config => getESPNMatches(config)));
+  // The global ESPN scoreboard is the broad, fast path. Do not make it wait
+  // for every configured league: on the VPS one timed-out league batch could
+  // hold the entire refresh open for minutes while the global feed already
+  // had today's fixtures available. The per-league promise is still allowed
+  // to finish in the background, but the current refresh must be able to
+  // publish a successful global snapshot.
+  let espnDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const espnFetchWithDeadline = Promise.race<PromiseSettledResult<UnifiedMatch[]>[]>([
+    espnFetchFn,
+    new Promise<PromiseSettledResult<UnifiedMatch[]>[]>(resolve => {
+      espnDeadlineTimer = setTimeout(() => {
+        console.warn('[matches] per-league ESPN fetch deadline reached; using global/supplementary feeds');
+        resolve([]);
+      }, 25_000);
+    }),
+  ]).finally(() => {
+    if (espnDeadlineTimer) clearTimeout(espnDeadlineTimer);
+  });
 
   const [
     espnResults,
@@ -5557,7 +5575,7 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     apiSportsMatches,
     allSportsMatches,
   ] = await Promise.all([
-    espnFetchFn,
+    espnFetchWithDeadline,
     buildRealOddsIndex(),
     fetchTSDBMatches().catch(() => [] as UnifiedMatch[]),
     fetchOpenLigaDBMatches().catch(() => [] as UnifiedMatch[]),

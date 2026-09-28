@@ -545,30 +545,52 @@ else
 fi
 
 # ── Step 4e: Match cache handling ─────────────────────────────────────────────
-# Smart cache policy: preserve the file cache if it is < 2 hours old.
-# Wiping unconditionally caused blank homepages when ESPN timed out during the
-# post-deploy warmup — the only surviving data was 20 camel1 matches, which
-# is not enough to populate "Today's Matches". A cache that is < 2 h old is
-# still fresh enough to show immediately while the background refresh fills in.
-# Caches older than 2 h contain yesterday's schedule and should be wiped.
+# Preserve a recent meaningful snapshot so a temporary provider outage does
+# not blank the site. Never preserve a sparse snapshot: older versions of the
+# fetcher could write five fallback matches, and an age-only check would keep
+# that poisoned data alive across every deploy.
 echo -e "${YELLOW}[4e/5] Checking match cache age...${NC}"
 CACHE_FILE="${APP_DIR}/.local/state/matches-cache.json"
+MIN_CACHE_MATCHES=50
+INVALID_CACHE=false
 if [ -f "$CACHE_FILE" ]; then
   CACHE_MTIME=$(date -r "$CACHE_FILE" +%s 2>/dev/null || echo 0)
   CACHE_AGE_MIN=$(( ( $(date +%s) - CACHE_MTIME ) / 60 ))
-  if [ "$CACHE_AGE_MIN" -lt 120 ]; then
-    echo -e "${GREEN}  ✓ Match cache is ${CACHE_AGE_MIN}min old — preserving (ESPN warmup will patch it)${NC}"
+  CACHE_COUNT=$(node -e '
+    try {
+      const x = require(process.argv[1]);
+      process.stdout.write(String(Array.isArray(x.data) ? x.data.length : 0));
+    } catch (_) { process.stdout.write("0"); }
+  ' "$CACHE_FILE" 2>/dev/null || echo 0)
+  if [ "$CACHE_AGE_MIN" -lt 120 ] && [ "$CACHE_COUNT" -ge "$MIN_CACHE_MATCHES" ] 2>/dev/null; then
+    echo -e "${GREEN}  ✓ Match cache is ${CACHE_AGE_MIN}min old with ${CACHE_COUNT} matches — preserving${NC}"
   else
-    rm -f "$CACHE_FILE" 2>/dev/null && echo "  ✓ Removed stale matches-cache.json (${CACHE_AGE_MIN}min old)" || true
-    if command -v mysql &>/dev/null && [ -n "${DB_PASS:-}" ]; then
-      mysql -u"${DB_USER:-admin}" -p"${DB_PASS}" "${DB_NAME:-betcheza}" -e \
-        "DELETE FROM match_cache WHERE cache_key='all_matches';" 2>/dev/null \
-        && echo "  ✓ Cleared DB match_cache" || echo "  ⚠ DB clear skipped (table may not exist yet)"
-    fi
-    echo -e "${GREEN}[4e/5] Stale cache wiped — fresh fetch will run on next startup${NC}"
+    INVALID_CACHE=true
+    rm -f "$CACHE_FILE" 2>/dev/null && \
+      echo "  ✓ Removed matches-cache.json (${CACHE_COUNT} matches, ${CACHE_AGE_MIN}min old)" || true
   fi
 else
   echo -e "${YELLOW}  No existing match cache — fresh fetch will run on next startup${NC}"
+fi
+
+# The database cache can outlive the file cache. Clear it only when the local
+# file proved sparse/stale, and support both names used by the app/server env.
+# MYSQL_PWD avoids exposing the password in the process command line.
+if [ "$INVALID_CACHE" = true ] && command -v mysql &>/dev/null; then
+  DB_PASSWORD_VALUE="${DB_PASS:-${DB_PASSWORD:-}}"
+  DB_USER_VALUE="${DB_USER:-admin}"
+  DB_NAME_VALUE="${DB_NAME:-betcheza}"
+  if [ -z "$DB_PASSWORD_VALUE" ] && [ -f "$ENV_FILE" ]; then
+    DB_PASSWORD_VALUE=$(grep -E '^DB_(PASS|PASSWORD)=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)
+  fi
+  if [ -n "$DB_PASSWORD_VALUE" ]; then
+    MYSQL_PWD="$DB_PASSWORD_VALUE" mysql -u"$DB_USER_VALUE" "$DB_NAME_VALUE" -e \
+      "DELETE FROM match_cache WHERE cache_key='all_matches';" 2>/dev/null \
+      && echo "  ✓ Cleared sparse DB match_cache" || echo "  ⚠ DB cache clear skipped"
+  else
+    echo "  ⚠ DB cache clear skipped (database password unavailable to deploy shell)"
+  fi
+  echo -e "${GREEN}[4e/5] Sparse/stale cache removed — fresh fetch will run on startup${NC}"
 fi
 
 # ── Step 5: Restart Node.js (fast path: reload if running, start if not) ──────
@@ -618,10 +640,8 @@ if [ "$SUCCESS" = false ]; then
 fi
 
 # ── Step 6b: Pre-warm caches (SYNCHRONOUS) ────────────────────────────────────
-# Hit /api/warmup and WAIT for it to finish before completing the deploy.
-# Running warmup in the background meant users could hit the site during the
-# 8-10 second ESPN fetch window and see "No matches found". Now we block here
-# until warmup confirms match data is loaded, so the site is always ready.
+# Hit /api/warmup and wait for its bounded refresh result. The endpoint returns
+# a numeric count, so a sparse five-match fallback cannot be reported as warm.
 WARMUP_SECRET=$(grep -E '^CRON_SECRET=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
 WARMUP_SECRET="${WARMUP_SECRET:-betcheza-cron-2024}"
 echo -e "${YELLOW}Pre-warming caches (waiting for completion)...${NC}"
@@ -629,13 +649,13 @@ WARMUP_RESPONSE=$(curl -s \
   -H "Authorization: Bearer ${WARMUP_SECRET}" \
   --max-time 180 \
   "http://127.0.0.1:${APP_PORT}/api/warmup" 2>/dev/null)
-WARMUP_MATCHES=$(echo "$WARMUP_RESPONSE" | grep -o '"matches":"[^"]*"' | cut -d'"' -f4 | grep -o '^[0-9]*')
+WARMUP_MATCHES=$(echo "$WARMUP_RESPONSE" | grep -o '"matches":[0-9]*' | cut -d: -f2 | grep -o '^[0-9]*')
 if [ -n "$WARMUP_MATCHES" ] && [ "$WARMUP_MATCHES" -gt 0 ] 2>/dev/null; then
   echo -e "${GREEN}✓ Cache warm — ${WARMUP_MATCHES} matches loaded${NC}"
 else
   echo -e "${YELLOW}⚠ Warmup completed but match count unclear — response: ${WARMUP_RESPONSE}${NC}"
-  # Non-fatal: ESPN may have a temporary hiccup; the site will still serve
-  # any previously cached data and refresh in the background.
+  # Non-fatal: ESPN may have a temporary hiccup; keep the site up and let the
+  # next request/cron retry, but make the sparse result visible in the log.
 fi
 
 # ── End-to-end site check via Apache ──────────────────────────────────────────
