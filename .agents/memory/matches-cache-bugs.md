@@ -66,6 +66,17 @@ whole sport feed because one record is incomplete.
 **Why:** Provider payloads are not uniform across leagues and event states. A malformed
 or non-match record must be isolated so the remaining current-day fixtures survive.
 
+### 1f. VPS ESPN hostname fallback — FIXED
+The VPS can time out or be rejected on `site.api.espn.com` even when the same scoreboard
+is healthy elsewhere. The cold-start soccer request now tries ESPN's alternate
+`site.web.api.espn.com` host in parallel.
+
+**Fix:** Treat the alternate ESPN hostname as a transport fallback for the primary
+current-day scoreboard, and never cache an empty global provider response.
+
+**Why:** Caching an empty first response suppresses retries during the exact outage
+window that needs recovery; a second provider hostname gives the VPS another Akamai edge.
+
 ### 2. deploy.sh cleared match_cache on every deploy — FIXED
 Step 4e ran `DELETE FROM match_cache WHERE cache_key='all_matches'` on every deploy.
 Combined with bug #1, this guaranteed every deploy ended with empty caches:

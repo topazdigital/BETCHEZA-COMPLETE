@@ -877,6 +877,10 @@ export function getApiStatus() {
 // ============================================
 
 const ESPN_BASE_URL = 'https://site.api.espn.com/apis/site/v2/sports';
+// ESPN serves the same scoreboard API from this alternate host. Some VPS
+// egress IPs are intermittently rejected by one Akamai hostname but not the
+// other, so the cold-start current-day request tries both in parallel.
+const ESPN_ALTERNATE_BASE_URL = 'https://site.web.api.espn.com/apis/site/v2/sports';
 // Akamai rejects the default Node/Undici request identity from some server
 // IPs, while the same public scoreboard endpoint accepts this lightweight
 // client identity. Keep the header on every ESPN request, including global
@@ -1956,19 +1960,26 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   let data: ESPNScoreboardResponseFull | null = null;
   if (sport === 'soccer') {
     const todayStr = formatYYYYMMDD(now);
-    try {
-      const todayUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`;
-      // This is the primary cold-start feed for today's fixtures. Do not put
-      // it behind the per-league queue: a burst of slow league requests must
-      // never delay the one global request that can populate the whole day.
+    const todayUrls = [
+      `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`,
+      `${ESPN_ALTERNATE_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`,
+    ];
+    // This is the primary cold-start feed for today's fixtures. Do not put
+    // it behind the per-league queue: a burst of slow league requests must
+    // never delay the one global request that can populate the whole day.
+    const todayResults = await Promise.allSettled(todayUrls.map(async (todayUrl) => {
       const todayResponse = await directFetch(todayUrl, {
         headers: ESPN_REQUEST_HEADERS,
         timeoutMs: 8_000,
       });
-      if (todayResponse.ok) {
-        data = await todayResponse.json() as ESPNScoreboardResponseFull;
-      }
-    } catch { /* broad window below can still provide data */ }
+      if (!todayResponse.ok) throw new Error(`HTTP ${todayResponse.status}`);
+      return await todayResponse.json() as ESPNScoreboardResponseFull;
+    }));
+    const successfulToday = todayResults.find(
+      (result): result is PromiseFulfilledResult<ESPNScoreboardResponseFull> =>
+        result.status === 'fulfilled' && Boolean(result.value?.events?.length),
+    );
+    if (successfulToday) data = successfulToday.value;
   }
 
   // The current-day response is sufficient to unblock a cold start. Keep the
@@ -2091,7 +2102,9 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     if (combined.events.length) data = combined;
   }
   if (!data?.events?.length) {
-    setCache(cacheKey, []);
+    // Never cache an empty provider response. A transient VPS egress block or
+    // timeout must be retried on the next refresh instead of suppressing the
+    // global feed for the entire live-cache window.
     return [];
   }
 
