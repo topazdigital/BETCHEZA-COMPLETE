@@ -552,6 +552,7 @@ fi
 echo -e "${YELLOW}[4e/5] Checking match cache age...${NC}"
 CACHE_FILE="${APP_DIR}/.local/state/matches-cache.json"
 MIN_CACHE_MATCHES=50
+MIN_CACHE_TODAY_MATCHES=20
 INVALID_CACHE=false
 if [ -f "$CACHE_FILE" ]; then
   CACHE_MTIME=$(date -r "$CACHE_FILE" +%s 2>/dev/null || echo 0)
@@ -562,12 +563,26 @@ if [ -f "$CACHE_FILE" ]; then
       process.stdout.write(String(Array.isArray(x.data) ? x.data.length : 0));
     } catch (_) { process.stdout.write("0"); }
   ' "$CACHE_FILE" 2>/dev/null || echo 0)
-  if [ "$CACHE_AGE_MIN" -lt 120 ] && [ "$CACHE_COUNT" -ge "$MIN_CACHE_MATCHES" ] 2>/dev/null; then
-    echo -e "${GREEN}  ✓ Match cache is ${CACHE_AGE_MIN}min old with ${CACHE_COUNT} matches — preserving${NC}"
+  CACHE_TODAY_COUNT=$(node -e '
+    try {
+      const x = require(process.argv[1]);
+      const eatToday = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const n = (Array.isArray(x.data) ? x.data : []).filter(m => {
+        const t = new Date(m.kickoffTime).getTime();
+        return Number.isFinite(t) &&
+          new Date(t + 3 * 60 * 60 * 1000).toISOString().slice(0, 10) === eatToday;
+      }).length;
+      process.stdout.write(String(n));
+    } catch (_) { process.stdout.write("0"); }
+  ' "$CACHE_FILE" 2>/dev/null || echo 0)
+  if [ "$CACHE_AGE_MIN" -lt 120 ] &&
+     [ "$CACHE_COUNT" -ge "$MIN_CACHE_MATCHES" ] &&
+     [ "$CACHE_TODAY_COUNT" -ge "$MIN_CACHE_TODAY_MATCHES" ] 2>/dev/null; then
+    echo -e "${GREEN}  ✓ Match cache is ${CACHE_AGE_MIN}min old with ${CACHE_COUNT} matches (${CACHE_TODAY_COUNT} today) — preserving${NC}"
   else
     INVALID_CACHE=true
     rm -f "$CACHE_FILE" 2>/dev/null && \
-      echo "  ✓ Removed matches-cache.json (${CACHE_COUNT} matches, ${CACHE_AGE_MIN}min old)" || true
+      echo "  ✓ Removed matches-cache.json (${CACHE_COUNT} matches, ${CACHE_TODAY_COUNT} today, ${CACHE_AGE_MIN}min old)" || true
   fi
 else
   echo -e "${YELLOW}  No existing match cache — fresh fetch will run on next startup${NC}"
@@ -621,7 +636,7 @@ MAX_WAIT=90
 WAITED=0
 SUCCESS=false
 while [ $WAITED -lt $MAX_WAIT ]; do
-  HTTP_CODE=$(curl -s -o /tmp/betcheza_health.json -w "%{http_code}" "$HEALTH_URL" 2>/dev/null)
+  HTTP_CODE=$(curl -s --max-time 5 -o /tmp/betcheza_health.json -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo 000)
   if [ "$HTTP_CODE" = "200" ]; then
     DB_STATUS=$(grep -o '"db":"[^"]*"' /tmp/betcheza_health.json 2>/dev/null | cut -d'"' -f4)
     echo -e "${GREEN}✓ Node app is UP on port ${APP_PORT} (db: ${DB_STATUS:-unknown})${NC}"

@@ -4944,12 +4944,32 @@ const ALLMATCHES_STALE_TTL  = 60 * 60 * 1000;     // 60 min — serve stale befo
 // Never load or persist that partial response as the canonical all-matches
 // snapshot. This must match the write-side cache-poisoning floor below.
 const MIN_MEANINGFUL_MATCH_CACHE = 50;
+// A large future-dated snapshot can still be unusable for the homepage when
+// the provider omitted most of today's fixtures. Keep current-day coverage as
+// a separate quality gate so 1,000 future rows cannot disguise a 9-match feed.
+const MIN_MEANINGFUL_TODAY_MATCHES = 20;
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
 // Note: live match statuses/scores are patched every 5 min by the live-scores cron
 // (patchLiveScoresInMainCache), so a longer stale TTL doesn't affect score accuracy.
 // Use a persistent path (survives PM2 restarts and deploys) instead of /tmp.
 // .local/state/ is gitignored — the file is written after first fetch and
 // survives all subsequent restarts so cold-start delays never recur.
 const ALLMATCHES_PERSIST_FILE = `${process.cwd()}/.local/state/matches-cache.json`;
+
+function toEATDateKey(value: Date | string | number): string {
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? new Date(ms + EAT_OFFSET_MS).toISOString().slice(0, 10) : '';
+}
+
+function countTodayMatches(data: UnifiedMatch[]): number {
+  const today = toEATDateKey(Date.now());
+  return data.reduce((count, match) => count + (toEATDateKey(match.kickoffTime) === today ? 1 : 0), 0);
+}
+
+function hasMeaningfulMatchCoverage(data: UnifiedMatch[]): boolean {
+  return data.length >= MIN_MEANINGFUL_MATCH_CACHE
+    && countTodayMatches(data) >= MIN_MEANINGFUL_TODAY_MATCHES;
+}
 
 const g_allMatchesCache: {
   data: UnifiedMatch[] | null;
@@ -4982,7 +5002,7 @@ async function _readDbCache(): Promise<{ data: UnifiedMatch[]; ts: number } | nu
     if (!r.rows.length) return null;
     const row = r.rows[0];
     const data: UnifiedMatch[] = JSON.parse(row.payload);
-    if (!data || data.length < MIN_MEANINGFUL_MATCH_CACHE) return null;
+    if (!data || !hasMeaningfulMatchCoverage(data)) return null;
     return { data, ts: Number(row.cached_at) };
   } catch { return null; }
 }
@@ -5007,7 +5027,7 @@ async function _readFileCache(): Promise<{ data: UnifiedMatch[]; ts: number } | 
     const { readFile } = await import('fs/promises');
     const raw = await readFile(ALLMATCHES_PERSIST_FILE, 'utf8');
     const parsed: { ts: number; data: UnifiedMatch[] } = JSON.parse(raw);
-    if (!parsed?.data || parsed.data.length < MIN_MEANINGFUL_MATCH_CACHE) return null;
+    if (!parsed?.data || !hasMeaningfulMatchCoverage(parsed.data)) return null;
     return { data: parsed.data, ts: parsed.ts };
   } catch { return null; }
 }
@@ -5031,7 +5051,7 @@ _initPromise = (async () => {
   // ① FAST PATH — file cache has zero network dependency, always < 50ms.
   //    Load it first so the very first request never blocks on a DB connection.
   const fileResult = await _readFileCache();
-  if (fileResult && fileResult.data.length >= MIN_MEANINGFUL_MATCH_CACHE) {
+  if (fileResult && hasMeaningfulMatchCoverage(fileResult.data)) {
     // Only use file cache if it has meaningful data (cache poisoning guard)
     // AND is recent enough. Caches older than ALLMATCHES_STALE_TTL (4 hours)
     // are almost certainly from a previous day — loading them would serve
@@ -5076,12 +5096,12 @@ _initPromise = (async () => {
   //    first time we still serve cached matches once the pool stabilises.
   //    Only runs if memory cache is still empty after init.
   setTimeout(async () => {
-    if (g_allMatchesCache.data && g_allMatchesCache.data.length >= MIN_MEANINGFUL_MATCH_CACHE) return;
+    if (g_allMatchesCache.data && hasMeaningfulMatchCoverage(g_allMatchesCache.data)) return;
     try {
       const { resetPool } = await import('../db');
       resetPool(); // clear any stale circuit-breaker state
       const dbResult = await _readDbCache();
-      if (dbResult && dbResult.data.length >= MIN_MEANINGFUL_MATCH_CACHE) {
+      if (dbResult && hasMeaningfulMatchCoverage(dbResult.data)) {
         g_allMatchesCache.data = dbResult.data;
         g_allMatchesCache.ts   = Date.now();
       }
@@ -5729,11 +5749,12 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // wrote empty data on cold start (when previousCount === 0 and ESPN returned
   // nothing), poisoning the DB + file cache and causing persistent 0-match pages.
   const previousCount = g_allMatchesCache.data?.length ?? 0;
+  const todayCount = countTodayMatches(sorted);
   const MIN_MATCHES_TO_PERSIST = Math.max(
     MIN_MEANINGFUL_MATCH_CACHE,
     Math.floor(previousCount * 0.25),
   );
-  if (sorted.length >= MIN_MATCHES_TO_PERSIST) {
+  if (sorted.length >= MIN_MATCHES_TO_PERSIST && todayCount >= MIN_MEANINGFUL_TODAY_MATCHES) {
     g_allMatchesCache.data = sorted;
     g_allMatchesCache.ts = Date.now();
     matchesCacheVersion++;
@@ -5742,8 +5763,17 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   } else {
     // Fetch returned too few matches — keep existing in-memory data but
     // don't write to DB/file. Log so it's visible in PM2 logs.
-    console.warn(`[matches] fetch returned only ${sorted.length} matches (prev: ${previousCount}) — skipping cache write to protect existing data`);
+    console.warn(`[matches] fetch quality rejected: ${sorted.length} total, ${todayCount} today (prev: ${previousCount}) — skipping cache write`);
     if (previousCount > 0) {
+      const previousTodayCount = countTodayMatches(g_allMatchesCache.data || []);
+      // If the existing snapshot is also missing today's fixtures, clear it
+      // instead of re-stamping a poisoned cache and serving it indefinitely.
+      if (previousTodayCount < MIN_MEANINGFUL_TODAY_MATCHES) {
+        g_allMatchesCache.data = null;
+        g_allMatchesCache.ts = 0;
+        matchesCacheVersion++;
+        return sorted;
+      }
       // Only re-stamp the timestamp if the existing data is itself fresh (< 4h).
       // If the data is stale (> 4h old), do NOT update ts — let it expire naturally
       // so the next getAllMatches() call falls through to a live fetch instead of
