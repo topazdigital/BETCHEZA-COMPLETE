@@ -48,11 +48,23 @@ requests and global multi-day requests together. The shared circuit opened after
 timeouts, so warmup completed with zero matches even though individual ESPN requests
 could work.
 
-**Fix:** All ESPN requests share a six-request queue; current-day soccer is prioritized,
-and the per-league launch cap is six.
+**Fix:** All ESPN requests share a six-request queue; current-day soccer is fetched
+directly outside that queue, and the per-league launch cap is six. The soccer global
+feed resolves before slow secondary-sport scans, while wider windows remain best-effort.
 
 **Why:** Limiting only the per-league promise pool did not limit global `/all/scoreboard`
 and single-day requests, so the combined refresh could still overwhelm the VPS/provider.
+
+### 1e. Global ESPN payload shape — FIXED
+ESPN's global scoreboard can include placeholder or broadcast-only competition records
+without a `competitors` array. Calling `.find()` on that field rejected the entire
+global sport transformation, turning a valid 91-event response into zero matches.
+
+**Fix:** Skip global competition records with fewer than two competitors; never reject the
+whole sport feed because one record is incomplete.
+
+**Why:** Provider payloads are not uniform across leagues and event states. A malformed
+or non-match record must be isolated so the remaining current-day fixtures survive.
 
 ### 2. deploy.sh cleared match_cache on every deploy — FIXED
 Step 4e ran `DELETE FROM match_cache WHERE cache_key='all_matches'` on every deploy.
