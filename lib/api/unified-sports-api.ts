@@ -1958,18 +1958,28 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     const todayStr = formatYYYYMMDD(now);
     try {
       const todayUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`;
-      const todayResponse = await queuedESPNFetch(
-        todayUrl,
-        { headers: ESPN_REQUEST_HEADERS, timeoutMs: 8_000 },
-        100,
-      );
+      // This is the primary cold-start feed for today's fixtures. Do not put
+      // it behind the per-league queue: a burst of slow league requests must
+      // never delay the one global request that can populate the whole day.
+      const todayResponse = await directFetch(todayUrl, {
+        headers: ESPN_REQUEST_HEADERS,
+        timeoutMs: 8_000,
+      });
       if (todayResponse.ok) {
         data = await todayResponse.json() as ESPNScoreboardResponseFull;
       }
     } catch { /* broad window below can still provide data */ }
   }
 
-  const windowData = await fetchESPNSingleDateWindow(sport, 'all', start, end);
+  // The current-day response is sufficient to unblock a cold start. Keep the
+  // wider window best-effort so queued future-day requests cannot hold today's
+  // matches hostage when the provider is slow or rate-limited.
+  const windowData = sport === 'soccer' && data?.events?.length
+    ? await Promise.race([
+        fetchESPNSingleDateWindow(sport, 'all', start, end),
+        new Promise<ESPNScoreboardResponseFull | null>(resolve => setTimeout(() => resolve(null), 2_500)),
+      ])
+    : await fetchESPNSingleDateWindow(sport, 'all', start, end);
   if (windowData?.events?.length) {
     const existingEvents = data?.events || [];
     const seenIds = new Set(existingEvents.map(ev => ev.id));
@@ -2188,11 +2198,16 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
 
   for (const { event, competition, eventName, groupingName } of eventCompPairs) {
     if (!competition) continue;
-    const homeCompetitor = competition.competitors.find(c => c.homeAway === 'home');
-    const awayCompetitor = competition.competitors.find(c => c.homeAway === 'away');
+    // ESPN can include non-match competition records (for example a
+    // placeholder or broadcast-only record) without competitors. Ignore
+    // those records instead of rejecting the entire global sport feed.
+    const competitors = competition.competitors || [];
+    if (competitors.length < 2) continue;
+    const homeCompetitor = competitors.find(c => c.homeAway === 'home');
+    const awayCompetitor = competitors.find(c => c.homeAway === 'away');
     // Fallback: use order (1=home, 2=away) when homeAway field is absent
-    const comp0 = competition.competitors[0];
-    const comp1 = competition.competitors[1];
+    const comp0 = competitors[0];
+    const comp1 = competitors[1];
     const resolvedHome = homeCompetitor ?? (comp0?.order === 1 ? comp0 : comp0);
     const resolvedAway = awayCompetitor ?? (comp1?.order === 2 ? comp1 : comp1);
     const homeTeamName = resolvedHome?.team?.displayName || resolvedHome?.team?.name || resolvedHome?.athlete?.displayName || 'TBD';
@@ -2371,12 +2386,36 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
 }
 
 async function fetchESPNGlobalAll(): Promise<UnifiedMatch[]> {
+  // Soccer is the largest and most time-sensitive feed. Resolve it first so
+  // a cold start can publish today's fixtures even when another sport's
+  // fallback scan is slow (notably cricket's dense series-ID scan).
+  const soccerConfig = GLOBAL_SPORT_TYPES.find(s => s.sport === 'soccer')!;
+  const soccer = await fetchESPNGlobalSport(
+    soccerConfig.sport,
+    soccerConfig.sportType,
+    soccerConfig.sportId,
+  ).catch(error => {
+    console.warn('[ESPN global] soccer fetch failed:', error instanceof Error ? error.message : String(error));
+    return [] as UnifiedMatch[];
+  });
+
+  // Supplement soccer with other sports only when they respond quickly. These
+  // feeds are useful, but must not turn a healthy soccer refresh into a blank
+  // all-sports snapshot.
+  const otherConfigs = GLOBAL_SPORT_TYPES.filter(s => s.sport !== 'soccer');
   const all = await Promise.allSettled(
-    GLOBAL_SPORT_TYPES.map(s => fetchESPNGlobalSport(s.sport, s.sportType, s.sportId))
+    otherConfigs.map(s => Promise.race([
+      fetchESPNGlobalSport(s.sport, s.sportType, s.sportId),
+      new Promise<UnifiedMatch[]>(resolve => setTimeout(() => resolve([]), 1_500)),
+    ]))
   );
-  const out: UnifiedMatch[] = [];
+  const out: UnifiedMatch[] = [...soccer];
   for (const r of all) {
-    if (r.status === 'fulfilled') out.push(...r.value);
+    if (r.status === 'fulfilled') {
+      out.push(...r.value);
+    } else {
+      console.warn('[ESPN global] sport fetch failed:', r.reason instanceof Error ? r.reason.message : String(r.reason));
+    }
   }
   return out;
 }
