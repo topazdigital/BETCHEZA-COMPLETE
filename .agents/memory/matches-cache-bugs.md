@@ -42,6 +42,18 @@ requests the single-day ESPN scoreboard independently of the multi-day request.
 the single-day endpoint is healthy; preserving the larger snapshot made the homepage
 look populated but hid the actual day's fixtures.
 
+### 1d. Cold-start ESPN request storms — FIXED
+After the invalid cache was removed, the VPS cold start launched per-league ESPN
+requests and global multi-day requests together. The shared circuit opened after five
+timeouts, so warmup completed with zero matches even though individual ESPN requests
+could work.
+
+**Fix:** All ESPN requests share a six-request queue; current-day soccer is prioritized,
+and the per-league launch cap is six.
+
+**Why:** Limiting only the per-league promise pool did not limit global `/all/scoreboard`
+and single-day requests, so the combined refresh could still overwhelm the VPS/provider.
+
 ### 2. deploy.sh cleared match_cache on every deploy — FIXED
 Step 4e ran `DELETE FROM match_cache WHERE cache_key='all_matches'` on every deploy.
 Combined with bug #1, this guaranteed every deploy ended with empty caches:

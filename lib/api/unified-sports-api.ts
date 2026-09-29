@@ -886,6 +886,53 @@ const ESPN_REQUEST_HEADERS = {
   'User-Agent': 'curl/8.0',
 };
 
+// ESPN is sensitive to bursts from server IPs. The per-league fetcher and the
+// global catch-all fetcher run during the same refresh, so an unconstrained
+// Promise.all can create dozens of simultaneous connections and turn a
+// temporarily slow endpoint into five consecutive timeouts. Keep one shared
+// queue for every ESPN request, including the global/single-day paths.
+const ESPN_MAX_CONCURRENT_REQUESTS = 6;
+type ESPNRequestJob<T> = {
+  run: () => Promise<T>;
+  priority: number;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+};
+const espnRequestQueue: ESPNRequestJob<unknown>[] = [];
+let espnRequestsInFlight = 0;
+
+function drainESPNRequestQueue(): void {
+  while (
+    espnRequestsInFlight < ESPN_MAX_CONCURRENT_REQUESTS &&
+    espnRequestQueue.length > 0
+  ) {
+    // Current-day requests jump ahead of broad historical/future windows.
+    espnRequestQueue.sort((a, b) => b.priority - a.priority);
+    const job = espnRequestQueue.shift()!;
+    espnRequestsInFlight++;
+    void job.run().then(job.resolve, job.reject).finally(() => {
+      espnRequestsInFlight--;
+      drainESPNRequestQueue();
+    });
+  }
+}
+
+function queuedESPNFetch(
+  url: string,
+  options: Parameters<typeof directFetch>[1],
+  priority = 0,
+): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    espnRequestQueue.push({
+      run: () => directFetch(url, options),
+      priority,
+      resolve: resolve as (value: unknown | PromiseLike<unknown>) => void,
+      reject,
+    });
+    drainESPNRequestQueue();
+  });
+}
+
 interface ESPNEvent {
   id: string;
   name: string;
@@ -1022,7 +1069,7 @@ async function fetchESPN(
     || league === 'mlb' || league === 'nba' || league === 'nhl';
 
   try {
-    const response = await directFetch(url, {
+    const response = await queuedESPNFetch(url, {
       headers: ESPN_REQUEST_HEADERS,
       timeoutMs: 10_000,
     });
@@ -1117,7 +1164,7 @@ async function fetchESPNSingleDateWindow(
     const batch = dates.slice(i, i + batchSize);
     const results = await Promise.allSettled(batch.map(async (date) => {
       const url = `${ESPN_BASE_URL}/${sport}/${league}/scoreboard?dates=${date}&limit=300`;
-      const response = await directFetch(url, {
+      const response = await queuedESPNFetch(url, {
         headers: ESPN_REQUEST_HEADERS,
         timeoutMs: 8_000,
       });
@@ -1904,31 +1951,35 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   start.setUTCDate(start.getUTCDate() - 1);
   const end = new Date(now);
   end.setUTCDate(end.getUTCDate() + (sport === 'soccer' ? 7 : 2));
-  let data = await fetchESPNSingleDateWindow(sport, 'all', start, end);
-
-  // Soccer supplementary: ALWAYS fetch today-only to maximise same-day
-  // coverage. The multi-day request can fail or return an empty response while
-  // the single-day endpoint is healthy; gating this request on
-  // `data?.events?.length` silently replaced today's feed with a large
-  // future-dated snapshot (e.g. 918 total / 9 today).
+  // Fetch soccer's current day first. This request is the most valuable part
+  // of a cold-start refresh and receives queue priority over the broad window.
+  let data: ESPNScoreboardResponseFull | null = null;
   if (sport === 'soccer') {
     const todayStr = formatYYYYMMDD(now);
     try {
       const todayUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`;
-      const r = await directFetch(todayUrl, { headers: ESPN_REQUEST_HEADERS, timeoutMs: 8_000 });
-      if (r.ok) {
-        const todayData = await r.json() as ESPNScoreboardResponseFull;
-        if (todayData?.events?.length) {
-          const existingEvents = data?.events || [];
-          const seenTodayIds = new Set(existingEvents.map(ev => ev.id));
-          const newTodayEvents = todayData.events.filter(ev => !seenTodayIds.has(ev.id));
-          data = {
-            ...(data || {}),
-            events: [...existingEvents, ...newTodayEvents],
-          } as ESPNScoreboardResponseFull;
-        }
+      const todayResponse = await queuedESPNFetch(
+        todayUrl,
+        { headers: ESPN_REQUEST_HEADERS, timeoutMs: 8_000 },
+        100,
+      );
+      if (todayResponse.ok) {
+        data = await todayResponse.json() as ESPNScoreboardResponseFull;
       }
-    } catch { /* fall through — supplementary only */ }
+    } catch { /* broad window below can still provide data */ }
+  }
+
+  const windowData = await fetchESPNSingleDateWindow(sport, 'all', start, end);
+  if (windowData?.events?.length) {
+    const existingEvents = data?.events || [];
+    const seenIds = new Set(existingEvents.map(ev => ev.id));
+    const newEvents = windowData.events.filter(ev => !seenIds.has(ev.id));
+    data = {
+      ...(data || windowData),
+      events: [...existingEvents, ...newEvents],
+    } as ESPNScoreboardResponseFull;
+  } else if (!data?.events?.length) {
+    data = windowData;
   }
 
   // Fallback: if the date-range request returns nothing, try the default
@@ -1937,7 +1988,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   if (!data?.events?.length) {
     try {
       const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?limit=300`;
-      const r2 = await directFetch(defaultUrl, {
+      const r2 = await queuedESPNFetch(defaultUrl, {
         headers: ESPN_REQUEST_HEADERS,
         timeoutMs: 10_000,
       });
@@ -1960,10 +2011,10 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     await Promise.allSettled(
       tennisEndpoints.map(async (endpoint) => {
         try {
-          const r3 = await directFetch(endpoint, {
+          const r3 = await queuedESPNFetch(endpoint, {
             headers: ESPN_REQUEST_HEADERS,
             timeoutMs: 8_000,
-          });
+          }, 20);
           if (r3.ok) {
             const d3 = await r3.json() as ESPNScoreboardResponseFull;
             if (d3?.events?.length) {
@@ -2008,10 +2059,10 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       await Promise.allSettled(
         batch.map(async (lid) => {
           try {
-            const r = await directFetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
+            const r = await queuedESPNFetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
               headers: ESPN_REQUEST_HEADERS,
               timeoutMs: 4_000,
-            });
+            }, 0);
             if (r.ok) {
               const d = await r.json() as ESPNScoreboardResponseFull;
               const seriesName: string | undefined = (d as unknown as { leagues?: Array<{ name?: string }> }).leagues?.[0]?.name;
@@ -5562,15 +5613,15 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // Fetch ESPN matches, real odds index AND every supplementary feed in parallel.
   // Each .catch() ensures one source going down never blocks the others.
   //
-  // CONCURRENCY CAP: fire at most 15 ESPN league requests at a time.
+  // CONCURRENCY CAP: fire at most 6 ESPN league requests at a time.
   // Without this, all 180+ leagues fire simultaneously from the VPS, which
-  // triggers ESPN rate-limiting (429s / slow responses) and causes the entire
-  // fetch to take 15-30 s. With a cap of 15 the total time drops to ~3-5 s
-  // because each batch completes cleanly before the next batch starts.
+  // triggers ESPN rate-limiting (429s / slow responses) and causes the
+  // circuit breaker to open during a cold start. The shared ESPN request queue
+  // also limits global catch-all and per-league requests together.
   const { default: pLimit } = await import('p-limit').catch(() => ({ default: null }));
   const espnFetchFn: Promise<PromiseSettledResult<UnifiedMatch[]>[]> = pLimit
     ? (() => {
-        const limit = pLimit(15);
+        const limit = pLimit(6);
         return Promise.allSettled(ESPN_LEAGUES.map(config => limit(() => getESPNMatches(config))));
       })()
     : Promise.allSettled(ESPN_LEAGUES.map(config => getESPNMatches(config)));
