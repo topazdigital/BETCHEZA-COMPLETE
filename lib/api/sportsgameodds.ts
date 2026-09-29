@@ -458,9 +458,35 @@ export async function getSgoRealMarkets(
   startsAtIso: string,
 ): Promise<SgoRealMarket[]> {
   const bulkMarkets = getBulkRealMarkets(homeTeam, awayTeam, startsAtIso);
-  if (bulkMarkets && bulkMarkets.length > 0) return bulkMarkets;
+  // The bulk endpoint intentionally extracts only the cheap/common markets
+  // used by the match list. Do not return early here: match details need the
+  // complete event payload, including props, period markets and alternate
+  // lines that are not present in the bulk projection.
   const ev = await findSgoEvent(homeTeam, awayTeam, startsAtIso);
-  return ev ? buildSgoRealMarkets(ev, homeTeam, awayTeam) : [];
+  const eventMarkets = ev ? buildSgoRealMarkets(ev, homeTeam, awayTeam) : [];
+  if (!bulkMarkets?.length) return eventMarkets;
+  if (!eventMarkets.length) return bulkMarkets;
+
+  // Merge by market key and outcome name. When the same market is present in
+  // both projections, keep the best real bookmaker price for each outcome.
+  const merged = new Map<string, SgoRealMarket>();
+  for (const market of [...bulkMarkets, ...eventMarkets]) {
+    const existing = merged.get(market.key);
+    if (!existing) {
+      merged.set(market.key, {
+        ...market,
+        outcomes: market.outcomes.map(outcome => ({ ...outcome })),
+      });
+      continue;
+    }
+    const outcomes = new Map(existing.outcomes.map(outcome => [outcome.name, outcome]));
+    for (const outcome of market.outcomes) {
+      const previous = outcomes.get(outcome.name);
+      if (!previous || outcome.price > previous.price) outcomes.set(outcome.name, { ...outcome });
+    }
+    existing.outcomes = Array.from(outcomes.values());
+  }
+  return Array.from(merged.values()).filter(market => market.outcomes.length > 0);
 }
 
 // ─── Bulk match odds for the match list ───────────────────────────────

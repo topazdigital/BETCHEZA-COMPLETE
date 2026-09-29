@@ -92,6 +92,53 @@ function buildBookmakerOdds(summary: ESPNSummaryResponse, hasDraw: boolean) {
   return list;
 }
 
+type DetailMarket = NonNullable<UnifiedMatch['markets']>[number];
+
+/**
+ * Keep every provider-backed market while collapsing duplicate projections
+ * from ESPN, SGO, the odds index, and the cached match-list record.
+ *
+ * A market key identifies the market/line. Outcomes are merged by selection
+ * and line, keeping the highest real price when two providers expose the same
+ * selection. This prevents a rich market source from being replaced by a
+ * partial 1X2 snapshot.
+ */
+function mergeDetailMarkets(...sources: Array<DetailMarket[] | undefined>): DetailMarket[] {
+  const merged = new Map<string, DetailMarket>();
+
+  for (const markets of sources) {
+    for (const market of markets || []) {
+      if (!market?.key || !market.outcomes?.length || market.isDerived) continue;
+
+      const existing = merged.get(market.key);
+      if (!existing) {
+        merged.set(market.key, {
+          ...market,
+          outcomes: market.outcomes.map(outcome => ({ ...outcome })),
+        });
+        continue;
+      }
+
+      const outcomes = new Map(
+        existing.outcomes.map(outcome => [
+          `${outcome.name.trim().toLowerCase()}|${outcome.point ?? ''}`,
+          outcome,
+        ]),
+      );
+      for (const outcome of market.outcomes) {
+        const outcomeKey = `${outcome.name.trim().toLowerCase()}|${outcome.point ?? ''}`;
+        const previous = outcomes.get(outcomeKey);
+        if (!previous || outcome.price > previous.price) {
+          outcomes.set(outcomeKey, { ...outcome });
+        }
+      }
+      existing.outcomes = Array.from(outcomes.values());
+    }
+  }
+
+  return Array.from(merged.values()).filter(market => market.outcomes.length > 0);
+}
+
 type RosterEntry = NonNullable<ESPNSummaryResponse['rosters']>[number];
 
 // Position priority for sorting starters back-to-front:
@@ -1217,9 +1264,15 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     // Only bookmaker-backed markets are allowed into the detail response.
     // Never manufacture BTTS, totals, handicap, or correct-score prices from
     // 1X2 probabilities.
+    // Match-list records already contain real provider-backed markets. Keep
+    // them in the detail response as a fallback: the per-event provider
+    // lookup may be unavailable while the list cache still has totals,
+    // handicaps, BTTS, and alternate lines.
+    const cachedMatchMarkets = (match.markets || []).filter(m => !m.isDerived);
     const realMarketGroups = [
       (summaryMarkets || []).filter(m => !m.isDerived),
       sgoMarkets,
+      cachedMatchMarkets,
     ];
 
     // Inject additional Asian Handicap lines from the real-odds index (TheOddsAPI
@@ -1227,8 +1280,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const indexMarkets = getOddsIndexMarketsForMatch(match.homeTeam.name, match.awayTeam.name);
     const ahIndexLines = indexMarkets.filter(m => m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt'));
     const indexRealMarkets = indexMarkets.filter(m => !m.isDerived);
-    const baseMarkets = [...realMarketGroups.flat(), ...indexRealMarkets]
-      .filter(m => !m.isDerived);
+    const baseMarkets = mergeDetailMarkets(...realMarketGroups, indexRealMarkets);
     const presentAhKeys = new Set(baseMarkets.map(m => m.key));
     const newAhLines: typeof baseMarkets = [];
     for (const ahMkt of ahIndexLines) {
@@ -1263,28 +1315,20 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       ? await fetchAllMarketsForEvent(eventEntry.sportKey, eventEntry.eventId)
       : [];
 
-    let finalMarkets: typeof baseMarkets;
-    if (realEventMarkets.length > 0) {
-      // Real per-event markets are highest quality and supplement ESPN markets
-      // not covered by the event response.
-      const realKeys = new Set(realEventMarkets.map(m => m.key));
-      finalMarkets = [
-        ...realEventMarkets,
-        ...baseMarkets.filter(m => !realKeys.has(m.key)),
-      ];
-    } else {
-      // No per-event real markets available. Fall back to the real ESPN
-      // pickcenter markets plus any real index markets.
-      const FAKE_PREFIXES = ['corners_', 'corners_total_', 'cards_total_', 'race_corners'];
-      const FAKE_EXACT = new Set(['red_card', 'penalty_awarded', 'booking_points']);
-      const isFake = (key: string) =>
-        FAKE_EXACT.has(key) || FAKE_PREFIXES.some(p => key.startsWith(p));
-      finalMarkets = [
-        ...baseMarkets.slice(0, ahEndIdx),
-        ...renumbered,
-        ...baseMarkets.slice(ahEndIdx),
-      ].filter(m => !isFake(m.key));
-    }
+    const FAKE_PREFIXES = ['corners_', 'corners_total_', 'cards_total_', 'race_corners'];
+    const FAKE_EXACT = new Set(['red_card', 'penalty_awarded', 'booking_points']);
+    const isFake = (key: string) =>
+      FAKE_EXACT.has(key) || FAKE_PREFIXES.some(p => key.startsWith(p));
+    const indexedMarketsWithAlternates = [
+      ...baseMarkets.slice(0, ahEndIdx),
+      ...renumbered,
+      ...baseMarkets.slice(ahEndIdx),
+    ];
+    // Per-event markets supplement, rather than replace, markets already
+    // present in the match-list cache. This is what preserves SGO/ESPN
+    // markets when The Odds API only returns a subset for the event.
+    const finalMarkets = mergeDetailMarkets(realEventMarkets, indexedMarketsWithAlternates)
+      .filter(m => !isFake(m.key));
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 

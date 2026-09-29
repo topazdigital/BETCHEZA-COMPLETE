@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUserSettings } from '@/contexts/user-settings-context';
@@ -54,7 +54,16 @@ export function OddsComparison({ odds, bookmakers, markets, matchContext }: Odds
   const { settings } = useUserSettings();
   const [selectedMarket, setSelectedMarket] = useState(markets[0]?.slug || '1x2');
 
-  const currentMarket = markets.find((m) => m.slug === selectedMarket);
+  // The details payload can replace/expand markets after the first client
+  // render. Keep the active tab valid so the newly returned markets are
+  // immediately visible instead of leaving the table on an empty selection.
+  useEffect(() => {
+    if (markets.length > 0 && !markets.some(market => market.slug === selectedMarket)) {
+      setSelectedMarket(markets[0].slug);
+    }
+  }, [markets, selectedMarket]);
+
+  const currentMarket = markets.find((m) => m.slug === selectedMarket) || markets[0];
   const marketOdds = odds.filter((o) => o.market_id === currentMarket?.id);
 
   // Bookmakers that have at least one odd for this market
@@ -78,7 +87,7 @@ export function OddsComparison({ odds, bookmakers, markets, matchContext }: Odds
       <Tabs value={selectedMarket} onValueChange={setSelectedMarket} className="w-full">
         <div className="border-b border-border overflow-x-auto">
           <TabsList className="h-auto w-max min-w-full justify-start rounded-none bg-transparent p-0">
-            {markets.slice(0, 6).map((market) => (
+            {markets.map((market) => (
               <TabsTrigger
                 key={market.slug}
                 value={market.slug}

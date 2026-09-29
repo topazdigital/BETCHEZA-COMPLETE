@@ -2284,7 +2284,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                             {mkt.name}
                           </p>
                           <div className={cn('grid gap-1', cols)}>
-                            {mkt.outcomes.slice(0, Math.min(mkt.outcomes.length, 6)).map((o, i) => {
+                            {mkt.outcomes.map((o, i) => {
                               const sel = !(isFinished || isPostponed) && isSelected(match.id, mkt.key, o.name)
                               return (
                                 <div key={i} className="relative group">
@@ -2954,7 +2954,9 @@ function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match:
         {/* Market rows */}
         <div className="space-y-1.5">
           {visibleMarkets.map((mkt) => {
-            const displayOutcomes = mkt.outcomes.slice(0, Math.min(mkt.outcomes.length, 6))
+            // Never truncate provider markets here. Player props and
+            // alternate lines commonly contain more than six outcomes.
+            const displayOutcomes = mkt.outcomes
             const cols = displayOutcomes.length === 2 ? 'grid-cols-2'
               : displayOutcomes.length === 3 ? 'grid-cols-3'
               : 'grid-cols-2'

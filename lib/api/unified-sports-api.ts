@@ -4933,7 +4933,6 @@ const SPORT_FULL_MARKETS: Record<string, string> = {
     'player_goal_scorer_first',   // First Goalscorer
     'player_goal_scorer_last',    // Last Goalscorer
     'player_shot_on_target',      // Player Shots on Target
-    'player_goal_scorer_2plus',   // Player to Score 2+
   ].join(','),
   basketball: [
     'h2h', 'spreads', 'totals', 'team_totals',
@@ -4993,6 +4992,90 @@ const SPORT_FULL_MARKETS: Record<string, string> = {
 const _eventMarketsCache = new Map<string, { markets: Market[]; ts: number }>();
 const EVENT_MARKETS_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// The Odds API rejects an entire request when one requested market is not
+// offered for a sport, league or account tier. Keep the request broad, but
+// isolate player props so a missing/paid prop market cannot erase the core
+// markets. The fallback also makes this resilient to provider-side market
+// changes without hiding totals, handicaps or BTTS.
+const PLAYER_MARKET_KEYS: Record<string, string> = {
+  soccer: [
+    'player_goal_scorer_anytime',
+    'player_goal_scorer_first',
+    'player_goal_scorer_last',
+    'player_shot_on_target',
+  ].join(','),
+  basketball: [
+    'player_points', 'player_rebounds', 'player_assists', 'player_threes',
+    'player_blocks', 'player_steals', 'player_double_double',
+    'player_triple_double', 'player_points_rebounds_assists',
+    'player_points_rebounds', 'player_points_assists',
+    'player_rebounds_assists',
+  ].join(','),
+  americanfootball: [
+    'player_pass_tds', 'player_pass_yds', 'player_pass_completions',
+    'player_rush_yds', 'player_rush_attempts', 'player_receptions',
+    'player_receiving_yds', 'player_anytime_td', 'player_1st_td',
+    'player_last_td', 'player_tackles_assists', 'player_kicking_points',
+    'player_field_goals', 'player_sacks',
+  ].join(','),
+  icehockey: [
+    'player_points', 'player_goals', 'player_assists',
+    'player_shots_on_goal', 'player_power_play_points',
+    'player_blocked_shots',
+  ].join(','),
+  baseball: [
+    'batter_home_runs', 'batter_hits', 'batter_total_bases',
+    'batter_rbis', 'batter_runs_scored', 'batter_stolen_bases',
+    'pitcher_strikeouts', 'pitcher_hits_allowed', 'pitcher_walks',
+    'pitcher_earned_runs',
+  ].join(','),
+};
+
+function mergeOddsApiEvents(events: TheOddsApiEvent[]): TheOddsApiEvent | null {
+  const first = events.find(event => event?.bookmakers?.length);
+  if (!first) return null;
+
+  const bookmakers = new Map<string, NonNullable<TheOddsApiEvent['bookmakers']>[number]>();
+  for (const event of events) {
+    for (const bookmaker of event.bookmakers ?? []) {
+      const existing = bookmakers.get(bookmaker.key);
+      if (!existing) {
+        bookmakers.set(bookmaker.key, {
+          ...bookmaker,
+          markets: bookmaker.markets.map(market => ({
+            ...market,
+            outcomes: market.outcomes.map(outcome => ({ ...outcome })),
+          })),
+        });
+        continue;
+      }
+
+      const markets = new Map(existing.markets.map(market => [market.key, market]));
+      for (const market of bookmaker.markets) {
+        const current = markets.get(market.key);
+        if (!current) {
+          markets.set(market.key, {
+            ...market,
+            outcomes: market.outcomes.map(outcome => ({ ...outcome })),
+          });
+          continue;
+        }
+        const outcomes = new Map(current.outcomes.map(outcome => [
+          `${outcome.name}|${outcome.point ?? ''}`,
+          outcome,
+        ]));
+        for (const outcome of market.outcomes) {
+          outcomes.set(`${outcome.name}|${outcome.point ?? ''}`, { ...outcome });
+        }
+        current.outcomes = Array.from(outcomes.values());
+      }
+      existing.markets = Array.from(markets.values());
+    }
+  }
+
+  return { ...first, bookmakers: Array.from(bookmakers.values()) };
+}
+
 /**
  * Fetch ALL real market odds for a specific event from The Odds API.
  * Uses the per-event endpoint which is quota-efficient (only fires on match-detail
@@ -5016,16 +5099,23 @@ export async function fetchAllMarketsForEvent(
   const sportFamily = sportKey.split('_')[0];
   const marketsStr = SPORT_FULL_MARKETS[sportFamily] ?? SPORT_FULL_MARKETS.default;
 
-  const data = await fetchTheOddsAPI(`sports/${sportKey}/events/${eventId}/odds`, {
-    regions: 'uk,eu,us',
-    markets: marketsStr,
-    oddsFormat: 'decimal',
-    dateFormat: 'iso',
-    // Prefer DraftKings; include major US/EU books as fallback so we always
-    // have real odds even when DraftKings doesn't offer a specific market.
-    bookmakers: 'draftkings,fanduel,betmgm,pointsbet,williamhill,bet365,betway',
-  }) as TheOddsApiEvent | null;
+  const request = (markets: string) =>
+    fetchTheOddsAPI(`sports/${sportKey}/events/${eventId}/odds`, {
+      regions: 'uk,eu,us',
+      markets,
+      oddsFormat: 'decimal',
+      dateFormat: 'iso',
+      // Prefer DraftKings; include major US/EU books as fallback so we always
+      // have real odds even when DraftKings doesn't offer a specific market.
+      bookmakers: 'draftkings,fanduel,betmgm,pointsbet,williamhill,bet365,betway',
+    }) as Promise<TheOddsApiEvent | null>;
 
+  const playerMarkets = PLAYER_MARKET_KEYS[sportFamily];
+  const responses = await Promise.all([
+    request(marketsStr),
+    ...(playerMarkets ? [request(playerMarkets)] : []),
+  ]);
+  const data = mergeOddsApiEvents(responses.filter((event): event is TheOddsApiEvent => !!event));
   if (!data) return [];
 
   const { markets } = aggregateBookmakerOdds(data);
