@@ -877,6 +877,14 @@ export function getApiStatus() {
 // ============================================
 
 const ESPN_BASE_URL = 'https://site.api.espn.com/apis/site/v2/sports';
+// Akamai rejects the default Node/Undici request identity from some server
+// IPs, while the same public scoreboard endpoint accepts this lightweight
+// client identity. Keep the header on every ESPN request, including global
+// and single-day scoreboards.
+const ESPN_REQUEST_HEADERS = {
+  Accept: 'application/json',
+  'User-Agent': 'curl/8.0',
+};
 
 interface ESPNEvent {
   id: string;
@@ -1015,7 +1023,7 @@ async function fetchESPN(
 
   try {
     const response = await directFetch(url, {
-      headers: { 'Accept': 'application/json' },
+      headers: ESPN_REQUEST_HEADERS,
       timeoutMs: 10_000,
     });
 
@@ -1110,7 +1118,7 @@ async function fetchESPNSingleDateWindow(
     const results = await Promise.allSettled(batch.map(async (date) => {
       const url = `${ESPN_BASE_URL}/${sport}/${league}/scoreboard?dates=${date}&limit=300`;
       const response = await directFetch(url, {
-        headers: { Accept: 'application/json' },
+        headers: ESPN_REQUEST_HEADERS,
         timeoutMs: 8_000,
       });
       return response.ok ? await response.json() as ESPNScoreboardResponseFull : null;
@@ -1906,7 +1914,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     const todayStr = formatYYYYMMDD(now);
     try {
       const todayUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`;
-      const r = await directFetch(todayUrl, { headers: { Accept: 'application/json' }, timeoutMs: 8_000 });
+      const r = await directFetch(todayUrl, { headers: ESPN_REQUEST_HEADERS, timeoutMs: 8_000 });
       if (r.ok) {
         const todayData = await r.json() as ESPNScoreboardResponseFull;
         if (todayData?.events?.length) {
@@ -1927,7 +1935,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     try {
       const defaultUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?limit=300`;
       const r2 = await directFetch(defaultUrl, {
-        headers: { Accept: 'application/json' },
+        headers: ESPN_REQUEST_HEADERS,
         timeoutMs: 10_000,
       });
       if (r2.ok) data = await r2.json() as ESPNScoreboardResponseFull;
@@ -1950,7 +1958,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       tennisEndpoints.map(async (endpoint) => {
         try {
           const r3 = await directFetch(endpoint, {
-            headers: { Accept: 'application/json' },
+            headers: ESPN_REQUEST_HEADERS,
             timeoutMs: 8_000,
           });
           if (r3.ok) {
@@ -1998,7 +2006,7 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
         batch.map(async (lid) => {
           try {
             const r = await directFetch(`${ESPN_BASE_URL}/cricket/${lid}/scoreboard`, {
-              headers: { Accept: 'application/json' },
+              headers: ESPN_REQUEST_HEADERS,
               timeoutMs: 4_000,
             });
             if (r.ok) {
@@ -3533,7 +3541,7 @@ export async function fetchESPNSummary(sport: string, league: string, eventId: s
   const url = `${ESPN_BASE_URL}/${sport}/${league}/summary?event=${eventId}`;
   try {
     const r = await fetch(url, {
-      headers: { 'Accept': 'application/json' },
+      headers: ESPN_REQUEST_HEADERS,
       // Reduced from 8s → 4s: fail fast; negative cache prevents re-flooding.
       signal: AbortSignal.timeout(4000),
       next: { revalidate: 60 },
