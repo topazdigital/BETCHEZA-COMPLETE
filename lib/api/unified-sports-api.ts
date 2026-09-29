@@ -1906,11 +1906,12 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   end.setUTCDate(end.getUTCDate() + (sport === 'soccer' ? 7 : 2));
   let data = await fetchESPNSingleDateWindow(sport, 'all', start, end);
 
-  // Soccer supplementary: ALSO fetch today-only to maximise same-day coverage.
-  // The 60-day range hits the 300-event cap, meaning smaller LATAM/Asian leagues
-  // scheduled for today can be truncated out. A separate today query gets up to
-  // 300 more events specifically for today's date so no league is missed.
-  if (sport === 'soccer' && data?.events?.length) {
+  // Soccer supplementary: ALWAYS fetch today-only to maximise same-day
+  // coverage. The multi-day request can fail or return an empty response while
+  // the single-day endpoint is healthy; gating this request on
+  // `data?.events?.length` silently replaced today's feed with a large
+  // future-dated snapshot (e.g. 918 total / 9 today).
+  if (sport === 'soccer') {
     const todayStr = formatYYYYMMDD(now);
     try {
       const todayUrl = `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`;
@@ -1918,11 +1919,13 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
       if (r.ok) {
         const todayData = await r.json() as ESPNScoreboardResponseFull;
         if (todayData?.events?.length) {
-          const seenTodayIds = new Set((data.events || []).map(ev => ev.id));
+          const existingEvents = data?.events || [];
+          const seenTodayIds = new Set(existingEvents.map(ev => ev.id));
           const newTodayEvents = todayData.events.filter(ev => !seenTodayIds.has(ev.id));
-          if (newTodayEvents.length > 0) {
-            data = { ...data, events: [...data.events, ...newTodayEvents] } as ESPNScoreboardResponseFull;
-          }
+          data = {
+            ...(data || {}),
+            events: [...existingEvents, ...newTodayEvents],
+          } as ESPNScoreboardResponseFull;
         }
       }
     } catch { /* fall through — supplementary only */ }
@@ -4957,7 +4960,7 @@ const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
 const ALLMATCHES_PERSIST_FILE = `${process.cwd()}/.local/state/matches-cache.json`;
 
 function toEATDateKey(value: Date | string | number): string {
-  const ms = new Date(value).getTime();
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
   return Number.isFinite(ms) ? new Date(ms + EAT_OFFSET_MS).toISOString().slice(0, 10) : '';
 }
 

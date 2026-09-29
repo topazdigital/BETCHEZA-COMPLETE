@@ -29,6 +29,19 @@ of the persistence boundary.
 **Why:** ESPN/FotMob/SofaScore can be simultaneously rate-limited or blocked; a
 five-match snapshot is not a trustworthy replacement for a multi-sport cache.
 
+### 1c. Total-count checks are not enough — FIXED
+A cache can contain hundreds or thousands of future fixtures while omitting most of
+today's fixtures. The VPS showed 1,007 cached matches but only 9 for the current EAT
+date, all from a no-odds supplementary source.
+
+**Fix:** Cache reads, writes, and deploy preservation now require both a meaningful
+total count and a current-day coverage floor. The global soccer fetch also always
+requests the single-day ESPN scoreboard independently of the multi-day request.
+
+**Why:** The multi-day/global request can fail or return a future-heavy snapshot while
+the single-day endpoint is healthy; preserving the larger snapshot made the homepage
+look populated but hid the actual day's fixtures.
+
 ### 2. deploy.sh cleared match_cache on every deploy — FIXED
 Step 4e ran `DELETE FROM match_cache WHERE cache_key='all_matches'` on every deploy.
 Combined with bug #1, this guaranteed every deploy ended with empty caches:
