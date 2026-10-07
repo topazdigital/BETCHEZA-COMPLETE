@@ -1216,10 +1216,7 @@ async function fetchESPNSingleDateWindow(
 // that's cached per worker.
 const GLOBAL_SPORT_TYPES: Array<{ sport: string; sportType: ESPNLeagueConfig['sportType']; sportId: number }> = [
   { sport: 'soccer', sportType: 'soccer', sportId: 1 },
-  { sport: 'basketball', sportType: 'basketball', sportId: 2 },
   { sport: 'tennis', sportType: 'tennis', sportId: 3 },
-  { sport: 'baseball', sportType: 'baseball', sportId: 6 },
-  { sport: 'hockey', sportType: 'hockey', sportId: 7 },
   { sport: 'rugby', sportType: 'rugby', sportId: 8 },
   { sport: 'cricket', sportType: 'cricket', sportId: 4 },
   { sport: 'mma', sportType: 'mma', sportId: 27 },
@@ -1960,26 +1957,57 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
   let data: ESPNScoreboardResponseFull | null = null;
   if (sport === 'soccer') {
     const todayStr = formatYYYYMMDD(now);
+    const previousDayStr = formatYYYYMMDD(start);
     const todayUrls = [
       `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`,
       `${ESPN_ALTERNATE_BASE_URL}/${sport}/all/scoreboard?dates=${todayStr}&limit=300`,
     ];
-    // This is the primary cold-start feed for today's fixtures. Do not put
-    // it behind the per-league queue: a burst of slow league requests must
-    // never delay the one global request that can populate the whole day.
-    const todayResults = await Promise.allSettled(todayUrls.map(async (todayUrl) => {
-      const todayResponse = await directFetch(todayUrl, {
+    const previousDayUrls = [
+      `${ESPN_BASE_URL}/${sport}/all/scoreboard?dates=${previousDayStr}&limit=300`,
+      `${ESPN_ALTERNATE_BASE_URL}/${sport}/all/scoreboard?dates=${previousDayStr}&limit=300`,
+    ];
+    const fetchScoreboard = async (url: string): Promise<ESPNScoreboardResponseFull> => {
+      const response = await directFetch(url, {
         headers: ESPN_REQUEST_HEADERS,
         timeoutMs: 8_000,
       });
-      if (!todayResponse.ok) throw new Error(`HTTP ${todayResponse.status}`);
-      return await todayResponse.json() as ESPNScoreboardResponseFull;
-    }));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json() as ESPNScoreboardResponseFull;
+    };
+    // This is the primary cold-start feed for today's fixtures. Do not put
+    // it behind the per-league queue: a burst of slow league requests must
+    // never delay the one global request that can populate the whole day.
+    const previousDayResultsPromise = Promise.allSettled(previousDayUrls.map(fetchScoreboard));
+    const todayResults = await Promise.allSettled(todayUrls.map(fetchScoreboard));
     const successfulToday = todayResults.find(
       (result): result is PromiseFulfilledResult<ESPNScoreboardResponseFull> =>
         result.status === 'fulfilled' && Boolean(result.value?.events?.length),
     );
     if (successfulToday) data = successfulToday.value;
+
+    // A visitor's local "today" can overlap the previous UTC date (for
+    // example, 02:00 EAT is still the prior date in UTC). Fetch that day
+    // directly instead of through the shared league queue, where a cold-start
+    // burst can otherwise outlast the short global-window deadline.
+    const previousDayResults = await Promise.race([
+      previousDayResultsPromise,
+      new Promise<PromiseSettledResult<ESPNScoreboardResponseFull>[]>(resolve =>
+        setTimeout(() => resolve([]), 4_000)
+      ),
+    ]);
+    const successfulPreviousDay = previousDayResults.find(
+      (result): result is PromiseFulfilledResult<ESPNScoreboardResponseFull> =>
+        result.status === 'fulfilled' && Boolean(result.value?.events?.length),
+    );
+    if (successfulPreviousDay) {
+      const existingEvents = data?.events || [];
+      const seenIds = new Set(existingEvents.map(event => event.id));
+      const previousEvents = successfulPreviousDay.value.events.filter(event => !seenIds.has(event.id));
+      data = {
+        ...(data || successfulPreviousDay.value),
+        events: [...existingEvents, ...previousEvents],
+      } as ESPNScoreboardResponseFull;
+    }
   }
 
   // The current-day response is sufficient to unblock a cold start. Keep the
@@ -5753,7 +5781,9 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   };
 
   // Fetch ESPN matches, real odds index AND every supplementary feed in parallel.
-  // Each .catch() ensures one source going down never blocks the others.
+  // ESPN's all-league scoreboard is not available for basketball, baseball,
+  // hockey, or American football, so prioritize their configured league feeds
+  // ahead of soccer's much larger list.
   //
   // CONCURRENCY CAP: fire at most 6 ESPN league requests at a time.
   // Without this, all 180+ leagues fire simultaneously from the VPS, which
@@ -5761,12 +5791,38 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
   // circuit breaker to open during a cold start. The shared ESPN request queue
   // also limits global catch-all and per-league requests together.
   const { default: pLimit } = await import('p-limit').catch(() => ({ default: null }));
+  const prioritizedESPNLeagues = [
+    ...ESPN_LEAGUES.filter(config => config.sport !== 'soccer'),
+    ...ESPN_LEAGUES.filter(config => config.sport === 'soccer'),
+  ];
+  const partialESPNResults: Array<PromiseSettledResult<UnifiedMatch[]> | undefined> = [];
+  const recordESPNResult = (index: number, result: PromiseSettledResult<UnifiedMatch[]>) => {
+    partialESPNResults[index] = result;
+  };
   const espnFetchFn: Promise<PromiseSettledResult<UnifiedMatch[]>[]> = pLimit
     ? (() => {
         const limit = pLimit(6);
-        return Promise.allSettled(ESPN_LEAGUES.map(config => limit(() => getESPNMatches(config))));
+        return Promise.all(
+          prioritizedESPNLeagues.map((config, index) =>
+            limit(() => getESPNMatches(config)).then(
+              value => recordESPNResult(index, { status: 'fulfilled', value }),
+              reason => recordESPNResult(index, { status: 'rejected', reason }),
+            )
+          )
+        ).then(() => partialESPNResults.filter(
+          (result): result is PromiseSettledResult<UnifiedMatch[]> => result !== undefined,
+        ));
       })()
-    : Promise.allSettled(ESPN_LEAGUES.map(config => getESPNMatches(config)));
+    : Promise.all(
+        prioritizedESPNLeagues.map((config, index) =>
+          getESPNMatches(config).then(
+            value => recordESPNResult(index, { status: 'fulfilled', value }),
+            reason => recordESPNResult(index, { status: 'rejected', reason }),
+          )
+        )
+      ).then(() => partialESPNResults.filter(
+        (result): result is PromiseSettledResult<UnifiedMatch[]> => result !== undefined,
+      ));
   // The global ESPN scoreboard is the broad, fast path. Do not make it wait
   // for every configured league: on the VPS one timed-out league batch could
   // hold the entire refresh open for minutes while the global feed already
@@ -5778,8 +5834,17 @@ async function _fetchAllMatches(): Promise<UnifiedMatch[]> {
     espnFetchFn,
     new Promise<PromiseSettledResult<UnifiedMatch[]>[]>(resolve => {
       espnDeadlineTimer = setTimeout(() => {
-        console.warn('[matches] per-league ESPN fetch deadline reached; using global/supplementary feeds');
-        resolve([]);
+        const completedResults = partialESPNResults.filter(
+          (result): result is PromiseSettledResult<UnifiedMatch[]> => result !== undefined,
+        );
+        const completedMatches = completedResults.reduce(
+          (total, result) => total + (result.status === 'fulfilled' ? result.value.length : 0),
+          0,
+        );
+        console.warn(
+          `[matches] per-league ESPN fetch deadline reached; retaining ${completedMatches} matches from ${completedResults.length} completed leagues`,
+        );
+        resolve(completedResults);
       }, 25_000);
     }),
   ]).finally(() => {
