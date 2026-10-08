@@ -7,9 +7,9 @@ module.exports = {
       cwd: '/home/admin/apps/betcheza',
 
       env: {
-        PORT: '3001',
+        PORT: '5001',
         NODE_ENV: 'production',
-        INTERNAL_BASE_URL: 'http://localhost:3001',
+        INTERNAL_BASE_URL: 'http://localhost:5001',
       },
       env_file: '.env.local',
 
@@ -28,7 +28,7 @@ module.exports = {
       // user request is never a cold-start ESPN fetch.
       // sleep 10 — enough for Next.js to finish binding the port (listen_timeout
       // is 45s, so the process is definitely up by the time this curl fires).
-      post_start: 'sleep 10 && curl -sf -H "Authorization: Bearer betcheza-cron-2024" --max-time 180 http://localhost:3001/api/warmup > /tmp/betcheza-warmup-auto.json 2>&1 || true',
+      post_start: 'sleep 10 && curl -sf -H "Authorization: Bearer betcheza-cron-2024" --max-time 180 http://localhost:5001/api/warmup > /tmp/betcheza-warmup-auto.json 2>&1 || true',
 
       // ── Memory guard ────────────────────────────────────────────────────────
       // CRITICAL FIX: --max-old-space-size=1400 means V8 heap tops out at

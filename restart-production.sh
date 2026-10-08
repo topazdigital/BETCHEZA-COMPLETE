@@ -20,5 +20,5 @@ echo "[4/4] Saving PM2 process list..."
 pm2 save
 
 echo ""
-echo "=== Done. App is live at http://localhost:3001 ==="
+echo "=== Done. App is live at http://localhost:5001 ==="
 pm2 status
