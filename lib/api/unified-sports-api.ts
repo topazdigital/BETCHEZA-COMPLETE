@@ -4411,6 +4411,7 @@ interface TheOddsApiEvent {
       key: string;
       outcomes: Array<{
         name: string;
+        description?: string;
         price: number;
         point?: number;
       }>;
@@ -4488,7 +4489,11 @@ function aggregateBookmakerOdds(event: TheOddsApiEvent): { odds?: MatchOdds; mar
         if (!marketsMap.has(market.key)) marketsMap.set(market.key, new Map());
         const outcomesMap = marketsMap.get(market.key)!;
         for (const o of market.outcomes) {
-          const k = o.point !== undefined ? `${o.name}|${o.point}` : o.name;
+          // Player props use `description` for the athlete/team and `name` for
+          // Over/Under/Yes/No. Keep both so different players never collapse
+          // into one apparent selection.
+          const outcomeName = o.description ? `${o.description} ${o.name}` : o.name;
+          const k = o.point !== undefined ? `${outcomeName}|${o.point}` : outcomeName;
           if (!outcomesMap.has(k)) outcomesMap.set(k, []);
           outcomesMap.get(k)!.push(o.price);
         }
@@ -4518,10 +4523,12 @@ function aggregateBookmakerOdds(event: TheOddsApiEvent): { odds?: MatchOdds; mar
     });
   }
   for (const [marketKey, outcomesMap] of marketsMap.entries()) {
-    const isHandicap = marketKey === 'asian_handicap' || marketKey === 'spreads';
-    const isTotals   = marketKey === 'totals';
+    const isHandicap = /spread|handicap|puck_line/i.test(marketKey);
+    const isTotals = /total/i.test(marketKey);
+    const friendlyName = (key: string) =>
+      key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-    // Build raw outcomes, adding the point value to the display name for handicap/totals
+    // Build raw outcomes and keep every provider line visible in its label.
     const outs: Outcome[] = [];
     for (const [k, prices] of outcomesMap.entries()) {
       const [name, pointStr] = k.split('|');
@@ -4532,8 +4539,9 @@ function aggregateBookmakerOdds(event: TheOddsApiEvent): { odds?: MatchOdds; mar
           // e.g. "Málaga -0.5" or "Almería +0.5"
           const sign = point > 0 ? '+' : '';
           displayName = `${name} ${sign}${point}`;
-        } else if (isTotals) {
-          // e.g. "Over 2.5" or "Under 2.5"
+        } else {
+          // Alternate, team-total, and player-prop lines also need their
+          // threshold in the visible selection label.
           displayName = `${name} ${point}`;
         }
       }
@@ -4557,17 +4565,19 @@ function aggregateBookmakerOdds(event: TheOddsApiEvent): { odds?: MatchOdds; mar
 
       if (validLines.length === 0) {
         // Fallback — no valid lines, push as-is
-        const label = marketKey === 'asian_handicap' ? 'Asian Handicap' : 'Point Spread';
+        const label = marketKey === 'asian_handicap'
+          ? 'Asian Handicap'
+          : marketKey === 'spreads' ? 'Point Spread' : friendlyName(marketKey);
         markets.push({ key: marketKey, name: label, outcomes: outs });
       } else {
         validLines.forEach((line, idx) => {
           const sign  = line > 0 ? '+' : '';
-          const label = marketKey === 'asian_handicap'
-            ? `Asian Handicap (${sign}${line})`
-            : `Point Spread (${sign}${line})`;
+          const baseLabel = marketKey === 'asian_handicap'
+            ? 'Asian Handicap'
+            : marketKey === 'spreads' ? 'Point Spread' : friendlyName(marketKey);
           markets.push({
             key: idx === 0 ? marketKey : `${marketKey}_alt_${idx}`,
-            name: label,
+            name: `${baseLabel} (${sign}${line})`,
             outcomes: lineGroups.get(line)!,
           });
         });
@@ -4585,24 +4595,28 @@ function aggregateBookmakerOdds(event: TheOddsApiEvent): { odds?: MatchOdds; mar
         .sort((a, b) => a - b); // ascending by total
 
       if (validLines.length === 0) {
-        markets.push({ key: 'totals', name: 'Over/Under', outcomes: outs });
+        markets.push({ key: marketKey, name: friendlyName(marketKey), outcomes: outs });
       } else {
         // Prefer 2.5 as primary totals key for soccer; otherwise use smallest
-        const primaryLine = validLines.includes(2.5) ? 2.5 : validLines[0];
+        const primaryLine = marketKey === 'totals' && validLines.includes(2.5)
+          ? 2.5
+          : validLines[0];
         for (const line of validLines) {
-          const lineKey = line === primaryLine
-            ? 'totals'
-            : `totals_${String(line).replace('.', '_')}`;
+          const lineSlug = String(line).replace('.', '_').replace('-', 'm');
+          const lineKey = marketKey === 'totals'
+            ? line === primaryLine ? 'totals' : `totals_${lineSlug}`
+            : `${marketKey}_${lineSlug}`;
           markets.push({
             key: lineKey,
-            name: `Over/Under ${line}`,
+            name: marketKey === 'totals'
+              ? `Over/Under ${line}`
+              : `${friendlyName(marketKey)} ${line}`,
             outcomes: lineGroups.get(line)!,
           });
         }
       }
     } else {
       // All other markets — keep as-is with a readable name
-      const friendlyName = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       markets.push({ key: marketKey, name: friendlyName(marketKey), outcomes: outs });
     }
   }
@@ -4940,66 +4954,47 @@ export async function resolveOddsApiEventEntry(
 }
 
 // ─── PER-EVENT FULL-MARKET FETCH ──────────────────────────────────────────────
-// Comprehensive market list per sport family for the per-event endpoint.
-// These cover every major DraftKings (and equivalent bookmaker) market type.
+// Soccer's featured markets are requested separately so an unsupported prop
+// or specialty market cannot make The Odds API reject the standard lines.
+// These are documented event-odds market keys; availability still depends on
+// the event, bookmaker, and subscription.
 const SPORT_FULL_MARKETS: Record<string, string> = {
   soccer: [
-    'h2h',                        // 1X2 / Match Result
-    'spreads',                    // Asian Handicap / Spread
-    'totals',                     // Over/Under Goals
-    'btts',                       // Both Teams to Score
-    'draw_no_bet',                // Draw No Bet
-    'double_chance',              // Double Chance (1X, 12, X2)
-    'h2h_h1',                     // 1st Half – Winner
-    'totals_h1',                  // 1st Half – Over/Under
-    'h2h_h2',                     // 2nd Half – Winner
-    'totals_h2',                  // 2nd Half – Over/Under
-    'team_totals',                // Team Goals Over/Under
-    'alternate_totals',           // Alternative O/U lines
-    'alternate_spreads',          // Alternative Handicap lines
-    'player_goal_scorer_anytime', // Anytime Goalscorer
-    'player_goal_scorer_first',   // First Goalscorer
-    'player_goal_scorer_last',    // Last Goalscorer
-    'player_shot_on_target',      // Player Shots on Target
+    'btts',
+    'draw_no_bet',
+    'double_chance',
+    'h2h_h1',
+    'h2h_h2',
+    'totals_h1',
+    'totals_h2',
+    'team_totals',
+    'alternate_totals',
+    'alternate_spreads',
+    'correct_score',
+    'corners_1x2',
+    'alternate_totals_corners',
+    'alternate_totals_cards',
+    'halftime_fulltime',
   ].join(','),
   basketball: [
     'h2h', 'spreads', 'totals', 'team_totals',
     'h2h_q1', 'totals_q1', 'h2h_h1', 'totals_h1',
     'alternate_spreads', 'alternate_totals',
-    'player_points', 'player_rebounds', 'player_assists',
-    'player_threes', 'player_blocks', 'player_steals',
-    'player_double_double', 'player_triple_double',
-    'player_points_rebounds_assists',
-    'player_points_rebounds', 'player_points_assists',
-    'player_rebounds_assists',
   ].join(','),
   americanfootball: [
     'h2h', 'spreads', 'totals', 'team_totals',
     'h2h_h1', 'totals_h1', 'h2h_q1', 'totals_q1',
     'alternate_spreads', 'alternate_totals',
-    'player_pass_tds', 'player_pass_yds', 'player_pass_completions',
-    'player_rush_yds', 'player_rush_attempts',
-    'player_receptions', 'player_receiving_yds',
-    'player_anytime_td', 'player_1st_td', 'player_last_td',
-    'player_tackles_assists', 'player_kicking_points',
-    'player_field_goals', 'player_sacks',
   ].join(','),
   baseball: [
     'h2h', 'spreads', 'totals', 'team_totals',
     'h2h_h1', 'totals_h1', 'h2h_1st_inning', 'totals_1st_inning',
     'alternate_totals',
-    'batter_home_runs', 'batter_hits', 'batter_total_bases',
-    'batter_rbis', 'batter_runs_scored', 'batter_stolen_bases',
-    'pitcher_strikeouts', 'pitcher_hits_allowed', 'pitcher_walks',
-    'pitcher_earned_runs',
   ].join(','),
   icehockey: [
     'h2h', 'puck_line', 'totals', 'team_totals',
     'h2h_p1', 'totals_p1', 'h2h_h1', 'totals_h1',
     'alternate_puck_line', 'alternate_totals',
-    'player_points', 'player_goals', 'player_assists',
-    'player_shots_on_goal', 'player_power_play_points',
-    'player_blocked_shots',
   ].join(','),
   tennis: [
     'h2h', 'sets', 'games',
@@ -5016,9 +5011,10 @@ const SPORT_FULL_MARKETS: Record<string, string> = {
   default: 'h2h,spreads,totals',
 };
 
-// Per-event market cache — 1-hour TTL to preserve quota
+// Cache successful event markets for an hour; retry empty/error results sooner.
 const _eventMarketsCache = new Map<string, { markets: Market[]; ts: number }>();
 const EVENT_MARKETS_TTL_MS = 60 * 60 * 1000; // 1 hour
+const EMPTY_EVENT_MARKETS_TTL_MS = 5 * 60 * 1000;
 
 // The Odds API rejects an entire request when one requested market is not
 // offered for a sport, league or account tier. Keep the request broad, but
@@ -5028,9 +5024,8 @@ const EVENT_MARKETS_TTL_MS = 60 * 60 * 1000; // 1 hour
 const PLAYER_MARKET_KEYS: Record<string, string> = {
   soccer: [
     'player_goal_scorer_anytime',
-    'player_goal_scorer_first',
-    'player_goal_scorer_last',
-    'player_shot_on_target',
+    'player_first_goal_scorer',
+    'player_shots_on_target',
   ].join(','),
   basketball: [
     'player_points', 'player_rebounds', 'player_assists', 'player_threes',
@@ -5058,6 +5053,18 @@ const PLAYER_MARKET_KEYS: Record<string, string> = {
     'pitcher_earned_runs',
   ].join(','),
 };
+
+// The Odds API currently documents soccer player props only for these leagues
+// and US bookmakers. Do not request them for other competitions: an unsupported
+// prop batch can fail as a whole and add no useful prices.
+const SOCCER_PLAYER_PROP_SPORT_KEYS = new Set([
+  'soccer_epl',
+  'soccer_france_ligue_one',
+  'soccer_germany_bundesliga',
+  'soccer_italy_serie_a',
+  'soccer_spain_la_liga',
+  'soccer_usa_mls',
+]);
 
 function mergeOddsApiEvents(events: TheOddsApiEvent[]): TheOddsApiEvent | null {
   const first = events.find(event => event?.bookmakers?.length);
@@ -5089,11 +5096,14 @@ function mergeOddsApiEvents(events: TheOddsApiEvent[]): TheOddsApiEvent | null {
           continue;
         }
         const outcomes = new Map(current.outcomes.map(outcome => [
-          `${outcome.name}|${outcome.point ?? ''}`,
+          `${outcome.description ?? ''}|${outcome.name}|${outcome.point ?? ''}`,
           outcome,
         ]));
         for (const outcome of market.outcomes) {
-          outcomes.set(`${outcome.name}|${outcome.point ?? ''}`, { ...outcome });
+          outcomes.set(
+            `${outcome.description ?? ''}|${outcome.name}|${outcome.point ?? ''}`,
+            { ...outcome },
+          );
         }
         current.outcomes = Array.from(outcomes.values());
       }
@@ -5119,13 +5129,17 @@ export async function fetchAllMarketsForEvent(
 
   const cacheKey = `${sportKey}::${eventId}`;
   const cached = _eventMarketsCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < EVENT_MARKETS_TTL_MS) return cached.markets;
+  if (cached && Date.now() - cached.ts < (
+    cached.markets.length ? EVENT_MARKETS_TTL_MS : EMPTY_EVENT_MARKETS_TTL_MS
+  )) return cached.markets;
 
   if (isTheOddsApiQuotaExhausted()) return [];
 
   // Pick the market list for this sport family
   const sportFamily = sportKey.split('_')[0];
-  const marketsStr = SPORT_FULL_MARKETS[sportFamily] ?? SPORT_FULL_MARKETS.default;
+  const primaryMarkets = sportFamily === 'soccer'
+    ? 'h2h,spreads,totals'
+    : SPORT_FULL_MARKETS[sportFamily] ?? SPORT_FULL_MARKETS.default;
 
   const request = (markets: string) =>
     fetchTheOddsAPI(`sports/${sportKey}/events/${eventId}/odds`, {
@@ -5139,12 +5153,28 @@ export async function fetchAllMarketsForEvent(
     }) as Promise<TheOddsApiEvent | null>;
 
   const playerMarkets = PLAYER_MARKET_KEYS[sportFamily];
-  const responses = await Promise.all([
-    request(marketsStr),
-    ...(playerMarkets ? [request(playerMarkets)] : []),
-  ]);
+  const canRequestPlayerMarkets = !!playerMarkets && (
+    sportFamily !== 'soccer' || SOCCER_PLAYER_PROP_SPORT_KEYS.has(sportKey)
+  );
+  const additionalMarketKeys = sportFamily === 'soccer'
+    ? (SPORT_FULL_MARKETS.soccer || '').split(',').filter(Boolean)
+    : [];
+  if (canRequestPlayerMarkets && playerMarkets) {
+    additionalMarketKeys.push(...playerMarkets.split(',').filter(Boolean));
+  }
+  const additionalMarkets = Array.from(new Set(additionalMarketKeys)).join(',');
+
+  // Keep the featured soccer lines separate from non-featured/league-specific
+  // markets. Some competitions do not carry props or specialty markets; an
+  // unsupported optional key must not erase the standard odds response.
+  const requests: Array<Promise<TheOddsApiEvent | null>> = [request(primaryMarkets)];
+  if (additionalMarkets) requests.push(request(additionalMarkets));
+  const responses = await Promise.all(requests);
   const data = mergeOddsApiEvents(responses.filter((event): event is TheOddsApiEvent => !!event));
-  if (!data) return [];
+  if (!data) {
+    _eventMarketsCache.set(cacheKey, { markets: [], ts: Date.now() });
+    return [];
+  }
 
   const { markets } = aggregateBookmakerOdds(data);
   const result = markets ?? [];

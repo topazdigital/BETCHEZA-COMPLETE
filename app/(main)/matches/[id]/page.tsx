@@ -2861,10 +2861,11 @@ const SOCCER_TABS = [
 ] as const
 
 type SoccerTabId = (typeof SOCCER_TABS)[number]['id']
+type MarketsTabId = SoccerTabId | 'all'
 
 function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match: MatchDetails['match']; isFinished?: boolean; isPostponed?: boolean; onShareTip?: (marketKey: string, outcome: { name: string; price: number }) => void }) {
   const { addSelection, isSelected } = useBetSlip()
-  const [activeTab, setActiveTab] = useState<SoccerTabId>('main')
+  const [activeTab, setActiveTab] = useState<MarketsTabId>('main')
 
   if (!match.markets || match.markets.length === 0) return null
 
@@ -2878,9 +2879,8 @@ function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match:
     ...match.markets.filter(m => !priorityKeys.includes(m.key) && m.key !== 'h2h'),
   ] as NonNullable<typeof match.markets>
 
-  // For non-soccer sports (basketball, baseball, hockey etc.) the moneyline
-  // IS the main market — show it first so the sidebar has ≥3 markets.
-  const h2hMarket = !isSoccer ? match.markets.find(m => m.key === 'h2h') : undefined
+  // Keep the moneyline available in the market list as well as the match header.
+  const h2hMarket = match.markets.find(m => m.key === 'h2h')
   const ordered = h2hMarket ? [h2hMarket, ...orderedBase] : orderedBase
 
   const useTabs = isSoccer && ordered.length > 5
@@ -2907,11 +2907,13 @@ function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match:
     ? SOCCER_TABS.filter(t => (tabBuckets![t.id]?.length ?? 0) > 0)
     : []
 
-  const safeTab: SoccerTabId = availableTabs.some(t => t.id === activeTab)
+  const safeTab: MarketsTabId = activeTab === 'all' || availableTabs.some(t => t.id === activeTab)
     ? activeTab
     : (availableTabs[0]?.id ?? 'main')
 
-  const visibleMarkets = useTabs ? (tabBuckets![safeTab] ?? []) : ordered
+  const visibleMarkets = useTabs
+    ? safeTab === 'all' ? ordered : (tabBuckets![safeTab] ?? [])
+    : ordered
   const matchName = `${match.homeTeam.name} vs ${match.awayTeam.name}`
 
   return (
@@ -2923,6 +2925,7 @@ function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match:
             <TrendingUp className="h-3.5 w-3.5 flex-none" />
             Betting Markets
           </h3>
+          <span className="text-[10px] text-muted-foreground flex-none">{ordered.length} markets</span>
           {isFinished ? (
             <span className="text-[10px] font-semibold text-rose-500/70 flex-none">Closed</span>
           ) : (
@@ -2933,6 +2936,18 @@ function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match:
         {/* Category tabs — soccer only, slides horizontally on mobile */}
         {useTabs && availableTabs.length > 1 && (
           <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={cn(
+                'flex-none px-3 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap',
+                safeTab === 'all'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'bg-muted/70 text-muted-foreground hover:bg-muted',
+              )}
+            >
+              All
+              <span className="ml-1 opacity-50 text-[10px]">{ordered.length}</span>
+            </button>
             {availableTabs.map(tab => (
               <button
                 key={tab.id}
@@ -2952,7 +2967,7 @@ function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match:
         )}
 
         {/* Market rows */}
-        <div className="space-y-1.5">
+        <div className={`space-y-1.5 ${safeTab === 'all' ? 'max-h-[60vh] overflow-y-auto pr-1' : ''}`}>
           {visibleMarkets.map((mkt) => {
             // Never truncate provider markets here. Player props and
             // alternate lines commonly contain more than six outcomes.

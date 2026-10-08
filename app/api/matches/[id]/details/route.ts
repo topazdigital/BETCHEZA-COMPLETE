@@ -1301,10 +1301,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       ? baseMarkets.reduce((last, m, i) => (m.key === 'asian_handicap' || m.key.startsWith('asian_handicap_alt')) ? i + 1 : last, ahInsertIdx + 1)
       : baseMarkets.length;
 
-    // Fetch all real DraftKings markets for this specific event via The Odds API
-    // per-event endpoint. Covers BTTS, Double Chance, DNB, 1st Half, alternate lines,
-    // player props (goalscorers / NBA/NFL props) — every market type The Odds API
-    // offers for this sport. Results cached per event for 1 hour to preserve quota.
+    // Fetch documented additional markets for this event via The Odds API's
+    // per-event endpoint. Coverage varies by competition and bookmaker; the
+    // provider's optional-market request is kept separate from the core lines.
     const eventEntry = await resolveOddsApiEventEntry(
       match.homeTeam.name,
       match.awayTeam.name,
@@ -1315,10 +1314,6 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       ? await fetchAllMarketsForEvent(eventEntry.sportKey, eventEntry.eventId)
       : [];
 
-    const FAKE_PREFIXES = ['corners_', 'corners_total_', 'cards_total_', 'race_corners'];
-    const FAKE_EXACT = new Set(['red_card', 'penalty_awarded', 'booking_points']);
-    const isFake = (key: string) =>
-      FAKE_EXACT.has(key) || FAKE_PREFIXES.some(p => key.startsWith(p));
     const indexedMarketsWithAlternates = [
       ...baseMarkets.slice(0, ahEndIdx),
       ...renumbered,
@@ -1326,9 +1321,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     ];
     // Per-event markets supplement, rather than replace, markets already
     // present in the match-list cache. This is what preserves SGO/ESPN
-    // markets when The Odds API only returns a subset for the event.
-    const finalMarkets = mergeDetailMarkets(realEventMarkets, indexedMarketsWithAlternates)
-      .filter(m => !isFake(m.key));
+    // markets when The Odds API only returns a subset for the event. Every
+    // source here is provider-backed and mergeDetailMarkets already rejects
+    // derived markets, so do not blacklist legitimate corners/cards market keys.
+    const finalMarkets = mergeDetailMarkets(realEventMarkets, indexedMarketsWithAlternates);
 
     const bookmakerOdds = summary ? buildBookmakerOdds(summary, hasDraw) : [];
 
