@@ -4345,16 +4345,31 @@ export async function fetchTheOddsAPI(
       apiStatus.theOddsApi.working = false;
       apiStatus.theOddsApi.lastError = `HTTP ${response.status}`;
       apiStatus.theOddsApi.lastCheck = Date.now();
+      let errorBody: { error_code?: string; message?: string; error?: string } | null = null;
+      try {
+        errorBody = await response.json();
+      } catch {
+        // Some provider errors have no JSON body.
+      }
+      if (response.status !== 401 && response.status !== 429) {
+        const providerCode = errorBody?.error_code || errorBody?.error;
+        const providerMessage = (errorBody?.message || '').replace(/\s+/g, ' ').slice(0, 180);
+        const requestedMarkets = params.markets ? ` markets=${params.markets}` : '';
+        console.warn(
+          `[TheOddsAPI] HTTP ${response.status} ${endpoint}${requestedMarkets}` +
+          `${providerCode ? ` (${providerCode})` : ''}` +
+          `${providerMessage ? `: ${providerMessage}` : ''}`,
+        );
+      }
       // Detect quota errors and back off
       if (response.status === 401 || response.status === 429) {
         try {
-          const body = await response.json();
-          if (body?.error_code === 'OUT_OF_USAGE_CREDITS') {
+          if (errorBody?.error_code === 'OUT_OF_USAGE_CREDITS') {
             theOddsApiOutOfCredits = Date.now();
             theOddsApiMonthlyExhausted = true;
             apiStatus.theOddsApi.lastError = 'OUT_OF_USAGE_CREDITS';
             console.warn('[TheOddsAPI] Monthly quota exhausted — backing off for 30 days. Real odds will resume next billing cycle.');
-          } else if (body?.error_code === 'INVALID_API_KEY') {
+          } else if (errorBody?.error_code === 'INVALID_API_KEY') {
             theOddsApiOutOfCredits = Date.now();
             theOddsApiMonthlyExhausted = false;
             apiStatus.theOddsApi.lastError = 'INVALID_API_KEY';
@@ -4954,28 +4969,38 @@ export async function resolveOddsApiEventEntry(
 }
 
 // ─── PER-EVENT FULL-MARKET FETCH ──────────────────────────────────────────────
-// Soccer's featured markets are requested separately so an unsupported prop
-// or specialty market cannot make The Odds API reject the standard lines.
-// These are documented event-odds market keys; availability still depends on
-// the event, bookmaker, and subscription.
+// Keep soccer extras split by coverage class. If a bookmaker/account does not
+// support a specialty or player-prop market, that batch must not suppress the
+// more common BTTS, double-chance, period, and alternate-line markets.
+const SOCCER_ADDITIONAL_MARKET_BATCHES = [
+  {
+    label: 'soccer-common',
+    markets: [
+      'btts',
+      'draw_no_bet',
+      'double_chance',
+      'h2h_h1',
+      'h2h_h2',
+      'totals_h1',
+      'totals_h2',
+      'team_totals',
+      'alternate_totals',
+      'alternate_spreads',
+    ].join(','),
+  },
+  {
+    label: 'soccer-specialty',
+    markets: [
+      'correct_score',
+      'corners_1x2',
+      'alternate_totals_corners',
+      'alternate_totals_cards',
+      'halftime_fulltime',
+    ].join(','),
+  },
+] as const;
+
 const SPORT_FULL_MARKETS: Record<string, string> = {
-  soccer: [
-    'btts',
-    'draw_no_bet',
-    'double_chance',
-    'h2h_h1',
-    'h2h_h2',
-    'totals_h1',
-    'totals_h2',
-    'team_totals',
-    'alternate_totals',
-    'alternate_spreads',
-    'correct_score',
-    'corners_1x2',
-    'alternate_totals_corners',
-    'alternate_totals_cards',
-    'halftime_fulltime',
-  ].join(','),
   basketball: [
     'h2h', 'spreads', 'totals', 'team_totals',
     'h2h_q1', 'totals_q1', 'h2h_h1', 'totals_h1',
@@ -5156,19 +5181,29 @@ export async function fetchAllMarketsForEvent(
   const canRequestPlayerMarkets = !!playerMarkets && (
     sportFamily !== 'soccer' || SOCCER_PLAYER_PROP_SPORT_KEYS.has(sportKey)
   );
-  const additionalMarketKeys = sportFamily === 'soccer'
-    ? (SPORT_FULL_MARKETS.soccer || '').split(',').filter(Boolean)
-    : [];
-  if (canRequestPlayerMarkets && playerMarkets) {
-    additionalMarketKeys.push(...playerMarkets.split(',').filter(Boolean));
+  const optionalBatches: Array<{ label: string; markets: string }> = [];
+  if (sportFamily === 'soccer') {
+    optionalBatches.push(...SOCCER_ADDITIONAL_MARKET_BATCHES);
   }
-  const additionalMarkets = Array.from(new Set(additionalMarketKeys)).join(',');
+  if (canRequestPlayerMarkets && playerMarkets) {
+    optionalBatches.push({ label: `${sportFamily}-player-props`, markets: playerMarkets });
+  }
 
-  // Keep the featured soccer lines separate from non-featured/league-specific
-  // markets. Some competitions do not carry props or specialty markets; an
-  // unsupported optional key must not erase the standard odds response.
   const requests: Array<Promise<TheOddsApiEvent | null>> = [request(primaryMarkets)];
-  if (additionalMarkets) requests.push(request(additionalMarkets));
+  for (const batch of optionalBatches) {
+    requests.push(
+      request(batch.markets).then(event => {
+        const returnedKeys = Array.from(new Set(
+          event?.bookmakers?.flatMap(bookmaker => bookmaker.markets.map(market => market.key)) ?? [],
+        ));
+        console.info(
+          `[TheOddsAPI] ${batch.label} batch: ` +
+          `${returnedKeys.length ? returnedKeys.join(',') : 'no markets returned'}`,
+        );
+        return event;
+      }),
+    );
+  }
   const responses = await Promise.all(requests);
   const data = mergeOddsApiEvents(responses.filter((event): event is TheOddsApiEvent => !!event));
   if (!data) {
