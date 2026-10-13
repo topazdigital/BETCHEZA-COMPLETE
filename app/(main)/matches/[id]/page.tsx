@@ -1187,7 +1187,7 @@ export default function MatchDetailPage({ params }: PageProps) {
     )
   }
 
-  if (error || !data?.match) {
+  if (error || !match) {
     return (
       <div className="flex-1 p-8 text-center">
         <div className="text-4xl mb-4">🏟️</div>
@@ -1630,13 +1630,17 @@ export default function MatchDetailPage({ params }: PageProps) {
                     </div>
                   </div>
                 )}
-                {/* Additional markets — max 3 priority markets to keep hero compact */}
+                {/* Show priority markets first, then fill the compact preview to five. */}
                 {match.markets && match.markets.length > 0 && (() => {
                   const HERO_PRIORITY = ['totals', 'spreads', 'btts', 'double_chance', 'draw_no_bet', 'asian_handicap', 'h2h_1h', 'totals_1h']
-                  const heroMarkets = HERO_PRIORITY
+                  const heroMarkets = [
+                    ...HERO_PRIORITY
                     .map(k => match.markets!.find(m => m.key === k))
-                    .filter((m): m is NonNullable<typeof m> => !!m && m.outcomes.length > 0)
-                    .slice(0, 3)
+                    .filter((m): m is NonNullable<typeof m> => !!m && m.outcomes.length > 0),
+                    ...match.markets.filter(m =>
+                      !HERO_PRIORITY.includes(m.key) && m.outcomes.length > 0,
+                    ),
+                  ].slice(0, 5)
                   if (heroMarkets.length === 0) return null
                   return (
                     <div className="space-y-1.5">
@@ -1683,7 +1687,7 @@ export default function MatchDetailPage({ params }: PageProps) {
                   onClick={() => setActiveTab('odds')}
                   className="mt-2.5 w-full text-center text-[10px] font-semibold text-white/40 hover:text-white/70 transition-colors"
                 >
-                  All markets & bookmaker comparison →
+                  All {match.markets?.length ?? 0} markets & bookmaker comparison →
                 </button>
               </div>
             </div>
@@ -2865,7 +2869,7 @@ type MarketsTabId = SoccerTabId | 'all'
 
 function MarketsSection({ match, isFinished, isPostponed, onShareTip }: { match: MatchDetails['match']; isFinished?: boolean; isPostponed?: boolean; onShareTip?: (marketKey: string, outcome: { name: string; price: number }) => void }) {
   const { addSelection, isSelected } = useBetSlip()
-  const [activeTab, setActiveTab] = useState<MarketsTabId>('main')
+  const [activeTab, setActiveTab] = useState<MarketsTabId>('all')
 
   if (!match.markets || match.markets.length === 0) return null
 

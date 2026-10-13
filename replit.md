@@ -6,9 +6,10 @@ A sports betting tipster community platform providing real-time sports data, AI-
 
 - **Dev**: `npm run dev` (port 5000, bound to 0.0.0.0)
 - **Build**: `npm run build`
-- **Start**: `npm start` (port 5001)
+- **Start**: `npm start` (port 5000, bound to 0.0.0.0)
 - **Lint**: `npm run lint`
-- **Required env vars**: `JWT_SECRET`, `FOOTBALL_DATA_API_KEY`, `SPORTSGAMEODDS_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+- **Required env vars**: `JWT_SECRET`, `FOOTBALL_DATA_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+- **Expanded real match markets**: Configure `SPORTSGAMEODDS_API_KEY` and/or `THE_ODDS_API_KEY` (environment or Admin → Settings → API Keys). ESPN supplies the core prices it returns; additional market prices must come from actual bookmaker offers.
 - **Optional DB**: `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` (MySQL). App runs without DB using in-memory/file fallback.
 - **OpenAI**: Uses Replit AI Integrations (`AI_INTEGRATIONS_OPENAI_API_KEY` + `AI_INTEGRATIONS_OPENAI_BASE_URL`) with `OPENAI_API_KEY` as fallback. Falls back to rules-based chat if neither is set.
 - **PayHero**: `PAYHERO_BASIC_TOKEN` (full `Basic ...` value) + `PAYHERO_ACCOUNT_ID` (channel_id integer). Used for real M-Pesa STK push deposits and withdrawals.
@@ -47,6 +48,7 @@ A sports betting tipster community platform providing real-time sports data, AI-
 ## Product
 
 - Real-time match scores, odds, and lineups across 35+ sports
+- Match details display every real bookmaker-backed market returned by SportsGameOdds or The Odds API; prices are never generated from match-result odds.
 - AI match predictions and conversational betting copilot (GPT-4o-mini, configurable via `OPENAI_MODEL`)
 - Tipster leaderboard, community feed, tip sharing with likes/comments; tipster profile pages show avatar images
 - Jackpot scraper for Kenyan bookmakers (SportPesa, Betika, etc.)

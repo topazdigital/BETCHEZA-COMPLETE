@@ -37,6 +37,20 @@ const g = globalThis as {
 if (!g.__detailsCache) g.__detailsCache = new Map();
 if (!g.__h2hCache) g.__h2hCache = new Map();
 
+async function settleWithin<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>(resolve => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
@@ -1080,13 +1094,14 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           .catch(() => null)
       : Promise.resolve(null);
 
-    const FANOUT_TIMEOUT_MS = 8_000;
-    const fanoutTimeout = new Promise<[null, [], [], SSDetails]>(resolve =>
-      setTimeout(() => resolve([null, [], [], null]), FANOUT_TIMEOUT_MS)
-    );
-    const [summary, sgoRaw, sgoMarkets, ssDetails] = await Promise.race([
-      Promise.all([summaryPromise, sgoPromise, sgoMarketsPromise, ssDetailsPromise]),
-      fanoutTimeout,
+    // Keep source timeouts independent. A slow SGO markets lookup should not
+    // erase a summary, bookmaker lines, or SofaScore details that already
+    // completed. Give the richer market feed slightly longer than core data.
+    const [summary, sgoRaw, sgoMarkets, ssDetails] = await Promise.all([
+      settleWithin(summaryPromise, null, 7_000),
+      settleWithin(sgoPromise, [], 8_000),
+      settleWithin(sgoMarketsPromise, [], 10_000),
+      settleWithin(ssDetailsPromise, null, 7_000),
     ]);
 
     // ── Stale-scheduled override ──────────────────────────────────────────────

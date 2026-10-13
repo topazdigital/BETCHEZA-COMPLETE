@@ -27,6 +27,7 @@ const BASE = 'https://api.sportsgameodds.com/v2';
 // ─── In-memory cache ────────────────────────────────────────────────────
 type CacheEntry<T> = { value: T; ts: number };
 const sgoCache = new Map<string, CacheEntry<unknown>>();
+const sgoFetchInFlight = new Map<string, Promise<unknown | null>>();
 const SGO_MEM_TTL_MS  = 60 * 1000;       // odds can move quickly
 
 function getMemCached<T>(key: string): T | null {
@@ -94,32 +95,49 @@ async function sgoFetch(path_: string, params: Record<string, string> = {}): Pro
     return fileHit;
   }
 
+  // Share a simultaneous request between the match odds and full-market
+  // extractors. Both read the same SGO event payload on a detail-page load.
+  const inFlight = sgoFetchInFlight.get(urlStr);
+  if (inFlight) return inFlight;
+
   // 3. Backoff guards (only checked when we'd actually hit the network)
   if (Date.now() < authBackoffUntil) return null;
   if (Date.now() < rateLimitBackoffUntil) return null;
 
-  try {
-    const res = await fetch(urlStr, {
-      headers: { 'X-Api-Key': apiKey, Accept: 'application/json' },
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        authBackoffUntil = Date.now() + AUTH_BACKOFF_MS;
-        console.warn(`[SGO] HTTP ${res.status} — auth error, backing off 30 min`);
-      } else if (res.status === 429) {
-        rateLimitBackoffUntil = Date.now() + RATE_BACKOFF_MS;
-        console.warn('[SGO] HTTP 429 — rate limited, backing off 5 min');
+  const request = (async (): Promise<unknown | null> => {
+    try {
+      const res = await fetch(urlStr, {
+        headers: { 'X-Api-Key': apiKey, Accept: 'application/json' },
+        next: { revalidate: 60 },
+        signal: AbortSignal.timeout(9_000),
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          authBackoffUntil = Date.now() + AUTH_BACKOFF_MS;
+          console.warn(`[SGO] HTTP ${res.status} — auth error, backing off 30 min`);
+        } else if (res.status === 429) {
+          rateLimitBackoffUntil = Date.now() + RATE_BACKOFF_MS;
+          console.warn('[SGO] HTTP 429 — rate limited, backing off 5 min');
+        }
+        return null;
       }
+      const json = await res.json();
+      setMemCached(urlStr, json);
+      setFileCache(urlStr, json);   // persist so restarts reuse this data
+      return json;
+    } catch (err) {
+      console.warn('[SGO] fetch failed:', err);
       return null;
     }
-    const json = await res.json();
-    setMemCached(urlStr, json);
-    setFileCache(urlStr, json);   // persist so restarts reuse this data
-    return json;
-  } catch (err) {
-    console.warn('[SGO] fetch failed:', err);
-    return null;
+  })();
+
+  sgoFetchInFlight.set(urlStr, request);
+  try {
+    return await request;
+  } finally {
+    if (sgoFetchInFlight.get(urlStr) === request) {
+      sgoFetchInFlight.delete(urlStr);
+    }
   }
 }
 
@@ -127,11 +145,13 @@ async function sgoFetch(path_: string, params: Record<string, string> = {}): Pro
 
 export interface SgoBookmakerOffer {
   /** Decimal odds. */
-  odds?: number;
+  odds?: number | string;
   /** Raw American odds, when SGO sends those instead. */
-  americanOdds?: number;
+  americanOdds?: number | string;
   /** The over/under or spread number. */
-  line?: number;
+  line?: number | string;
+  spread?: number | string;
+  overUnder?: number | string;
   /** Deeplink to the book's bet slip, when the book exposes one. */
   link?: string;
   /** When this offer was last seen. */
@@ -143,11 +163,15 @@ export interface SgoOdd {
   oddID: string;
   marketName?: string;
   statID?: string;
+  statEntityID?: string;
+  playerID?: string;
+  periodID?: string;
+  betTypeID?: string;
   sideID?: string; // home, away, draw, over, under, ...
   byBookmaker?: Record<string, SgoBookmakerOffer>;
   bookOddsAvailable?: boolean;
-  closeBookOdds?: number;
-  closeBookOverUnder?: number;
+  closeBookOdds?: number | string;
+  closeBookOverUnder?: number | string;
 }
 
 export interface SgoEvent {
@@ -194,6 +218,15 @@ function sgoMarketKey(value: string, line?: number): string {
   return line === undefined ? base : `${base}_${String(line).replace('.', '_').replace('-', 'm')}`;
 }
 
+function isSgoMatchResultMarket(market: SgoRealMarket): boolean {
+  const text = `${market.key} ${market.name}`.toLowerCase().replace(/[_-]+/g, ' ');
+  const isResult = /\b(?:moneyline|match winner|match result|1x2)\b/.test(text);
+  const isPeriodSpecific = /\b(?:first|1st|second|2nd|half|h1|h2|1h|2h|quarter|q[1-4]|period|inning|set)\b/.test(text);
+  return isResult && !isPeriodSpecific;
+}
+
+const SGO_GENERIC_ENTITY_IDS = new Set(['home', 'away', 'draw', 'all', 'team', 'game', 'event', 'player']);
+
 function sgoOutcomeName(sideID: string | undefined, homeTeam: string, awayTeam: string): string {
   const side = (sideID || '').trim();
   const lower = side.toLowerCase();
@@ -234,43 +267,67 @@ function buildSgoRealMarkets(
   for (const odd of Object.values(ev.odds)) {
     if (!odd.byBookmaker) continue;
 
-    let bestPrice = 0;
-    let bestLine: number | undefined;
+    const sourceName = (odd.marketName || odd.statID || odd.oddID || '').trim();
+    if (!sourceName) continue;
+    const entityID = (odd.playerID || odd.statEntityID || '').trim();
+    const entityLabel = entityID && !SGO_GENERIC_ENTITY_IDS.has(entityID.toLowerCase())
+      ? readableSgoText(entityID)
+      : '';
+    const baseName = readableSgoText(sourceName);
+    const entityNamePrefix = entityLabel.split(' ').slice(0, 2).join(' ').toLowerCase();
+    const name = entityLabel && !baseName.toLowerCase().includes(entityNamePrefix)
+      ? `${baseName} — ${entityLabel}`
+      : baseName;
+    const rawOutcome = sgoOutcomeName(odd.sideID, homeTeam, awayTeam);
+    const entityLower = (odd.statEntityID || '').toLowerCase();
+    const isTeamTotal = (entityLower === 'home' || entityLower === 'away') &&
+      (odd.betTypeID?.toLowerCase() === 'ou' || /total|over.?under/i.test(sourceName));
+    const entityTeamName = entityLower === 'home' ? homeTeam : awayTeam;
+    const outcome = isTeamTotal && !baseName.toLowerCase().includes(entityTeamName.toLowerCase())
+      ? `${entityTeamName} ${rawOutcome}`
+      : rawOutcome;
+    if (!outcome) continue;
+
+    // Preserve alternate lines and use the best currently available price
+    // from the real bookmaker offers at each exact line.
     for (const offer of Object.values(odd.byBookmaker)) {
       if (offer.available === false) continue;
       const price = offerPrice(offer);
-      if (price && price > bestPrice) {
-        bestPrice = price;
-        bestLine = typeof offer.line === 'number' ? offer.line : undefined;
+      if (!price || price <= 1) continue;
+      const line = parseSgoLine(offer.line ?? offer.overUnder ?? offer.spread);
+      const isSpread = odd.betTypeID?.toLowerCase() === 'sp' || /spread|handicap/i.test(sourceName);
+      const groupingLine = line !== undefined && isSpread ? Math.abs(line) : line;
+      const identity = [
+        sourceName,
+        entityLabel ? entityID : '',
+        odd.periodID,
+        odd.betTypeID,
+      ]
+        .filter(Boolean)
+        .join('_');
+      const key = sgoMarketKey(identity, groupingLine);
+      const sign = line !== undefined && line > 0 ? '+' : '';
+      const group = groups.get(key) ?? {
+        key,
+        name: line === undefined
+          ? name
+          : `${name} (${isSpread ? groupingLine : `${sign}${line}`})`,
+        line: groupingLine,
+        outcomes: new Map(),
+      };
+      const displayOutcome = line === undefined || /\s[+-]?\d+(?:\.\d+)?$/.test(outcome)
+        ? outcome
+        : `${outcome} ${sign}${line}`;
+      const existing = group.outcomes.get(displayOutcome);
+      if (!existing || price > existing.price) {
+        group.outcomes.set(displayOutcome, {
+          name: displayOutcome,
+          price,
+          ...(line !== undefined ? { point: line } : {}),
+        });
       }
+      groups.set(key, group);
     }
-    if (bestPrice <= 1) continue;
-
-    const sourceName = (odd.marketName || odd.statID || odd.oddID || '').trim();
-    if (!sourceName) continue;
-    const name = readableSgoText(sourceName);
-    const key = sgoMarketKey(sourceName, bestLine);
-    const group = groups.get(key) ?? {
-      key,
-      name: bestLine === undefined ? name : `${name} (${bestLine > 0 ? '+' : ''}${bestLine})`,
-      line: bestLine,
-      outcomes: new Map(),
-    };
-    const outcome = sgoOutcomeName(odd.sideID, homeTeam, awayTeam);
-    if (!outcome) continue;
-
-    const displayOutcome = bestLine === undefined || /\b(?:over|under|handicap|spread|line)\b/i.test(outcome)
-      ? outcome
-      : `${outcome} ${bestLine > 0 ? '+' : ''}${bestLine}`;
-    const existing = group.outcomes.get(displayOutcome);
-    if (!existing || bestPrice > existing.price) {
-      group.outcomes.set(displayOutcome, {
-        name: displayOutcome,
-        price: bestPrice,
-        ...(bestLine !== undefined ? { point: bestLine } : {}),
-      });
-    }
-    groups.set(key, group);
   }
 
   return Array.from(groups.values())
@@ -331,13 +388,25 @@ async function findSgoEvent(homeTeam: string, awayTeam: string, isoDate: string)
   // down the whole match-detail response (we just skip enrichment).
   if (!isoDate || typeof isoDate !== 'string' || isoDate.length < 10) return null;
   const day = isoDate.slice(0, 10);
+  const bulkEventID = getBulkSgoEventId(homeTeam, awayTeam, day);
+  if (bulkEventID) {
+    const exactData = await sgoFetch('/events', {
+      eventID: bulkEventID,
+      limit: '1',
+      includeOpposingOdds: 'true',
+      includeAltLines: 'true',
+    }) as { data?: SgoEvent[] } | null;
+    const exactEvent = exactData?.data?.find(event => event.eventID === bulkEventID);
+    if (exactEvent) return exactEvent;
+  }
+
   // Try a dated lookup first; fall back to a broader window if needed.
   const data = await sgoFetch('/events', {
-    teamID: '',
     startsAfter: `${day}T00:00:00Z`,
     startsBefore: `${day}T23:59:59Z`,
     limit: '50',
-    includeOpposingTeam: 'true',
+    includeOpposingOdds: 'true',
+    includeAltLines: 'true',
   }) as { data?: SgoEvent[] } | null;
   if (!data?.data || !Array.isArray(data.data)) return null;
 
@@ -349,9 +418,11 @@ async function findSgoEvent(homeTeam: string, awayTeam: string, isoDate: string)
     const a = normPart(ev.teams?.away?.names?.long || ev.teams?.away?.names?.medium);
     if (!h || !a) continue;
     // Match either direction (defensive).
-    const direct = h.includes(wantHome) || wantHome.includes(h);
-    const directAway = a.includes(wantAway) || wantAway.includes(a);
-    if (direct && directAway) return ev;
+    const direct = (h.includes(wantHome) || wantHome.includes(h)) &&
+      (a.includes(wantAway) || wantAway.includes(a));
+    const reverse = (h.includes(wantAway) || wantAway.includes(h)) &&
+      (a.includes(wantHome) || wantHome.includes(a));
+    if (direct || reverse) return ev;
   }
   return null;
 }
@@ -362,11 +433,32 @@ function americanToDecimal(am: number | undefined): number | null {
   return am > 0 ? Math.round((am / 100 + 1) * 100) / 100 : Math.round((100 / Math.abs(am) + 1) * 100) / 100;
 }
 
+function parseSgoOdds(value: number | string | undefined): number | null {
+  if (value === undefined || value === null) return null;
+  const raw = typeof value === 'string' ? value.trim() : String(value);
+  if (!raw) return null;
+  const parsed = Number(raw.replace(/^\+/, ''));
+  if (!Number.isFinite(parsed)) return null;
+
+  // SGO sends decimal odds as numbers, but its event examples also encode
+  // American prices as signed strings such as "+133" and "-110".
+  const americanString = typeof value === 'string' && /^[+-]/.test(raw);
+  if (americanString || parsed <= 0 || Math.abs(parsed) >= 100) {
+    return americanToDecimal(parsed);
+  }
+  return parsed > 1 ? Math.round(parsed * 100) / 100 : null;
+}
+
+function parseSgoLine(value: number | string | undefined): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function offerPrice(offer: SgoBookmakerOffer): number | null {
-  if (typeof offer.odds === 'number' && offer.odds > 1) return Math.round(offer.odds * 100) / 100;
-  const fromAm = americanToDecimal(offer.americanOdds);
-  if (fromAm) return fromAm;
-  return null;
+  return parseSgoOdds(offer.odds) ?? americanToDecimal(
+    typeof offer.americanOdds === 'string' ? Number(offer.americanOdds) : offer.americanOdds,
+  );
 }
 
 /**
@@ -458,19 +550,26 @@ export async function getSgoRealMarkets(
   startsAtIso: string,
 ): Promise<SgoRealMarket[]> {
   const bulkMarkets = getBulkRealMarkets(homeTeam, awayTeam, startsAtIso);
-  // The bulk endpoint intentionally extracts only the cheap/common markets
-  // used by the match list. Do not return early here: match details need the
-  // complete event payload, including props, period markets and alternate
-  // lines that are not present in the bulk projection.
   const ev = await findSgoEvent(homeTeam, awayTeam, startsAtIso);
-  const eventMarkets = ev ? buildSgoRealMarkets(ev, homeTeam, awayTeam) : [];
-  if (!bulkMarkets?.length) return eventMarkets;
-  if (!eventMarkets.length) return bulkMarkets;
+  const eventHome = ev?.teams?.home?.names?.long || ev?.teams?.home?.names?.medium || homeTeam;
+  const eventAway = ev?.teams?.away?.names?.long || ev?.teams?.away?.names?.medium || awayTeam;
+  const eventMarkets = ev
+    ? buildSgoRealMarkets(ev, eventHome, eventAway).filter(market => !isSgoMatchResultMarket(market))
+    : [];
+  const fallbackMarkets = bulkMarkets?.filter(market => !isSgoMatchResultMarket(market)) ?? [];
+  if (!eventMarkets.length) return fallbackMarkets;
+  if (!fallbackMarkets.length) return eventMarkets;
 
-  // Merge by market key and outcome name. When the same market is present in
-  // both projections, keep the best real bookmaker price for each outcome.
+  // Preserve markets from the broad bulk snapshot, but prefer the detail
+  // lookup's fresh bookmaker offers and alternate lines where they overlap.
   const merged = new Map<string, SgoRealMarket>();
-  for (const market of [...bulkMarkets, ...eventMarkets]) {
+  for (const market of fallbackMarkets) {
+    merged.set(market.key, {
+      ...market,
+      outcomes: market.outcomes.map(outcome => ({ ...outcome })),
+    });
+  }
+  for (const market of eventMarkets) {
     const existing = merged.get(market.key);
     if (!existing) {
       merged.set(market.key, {
@@ -480,10 +579,7 @@ export async function getSgoRealMarkets(
       continue;
     }
     const outcomes = new Map(existing.outcomes.map(outcome => [outcome.name, outcome]));
-    for (const outcome of market.outcomes) {
-      const previous = outcomes.get(outcome.name);
-      if (!previous || outcome.price > previous.price) outcomes.set(outcome.name, { ...outcome });
-    }
+    for (const outcome of market.outcomes) outcomes.set(outcome.name, { ...outcome });
     existing.outcomes = Array.from(outcomes.values());
   }
   return Array.from(merged.values()).filter(market => market.outcomes.length > 0);
@@ -563,6 +659,7 @@ export interface SgoMatchOddsEntry {
  */
 const _bulkBookmakerLines = new Map<string, SgoBookmakerLine[]>();
 const _bulkRealMarkets = new Map<string, SgoRealMarket[]>();
+const _bulkEventIds = new Map<string, string>();
 
 export function getBulkBookmakerLines(homeTeam: string, awayTeam: string, dateIso: string): SgoBookmakerLine[] | null {
   const dateKey = (dateIso || '').slice(0, 10);
@@ -586,6 +683,17 @@ export function getBulkRealMarkets(homeTeam: string, awayTeam: string, dateIso: 
   );
 }
 
+function getBulkSgoEventId(homeTeam: string, awayTeam: string, dateIso: string): string | null {
+  const dateKey = (dateIso || '').slice(0, 10);
+  const hn = normalizeForIndex(homeTeam);
+  const an = normalizeForIndex(awayTeam);
+  return (
+    _bulkEventIds.get(`${hn}_${an}_${dateKey}`) ??
+    _bulkEventIds.get(`${an}_${hn}_${dateKey}`) ??
+    null
+  );
+}
+
 export async function fetchSgoBulkMatchOdds(
   startsAfter: string,
   startsBefore: string,
@@ -595,11 +703,12 @@ export async function fetchSgoBulkMatchOdds(
   // lines attached to a different or removed fixture.
   _bulkBookmakerLines.clear();
   _bulkRealMarkets.clear();
+  _bulkEventIds.clear();
   const data = await sgoFetch('/events', {
     startsAfter,
     startsBefore,
     limit: '500',
-    includeOpposingTeam: 'true',
+    includeOpposingOdds: 'true',
   }) as { data?: SgoEvent[] } | null;
 
   if (!data?.data || !Array.isArray(data.data)) return [];
@@ -619,6 +728,16 @@ export async function fetchSgoBulkMatchOdds(
     if (!homeNorm || !awayNorm) continue;
 
     const dateKey = ev.startsAt.slice(0, 10);
+    if (ev.eventID) {
+      _bulkEventIds.set(`${homeNorm}_${awayNorm}_${dateKey}`, ev.eventID);
+    }
+    const realMarkets = buildSgoRealMarkets(ev, homeName, awayName)
+      .filter(market => !isSgoMatchResultMarket(market));
+    // Keep event markets even if this event has no 1X2 quote. The match detail
+    // page can still show its real totals, props, period markets, and specials.
+    if (realMarkets.length > 0) {
+      _bulkRealMarkets.set(`${homeNorm}_${awayNorm}_${dateKey}`, realMarkets);
+    }
 
     // Find the canonical 1X2 / moneyline odds entries
     const oddsValues = Object.values(ev.odds);
@@ -639,9 +758,8 @@ export async function fetchSgoBulkMatchOdds(
 
     // Best price across bookmakers, or fall back to closeBookOdds
     const bestPrice = (odd: SgoOdd): number | null => {
-      if (typeof odd.closeBookOdds === 'number' && odd.closeBookOdds > 1) {
-        return Math.round(odd.closeBookOdds * 100) / 100;
-      }
+      const closePrice = parseSgoOdds(odd.closeBookOdds);
+      if (closePrice) return closePrice;
       if (!odd.byBookmaker) return null;
       let best = 0;
       for (const offer of Object.values(odd.byBookmaker)) {
@@ -656,64 +774,9 @@ export async function fetchSgoBulkMatchOdds(
     const dp = drawOdd ? bestPrice(drawOdd) : null;
     if (!hp || !ap) continue;
 
-    // Preserve real BTTS and totals markets when SGO supplies them. Do not
-    // derive these from 1X2: that produces plausible-looking prices that can
-    // be materially different from the bookmaker's actual quote.
-    const realMarketGroups = new Map<string, {
-      name: string;
-      outcomes: Map<string, { name: string; price: number; point?: number }>;
-    }>();
-    for (const odd of oddsValues) {
-      const text = `${odd.oddID} ${odd.marketName ?? ''} ${odd.statID ?? ''}`.toLowerCase();
-      const side = (odd.sideID ?? '').toLowerCase();
-      const price = bestPrice(odd);
-      if (!price) continue;
-
-      if (/\bbtts\b|both.?teams|both.?to.?score/.test(text)) {
-        const outcome = side.includes('yes') || /\byes\b/.test(text)
-          ? 'Yes'
-          : side.includes('no') || /\bno\b/.test(text) ? 'No' : '';
-        if (!outcome) continue;
-        const group = realMarketGroups.get('btts') ?? {
-          name: 'Both Teams to Score',
-          outcomes: new Map(),
-        };
-        const existing = group.outcomes.get(outcome);
-        if (!existing || price > existing.price) {
-          group.outcomes.set(outcome, { name: outcome, price });
-        }
-        realMarketGroups.set('btts', group);
-        continue;
-      }
-
-      if (!/\btotal|\bover\b|\bunder\b|over.?under/.test(text)) continue;
-      const outcomeName = side.includes('over') || /\bover\b/.test(text)
-        ? 'Over'
-        : side.includes('under') || /\bunder\b/.test(text) ? 'Under' : '';
-      if (!outcomeName) continue;
-      const point = odd.closeBookOverUnder ??
-        Object.values(odd.byBookmaker ?? {}).map(o => o.line).find((v): v is number => typeof v === 'number') ??
-        Number(text.match(/(?:over|under)\s*([0-9]+(?:\.[0-9]+)?)/)?.[1]);
-      if (!Number.isFinite(point)) continue;
-      const pointKey = Number(point).toString().replace('.', '_');
-      const marketKey = `totals_${pointKey}`;
-      const group = realMarketGroups.get(marketKey) ?? {
-        name: `Over/Under ${point}`,
-        outcomes: new Map(),
-      };
-      const existing = group.outcomes.get(outcomeName);
-      if (!existing || price > existing.price) {
-        group.outcomes.set(outcomeName, { name: `${outcomeName} ${point}`, price, point });
-      }
-      realMarketGroups.set(marketKey, group);
-    }
-    const markets = Array.from(realMarketGroups.entries())
-      .map(([key, group]) => ({
-        key,
-        name: group.name,
-        outcomes: Array.from(group.outcomes.values()),
-      }))
-      .filter(market => market.outcomes.length >= 2);
+    // Include all event markets backed by current bookmaker offers. Prices
+    // come from those offers, never from a projection of the 1X2 market.
+    const markets = realMarkets;
 
     // Pick a display bookmaker name from whatever books quoted the home side
     const topBook = homeOdd.byBookmaker
@@ -730,10 +793,6 @@ export async function fetchSgoBulkMatchOdds(
       bookmaker: prettyBookName(topBook),
       markets: markets.length > 0 ? markets : undefined,
     });
-    if (markets.length > 0) {
-      _bulkRealMarkets.set(`${homeNorm}_${awayNorm}_${dateKey}`, markets);
-    }
-
     // ── Side-effect: build per-bookmaker comparison lines from bulk payload ──
     // Collect every bookmaker that has both home and away prices.
     const hasDraw = !!drawOdd;
