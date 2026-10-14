@@ -267,11 +267,21 @@ export default function InboxPage() {
       )}
 
       {/* ── Empty state ──────────────────────────────────────────────────────── */}
-      {!isLoading && configuredAccounts.length === 0 && !serverError && (
+      {!isLoading && configuredAccounts.length === 0 && !serverError && errors.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground p-6">
           <Mail className="h-10 w-10 mb-3 opacity-25" />
           <p className="font-medium text-sm">No email accounts configured</p>
           <p className="text-xs mt-1">Set <code className="bg-muted px-1 rounded">IMAP_PASSWORD</code> as a Replit Secret.</p>
+        </div>
+      )}
+
+      {!isLoading && configuredAccounts.length === 0 && !serverError && errors.length > 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground p-6">
+          <Mail className="h-10 w-10 mb-3 opacity-25" />
+          <p className="font-medium text-sm">Could not connect to any mailboxes</p>
+          <p className="max-w-md text-xs mt-1">
+            Every IMAP connection failed. Check the IMAP host, port 993, and mail server or mailbox credentials, then use Refresh to retry.
+          </p>
         </div>
       )}
 
