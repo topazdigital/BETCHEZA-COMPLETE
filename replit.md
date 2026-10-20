@@ -9,7 +9,6 @@ A sports betting tipster community platform providing real-time sports data, AI-
 - **Start**: `npm start` (port 5000, bound to 0.0.0.0)
 - **Lint**: `npm run lint`
 - **Required env vars**: `JWT_SECRET`, `FOOTBALL_DATA_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
-- **Admin inbox (optional)**: `IMAP_PASSWORD` supplies the mailbox password; `IMAP_HOST` overrides the IMAP server hostname. Without an override, `IMAP_PASSWORD` uses `mail.betcheza.co.ke`, while saved Email Setup credentials use their saved host (or that fallback). IMAP uses TLS on port 993.
 - **Expanded real match markets**: Configure `SPORTSGAMEODDS_API_KEY` and/or `THE_ODDS_API_KEY` (environment or Admin → Settings → API Keys). ESPN supplies the core prices it returns; additional market prices must come from actual bookmaker offers.
 - **Optional DB**: `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` (MySQL). App runs without DB using in-memory/file fallback.
 - **OpenAI**: Uses Replit AI Integrations (`AI_INTEGRATIONS_OPENAI_API_KEY` + `AI_INTEGRATIONS_OPENAI_BASE_URL`) with `OPENAI_API_KEY` as fallback. Falls back to rules-based chat if neither is set.

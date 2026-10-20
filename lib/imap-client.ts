@@ -40,14 +40,13 @@ const ACCOUNTS = [
 
 /** Resolve IMAP credentials — env var first, then saved Email Config. */
 async function getImapConfig(): Promise<{ host: string; pass: string }> {
-  const envHost = process.env.IMAP_HOST?.trim();
   const envPass = process.env.IMAP_PASSWORD || '';
-  if (envPass) return { host: envHost || FALLBACK_IMAP_HOST, pass: envPass };
+  if (envPass) return { host: FALLBACK_IMAP_HOST, pass: envPass };
 
   const cfg = await getEmailConfig();
   const pass = cfg.password || '';
-  // SMTP and IMAP hosts can differ; allow an explicit IMAP host override.
-  const host = envHost || cfg.host || FALLBACK_IMAP_HOST;
+  // Derive IMAP host from SMTP host (same mail server, different port)
+  const host = cfg.host || FALLBACK_IMAP_HOST;
   return { host, pass };
 }
 
@@ -193,7 +192,7 @@ export async function markEmailSeen(uid: number, account: string): Promise<void>
   try {
     await client.connect();
     await client.mailboxOpen('INBOX');
-    await client.messageFlagsAdd([uid], ['\\Seen'], { uid: true });
+    await client.messageFlagsAdd({ uid: true }, [uid], ['\\Seen']);
   } finally {
     await client.logout().catch(() => {});
   }
