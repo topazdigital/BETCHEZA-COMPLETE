@@ -7,4 +7,6 @@ Never restart production after a failed source pull: the service can rebuild and
 
 **Why:** A production update was blocked by a local process-manager configuration change, but a separate restart still ran against the old checkout, making the deploy appear successful.
 
-**How to apply:** Inspect server changes first, preserve only the specific local configuration that blocks the fast-forward, chain the pull and restart with `&&`, reapply/review process-manager config before restart, and verify the checked-out commit after deployment.
+**How to apply:** Production changes are made in Replit, pushed to GitHub, then deployed to the server manually over SSH. When tracing an incident, compare the Replit change, GitHub push, and server deployment times. Inspect server changes first, preserve only the specific local configuration that blocks the fast-forward, chain the pull and restart with `&&`, reapply/review process-manager config before restart, and verify the checked-out commit after deployment.
+
+**Why:** The user clarified this production workflow; tracing all three stages is necessary to correlate a live-site incident with the version actually deployed.
