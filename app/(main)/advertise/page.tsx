@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Advertise on Betcheza — Reach 50,000+ Active Kenyan Bettors',
     description: 'Place your brand in front of Kenya\'s largest sports betting tips community. Real stats, flexible deals (CPA, Rev Share, Fixed), multiple ad placements.',
-    url: 'https://betcheza.co.ke/advertise',
+    url: 'https://www.betcheza.co.ke/advertise',
     siteName: 'Betcheza',
     locale: 'en_KE',
     type: 'website',
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     description: '50K+ registered users, 320K monthly pageviews, 87% mobile. CPA, Revenue Share, and fixed-placement deals available for bookmakers.',
   },
   alternates: {
-    canonical: 'https://betcheza.co.ke/advertise',
+    canonical: 'https://www.betcheza.co.ke/advertise',
   },
   robots: {
     index: true,

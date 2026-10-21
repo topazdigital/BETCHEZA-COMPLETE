@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getSiteSettings } from '@/lib/site-settings';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 interface TeamResponse {
   team?: {
@@ -42,7 +43,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const description = `${team.name}${team.country ? ` (${team.country})` : ''}${leaguePart}. Live fixtures, results, squad, injuries and expert betting tips.${venuePart}`;
   // Canonical URL — browsers and crawlers will see the slug+id form even
   // when the page was reached via a legacy `espn_xxx_id` link.
-  const baseUrl = (settings as { site_url?: string }).site_url || process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl((settings as { site_url?: string }).site_url);
   const canonicalPath = team.canonicalId ? `/teams/${team.canonicalId}` : `/teams/${encodeURIComponent(id)}`;
   return {
     title,

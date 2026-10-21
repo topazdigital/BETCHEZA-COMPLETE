@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { getSiteSettings } from '@/lib/site-settings';
 import { getCompetitionsAsync } from '@/lib/competitions-store';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+const BASE_URL = getCanonicalSiteUrl();
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSiteSettings();

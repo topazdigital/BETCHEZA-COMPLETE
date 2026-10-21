@@ -4,17 +4,11 @@ import {
   getIndexedNewsArticles,
   seedNewsArticleIndexFromFeeds,
 } from '@/lib/news-article-index';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const revalidate = 60;
 
-// Production Apache redirects the bare domain to www. Keep sitemap URLs on
-// the final host so Google does not have to reconcile two host variants.
-const rawSiteUrl = (
-  process.env.NEXT_PUBLIC_SITE_URL
-  || process.env.SITE_URL
-  || 'https://www.betcheza.co.ke'
-).replace(/\/$/, '');
-const SITE_URL = rawSiteUrl.replace(/^https?:\/\/(?!www\.)/, match => `${match}www.`);
+const SITE_URL = getCanonicalSiteUrl();
 const SITE_NAME = 'Betcheza';
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10_000;

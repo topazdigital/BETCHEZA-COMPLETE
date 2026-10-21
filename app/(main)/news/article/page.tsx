@@ -1,15 +1,12 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { getSiteSettings } from '@/lib/site-settings';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 import ArticleReader from './_article-reader';
 
 export const dynamic = 'force-dynamic';
 
-// Production Apache redirects the bare domain to www. Keep article canonicals
-// on the final host so Google does not have to reconcile two host variants.
-const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke')
-  .replace(/\/$/, '')
-  .replace(/^https?:\/\/(?!www\.)/, (match) => `${match}www.`);
+const BASE_URL = getCanonicalSiteUrl();
 
 type SearchParams = Promise<{
   headline?: string;

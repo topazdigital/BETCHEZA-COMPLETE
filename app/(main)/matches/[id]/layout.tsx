@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getSiteSettings } from '@/lib/site-settings';
 import { matchToSlug } from '@/lib/utils/match-url';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 interface MatchData {
   homeTeam?: { name?: string; logo?: string };
@@ -304,7 +305,7 @@ export async function generateMetadata({
   const [{ id }, settings] = await Promise.all([params, getSiteSettings()]);
   const match = await fetchMatch(id);
   const siteName = settings.site_name || 'Betcheza';
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
 
   if (!match || !match.homeTeam?.name || !match.awayTeam?.name) {
     // Recover team names from the URL slug so the page title is always
@@ -394,7 +395,7 @@ export async function generateMetadata({
   }
 
   const ogTitle = title.replace(/🔴 LIVE: /, '');
-  const apiBase = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const apiBase = getCanonicalSiteUrl();
   const sportSlug = match.sport?.slug ?? '';
 
   // Build OG image URL — encodes all match info as query params so social crawlers
@@ -481,7 +482,7 @@ export default async function Layout({
   }
 
   const siteName = settings.site_name || 'Betcheza';
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   const schemas = buildJsonLd(match, id, siteName, baseUrl);
 
   return (

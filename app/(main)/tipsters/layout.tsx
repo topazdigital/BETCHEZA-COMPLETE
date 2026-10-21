@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Best Tipsters in Kenya | Top Football Predictors | Betcheza',
     description: 'Find and follow the best verified tipsters in Kenya. Compare win rates, ROI and picks for SportPesa, Betika and Odibets.',
-    url: 'https://betcheza.co.ke/tipsters',
+    url: 'https://www.betcheza.co.ke/tipsters',
     type: 'website',
     siteName: 'Betcheza',
   },
@@ -30,11 +30,11 @@ export const metadata: Metadata = {
     title: 'Best Tipsters Kenya | Betcheza',
     description: "Follow Kenya's top verified football tipsters. Free tips from experts with proven win rates.",
   },
-  alternates: { canonical: 'https://betcheza.co.ke/tipsters' },
+  alternates: { canonical: 'https://www.betcheza.co.ke/tipsters' },
   robots: { index: true, follow: true },
 };
 
-const baseUrl = 'https://betcheza.co.ke';
+const baseUrl = 'https://www.betcheza.co.ke';
 
 const itemListSchema = {
   '@context': 'https://schema.org',

@@ -18,11 +18,11 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       type: 'website',
-      url: 'https://betcheza.co.ke/feed',
+      url: 'https://www.betcheza.co.ke/feed',
       siteName: s.site_name,
     },
     twitter: { card: 'summary_large_image', title, description },
-    alternates: { canonical: 'https://betcheza.co.ke/feed' },
+    alternates: { canonical: 'https://www.betcheza.co.ke/feed' },
     robots: { index: true, follow: true },
   };
 }

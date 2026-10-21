@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 import { notFound } from 'next/navigation';
 import { getStaticPage } from '@/lib/static-pages-store';
 import { getSiteSettings } from '@/lib/site-settings';
@@ -10,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const [page, settings] = await Promise.all([getStaticPage('help'), getSiteSettings()]);
   const title = page?.title ?? 'Help Center';
   const description = page?.meta_description ?? 'Get help using ' + settings.site_name;
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   return {
     title,
     description,

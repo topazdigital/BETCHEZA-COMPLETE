@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist } from 'next/font/google'
 import { headers } from 'next/headers'
+import { getCanonicalSiteUrl } from '@/lib/site-url'
 
 export const dynamic = 'force-dynamic';
 // Analytics removed — not needed for self-hosted deployments
@@ -538,9 +539,7 @@ export async function generateMetadata(): Promise<Metadata> {
         apple: '/apple-icon.png',
       };
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
-  // Ensure we always have both www and non-www variants for self-referential hreflang
-  const wwwUrl = siteUrl.includes('www.') ? siteUrl : siteUrl.replace('https://', 'https://www.');
+  const siteUrl = getCanonicalSiteUrl();
   const canonicalPath = pathname === '/' ? '' : pathname.split('?')[0];
   const pathSuffix = canonicalPath;
 
@@ -557,12 +556,9 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: {
       canonical: `${siteUrl}${pathSuffix}`,
       languages: {
-        // Primary locale (non-www canonical)
         'en-KE': `${siteUrl}${pathSuffix}`,
         'x-default': `${siteUrl}${pathSuffix}`,
-        // www self-referential alternate — fixes "self-referential alternate link missing" for
-        // crawlers visiting www.betcheza.co.ke so they see a hreflang pointing to themselves
-        'en': `${wwwUrl}${pathSuffix || '/'}`,
+        en: `${siteUrl}${pathSuffix || '/'}`,
       },
     },
     robots: seoEntry?.noIndex ? { index: false, follow: false } : undefined,
@@ -572,7 +568,7 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       type: 'website',
       locale: 'en_KE',
-      url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke'}${pathname === '/' ? '' : pathname}`,
+      url: `${siteUrl}${pathname === '/' ? '' : pathname}`,
       siteName: displayName,
       title,
       description,
@@ -605,18 +601,18 @@ export const viewport: Viewport = {
 const websiteJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
-  '@id': 'https://betcheza.co.ke/#website',
+  '@id': 'https://www.betcheza.co.ke/#website',
   name: 'Betcheza',
   alternateName: ['Betcheza Kenya', 'Best Betting Tips Kenya', 'Betcheza Tips', 'betcheza.co.ke'],
-  url: 'https://betcheza.co.ke',
+  url: 'https://www.betcheza.co.ke',
   description: "Betcheza is Kenya's most trusted betting tips site — the best free AI football predictions, SportPesa jackpot tips, Betika grand jackpot picks, and daily sure odds.",
   inLanguage: 'en',
-  publisher: { '@id': 'https://betcheza.co.ke/#organization' },
+  publisher: { '@id': 'https://www.betcheza.co.ke/#organization' },
   potentialAction: {
     '@type': 'SearchAction',
     target: {
       '@type': 'EntryPoint',
-      urlTemplate: 'https://betcheza.co.ke/search?q={search_term_string}',
+      urlTemplate: 'https://www.betcheza.co.ke/search?q={search_term_string}',
     },
     'query-input': 'required name=search_term_string',
   },
@@ -625,25 +621,25 @@ const websiteJsonLd = {
 const organizationJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  '@id': 'https://betcheza.co.ke/#organization',
+  '@id': 'https://www.betcheza.co.ke/#organization',
   name: 'Betcheza',
   legalName: 'Betcheza',
   alternateName: 'Betcheza Kenya',
-  url: 'https://betcheza.co.ke',
+  url: 'https://www.betcheza.co.ke',
   logo: {
     '@type': 'ImageObject',
-    url: 'https://betcheza.co.ke/icon-512.png',
+    url: 'https://www.betcheza.co.ke/icon-512.png',
     width: 512,
     height: 512,
   },
-  image: 'https://betcheza.co.ke/og-image.png',
+  image: 'https://www.betcheza.co.ke/og-image.png',
   description: "Kenya's #1 sports betting tipster community — free AI-powered predictions, jackpot tips, and expert tipster leaderboard.",
   foundingDate: '2024',
   areaServed: { '@type': 'Country', name: 'Kenya' },
   contactPoint: {
     '@type': 'ContactPoint',
     contactType: 'customer service',
-    url: 'https://betcheza.co.ke/contact',
+    url: 'https://www.betcheza.co.ke/contact',
     areaServed: 'KE',
     availableLanguage: 'English',
   },
@@ -808,13 +804,13 @@ const faqJsonLd = {
 const localBusinessJsonLd = {
   '@context': 'https://schema.org',
   '@type': ['LocalBusiness', 'SportsOrganization'],
-  '@id': 'https://betcheza.co.ke/#localbusiness',
+  '@id': 'https://www.betcheza.co.ke/#localbusiness',
   name: 'Betcheza',
   alternateName: 'Betcheza Kenya',
   description: "Kenya's #1 sports betting tipster community — free AI-powered football predictions, SportPesa jackpot tips, Betika grand jackpot picks, and daily sure odds.",
-  url: 'https://betcheza.co.ke',
-  logo: 'https://betcheza.co.ke/icon-512.png',
-  image: 'https://betcheza.co.ke/og-image.png',
+  url: 'https://www.betcheza.co.ke',
+  logo: 'https://www.betcheza.co.ke/icon-512.png',
+  image: 'https://www.betcheza.co.ke/og-image.png',
   priceRange: 'Free',
   currenciesAccepted: 'KES',
   paymentAccepted: 'M-Pesa',
@@ -831,7 +827,7 @@ const localBusinessJsonLd = {
   contactPoint: {
     '@type': 'ContactPoint',
     contactType: 'customer support',
-    url: 'https://betcheza.co.ke/contact',
+    url: 'https://www.betcheza.co.ke/contact',
     areaServed: 'KE',
     availableLanguage: ['English', 'Swahili'],
   },
@@ -884,9 +880,9 @@ const localBusinessJsonLd = {
 const softwareAppJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebApplication',
-  '@id': 'https://betcheza.co.ke/#app',
+  '@id': 'https://www.betcheza.co.ke/#app',
   name: 'Betcheza',
-  url: 'https://betcheza.co.ke',
+  url: 'https://www.betcheza.co.ke',
   description: "Kenya's #1 free sports betting tips platform — AI predictions, jackpot tips, tipster leaderboard and cash prize competitions.",
   applicationCategory: 'SportsApplication',
   operatingSystem: 'Web',
@@ -906,7 +902,7 @@ const softwareAppJsonLd = {
     worstRating: '1',
     ratingCount: '2400',
   },
-  publisher: { '@id': 'https://betcheza.co.ke/#organization' },
+  publisher: { '@id': 'https://www.betcheza.co.ke/#organization' },
 };
 
 export default function RootLayout({

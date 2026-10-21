@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Tipster Leaderboard | Best Predictors in Kenya | Betcheza',
     description: 'Kenya\'s top football tipsters ranked by win rate. Find the best predictors for SportPesa, Betika and Odibets.',
-    url: 'https://betcheza.co.ke/leaderboard',
+    url: 'https://www.betcheza.co.ke/leaderboard',
     type: 'website',
     siteName: 'Betcheza',
   },
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     title: 'Tipster Leaderboard Kenya | Betcheza',
     description: 'Kenya\'s top ranked football tipsters by win rate and ROI.',
   },
-  alternates: { canonical: 'https://betcheza.co.ke/leaderboard' },
+  alternates: { canonical: 'https://www.betcheza.co.ke/leaderboard' },
   robots: { index: true, follow: true },
 };
 

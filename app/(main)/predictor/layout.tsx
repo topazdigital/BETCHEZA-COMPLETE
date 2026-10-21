@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'AI Football Predictor | Free Predictions | Betcheza Kenya',
     description: 'Get free AI-powered match predictions for any football game. Win probability, correct scores and expert tips.',
-    url: 'https://betcheza.co.ke/predictor',
+    url: 'https://www.betcheza.co.ke/predictor',
     type: 'website',
     siteName: 'Betcheza',
   },
@@ -28,11 +28,11 @@ export const metadata: Metadata = {
     title: 'AI Football Predictor | Betcheza Kenya',
     description: 'Free AI predictions for today\'s matches. Win probability and expert tips updated continuously.',
   },
-  alternates: { canonical: 'https://betcheza.co.ke/predictor' },
+  alternates: { canonical: 'https://www.betcheza.co.ke/predictor' },
   robots: { index: true, follow: true },
 };
 
-const baseUrl = 'https://betcheza.co.ke';
+const baseUrl = 'https://www.betcheza.co.ke';
 
 const softwareAppSchema = {
   '@context': 'https://schema.org',

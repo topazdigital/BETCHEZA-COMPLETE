@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getSiteSettings } from '@/lib/site-settings';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 interface TipsterResponse {
   username?: string;
@@ -41,7 +42,7 @@ export async function generateMetadata({
   const [{ id }, settings] = await Promise.all([params, getSiteSettings()]);
   const t = await fetchTipster(id);
   const siteName = settings.site_name || 'Betcheza';
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   const canonical = `${baseUrl}/tipsters/${encodeURIComponent(id)}`;
 
   if (!t || (!t.displayName && !t.username)) {
@@ -112,7 +113,7 @@ export default async function Layout({
   const [t, settings] = await Promise.all([fetchTipster(id), getSiteSettings()]);
 
   const siteName = settings.site_name || 'Betcheza';
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   const canonical = `${baseUrl}/tipsters/${encodeURIComponent(id)}`;
 
   if (!t || (!t.displayName && !t.username)) {

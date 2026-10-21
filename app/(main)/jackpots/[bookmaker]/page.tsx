@@ -157,12 +157,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: `${bk.name} Jackpot Predictions Today | Betcheza Kenya`,
       description,
-      url: 'https://betcheza.co.ke/jackpots/' + bk.slug,
+      url: 'https://www.betcheza.co.ke/jackpots/' + bk.slug,
       type: 'website',
       siteName: 'Betcheza',
     },
     twitter: { card: 'summary_large_image', title: `${bk.name} Jackpot Predictions | Betcheza Kenya`, description },
-    alternates: { canonical: 'https://betcheza.co.ke/jackpots/' + bk.slug },
+    alternates: { canonical: 'https://www.betcheza.co.ke/jackpots/' + bk.slug },
     robots: { index: true, follow: true },
   };
 }
@@ -172,7 +172,7 @@ export default async function BookmakerJackpotPage({ params }: Props) {
   const bk = SUPPORTED_BOOKMAKERS.find(b => b.slug === slug);
   if (!bk) notFound();
 
-  const baseUrl = 'https://betcheza.co.ke';
+  const baseUrl = 'https://www.betcheza.co.ke';
   const canonical = `${baseUrl}/jackpots/${bk.slug}`;
 
   const webPageSchema = {

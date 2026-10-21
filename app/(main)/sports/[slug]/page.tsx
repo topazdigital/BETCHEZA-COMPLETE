@@ -1,10 +1,11 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ALL_SPORTS } from '@/lib/sports-data';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+const BASE_URL = getCanonicalSiteUrl();
 
 const SPORT_INFO: Record<string, {
   description: string;

@@ -27,19 +27,19 @@ export const metadata: Metadata = {
     'sports betting expert Africa',
   ].join(', '),
   alternates: {
-    canonical: 'https://betcheza.co.ke/become-tipster',
+    canonical: 'https://www.betcheza.co.ke/become-tipster',
   },
   openGraph: {
     title: 'Become a Sports Betting Tipster on Betcheza',
     description:
       'Get your own public tipster profile with stats, ROI charts and followers. Apply in minutes — approved tipsters can charge a monthly subscription and start posting picks immediately.',
-    url: 'https://betcheza.co.ke/become-tipster',
+    url: 'https://www.betcheza.co.ke/become-tipster',
     siteName: 'Betcheza',
     type: 'website',
     locale: 'en_KE',
     images: [
       {
-        url: 'https://betcheza.co.ke/og-tipster.png',
+        url: 'https://www.betcheza.co.ke/og-tipster.png',
         width: 1200,
         height: 630,
         alt: 'Become a Tipster on Betcheza',
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     title: 'Become a Sports Betting Tipster | Betcheza',
     description:
       'Share your picks, build a following and earn from paid subscriptions. Apply to join the Betcheza tipster community today.',
-    images: ['https://betcheza.co.ke/og-tipster.png'],
+    images: ['https://www.betcheza.co.ke/og-tipster.png'],
   },
   robots: {
     index: true,

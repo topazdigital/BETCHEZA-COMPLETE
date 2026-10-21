@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const BASE_URL = getCanonicalSiteUrl();
 
 export const metadata: Metadata = {
   title: 'Live Scores Today | Football, Tennis, Basketball & All Sports | Betcheza',

@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { ALL_SPORTS } from '@/lib/sports-data';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+const BASE_URL = getCanonicalSiteUrl();
 
 const SPORT_DETAIL: Record<string, {
   title: string;

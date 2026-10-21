@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { TipsFeedClient } from '@/components/tips/tips-feed-client';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,11 +29,12 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     ? `Expert ${sport} betting tips from Kenya's top-ranked tipsters. ${dayLabel.replace("'s", '')} picks with in-depth analysis and real odds — updated daily.`
     : `Browse ${dayLabel.toLowerCase()} best free betting tips from Kenya's top-ranked tipsters. Filter by sport, odds range, and more. Daily picks for football, basketball, rugby and 35+ sports.`;
 
+  const baseUrl = getCanonicalSiteUrl();
   const canonical = sport
-    ? `https://betcheza.co.ke/tips?sport=${encodeURIComponent(sport)}${day !== 'today' ? `&day=${day}` : ''}`
+    ? `${baseUrl}/tips?sport=${encodeURIComponent(sport)}${day !== 'today' ? `&day=${day}` : ''}`
     : day !== 'today'
-      ? `https://betcheza.co.ke/tips?day=${day}`
-      : 'https://betcheza.co.ke/tips';
+      ? `${baseUrl}/tips?day=${day}`
+      : `${baseUrl}/tips`;
 
   return {
     title,

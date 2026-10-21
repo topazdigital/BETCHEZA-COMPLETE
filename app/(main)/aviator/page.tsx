@@ -63,7 +63,7 @@ export const metadata: Metadata = {
     title: 'Aviator Game Kenya — Best Platforms, Strategy & Tricks | Betcheza',
     description:
       'Kenya\'s top Aviator crash game hub. Play on Betcheza Aviator, compare platforms, and learn proven cash-out strategies.',
-    url: 'https://betcheza.co.ke/aviator',
+    url: 'https://www.betcheza.co.ke/aviator',
     siteName: 'Betcheza',
     locale: 'en_KE',
     type: 'website',
@@ -74,7 +74,7 @@ export const metadata: Metadata = {
     description: 'Play Aviator in Kenya. Compare the best Aviator platforms and learn winning strategies.',
   },
   alternates: {
-    canonical: 'https://betcheza.co.ke/aviator',
+    canonical: 'https://www.betcheza.co.ke/aviator',
   },
   robots: {
     index: true,
@@ -113,7 +113,7 @@ const gameAppJsonLd = {
   publisher: {
     '@type': 'Organization',
     name: 'Betcheza',
-    url: 'https://betcheza.co.ke',
+    url: 'https://www.betcheza.co.ke',
   },
 };
 
@@ -176,8 +176,8 @@ const breadcrumbJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'BreadcrumbList',
   itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://betcheza.co.ke' },
-    { '@type': 'ListItem', position: 2, name: 'Aviator Game Kenya', item: 'https://betcheza.co.ke/aviator' },
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.betcheza.co.ke' },
+    { '@type': 'ListItem', position: 2, name: 'Aviator Game Kenya', item: 'https://www.betcheza.co.ke/aviator' },
   ],
 };
 

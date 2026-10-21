@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import MatchesClientPage from './_matches-client';
 import { getAllMatches } from '@/lib/api/unified-sports-api';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
 const SITE_NAME = 'Betcheza';
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const BASE_URL = getCanonicalSiteUrl();
 
 const SPORT_SEO: Record<string, { name: string; description: string; keywords: string[] }> = {
   football: {

@@ -6,19 +6,13 @@ import { matchToSlug } from '@/lib/utils/match-url';
 import { getAllOutrightSlugs } from '@/lib/api/outright-discovery';
 import { SPECIALS } from '@/lib/api/specials';
 import { articleToUrl, getIndexedNewsArticles } from '@/lib/news-article-index';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 function siteUrl(): string {
-  const raw = (
-    process.env.NEXT_PUBLIC_SITE_URL
-    || process.env.SITE_URL
-    || 'https://www.betcheza.co.ke'
-  ).replace(/\/$/, '');
-  // Ensure www prefix so sitemap URLs match the canonical domain that Apache
-  // redirects to — avoids Google seeing a non-www sitemap on a www-canonical site.
-  return raw.replace(/^https?:\/\/(?!www\.)/, m => m + 'www.');
+  return getCanonicalSiteUrl();
 }
 
 const JACKPOT_BOOKMAKERS = [

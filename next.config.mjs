@@ -72,9 +72,8 @@ const nextConfig = {
   ],
   async redirects() {
     return [
-      // NOTE: www → non-www redirect is handled by Apache on the production server.
-      // Do NOT add it here — it creates an infinite redirect loop:
-      //   Apache forces www.betcheza.co.ke → Next.js redirects back → Apache forces www → loop.
+      // Production Apache redirects the bare domain to www.
+      // Keep the host redirect out of Next.js to avoid conflicting redirects.
       {
         source: '/3-daily-odds-strategy',
         destination: '/strategy',

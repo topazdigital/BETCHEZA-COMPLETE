@@ -44,13 +44,13 @@ export const metadata: Metadata = {
     title: 'Careers at Betcheza Kenya — Earn KES 200–500 Per Referral',
     description:
       'Flexible, commission-based agent roles. Earn KES 200–500 per verified user you bring in. Campus reps, WhatsApp managers, social media creators, and affiliate marketers welcome. Paid weekly via M-Pesa.',
-    url: 'https://betcheza.co.ke/careers',
+    url: 'https://www.betcheza.co.ke/careers',
     siteName: 'Betcheza',
     locale: 'en_KE',
     type: 'website',
     images: [
       {
-        url: 'https://betcheza.co.ke/og-careers.jpg',
+        url: 'https://www.betcheza.co.ke/og-careers.jpg',
         width: 1200,
         height: 630,
         alt: 'Betcheza Agent Careers — Earn Commission in Kenya',
@@ -62,10 +62,10 @@ export const metadata: Metadata = {
     title: 'Earn with Betcheza — Commission Agent Roles in Kenya',
     description:
       "Refer users to Kenya's #1 sports tips platform. Earn KES 200–500 per verified signup, paid weekly via M-Pesa. Apply free — start earning in 24 hours.",
-    images: ['https://betcheza.co.ke/og-careers.jpg'],
+    images: ['https://www.betcheza.co.ke/og-careers.jpg'],
   },
   alternates: {
-    canonical: 'https://betcheza.co.ke/careers',
+    canonical: 'https://www.betcheza.co.ke/careers',
   },
   robots: {
     index: true,
@@ -96,8 +96,8 @@ const JOBS_JSON_LD = {
       hiringOrganization: {
         '@type': 'Organization',
         name: 'Betcheza',
-        sameAs: 'https://betcheza.co.ke',
-        logo: 'https://betcheza.co.ke/betcheza-logo.png',
+        sameAs: 'https://www.betcheza.co.ke',
+        logo: 'https://www.betcheza.co.ke/betcheza-logo.png',
       },
       jobLocation: {
         '@type': 'Place',
@@ -123,7 +123,7 @@ const JOBS_JSON_LD = {
       qualifications: 'Kenyan resident, 18+, M-Pesa registered number',
       responsibilities:
         'Share Betcheza referral link, recruit users via WhatsApp/social media, demo the platform, track conversions via dashboard',
-      url: 'https://betcheza.co.ke/careers#sales-agent',
+      url: 'https://www.betcheza.co.ke/careers#sales-agent',
     },
     {
       '@type': 'JobPosting',
@@ -137,8 +137,8 @@ const JOBS_JSON_LD = {
       hiringOrganization: {
         '@type': 'Organization',
         name: 'Betcheza',
-        sameAs: 'https://betcheza.co.ke',
-        logo: 'https://betcheza.co.ke/betcheza-logo.png',
+        sameAs: 'https://www.betcheza.co.ke',
+        logo: 'https://www.betcheza.co.ke/betcheza-logo.png',
       },
       jobLocation: {
         '@type': 'Place',
@@ -152,7 +152,7 @@ const JOBS_JSON_LD = {
         value: { '@type': 'QuantitativeValue', minValue: 300, maxValue: 500, unitText: 'per referral' },
       },
       qualifications: 'Current university or college student in Kenya',
-      url: 'https://betcheza.co.ke/careers#campus-rep',
+      url: 'https://www.betcheza.co.ke/careers#campus-rep',
     },
     {
       '@type': 'JobPosting',
@@ -166,8 +166,8 @@ const JOBS_JSON_LD = {
       hiringOrganization: {
         '@type': 'Organization',
         name: 'Betcheza',
-        sameAs: 'https://betcheza.co.ke',
-        logo: 'https://betcheza.co.ke/betcheza-logo.png',
+        sameAs: 'https://www.betcheza.co.ke',
+        logo: 'https://www.betcheza.co.ke/betcheza-logo.png',
       },
       jobLocation: {
         '@type': 'Place',
@@ -181,7 +181,7 @@ const JOBS_JSON_LD = {
         value: { '@type': 'QuantitativeValue', minValue: 200, maxValue: 400, unitText: 'per referral' },
       },
       qualifications: 'Active WhatsApp group of 100+ members preferred',
-      url: 'https://betcheza.co.ke/careers#whatsapp-manager',
+      url: 'https://www.betcheza.co.ke/careers#whatsapp-manager',
     },
     {
       '@type': 'JobPosting',
@@ -195,8 +195,8 @@ const JOBS_JSON_LD = {
       hiringOrganization: {
         '@type': 'Organization',
         name: 'Betcheza',
-        sameAs: 'https://betcheza.co.ke',
-        logo: 'https://betcheza.co.ke/betcheza-logo.png',
+        sameAs: 'https://www.betcheza.co.ke',
+        logo: 'https://www.betcheza.co.ke/betcheza-logo.png',
       },
       jobLocation: {
         '@type': 'Place',
@@ -210,7 +210,7 @@ const JOBS_JSON_LD = {
         value: { '@type': 'QuantitativeValue', minValue: 150, maxValue: 400, unitText: 'per referral' },
       },
       qualifications: 'Active social media account (TikTok, Instagram, X, or YouTube), basic video or graphic skills',
-      url: 'https://betcheza.co.ke/careers#social-media-creator',
+      url: 'https://www.betcheza.co.ke/careers#social-media-creator',
     },
     {
       '@type': 'JobPosting',
@@ -224,8 +224,8 @@ const JOBS_JSON_LD = {
       hiringOrganization: {
         '@type': 'Organization',
         name: 'Betcheza',
-        sameAs: 'https://betcheza.co.ke',
-        logo: 'https://betcheza.co.ke/betcheza-logo.png',
+        sameAs: 'https://www.betcheza.co.ke',
+        logo: 'https://www.betcheza.co.ke/betcheza-logo.png',
       },
       jobLocation: {
         '@type': 'Place',
@@ -239,12 +239,12 @@ const JOBS_JSON_LD = {
         value: { '@type': 'QuantitativeValue', minValue: 150, maxValue: 400, unitText: 'per referral' },
       },
       qualifications: 'Blog, website, or paid advertising experience; SEO or Google Ads knowledge a plus',
-      url: 'https://betcheza.co.ke/careers#affiliate-marketer',
+      url: 'https://www.betcheza.co.ke/careers#affiliate-marketer',
     },
     {
       '@type': 'WebPage',
-      '@id': 'https://betcheza.co.ke/careers',
-      url: 'https://betcheza.co.ke/careers',
+      '@id': 'https://www.betcheza.co.ke/careers',
+      url: 'https://www.betcheza.co.ke/careers',
       name: 'Careers at Betcheza — Earn Commission as a Sports Betting Tips Agent in Kenya',
       description:
         "Join Betcheza's growing agent network. Commission-based roles for sales agents, campus reps, WhatsApp managers, social media creators, and affiliate marketers across Kenya. Earn KES 200–500 per user. Paid weekly via M-Pesa.",
@@ -252,8 +252,8 @@ const JOBS_JSON_LD = {
       breadcrumb: {
         '@type': 'BreadcrumbList',
         itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://betcheza.co.ke' },
-          { '@type': 'ListItem', position: 2, name: 'Careers', item: 'https://betcheza.co.ke/careers' },
+          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.betcheza.co.ke' },
+          { '@type': 'ListItem', position: 2, name: 'Careers', item: 'https://www.betcheza.co.ke/careers' },
         ],
       },
     },

@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Jackpot Results & History | Betcheza Kenya',
     description: 'Past jackpot results and winning combinations for SportPesa, Betika, Odibets, Betin and Mozzartbet Kenya.',
-    url: 'https://betcheza.co.ke/jackpots/results',
+    url: 'https://www.betcheza.co.ke/jackpots/results',
     type: 'website',
     siteName: 'Betcheza',
   },
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     description: 'Past jackpot results for SportPesa, Betika, Odibets, Betin and Mozzartbet Kenya.',
     site: '@betcheza',
   },
-  alternates: { canonical: 'https://betcheza.co.ke/jackpots/results' },
+  alternates: { canonical: 'https://www.betcheza.co.ke/jackpots/results' },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-snippet': -1, 'max-image-preview': 'large' } },
 };
 

@@ -123,7 +123,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: `${base} Prediction Today | Betcheza Kenya`,
       description,
-      url: `https://betcheza.co.ke/jackpots/${bkSlug}/${typeSlug}`,
+      url: `https://www.betcheza.co.ke/jackpots/${bkSlug}/${typeSlug}`,
       type: 'website',
       siteName: 'Betcheza',
     },
@@ -132,7 +132,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title: `${base} Prediction Today | Betcheza`,
       description,
     },
-    alternates: { canonical: `https://betcheza.co.ke/jackpots/${bkSlug}/${typeSlug}` },
+    alternates: { canonical: `https://www.betcheza.co.ke/jackpots/${bkSlug}/${typeSlug}` },
     robots: { index: true, follow: true },
   };
 }
@@ -149,8 +149,8 @@ export default async function JackpotTypePage({ params }: Props) {
   const gameCount = GAME_COUNTS[bkSlug]?.[typeSlug] ?? 17;
   const prize = PRIZE_AMOUNTS[bkSlug]?.[typeSlug] ?? 'KES 10M+';
   const base = `${bk.name} ${typeTitle}`;
-  const canonical = `https://betcheza.co.ke/jackpots/${bkSlug}/${typeSlug}`;
-  const baseUrl = 'https://betcheza.co.ke';
+  const canonical = `https://www.betcheza.co.ke/jackpots/${bkSlug}/${typeSlug}`;
+  const baseUrl = 'https://www.betcheza.co.ke';
 
   const webPageSchema = {
     '@context': 'https://schema.org',

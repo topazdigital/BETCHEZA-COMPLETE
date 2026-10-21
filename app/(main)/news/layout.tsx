@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+const BASE_URL = getCanonicalSiteUrl();
 
 export const metadata: Metadata = {
   title: 'Sports News & Betting Insights | Football, Tennis, Cricket & More | Betcheza Kenya',

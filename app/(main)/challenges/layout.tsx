@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const siteUrl = getCanonicalSiteUrl();
 
 export const metadata: Metadata = {
   title: 'Tipster Challenges | Bet Head-to-Head on Football',

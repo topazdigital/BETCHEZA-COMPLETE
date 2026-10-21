@@ -1,4 +1,6 @@
-const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
+import { getCanonicalSiteUrl } from '@/lib/site-url';
+
+const BASE_URL = getCanonicalSiteUrl();
 
 const websiteSchema = {
   '@context': 'https://schema.org',

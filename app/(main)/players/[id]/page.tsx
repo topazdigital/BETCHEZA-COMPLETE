@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 import {
   ChevronLeft, MapPin, Calendar, Ruler, Weight,
   Trophy, GitCompareArrows, Briefcase,
@@ -69,7 +70,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const sportName = getSportName(player.sportPath?.split('/')[0] || 'soccer');
   const title = `${player.name}${positionPart}${teamPart} · ${settings.site_name}`;
   const description = `${player.name} — ${sportName} ${player.position || 'player'}${teamPart}${player.nationality ? `, ${player.nationality}` : ''}. Season stats, recent matches and performance data on ${settings.site_name}.`;
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   return {
     title,
     description,
@@ -209,7 +210,7 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
   const uniqueCompetitions = Array.from(new Set(recent.map(r => r.competition).filter(Boolean))) as string[];
   const showCompetitionCol = uniqueCompetitions.length > 1;
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Person',

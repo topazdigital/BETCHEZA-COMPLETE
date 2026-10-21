@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import { ALL_LEAGUES, ALL_SPORTS } from '@/lib/sports-data';
 import { resolveLeagueSlug } from '@/lib/league-aliases';
 import { pingIndexNow } from '@/lib/indexnow';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 const SITE_NAME = 'Betcheza';
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const BASE_URL = getCanonicalSiteUrl();
 
 const KNOWN_LEAGUE_SLUGS = new Set(ALL_LEAGUES.map(l => l.slug));
 

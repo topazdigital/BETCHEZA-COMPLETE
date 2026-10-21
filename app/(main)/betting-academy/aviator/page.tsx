@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Aviator Strategy Guide — How to Play Crash Games in Kenya | Betcheza',
     description: 'Master every Aviator cash-out strategy. Learn RTP, variance, and bankroll rules before you play.',
-    url: 'https://betcheza.co.ke/betting-academy/aviator',
+    url: 'https://www.betcheza.co.ke/betting-academy/aviator',
     siteName: 'Betcheza',
     locale: 'en_KE',
     type: 'article',
@@ -57,7 +57,7 @@ export const metadata: Metadata = {
     description: 'Complete crash game strategy guide for Kenyan players.',
   },
   alternates: {
-    canonical: 'https://betcheza.co.ke/betting-academy/aviator',
+    canonical: 'https://www.betcheza.co.ke/betting-academy/aviator',
   },
   robots: {
     index: true,
@@ -71,26 +71,26 @@ const articleJsonLd = {
   '@type': 'Article',
   headline: 'Aviator Game Strategy Guide Kenya — How to Win at Crash Games',
   description: 'Complete Aviator strategy guide for Kenyan players covering auto cash-out strategies, bankroll management, and RTP.',
-  url: 'https://betcheza.co.ke/betting-academy/aviator',
+  url: 'https://www.betcheza.co.ke/betting-academy/aviator',
   datePublished: '2025-07-01',
   dateModified: new Date().toISOString().split('T')[0],
-  author: { '@type': 'Organization', name: 'Betcheza', url: 'https://betcheza.co.ke' },
+  author: { '@type': 'Organization', name: 'Betcheza', url: 'https://www.betcheza.co.ke' },
   publisher: {
     '@type': 'Organization',
     name: 'Betcheza',
-    url: 'https://betcheza.co.ke',
-    logo: { '@type': 'ImageObject', url: 'https://betcheza.co.ke/logo.png' },
+    url: 'https://www.betcheza.co.ke',
+    logo: { '@type': 'ImageObject', url: 'https://www.betcheza.co.ke/logo.png' },
   },
-  mainEntityOfPage: { '@type': 'WebPage', '@id': 'https://betcheza.co.ke/betting-academy/aviator' },
+  mainEntityOfPage: { '@type': 'WebPage', '@id': 'https://www.betcheza.co.ke/betting-academy/aviator' },
 };
 
 const breadcrumbJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'BreadcrumbList',
   itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://betcheza.co.ke' },
-    { '@type': 'ListItem', position: 2, name: 'Betting Academy', item: 'https://betcheza.co.ke/betting-academy' },
-    { '@type': 'ListItem', position: 3, name: 'Aviator Strategy Guide', item: 'https://betcheza.co.ke/betting-academy/aviator' },
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.betcheza.co.ke' },
+    { '@type': 'ListItem', position: 2, name: 'Betting Academy', item: 'https://www.betcheza.co.ke/betting-academy' },
+    { '@type': 'ListItem', position: 3, name: 'Aviator Strategy Guide', item: 'https://www.betcheza.co.ke/betting-academy/aviator' },
   ],
 };
 

@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     title: 'Betting Academy — Learn Every Betting Market | Betcheza',
     description:
       'Free comprehensive guide to sports betting markets. From 1X2 basics to advanced handicap markets — everything explained in plain English.',
-    url: 'https://betcheza.co.ke/betting-academy',
+    url: 'https://www.betcheza.co.ke/betting-academy',
     siteName: 'Betcheza',
     locale: 'en_KE',
     type: 'article',
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
       'Free sports betting guide covering all markets: 1X2, BTTS, Over/Under, Handicap, Correct Score, Accumulators and more.',
   },
   alternates: {
-    canonical: 'https://betcheza.co.ke/betting-academy',
+    canonical: 'https://www.betcheza.co.ke/betting-academy',
   },
   robots: {
     index: true,

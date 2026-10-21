@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     title: "Partner with Betcheza — Kenya's #1 Sports Predictions Platform",
     description:
       'CPA, Revenue Share & Hybrid partnership deals. 50K+ real bettors, 320K monthly pageviews, full reporting dashboard.',
-    url: 'https://betcheza.co.ke/partner',
+    url: 'https://www.betcheza.co.ke/partner',
     siteName: 'Betcheza',
     locale: 'en_KE',
     type: 'website',
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     title: 'Partner with Betcheza',
     description: "Kenya's #1 sports tips platform. CPA, RevShare & Hybrid deals for bookmakers.",
   },
-  alternates: { canonical: 'https://betcheza.co.ke/partner' },
+  alternates: { canonical: 'https://www.betcheza.co.ke/partner' },
   robots: { index: true, follow: true },
 };
 

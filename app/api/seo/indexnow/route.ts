@@ -13,6 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,11 +22,7 @@ const INDEXNOW_ENDPOINT = 'https://api.indexnow.org/indexnow';
 const MAX_URLS_PER_BATCH = 10_000; // IndexNow limit
 
 function siteUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.SITE_URL ||
-    'https://betcheza.co.ke'
-  ).replace(/\/$/, '');
+  return getCanonicalSiteUrl();
 }
 
 export async function POST(req: NextRequest) {

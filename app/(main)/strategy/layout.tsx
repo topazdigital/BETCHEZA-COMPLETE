@@ -27,18 +27,18 @@ export const metadata: Metadata = {
     description: 'Proven 7-day compounding strategy with 3 daily sure odds. Grow KES 1,000 to KES 108,000 in one week. Free AI-powered football predictions and jackpot tips updated every day for Kenya, SportPesa, and Betika.',
     type: 'website',
     siteName: 'Betcheza',
-    url: 'https://betcheza.co.ke/strategy',
+    url: 'https://www.betcheza.co.ke/strategy',
   },
   twitter: {
     card: 'summary_large_image',
     title: '3 Daily Sure Odds Winning Strategy | Free Football Predictions | Betcheza',
     description: 'Proven 7-day compounding strategy with 3 daily sure odds. Free football tips updated daily — SportPesa, Betika, and jackpot predictions for Kenya.',
   },
-  alternates: { canonical: 'https://betcheza.co.ke/strategy' },
+  alternates: { canonical: 'https://www.betcheza.co.ke/strategy' },
   robots: { index: true, follow: true },
 };
 
-const baseUrl = 'https://betcheza.co.ke';
+const baseUrl = 'https://www.betcheza.co.ke';
 
 // HowTo schema — Google shows step-by-step cards in search results for strategy/tutorial pages
 const howToSchema = {

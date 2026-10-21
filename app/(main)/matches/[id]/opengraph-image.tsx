@@ -1,10 +1,11 @@
 import { ImageResponse } from 'next/og';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const alt = 'Match Preview — Betcheza';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const SITE_URL = getCanonicalSiteUrl();
 const BASE_URL = process.env.INTERNAL_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
 
 interface SportTheme {

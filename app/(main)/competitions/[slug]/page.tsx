@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 import {
@@ -23,7 +24,7 @@ export async function generateMetadata({ params }: PageParams): Promise<Metadata
   const { slug } = await params;
   const comp = await getCompetitionBySlugAsync(slug);
   const siteName = 'Betcheza';
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
 
   if (!comp) {
     return {
@@ -179,7 +180,7 @@ export default async function CompetitionDetailPage({ params }: PageParams) {
   const pointsGap = personAbove && myStanding ? Math.max(0, personAbove.points - myStanding.points) : 0;
   const winsNeeded = pointsGap > 0 ? Math.ceil(pointsGap / 10) : 0;
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   const canonical = `${baseUrl}/competitions/${slug}`;
   const eventSchema = {
     '@context': 'https://schema.org',

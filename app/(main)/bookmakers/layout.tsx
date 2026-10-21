@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Best Betting Sites Kenya 2025 — Betcheza',
     description: 'Compare top-rated bookmakers in Kenya. Find exclusive bonuses and the best odds from trusted betting sites.',
-    url: 'https://betcheza.co.ke/bookmakers',
+    url: 'https://www.betcheza.co.ke/bookmakers',
     siteName: 'Betcheza',
     type: 'website',
   },
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     description: 'Compare the top bookmakers in Kenya with exclusive bonuses — reviewed by Betcheza.',
   },
   alternates: {
-    canonical: 'https://betcheza.co.ke/bookmakers',
+    canonical: 'https://www.betcheza.co.ke/bookmakers',
   },
 };
 

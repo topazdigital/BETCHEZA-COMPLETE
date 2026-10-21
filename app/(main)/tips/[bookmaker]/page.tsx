@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChevronRight, Star, TrendingUp, Trophy, Target, Zap, Shield, Users } from 'lucide-react';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 // ── Bookmaker catalogue ──────────────────────────────────────────────────────
 
@@ -190,7 +191,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { bookmaker } = await params;
   const bm = BOOKMAKERS[bookmaker];
   const siteName = 'Betcheza';
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   if (!bm) return { title: `Tips` };
 
   const canonical = `${baseUrl}/tips/${bookmaker}`;
@@ -238,7 +239,7 @@ export default async function BookmakerTipsPage({ params }: Props) {
     .filter(b => b.slug !== bookmaker)
     .slice(0, 6);
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+  const baseUrl = getCanonicalSiteUrl();
   const canonical = `${baseUrl}/tips/${bookmaker}`;
 
   const webPageSchema = {

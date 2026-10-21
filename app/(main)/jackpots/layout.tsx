@@ -53,7 +53,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Kenya Jackpot Predictions | Free AI Tips — Betcheza',
     description: 'Get free AI predictions for SportPesa Mega & Midweek Jackpot (17 games), Betika Grand Jackpot, OdiBets, Betin and Mozzartbet. Banker picks and confidence ratings updated daily.',
-    url: 'https://betcheza.co.ke/jackpots',
+    url: 'https://www.betcheza.co.ke/jackpots',
     type: 'website',
     siteName: 'Betcheza',
   },
@@ -62,7 +62,7 @@ export const metadata: Metadata = {
     title: 'Kenya Jackpot Predictions Today | Betcheza',
     description: 'Free AI jackpot tips for SportPesa Mega Jackpot (17 games), Betika Grand Jackpot, OdiBets, Betin & Mozzartbet. Updated daily.',
   },
-  alternates: { canonical: 'https://betcheza.co.ke/jackpots' },
+  alternates: { canonical: 'https://www.betcheza.co.ke/jackpots' },
   robots: { index: true, follow: true },
 };
 
