@@ -10,6 +10,7 @@
 - [Strategy liveStatus terminal vs live codes](strategy-liveStatus-terminal.md) — aet/pen are terminal; extra_time/et/penalties/halftime/ht are live; must not conflate them or picks settle at HT/ET with wrong scores
 - [Daily strategy fixture selection](strategy-fixture-selection.md) — use future EAT-date kickoffs, time-of-day spreading, and regeneration exclusions; never trust provider order
 - [SEO canonical & robots fixes](seo-canonical.md) — robots.txt was broken (Disallow rules orphaned); match canonicals must use matchToSlug not encodeURIComponent(id); matchToSlug now handles hyphen-delimited URL slugs
+- [SEO content priorities](seo-content-priorities.md) — SEO should target single-match searches and timely coach/player news as well as jackpot searches
 - [Cricket & Tennis ESPN fetch](cricket-tennis-espn.md) — ESPN cricket has no /all/ endpoint; must scan sequential series IDs; DB/file match cache persists across restarts and can serve stale 0-cricket results — must clear both when debugging
 - [Match not found — espn_eventid_ cache skip](match-eventid-cache.md) — getMatchById was skipping cache scan for espn_eventid_ format, causing "Match not found" for tennis/basketball/all non-soccer sports even when match was live in cache
 - [League page sport param & slug resolution](league-page-sport-param.md) — unknown league links must include ?sport=slug; never use raw match.league.slug; status filter is context-aware based on dateTab
