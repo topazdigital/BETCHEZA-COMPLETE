@@ -648,7 +648,7 @@ function buildSegmentBreakdown(summary: ESPNSummaryResponse, sportType: string):
   };
 }
 
-function buildNews(summary: ESPNSummaryResponse) {
+function buildNews(summary: ESPNSummaryResponse, homeName: string, awayName: string) {
   // ESPN may return articles in summary.news.articles OR as individual
   // article/headlines fields (structure changed in mid-2025). Check both.
   type AnyArticle = {
@@ -677,6 +677,35 @@ function buildNews(summary: ESPNSummaryResponse) {
     if (art.headline) articles = [art];
   }
 
+  if (articles.length === 0) return [];
+
+  const normalize = (value: string) => value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const genericTeamWords = new Set(['athletic', 'club', 'city', 'united', 'sporting', 'real', 'fc', 'sc', 'ac']);
+  const teamNeedles = [homeName, awayName].flatMap(name => {
+    const normalizedName = normalize(name);
+    const distinctiveWords = normalizedName.split(' ').filter(word => word.length >= 5 && !genericTeamWords.has(word));
+    return [normalizedName, ...distinctiveWords];
+  }).filter(term => term.length >= 4);
+
+  const competitionName = summary.header?.league?.name || '';
+  const competitionWithoutOrganizer = competitionName.replace(/^(?:UEFA|FIFA|AFC|CAF|CONCACAF|CONMEBOL|OFC)\s+/i, '');
+  const competitionNeedles = [competitionName, competitionWithoutOrganizer]
+    .map(normalize)
+    .filter(term => term.length >= 8);
+
+  // ESPN's summary news can be a broad sport-wide feed. Keep only stories that
+  // mention one of these teams or the confirmed competition; never imply that
+  // unrelated soccer headlines are match coverage.
+  articles = articles.filter(article => {
+    const text = normalize(`${article.headline || ''} ${article.description || ''}`);
+    return teamNeedles.some(term => text.includes(term))
+      || competitionNeedles.some(term => text.includes(term));
+  });
   if (articles.length === 0) return [];
 
   return articles.slice(0, 8).map((a, idx) => {
@@ -893,6 +922,25 @@ function teamNameMatches(teamName: string, hint: string): boolean {
   return hWords.length > 0 && hWords.every(w => t.includes(w));
 }
 
+function summaryMatchesSelectedMatch(
+  summary: ESPNSummaryResponse,
+  eventId: string,
+  match: { homeTeam: { name: string }; awayTeam: { name: string } },
+): boolean {
+  const summaryEventId = summary.header?.id ? String(summary.header.id) : '';
+  if (summaryEventId && summaryEventId !== eventId) return false;
+
+  const competitors = summary.header?.competitions?.[0]?.competitors || [];
+  const homeName = competitors.find(team => team.homeAway === 'home')?.team?.displayName;
+  const awayName = competitors.find(team => team.homeAway === 'away')?.team?.displayName;
+  if (!homeName || !awayName) return summaryEventId === eventId;
+
+  const namesMatch = (left: string, right: string) =>
+    teamNameMatches(left, right) || teamNameMatches(right, left);
+  return namesMatch(match.homeTeam.name, homeName)
+    && namesMatch(match.awayTeam.name, awayName);
+}
+
 export async function GET(_request: NextRequest, context: RouteContext) {
   const { id: rawId } = await context.params;
   // Resolve clean URL slugs (e.g. "ita1-737421") to full ESPN IDs ("espn_ita.1_737421")
@@ -1011,9 +1059,26 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     if (isStaleScheduled) g.__detailsCache!.delete(cacheKey);
 
     // ── Fan-out: ESPN summary + SGO bookmaker lines in parallel ───────────────
-    const summaryPromise: Promise<ESPNSummaryResponse | null> = cfg && eventId
-      ? fetchESPNSummary(cfg.sport, cfg.league, eventId)
-      : Promise.resolve(null);
+    // Configured league summaries are preferred. Global soccer events without a
+    // trusted league config can still use ESPN's event-ID summary endpoint, but
+    // only after checking that it contains this exact home/away fixture.
+    const isGlobalSoccerMatch = /^espn_global\d+_\d+$/i.test(resolvedId)
+      && ['football', 'soccer'].includes((match.sport?.slug || '').toLowerCase());
+    const summaryPromise: Promise<ESPNSummaryResponse | null> = (async () => {
+      if (cfg && eventId) {
+        const configuredSummary = await fetchESPNSummary(cfg.sport, cfg.league, eventId);
+        if (configuredSummary && summaryMatchesSelectedMatch(configuredSummary, eventId, match)) {
+          return configuredSummary;
+        }
+      }
+      if (isGlobalSoccerMatch && eventId) {
+        const globalSummary = await fetchESPNSummary('soccer', 'all', eventId);
+        if (globalSummary && summaryMatchesSelectedMatch(globalSummary, eventId, match)) {
+          return globalSummary;
+        }
+      }
+      return null;
+    })();
 
     const isoKickoff = match.kickoffTime instanceof Date
       ? match.kickoffTime.toISOString()
@@ -1451,7 +1516,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     const standings = summary ? buildStandings(summary, cfg?.sport || 'soccer') : null;
-    const news = summary ? buildNews(summary) : [];
+    const news = summary ? buildNews(summary, match.homeTeam.name, match.awayTeam.name) : [];
     if (news.length > 0) {
       void upsertNewsArticles(news.map(article => ({
         id: String(article.id || ''),
@@ -1523,6 +1588,24 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .map(b => b.media?.shortName)
       .filter((x): x is string => !!x);
 
+    const providerLeague = summary?.header?.league;
+    const providerLeagueName = providerLeague?.name?.trim();
+    const isGenericLeagueLabel = (name: string) =>
+      /^(?:League\s+\d+|Unknown\s+League|International\s+Competition|Competition\s+details\s+unavailable)$/i.test(name.trim());
+    const existingLeagueName = match.league?.name || '';
+    const hasSyntheticLeagueLabel = /^espn-\d+$/i.test(match.league?.slug || '')
+      && (/^[A-Za-z]+(?: [A-Za-z]+)* League$/.test(existingLeagueName)
+        || isGenericLeagueLabel(existingLeagueName));
+    const responseLeague = providerLeagueName && !isGenericLeagueLabel(providerLeagueName)
+      ? {
+          ...match.league,
+          name: providerLeagueName,
+          ...(providerLeague?.slug?.startsWith('uefa.') ? { country: 'Europe', countryCode: 'EU' } : {}),
+        }
+      : (isGenericLeagueLabel(existingLeagueName) || hasSyntheticLeagueLabel)
+      ? { ...match.league, name: 'Competition details unavailable' }
+      : match.league;
+
     const payload = {
       match: {
         id: match.id,
@@ -1552,7 +1635,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         awayScore: resolvedAwayScore,
         minute: resolvedMinute,
         period: match.period,
-        league: match.league,
+        league: responseLeague,
         sport: match.sport,
         odds: finalOdds,
         oddsIsComputed: false,

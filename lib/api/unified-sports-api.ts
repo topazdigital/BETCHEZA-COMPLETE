@@ -1029,6 +1029,18 @@ for (const cfg of ESPN_LEAGUES) {
     ESPN_LEAGUE_BY_ID.set(cfg.leagueId, cfg);
   }
 }
+
+// ESPN IDs in this range were historically assigned to competitions by
+// assumption rather than verified provider metadata. 8301 is the verified
+// NWSL exception; leave the others to live ESPN event data instead.
+function isUnverifiedGlobalLeagueId(leagueId: number | string): boolean {
+  const numericId = Number(leagueId);
+  return Number.isInteger(numericId)
+    && numericId >= 8297
+    && numericId <= 8347
+    && numericId !== 8301;
+}
+
 export function getEspnLeagueConfigForId(matchId: string): ESPNLeagueConfig | null {
   // Match `espn_<league>_<eventId>` where <league> may contain dots
   // (e.g. "ita.1", "uefa.champions", "conmebol.libertadores") or the
@@ -1040,6 +1052,7 @@ export function getEspnLeagueConfigForId(matchId: string): ESPNLeagueConfig | nu
   const globalMatch = slug.match(/^global(\d+)$/i);
   if (globalMatch) {
     const leagueId = parseInt(globalMatch[1], 10);
+    if (isUnverifiedGlobalLeagueId(leagueId)) return null;
     // Global scoreboard IDs are ESPN's numeric competition IDs (for example
     // 700 for the Premier League), while ESPN_LEAGUES is keyed by our
     // internal league IDs (1 for the Premier League). Resolve both forms.
@@ -1566,6 +1579,8 @@ const KNOWN_GLOBAL_LEAGUES: Record<string, { name: string; country: string; coun
   '783': { name: 'Copa Sudamericana', country: 'South America', countryCode: 'SA' },
   '1062': { name: 'UEFA Europa League', country: 'Europe', countryCode: 'EU' },
   '1063': { name: 'UEFA Conference League', country: 'Europe', countryCode: 'EU' },
+  // Verified from ESPN's event summary: event ID 401915846 belongs to league 20296.
+  '20296': { name: 'UEFA Conference League', country: 'Europe', countryCode: 'EU' },
   '1978': { name: 'FIFA Club World Cup', country: 'World', countryCode: 'WO' },
   // FIFA World Cup (current tournament IDs — ESPN uses different numeric IDs each cycle)
   '606':  { name: 'FIFA World Cup', country: 'World', countryCode: 'WO' },
@@ -1774,6 +1789,7 @@ const ESPN_NUMERIC_TO_OUR_LEAGUE_ID: Record<string, number> = {
   '3901':  16,  // Belgian Pro League   (bel.1)
   '760':   17,  // Liga MX              (mex.1)  — id from sports-data check
   '1063':  26,  // UEFA Conference League
+  '20296': 26,  // UEFA Conference League — verified ESPN 2026/27 league ID
   '9022':  9022,// Kenya Premier League (ken.1)
   '11054': 9022,// Kenya Premier League alternate ESPN numeric
   '11585': 252, // Ghana Premier League
@@ -1847,6 +1863,20 @@ function leagueNameFromSeasonSlug(slug?: string): string | null {
     .join(' ');
 }
 
+function isGenericGlobalLeagueName(name?: string | null): boolean {
+  return !name?.trim()
+    || /^(?:League\s+\d+|Unknown\s+League|International\s+Competition|Competition\s+details\s+unavailable)$/i.test(name.trim());
+}
+
+function cleanProviderCompetitionName(value?: string | null): string | null {
+  if (!value?.trim()) return null;
+  const cleaned = value.trim()
+    .replace(/^\d{4}(?:-\d{2})?\s+/, '')
+    .split(/\s*,\s*(?:league phase|group phase|knockout phase|regular season|group stage)\b/i)[0]
+    .trim();
+  return isGenericGlobalLeagueName(cleaned) ? null : cleaned;
+}
+
 async function resolveGlobalLeagueInfo(
   sport: string,
   espnLeagueId: string,
@@ -1854,72 +1884,50 @@ async function resolveGlobalLeagueInfo(
 ): Promise<GlobalLeagueInfo> {
   const ck = `${sport}_${espnLeagueId}`;
   const cached = globalLeagueInfoCache.get(ck);
-  if (cached) return cached;
+  const unverifiedId = isUnverifiedGlobalLeagueId(espnLeagueId);
 
-  // 1. Curated map wins — most accurate names.
-  // Only apply soccer-specific league IDs to soccer events; non-soccer sports
-  // (baseball, basketball, hockey, football) have different ESPN numeric league
-  // IDs that happen to share values with soccer ones causing cross-sport
-  // contamination (e.g. MLB teams appearing under Estonian Meistriliiga).
-  const known = sport === 'soccer' ? KNOWN_GLOBAL_LEAGUES[espnLeagueId] : undefined;
-  if (known) {
-    const info: GlobalLeagueInfo = { name: known.name, slug: known.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), country: known.country, countryCode: known.countryCode };
-    globalLeagueInfoCache.set(ck, info);
-    return info;
-  }
-
-  // 2. Try the season slug (e.g. "2025-26-saudi-pro-league" → "Saudi Pro League").
-  const fromSlug = leagueNameFromSeasonSlug(hint?.seasonSlug);
-  if (fromSlug) {
-    const continental = inferContinentalCountry(fromSlug);
-    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
-    const info: GlobalLeagueInfo = { name: fromSlug, slug: fromSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...loc };
-    globalLeagueInfoCache.set(ck, info);
-    return info;
-  }
-
-  // 3. Use ESPN's own league name from the scoreboard response — always accurate,
-  //    covers every league ESPN tracks, prevents "League XXXXX" fallback names.
-  if (hint?.espnName && hint.espnName.trim().length > 2) {
-    const name = hint.espnName.trim();
-    const continental = inferContinentalCountry(name);
-    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
+  // Live provider metadata must take precedence over static maps and older cache
+  // entries, which can be stale or based on an incorrect numeric-ID assumption.
+  const providerName = cleanProviderCompetitionName(hint?.espnName);
+  const seasonName = cleanProviderCompetitionName(leagueNameFromSeasonSlug(hint?.seasonSlug));
+  const persistedName = cleanProviderCompetitionName(persistedESPNLeagueNames.get(espnLeagueId));
+  const sourceName = providerName || seasonName || persistedName;
+  if (sourceName) {
+    const loc = inferContinentalCountry(sourceName) ?? countryFromSlugPrefix(hint?.teamSlug);
     const info: GlobalLeagueInfo = {
-      name,
-      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      name: sourceName,
+      slug: sourceName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       ...loc,
     };
     globalLeagueInfoCache.set(ck, info);
     return info;
   }
 
-  // 4. Check persistent ESPN name cache — names ESPN has returned in any prior
-  //    fetch and saved to disk.  Covers leagues that ESPN knows but aren't in
-  //    KNOWN_GLOBAL_LEAGUES and weren't in the top-level leagues[] this fetch.
-  const persistedName = persistedESPNLeagueNames.get(espnLeagueId);
-  if (persistedName && persistedName.trim().length > 2) {
-    const name = persistedName.trim();
-    const continental = inferContinentalCountry(name);
-    const loc = continental ?? countryFromSlugPrefix(hint?.teamSlug);
-    const info: GlobalLeagueInfo = { name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), ...loc };
+  if (cached && !unverifiedId && !isGenericGlobalLeagueName(cached.name)) return cached;
+
+  // Only use curated mappings after current and persisted provider metadata.
+  // The 8297–8347 block is deliberately excluded except verified ID 8301 (NWSL).
+  const known = sport === 'soccer' && !unverifiedId ? KNOWN_GLOBAL_LEAGUES[espnLeagueId] : undefined;
+  if (known) {
+    const info: GlobalLeagueInfo = {
+      name: known.name,
+      slug: known.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      country: known.country,
+      countryCode: known.countryCode,
+    };
     globalLeagueInfoCache.set(ck, info);
     return info;
   }
 
-  // 5. Fallback: derive country from team slug (e.g. "sco.alloa-athletic" → Scotland).
-  //    Uses the comprehensive ESPN_SLUG_TO_COUNTRY map for proper names and ISO codes.
-  //    When the country cannot be identified either, use "International Competition"
-  //    rather than the raw numeric ID so the UI never shows "League XXXXX".
-  const loc = countryFromSlugPrefix(hint?.teamSlug);
+  // Never turn a team's country into a league name. If ESPN does not identify
+  // the competition, expose that uncertainty rather than publishing a guess.
   const info: GlobalLeagueInfo = {
-    name: loc.country !== 'World'
-      ? `${loc.country} League`
-      : 'International Competition',
+    name: 'Competition details unavailable',
     slug: `espn-${espnLeagueId}`,
-    ...loc,
+    country: 'World',
+    countryCode: 'WO',
   };
-  // Log unrecognised league IDs so they can be added to KNOWN_GLOBAL_LEAGUES.
-  // Only log soccer — other sports frequently reuse numeric IDs with no overlap.
+  // Log unknown IDs for later verification against ESPN's provider metadata.
   if (sport === 'soccer') {
     try {
       const logPath = path.join(process.cwd(), '.local', 'data', 'unknown-league-ids.json');
@@ -2265,30 +2273,33 @@ async function fetchESPNGlobalSport(sport: string, sportType: ESPNLeagueConfig['
     // combine event name + grouping (e.g. "Roland Garros — Women's Singles"),
     // then the ESPN series name annotated on cricket fallback events.
     const annotatedCricketLeagueName = (event as unknown as { _cricketLeagueName?: string })._cricketLeagueName;
+    const altGameNote = (competition as unknown as { altGameNote?: string }).altGameNote;
+    const noteLeagueName = cleanProviderCompetitionName(altGameNote?.split(',')[0]);
     const fallbackLeagueName = eventName
       ? (groupingName ? `${eventName} — ${groupingName}` : eventName)
-      : (annotatedCricketLeagueName || null);
+      : (noteLeagueName || annotatedCricketLeagueName || null);
     const resolvedLeagueInfo = leagueInfoMap.get(espnLeagueId);
-    // If the resolved name is a generic placeholder (e.g. "League 851", "Unknown League") AND
-    // we have a better name from the event/grouping metadata, prefer that.
-    // NOTE: resolveGlobalLeagueInfo now always returns "International Competition" or a
-    // country-derived name as its last resort, so "League \d+" should no longer appear —
-    // but we keep this guard in case ESPN returns an unexpected raw-ID name.
-    const isGenericName = !resolvedLeagueInfo
-      || /^(League\s+\d+|Unknown\s+League)$/i.test(resolvedLeagueInfo.name);
+    const providerEventName = cleanProviderCompetitionName(fallbackLeagueName);
+    const isGenericName = !resolvedLeagueInfo || isGenericGlobalLeagueName(resolvedLeagueInfo.name);
+    const preferEventName = !!providerEventName
+      && (isGenericName || isUnverifiedGlobalLeagueId(espnLeagueId) || sportType !== 'soccer');
     const friendlyOverrideGlobal = detectFriendlyOverride(event, competition as unknown as { notes?: Array<{ type?: string; headline?: string }>; season?: { slug?: string }; type?: { abbreviation?: string } });
     const leagueInfo = friendlyOverrideGlobal
       ? { name: friendlyOverrideGlobal.name, slug: friendlyOverrideGlobal.slug, country: friendlyOverrideGlobal.country, countryCode: friendlyOverrideGlobal.countryCode }
+      : preferEventName
+      ? {
+          name: providerEventName,
+          slug: providerEventName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+          ...(inferContinentalCountry(providerEventName) ?? { country: 'World', countryCode: 'WO' }),
+        }
       : (!isGenericName && resolvedLeagueInfo)
       ? resolvedLeagueInfo
-      : (() => {
-          // Prefer event-derived name, then resolved league name, never a raw ID or "Unknown".
-          const fbName = fallbackLeagueName || resolvedLeagueInfo?.name || 'International Competition';
-          const fbLoc = inferContinentalCountry(fbName) ?? countryFromSlugPrefix(
-            (competition?.competitors?.[0]?.team as { slug?: string } | undefined)?.slug
-          );
-          return { name: fbName, slug: `espn-${espnLeagueId}`, ...fbLoc };
-        })();
+      : {
+          name: 'Competition details unavailable',
+          slug: `espn-${espnLeagueId}`,
+          country: 'World',
+          countryCode: 'WO',
+        };
 
     // For individual sports (tennis/golf/mma) build ESPN CDN headshot URLs from
     // the athlete id embedded in each competitor uid (e.g. "s:850~l:851~a:4691").
@@ -3538,6 +3549,7 @@ export function deriveCricketMarkets(
 
 export interface ESPNSummaryResponse {
   header?: {
+    id?: string;
     competitions?: Array<{
       competitors?: Array<{
         id?: string;
@@ -3550,8 +3562,8 @@ export interface ESPNSummaryResponse {
       }>;
       notes?: Array<{ type?: string; headline?: string }>;
     }>;
-    season?: { year?: number; type?: number };
-    league?: { id?: string; name?: string };
+    season?: { year?: number; type?: number; name?: string };
+    league?: { id?: string; name?: string; slug?: string; abbreviation?: string };
   };
   gameInfo?: {
     venue?: { fullName?: string; address?: { city?: string; country?: string }; capacity?: number; indoor?: boolean };

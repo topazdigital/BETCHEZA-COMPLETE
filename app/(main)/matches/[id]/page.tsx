@@ -2157,6 +2157,8 @@ export default function MatchDetailPage({ params }: PageProps) {
               awayLogo={match.awayTeam.logo}
               homeTeamId={match.homeTeam.espnTeamId}
               awayTeamId={match.awayTeam.espnTeamId}
+              homeForm={match.homeTeam.form}
+              awayForm={match.awayTeam.form}
               sportTag={(match.homeTeam as { sportTag?: string }).sportTag}
               isLive={isLive}
               isFinished={isFinished}
@@ -2595,8 +2597,8 @@ export default function MatchDetailPage({ params }: PageProps) {
                 ) : (
                   <div className="py-14 text-center text-muted-foreground">
                     <Newspaper className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p className="font-semibold">No news yet</p>
-                    <p className="text-sm mt-1">No articles available for this match.</p>
+                    <p className="font-semibold">No verified coverage yet</p>
+                    <p className="text-sm mt-1">No articles about either team or this competition are available.</p>
                   </div>
                 )}
               </CardContent>
@@ -3872,7 +3874,7 @@ function NewsRow({ item }: { item: NewsItem }) {
 // ===== TipCard Component =====
 // ─── Team Stats tab (live + finished) ───────────────────────────────────────
 function TeamStatsTab({
-  teamStats, homeName, awayName, homeLogo, awayLogo, homeTeamId, awayTeamId, sportTag, isLive, isFinished,
+  teamStats, homeName, awayName, homeLogo, awayLogo, homeTeamId, awayTeamId, homeForm, awayForm, sportTag, isLive, isFinished,
 }: {
   teamStats: TeamStatsBlock | null
   homeName: string
@@ -3881,25 +3883,61 @@ function TeamStatsTab({
   awayLogo?: string
   homeTeamId?: string
   awayTeamId?: string
+  homeForm?: string
+  awayForm?: string
   sportTag?: string | null
   isLive: boolean
   isFinished: boolean
 }) {
   if (!teamStats || (teamStats.home.stats.length === 0 && teamStats.away.stats.length === 0)) {
+    const showPreMatchForm = !isLive && !isFinished && Boolean(homeForm || awayForm)
     return (
       <Card>
-        <CardContent className="py-14 text-center text-muted-foreground">
-          <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-semibold">
-            {isFinished ? 'No statistics available' : isLive ? 'Stats loading…' : 'Stats appear once the match starts'}
-          </p>
-          <p className="text-sm mt-1">
-            {isFinished
-              ? 'Statistics were not published for this fixture.'
-              : isLive
-              ? 'Live possession, shots and more will appear shortly.'
-              : 'Live possession, shots and more will show here once the whistle blows.'}
-          </p>
+        <CardContent className={showPreMatchForm ? 'space-y-4 p-4' : 'py-14 text-center text-muted-foreground'}>
+          {showPreMatchForm ? (
+            <>
+              <div className="text-center">
+                <BarChart3 className="mx-auto mb-3 h-10 w-10 opacity-30" />
+                <p className="font-semibold">Pre-match analysis</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Live match statistics will appear after kickoff. Recent form is available now.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {[
+                  { name: homeName, form: homeForm },
+                  { name: awayName, form: awayForm },
+                ].map(team => (
+                  <div key={team.name} className="rounded-lg border border-border/60 p-3">
+                    <p className="mb-2 text-sm font-semibold">{team.name}</p>
+                    {team.form ? (
+                      <div className="flex items-center gap-1.5" aria-label={`${team.name} recent form`}>
+                        {team.form.split('').slice(0, 5).map((result, index) => (
+                          <FormBadge key={`${team.name}-${index}`} result={result} />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Recent form is not available.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <BarChart3 className="mx-auto mb-3 h-12 w-12 opacity-30" />
+              <p className="font-semibold">
+                {isFinished ? 'No statistics available' : isLive ? 'Stats loading…' : 'Stats appear once the match starts'}
+              </p>
+              <p className="mt-1 text-sm">
+                {isFinished
+                  ? 'Statistics were not published for this fixture.'
+                  : isLive
+                  ? 'Live possession, shots and more will appear shortly.'
+                  : 'Live possession, shots and more will show here once the whistle blows.'}
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
     )
