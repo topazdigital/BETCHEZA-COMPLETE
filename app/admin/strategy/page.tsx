@@ -29,7 +29,13 @@ function ManualPickEditor({
   const combinedOdds = picks.reduce((acc, p) => acc * (parseFloat(String(p.odds)) || 1), 1);
 
   const updatePick = (i: number, field: keyof StrategyPick, value: string | number) => {
-    const updated = picks.map((p, idx) => idx === i ? { ...p, [field]: value } : p);
+    const updated = picks.map((p, idx) => {
+      if (idx !== i) return p;
+      const next = { ...p, [field]: value };
+      // The old AI explanation may describe a different side or market.
+      if ((field === 'pick' || field === 'market') && p[field] !== value) next.reasoning = '';
+      return next;
+    });
     onChange(updated);
   };
 

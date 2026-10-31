@@ -20,6 +20,55 @@ export function matchTeamWords(teamA: string, teamB: string): boolean {
   return wordsA.some(wa => wordsB.some(wb => wa === wb || wa.includes(wb) || wb.includes(wa)));
 }
 
+export type DoubleChanceOutcome = '1x' | 'x2' | '12';
+
+function pickMentionsTeam(pickText: string, teamName: string): boolean {
+  const normalizedPick = normalizeTeam(pickText);
+  const normalizedTeam = normalizeTeam(teamName);
+  if (normalizedTeam.length > 2 && normalizedPick.includes(normalizedTeam)) return true;
+
+  // Allow common shortened names such as "Faisaly" for "Al Faisaly", while
+  // requiring every distinctive word in a multi-word team name to be present.
+  const pickWords = new Set(pickText.toLowerCase().match(/[a-z0-9]+/g) || []);
+  const teamWords = teamName.toLowerCase().match(/[a-z0-9]+/g)?.filter(word => word.length > 3) || [];
+  return teamWords.length > 0 && teamWords.every(word => pickWords.has(word));
+}
+
+/** Resolve the selected outcomes for a Double Chance pick, including team-name labels. */
+export function getDoubleChanceOutcome(pick: Pick<StrategyPick, 'homeTeam' | 'awayTeam' | 'pick' | 'market'>): DoubleChanceOutcome | null {
+  const pickRaw = (pick.pick || '').toLowerCase().trim();
+  const marketRaw = (pick.market || '').toLowerCase().trim();
+  const pickNorm = normalizeTeam(pickRaw);
+  const selectionText = `${pickRaw} ${marketRaw}`;
+  const selectionWords = new Set(selectionText.match(/[a-z0-9]+/g) || []);
+  const hasDraw = selectionWords.has('draw');
+  const namesHome = pickMentionsTeam(pickRaw, pick.homeTeam);
+  const namesAway = pickMentionsTeam(pickRaw, pick.awayTeam);
+
+  if (selectionWords.has('1x') || (selectionWords.has('home') && hasDraw)) return '1x';
+  if (selectionWords.has('x2') || (selectionWords.has('away') && hasDraw)) return 'x2';
+
+  if (hasDraw) {
+    if (namesHome && !namesAway) return '1x';
+    if (namesAway && !namesHome) return 'x2';
+    if (pickRaw.startsWith('draw or')) return 'x2';
+    if (pickRaw.endsWith('or draw')) return '1x';
+    return null;
+  }
+
+  if (
+    selectionWords.has('12') ||
+    (selectionWords.has('home') && selectionWords.has('away')) ||
+    (namesHome && namesAway)
+  ) {
+    return '12';
+  }
+
+  // Preserve the existing support for picks phrased as "Home or Away".
+  if (pickNorm === 'homeoraway' || pickNorm === 'homeaway') return '12';
+  return null;
+}
+
 /**
  * Determine if a strategy pick won or lost based on the final score.
  *
@@ -52,59 +101,10 @@ export function checkPickResult(
 
   // ── Double Chance ──────────────────────────────────────────────────────────
   if (market === 'double chance' || market.includes('double chance')) {
-
-    // 1X — Home or Draw
-    const is1X =
-      pickRaw === '1x' || pickRaw === 'home or draw' || pickRaw === 'home/draw' ||
-      pickRaw === '1x (home or draw)' || pickRaw === 'home or draw (1x)' ||
-      (pickRaw.includes('home') && pickRaw.includes('draw') && !pickRaw.includes('away')) ||
-      (market.includes('double chance') && pickRaw.includes('1x'));
-
-    // X2 — Away or Draw
-    const isX2 =
-      pickRaw === 'x2' || pickRaw === 'away or draw' || pickRaw === 'away/draw' ||
-      pickRaw === 'x2 (away or draw)' || pickRaw === 'away or draw (x2)' ||
-      (pickRaw.includes('away') && pickRaw.includes('draw') && !pickRaw.includes('home')) ||
-      (market.includes('double chance') && pickRaw.includes('x2'));
-
-    // 12 — Home or Away (no draw)
-    const is12 =
-      pickRaw === '12' || pickRaw === 'home or away' || pickRaw === 'home/away' ||
-      pickRaw.includes('12 (home or away)') ||
-      (pickRaw.includes('home') && pickRaw.includes('away') && !pickRaw.includes('draw'));
-
-    if (is1X) return homeScore >= awayScore ? 'win' : 'loss';
-    if (isX2) return awayScore >= homeScore ? 'win' : 'loss';
-    if (is12) return homeScore !== awayScore ? 'win' : 'loss';
-
-    // "{Team Name} or Draw" / "Draw or {Team Name}" — team name in the pick instead of home/away
-    if (pickRaw.includes('or draw') || pickRaw.includes('draw or')) {
-      // Home team in pick → 1X (home or draw)
-      if (homeNorm.length > 2 && pickNorm.includes(homeNorm)) {
-        return homeScore >= awayScore ? 'win' : 'loss';
-      }
-      // Away team in pick → X2 (away or draw)
-      if (awayNorm.length > 2 && pickNorm.includes(awayNorm)) {
-        return awayScore >= homeScore ? 'win' : 'loss';
-      }
-      // Partial word matching for abbreviated names
-      const homeWords = pick.homeTeam.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      const awayWords = pick.awayTeam.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      for (const w of homeWords) {
-        if (pickRaw.includes(w)) return homeScore >= awayScore ? 'win' : 'loss';
-      }
-      for (const w of awayWords) {
-        if (pickRaw.includes(w)) return awayScore >= homeScore ? 'win' : 'loss';
-      }
-      // "draw or ..." → X2; "... or draw" → 1X
-      if (pickRaw.startsWith('draw or')) return awayScore >= homeScore ? 'win' : 'loss';
-      return homeScore >= awayScore ? 'win' : 'loss';
-    }
-
-    // Catch-all: team name anywhere in pick
-    if (homeNorm.length > 2 && pickNorm.includes(homeNorm)) return homeScore >= awayScore ? 'win' : 'loss';
-    if (awayNorm.length > 2 && pickNorm.includes(awayNorm)) return awayScore >= homeScore ? 'win' : 'loss';
-
+    const outcome = getDoubleChanceOutcome(pick);
+    if (outcome === '1x') return homeScore >= awayScore ? 'win' : 'loss';
+    if (outcome === 'x2') return awayScore >= homeScore ? 'win' : 'loss';
+    if (outcome === '12') return homeScore !== awayScore ? 'win' : 'loss';
     return null;
   }
 

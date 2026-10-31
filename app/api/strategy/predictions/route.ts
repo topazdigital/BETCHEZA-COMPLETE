@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fileStoreGet, fileStoreSet } from '@/lib/file-store';
 import { getCurrentUser } from '@/lib/auth';
 import { query, execute } from '@/lib/db';
+import { getDoubleChanceOutcome } from '@/lib/strategy-settle';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -906,11 +907,11 @@ function checkPickResultLocal(
 
   // ── Double Chance ───────────────────────────────────────────────────────
   if (market === 'double chance') {
-    const isX2 = pickValue.includes('x2') || (pickValue.includes('away') && (pickValue.includes('draw') || pickValue.includes('or')));
-    const is1X = pickValue.includes('1x') || (pickValue.includes('home') && (pickValue.includes('draw') || pickValue.includes('or')));
-    if (isX2) return awayScore >= homeScore ? 'win' : 'loss';
-    if (is1X) return homeScore >= awayScore ? 'win' : 'loss';
-    return homeScore !== awayScore ? 'win' : 'loss';
+    const outcome = getDoubleChanceOutcome(pick);
+    if (outcome === 'x2') return awayScore >= homeScore ? 'win' : 'loss';
+    if (outcome === '1x') return homeScore >= awayScore ? 'win' : 'loss';
+    if (outcome === '12') return homeScore !== awayScore ? 'win' : 'loss';
+    return null;
   }
 
   // ── Draw No Bet ─────────────────────────────────────────────────────────
