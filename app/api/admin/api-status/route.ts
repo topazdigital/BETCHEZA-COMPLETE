@@ -105,22 +105,22 @@ export async function GET() {
     check(async (): Promise<IntegrationItem> => {
       const key = await getApiKey('sharp_api_key');
       if (!key) {
-        return { id: 'sharpapi', name: 'SharpAPI (DraftKings/FanDuel)', category: 'Sports Data', status: 'missing', message: 'API key not configured — optional odds supplement', configLink: '/admin/settings' };
+        return { id: 'sharpapi', name: 'SharpAPI Odds API', category: 'Sports Data', status: 'missing', message: 'API key not configured — optional odds supplement', configLink: '/admin/settings' };
       }
       try {
         const { testSharpApiKey } = await import('@/lib/api/sharpapi');
         const result = await testSharpApiKey();
         return {
           id: 'sharpapi',
-          name: 'SharpAPI (DraftKings/FanDuel)',
+          name: 'SharpAPI Odds API',
           category: 'Sports Data',
           status: result.ok ? 'ok' : 'error',
           message: result.message,
-          detail: result.detail || `Key: ${key.slice(0, 8)}…`,
+          detail: result.detail,
           configLink: '/admin/settings',
         };
       } catch {
-        return { id: 'sharpapi', name: 'SharpAPI (DraftKings/FanDuel)', category: 'Sports Data', status: 'ok', message: 'Key configured', detail: `Key: ${key.slice(0, 8)}…`, configLink: '/admin/settings' };
+        return { id: 'sharpapi', name: 'SharpAPI Odds API', category: 'Sports Data', status: 'error', message: 'Could not verify SharpAPI connection', configLink: '/admin/settings' };
       }
     }),
 

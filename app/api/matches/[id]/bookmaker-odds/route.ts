@@ -273,14 +273,15 @@ export async function GET(
       }
     }
 
-    // ── Source 7: SharpAPI (DraftKings + FanDuel free tier) ──────────────────
-    // Last resort for football when all other sources are empty.
+    // ── Source 7: SharpAPI ──────────────────────────────────────────────────
+    // Last resort when all other bookmaker sources are empty.
     if (lines.length === 0) {
       const sharpLines = await getSharpApiBookmakerLines(
         match.homeTeam.name,
         match.awayTeam.name,
         isoKickoff,
         hasDraw,
+        sportSlug,
       );
       mergeBookmakerLines(lines, sharpLines);
     }

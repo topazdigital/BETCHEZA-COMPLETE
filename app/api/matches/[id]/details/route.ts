@@ -1144,6 +1144,17 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .then(m => m.getSgoRealMarkets(match.homeTeam.name, match.awayTeam.name, isoKickoff))
       .catch(() => []);
 
+    const sharpMarketsPromise: Promise<DetailMarket[]> = ['finished', 'postponed', 'cancelled'].includes(match.status)
+      ? Promise.resolve([])
+      : import('@/lib/api/sharpapi')
+          .then(m => m.getSharpApiRealMarkets(
+            match.homeTeam.name,
+            match.awayTeam.name,
+            isoKickoff,
+            match.sport?.slug || 'soccer',
+          ))
+          .catch(() => []);
+
     // ── SofaScore event details (lineups / statistics / incidents) ─────────────
     // For SofaScore-sourced matches (id starts with ss_) we can fetch rich
     // event data directly. For ESPN matches this path is skipped here and only
@@ -1162,10 +1173,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     // Keep source timeouts independent. A slow SGO markets lookup should not
     // erase a summary, bookmaker lines, or SofaScore details that already
     // completed. Give the richer market feed slightly longer than core data.
-    const [summary, sgoRaw, sgoMarkets, ssDetails] = await Promise.all([
+    const [summary, sgoRaw, sgoMarkets, sharpMarkets, ssDetails] = await Promise.all([
       settleWithin(summaryPromise, null, 7_000),
       settleWithin(sgoPromise, [], 8_000),
       settleWithin(sgoMarketsPromise, [], 10_000),
+      settleWithin(sharpMarketsPromise, [], 12_000),
       settleWithin(ssDetailsPromise, null, 7_000),
     ]);
 
@@ -1352,6 +1364,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const realMarketGroups = [
       (summaryMarkets || []).filter(m => !m.isDerived),
       sgoMarkets,
+      sharpMarkets,
       cachedMatchMarkets,
     ];
 

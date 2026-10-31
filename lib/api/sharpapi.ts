@@ -5,18 +5,15 @@
  * Used as a supplementary odds source when The Odds API or SportsGameOdds
  * don't have coverage for a match.
  *
- * Free-tier limits:
- *   - 12 req/min
- *   - 2 sportsbooks (DraftKings + FanDuel)
- *   - 60 s data delay
- *   - Markets: moneylines & spreads
+ * Market availability and bookmaker coverage depend on the account's plan
+ * and the event. The event-odds endpoint returns all rows available to it.
  *
  * Auth: X-API-Key header  OR  Authorization: Bearer <key>
  * Base URL: https://api.sharpapi.io/api/v1
  */
 
 import { getApiKey } from '@/lib/api-keys';
-import type { MatchOdds, Market, Outcome } from './unified-sports-api';
+import type { MatchOdds, Market } from './unified-sports-api';
 
 const BASE = 'https://api.sharpapi.io/api/v1';
 
@@ -58,41 +55,6 @@ function getCached<T>(key: string): T | null {
 
 function setCached<T>(key: string, data: T, ttlMs?: number): void {
   cache.set(key, { data, ts: Date.now(), ttlMs });
-}
-
-// ── Types (SharpAPI response shape) ─────────────────────────────────────────
-interface SharpBookmaker {
-  key: string;
-  title?: string;
-  markets: SharpMarket[];
-}
-
-interface SharpMarket {
-  key: string;
-  outcomes: SharpOutcome[];
-}
-
-interface SharpOutcome {
-  name: string;
-  price: number;
-  point?: number;
-}
-
-interface SharpEvent {
-  event_id?: string;
-  id?: string;
-  sport?: string;
-  sport_key?: string;
-  league?: string;
-  home_team: string;
-  away_team: string;
-  commence_time: string;
-  bookmakers?: SharpBookmaker[];
-}
-
-interface SharpOddsResponse {
-  data?: SharpEvent[];
-  events?: SharpEvent[];
 }
 
 /** Current SharpAPI event and flat odds response fields. */
@@ -177,82 +139,25 @@ async function sharpFetch<T>(
   }
 }
 
-// ── Odds aggregation helpers ─────────────────────────────────────────────────
-
-function aggregateSharpOdds(ev: SharpEvent): { odds: MatchOdds | null; markets: Market[] } {
-  if (!ev.bookmakers?.length) return { odds: null, markets: [] };
-
-  let bestHomeOdds = 0;
-  let bestDrawOdds = 0;
-  let bestAwayOdds = 0;
-  let bestBookmaker = '';
-  const marketMap = new Map<string, Market>();
-
-  for (const bm of ev.bookmakers) {
-    for (const mkt of bm.markets) {
-      if (mkt.key === 'h2h') {
-        const homeO = mkt.outcomes.find(o => o.name === ev.home_team || o.name === 'Home');
-        const awayO = mkt.outcomes.find(o => o.name === ev.away_team || o.name === 'Away');
-        const drawO = mkt.outcomes.find(o => o.name === 'Draw');
-
-        const h = homeO?.price || 0;
-        const a = awayO?.price || 0;
-
-        if (h > bestHomeOdds && a > 0) {
-          bestHomeOdds = h;
-          bestAwayOdds = a;
-          bestDrawOdds = drawO?.price || 0;
-          bestBookmaker = bm.title || bm.key;
-        }
-      }
-
-      // Collect all markets
-      const existing = marketMap.get(mkt.key);
-      if (!existing) {
-        const outcomes: Outcome[] = mkt.outcomes.map(o => ({
-          name: o.name,
-          price: o.price,
-          ...(o.point !== undefined ? { point: o.point } : {}),
-        }));
-        marketMap.set(mkt.key, {
-          key: mkt.key,
-          name: marketKeyLabel(mkt.key),
-          outcomes,
-        });
-      } else {
-        // Merge best prices
-        for (const o of mkt.outcomes) {
-          const ex = existing.outcomes.find(x => x.name === o.name);
-          if (!ex) {
-            existing.outcomes.push({ name: o.name, price: o.price, ...(o.point !== undefined ? { point: o.point } : {}) });
-          } else if (o.price > ex.price) {
-            ex.price = o.price;
-          }
-        }
-      }
-    }
-  }
-
-  if (bestHomeOdds === 0 || bestAwayOdds === 0) return { odds: null, markets: [] };
-
-  const odds: MatchOdds = {
-    home: bestHomeOdds,
-    away: bestAwayOdds,
-    ...(bestDrawOdds > 0 ? { draw: bestDrawOdds } : {}),
-    bookmaker: bestBookmaker,
-    lastUpdate: new Date(),
-  };
-
-  return { odds, markets: Array.from(marketMap.values()) };
-}
-
 function marketKeyLabel(key: string): string {
   const map: Record<string, string> = {
     h2h: 'Match Winner',
     spreads: 'Point Spread',
     totals: 'Over/Under',
     outrights: 'Outright Winner',
+    btts: 'Both Teams to Score',
+    double_chance: 'Double Chance',
+    draw_no_bet: 'Draw No Bet',
+    correct_score: 'Correct Score',
+    ht_result: 'Half-Time Result',
+    ht_ft: 'Half-Time / Full-Time',
+    asian_handicap: 'Asian Handicap',
   };
+  const lineMarket = key.match(/^(totals|corners)_((?:m)?\d+(?:_\d+)?)$/);
+  if (lineMarket) {
+    const line = lineMarket[2].replace(/^m/, '-').replace('_', '.');
+    return lineMarket[1] === 'corners' ? `Total Corners O/U ${line}` : `Over/Under ${line}`;
+  }
   return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
@@ -297,13 +202,19 @@ function sharpSportSlug(sportSlug: string): string | undefined {
     tennis: 'tennis',
     cricket: 'cricket',
     'american-football': 'football',
+    americanfootball: 'football',
     'ice-hockey': 'hockey',
     hockey: 'hockey',
-    rugby: 'rugby',
+    rugby: 'rugby_union',
+    'rugby-league': 'rugby_league',
     volleyball: 'volleyball',
-    'table-tennis': 'table-tennis',
+    'table-tennis': 'table_tennis',
     mma: 'mma',
     boxing: 'boxing',
+    golf: 'golf',
+    darts: 'darts',
+    snooker: 'snooker',
+    esports: 'esports',
   };
   return known[sport];
 }
@@ -371,11 +282,14 @@ function sharpMarketLabel(key: string, row: SharpApiOddsRow): string {
 function sharpOutcomeName(row: SharpApiOddsRow, homeTeam: string, awayTeam: string, key: string): string {
   const selectionType = (row.selection_type || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
   const rawSelection = row.selection?.trim() || '';
+  const selectionToken = rawSelection.toLowerCase();
   let name = rawSelection;
 
-  if (['home', 'home_team', 'team_1', 'participant_1'].includes(selectionType)) name = homeTeam;
-  else if (['away', 'away_team', 'team_2', 'participant_2'].includes(selectionType)) name = awayTeam;
-  else if (['draw', 'tie'].includes(selectionType)) name = 'Draw';
+  if (['home', 'home_team', 'team_1', 'participant_1'].includes(selectionType) ||
+      ['home', 'home_team', '1'].includes(selectionToken)) name = homeTeam;
+  else if (['away', 'away_team', 'team_2', 'participant_2'].includes(selectionType) ||
+      ['away', 'away_team', '2'].includes(selectionToken)) name = awayTeam;
+  else if (['draw', 'tie'].includes(selectionType) || ['draw', 'tie', 'x'].includes(selectionToken)) name = 'Draw';
   else if (['over', 'under', 'yes', 'no'].includes(selectionType)) {
     name = selectionType[0].toUpperCase() + selectionType.slice(1);
   } else if (!name && ['home', 'away', 'draw', 'over', 'under', 'yes', 'no'].includes(selectionType)) {
@@ -458,9 +372,12 @@ async function fetchSharpApiEventRowsForMatch(
     event = candidates
       .filter(candidate =>
         candidate.id &&
+        candidate.home_team &&
+        candidate.away_team &&
         teamMatch(candidate.home_team, homeTeam) &&
         teamMatch(candidate.away_team, awayTeam) &&
         candidate.start_time &&
+        Number.isFinite(new Date(candidate.start_time).getTime()) &&
         Math.abs(new Date(candidate.start_time).getTime() - kickoffMs) <= 48 * 60 * 60 * 1000,
       )
       .sort((a, b) =>
@@ -480,6 +397,7 @@ async function fetchSharpApiEventRowsForMatch(
   );
   const rows = Array.isArray(response?.data) ? response.data : [];
   const matchingRows = rows.filter(row =>
+    row.home_team && row.away_team &&
     (!row.event_id || row.event_id === event!.id) &&
     teamMatch(row.home_team, homeTeam) &&
     teamMatch(row.away_team, awayTeam),
@@ -491,7 +409,22 @@ async function fetchSharpApiEventRowsForMatch(
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Fetch current odds from SharpAPI for all configured sports and return
+ * Fetch every bookmaker-backed market SharpAPI exposes for one event.
+ * SharpAPI's current event-odds endpoint returns flat selection rows; do not
+ * substitute or derive prices when the provider has no rows for the event.
+ */
+export async function getSharpApiRealMarkets(
+  homeTeam: string,
+  awayTeam: string,
+  kickoffIso: string,
+  sportSlug = 'soccer',
+): Promise<Market[]> {
+  const rows = await fetchSharpApiEventRowsForMatch(homeTeam, awayTeam, kickoffIso, sportSlug);
+  return sharpRowsToMarkets(rows, homeTeam, awayTeam, sportSlug);
+}
+
+/**
+ * Fetch current main-market odds from SharpAPI and return
  * an index keyed by `${homeNorm}_${awayNorm}_${dateKey}` — the same format
  * used by `buildRealOddsIndex` in unified-sports-api.ts.
  */
@@ -503,45 +436,47 @@ export async function buildSharpApiOddsIndex(): Promise<Map<string, { odds: Matc
   const cached = getCached<Map<string, { odds: MatchOdds; markets: Market[] }>>(cacheKey);
   if (cached) return cached;
 
-  // Free tier: fetch odds for all sports in one call if supported, otherwise
-  // fetch per-sport (rate-limited to avoid hitting 12 req/min cap).
   const index = new Map<string, { odds: MatchOdds; markets: Market[] }>();
-
-  // Try fetching all sports at once (most efficient on free tier)
-  const res = await sharpFetch<SharpOddsResponse>('odds', {
-    oddsFormat: 'decimal',
-    markets: 'h2h,spreads',
+  const res = await sharpFetch<SharpApiCollection<SharpApiOddsRow>>('odds', {
+    market: 'main,spread,total',
+    limit: '200',
   });
 
-  const events: SharpEvent[] = res?.data || res?.events || [];
-
-  // Only attempt per-sport fallback if:
-  //  a) we got a valid response but 0 events (not a 400/429)
-  //  b) the circuit is still closed (no 400/429 tripped it)
-  if (events.length === 0 && !isCircuitOpen()) {
-    for (const sport of SHARP_SPORTS) {
-      if (isCircuitOpen()) break;
-      const sportRes = await sharpFetch<SharpOddsResponse>('odds', {
-        sport,
-        oddsFormat: 'decimal',
-        markets: 'h2h,spreads',
-      });
-      const sportEvents: SharpEvent[] = sportRes?.data || sportRes?.events || [];
-      events.push(...sportEvents);
-      await new Promise(r => setTimeout(r, 200));
-    }
+  const byEvent = new Map<string, SharpApiOddsRow[]>();
+  for (const row of res?.data || []) {
+    if (!row.event_id || !row.home_team || !row.away_team || !row.event_start_time) continue;
+    const rows = byEvent.get(row.event_id) || [];
+    rows.push(row);
+    byEvent.set(row.event_id, rows);
   }
 
-  for (const ev of events) {
-    const { odds, markets } = aggregateSharpOdds(ev);
-    if (!odds) continue;
+  for (const rows of byEvent.values()) {
+    const first = rows[0];
+    const markets = sharpRowsToMarkets(rows, first.home_team, first.away_team, first.sport || 'soccer');
+    const h2h = markets.find(market => market.key === 'h2h');
+    if (!h2h) continue;
+    const home = h2h.outcomes.find(outcome => normalizeTeam(outcome.name) === normalizeTeam(first.home_team));
+    const away = h2h.outcomes.find(outcome => normalizeTeam(outcome.name) === normalizeTeam(first.away_team));
+    const draw = h2h.outcomes.find(outcome => outcome.name.toLowerCase() === 'draw');
+    if (!home || !away) continue;
 
-    const home = normalizeTeam(ev.home_team);
-    const away = normalizeTeam(ev.away_team);
-    const dateKey = new Date(ev.commence_time).toISOString().split('T')[0];
-
-    index.set(`${home}_${away}_${dateKey}`, { odds, markets });
-    index.set(`${away}_${home}_${dateKey}`, { odds, markets });
+    const eventStartMs = new Date(first.event_start_time!).getTime();
+    if (!Number.isFinite(eventStartMs)) continue;
+    const dateKey = new Date(eventStartMs).toISOString().slice(0, 10);
+    const entry = {
+      odds: {
+        home: home.price,
+        away: away.price,
+        ...(draw ? { draw: draw.price } : {}),
+        bookmaker: 'SharpAPI best available',
+        lastUpdate: new Date(),
+      },
+      markets,
+    };
+    const homeKey = normalizeTeam(first.home_team);
+    const awayKey = normalizeTeam(first.away_team);
+    index.set(`${homeKey}_${awayKey}_${dateKey}`, entry);
+    index.set(`${awayKey}_${homeKey}_${dateKey}`, entry);
   }
 
   if (index.size > 0) {
@@ -570,28 +505,23 @@ export async function getSharpApiOutrights(sportKey: string): Promise<SharpOutri
   const cached = getCached<SharpOutright[]>(cacheKey);
   if (cached) return cached;
 
-  const res = await sharpFetch<SharpOddsResponse>('odds', {
-    sport: sportKey,
-    oddsFormat: 'decimal',
-    markets: 'outrights',
+  const res = await sharpFetch<SharpApiCollection<SharpApiOddsRow>>('odds', {
+    sport: sharpSportSlug(sportKey) || sportKey,
+    include_futures: 'true',
+    limit: '200',
   });
 
-  const events: SharpEvent[] = res?.data || res?.events || [];
   const outrights: SharpOutright[] = [];
-
-  for (const ev of events) {
-    for (const bm of ev.bookmakers || []) {
-      for (const mkt of bm.markets) {
-        if (mkt.key !== 'outrights') continue;
-        for (const o of mkt.outcomes) {
-          outrights.push({
-            team: o.name,
-            price: o.price,
-            bookmaker: bm.title || bm.key,
-          });
-        }
-      }
-    }
+  for (const row of res?.data || []) {
+    if (!/future|outright|championship|tournament_winner|season_winner/i.test(row.market_type)) continue;
+    const price = decimalOdds(row);
+    const team = row.selection?.trim();
+    if (!team || !price) continue;
+    outrights.push({
+      team,
+      price,
+      bookmaker: prettyBmName(row.sportsbook || 'SharpAPI'),
+    });
   }
 
   // Dedupe: keep best price per team
@@ -608,34 +538,11 @@ export async function getSharpApiOutrights(sportKey: string): Promise<SharpOutri
 
 // ── Per-match bookmaker lines ─────────────────────────────────────────────────
 
-/** Raw SharpAPI event cache — kept separate so it can be shared by both the index and per-match lookup. */
-let rawEventsCache: { data: SharpEvent[]; ts: number } | null = null;
-
-async function getRawEvents(): Promise<SharpEvent[]> {
-  if (rawEventsCache && Date.now() - rawEventsCache.ts < CACHE_TTL_MS) {
-    return rawEventsCache.data;
-  }
-
-  const apiKey = await getApiKey('sharp_api_key');
-  if (!apiKey) return [];
-
-  const res = await sharpFetch<SharpOddsResponse>('odds', {
-    oddsFormat: 'decimal',
-    markets: 'h2h',
-  });
-
-  const events: SharpEvent[] = res?.data || res?.events || [];
-  if (events.length > 0) rawEventsCache = { data: events, ts: Date.now() };
-  return events;
-}
-
-/** Fuzzy team-name equality — strips non-alphanumeric and compares 5-char prefix. */
+/** Exact normalized team equality avoids attaching odds to a similarly named club. */
 function teamMatch(a: string, b: string): boolean {
   const an = normalizeTeam(a);
   const bn = normalizeTeam(b);
-  if (an === bn) return true;
-  const minLen = Math.min(an.length, bn.length);
-  return minLen >= 4 && an.slice(0, minLen) === bn.slice(0, minLen);
+  return an.length > 0 && an === bn;
 }
 
 export interface SharpBookmakerLine {
@@ -658,45 +565,46 @@ export async function getSharpApiBookmakerLines(
   awayTeam: string,
   kickoffIso: string,
   hasDraw: boolean,
+  sportSlug = 'soccer',
 ): Promise<SharpBookmakerLine[]> {
-  const events = await getRawEvents();
-  if (!events.length) return [];
+  const rows = await fetchSharpApiEventRowsForMatch(homeTeam, awayTeam, kickoffIso, sportSlug);
+  const books = new Map<string, { home?: number; draw?: number; away?: number }>();
 
-  const dateKey = kickoffIso.split('T')[0];
+  for (const row of rows) {
+    if (sharpMarketKey(row, sportSlug) !== 'h2h') continue;
+    const price = decimalOdds(row);
+    if (!price) continue;
 
-  const ev = events.find(e => {
-    const d = new Date(e.commence_time).toISOString().split('T')[0];
-    return (
-      d === dateKey &&
-      teamMatch(e.home_team, homeTeam) &&
-      teamMatch(e.away_team, awayTeam)
-    );
-  });
-
-  if (!ev?.bookmakers?.length) return [];
-
-  const lines: SharpBookmakerLine[] = [];
-  for (const bm of ev.bookmakers) {
-    const h2h = bm.markets.find(m => m.key === 'h2h');
-    if (!h2h) continue;
-
-    const homeO = h2h.outcomes.find(o => o.name === ev.home_team || o.name === 'Home');
-    const awayO = h2h.outcomes.find(o => o.name === ev.away_team || o.name === 'Away');
-    const drawO = h2h.outcomes.find(o => o.name === 'Draw');
-
-    if (!homeO || !awayO) continue;
-
-    const bookId = bm.key.toLowerCase().replace(/[^a-z0-9]/g, '');
-    lines.push({
-      bookmaker: bookId,
-      display: bm.title || prettyBmName(bm.key),
-      home: homeO.price,
-      away: awayO.price,
-      ...(hasDraw && drawO ? { draw: drawO.price } : {}),
-    });
+    const book = row.sportsbook?.trim();
+    if (!book) continue;
+    const selectionType = (row.selection_type || '').toLowerCase();
+    const selection = row.selection?.trim() || '';
+    const line = books.get(book) || {};
+    if (['home', 'home_team', 'team_1', 'participant_1'].includes(selectionType) ||
+        ['home', 'home_team', '1'].includes(selection.toLowerCase()) ||
+        teamMatch(selection, homeTeam)) {
+      if (!line.home || price > line.home) line.home = price;
+    }
+    else if (['away', 'away_team', 'team_2', 'participant_2'].includes(selectionType) ||
+        ['away', 'away_team', '2'].includes(selection.toLowerCase()) ||
+        teamMatch(selection, awayTeam)) {
+      if (!line.away || price > line.away) line.away = price;
+    }
+    else if (['draw', 'tie'].includes(selectionType) || ['draw', 'tie', 'x'].includes(selection.toLowerCase())) {
+      if (!line.draw || price > line.draw) line.draw = price;
+    }
+    books.set(book, line);
   }
 
-  return lines;
+  return Array.from(books.entries())
+    .filter(([, line]) => line.home && line.away)
+    .map(([book, line]) => ({
+      bookmaker: book.toLowerCase().replace(/[^a-z0-9]/g, ''),
+      display: prettyBmName(book),
+      home: line.home!,
+      away: line.away!,
+      ...(hasDraw && line.draw ? { draw: line.draw } : {}),
+    }));
 }
 
 function prettyBmName(key: string): string {
@@ -717,20 +625,29 @@ export async function testSharpApiKey(): Promise<{ ok: boolean; message: string;
   const apiKey = await getApiKey('sharp_api_key');
   if (!apiKey) return { ok: false, message: 'API key not configured' };
 
-  const res = await fetch(`${BASE}/odds?oddsFormat=decimal&markets=h2h`, {
-    headers: { 'X-API-Key': apiKey },
-    signal: AbortSignal.timeout(8_000),
-  });
+  try {
+    const res = await fetch(`${BASE}/odds?limit=1`, {
+      headers: { 'X-API-Key': apiKey },
+      signal: AbortSignal.timeout(8_000),
+      cache: 'no-store',
+    });
 
-  if (res.status === 401) return { ok: false, message: 'Invalid API key' };
-  if (res.status === 429) return { ok: false, message: 'Rate limit exceeded' };
-  if (!res.ok) return { ok: false, message: `API error: HTTP ${res.status}` };
+    if (res.status === 401) return { ok: false, message: 'Invalid API key' };
+    if (res.status === 403) return { ok: false, message: 'API plan does not allow this endpoint' };
+    if (res.status === 429) return { ok: false, message: 'Rate limit exceeded' };
+    if (!res.ok) return { ok: false, message: `API error: HTTP ${res.status}` };
 
-  const data = await res.json() as SharpOddsResponse;
-  const count = (data?.data || data?.events || []).length;
-  return {
-    ok: true,
-    message: 'Key valid, API responding',
-    detail: `${count} events returned`,
-  };
+    const data = await res.json() as SharpApiCollection<SharpApiOddsRow>;
+    _backoffUntil = 0;
+    return {
+      ok: true,
+      message: 'Key valid, API responding',
+      detail: `${Array.isArray(data?.data) ? data.data.length : 0} odds rows returned`,
+    };
+  } catch (error) {
+    const message = error instanceof Error && error.name === 'TimeoutError'
+      ? 'SharpAPI request timed out'
+      : 'Could not reach SharpAPI';
+    return { ok: false, message };
+  }
 }
