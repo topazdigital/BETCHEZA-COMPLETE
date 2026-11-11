@@ -4,7 +4,7 @@ import { getCanonicalSiteUrl } from '@/lib/site-url';
 const BASE_URL = getCanonicalSiteUrl();
 
 export const metadata: Metadata = {
-  title: 'Live Scores Today | Football, Tennis, Basketball & All Sports | Betcheza',
+  title: 'Live Scores Today: Football, Tennis & More',
   description: "Real-time live scores for football, tennis, basketball, cricket, rugby, MMA and more. Follow in-play results, live betting tips and match commentary updated every minute. Kenya's #1 live scores site.",
   keywords: [
     // Football

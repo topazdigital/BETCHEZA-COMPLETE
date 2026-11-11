@@ -209,7 +209,7 @@ export async function generateMetadata({
   }
 
   return {
-    title: detail.title,
+    title: detail.title.replace(/\s*\|\s*Betcheza(?:\s+Kenya)?$/i, ''),
     description: detail.description,
     keywords: detail.keywords,
     alternates: { canonical },

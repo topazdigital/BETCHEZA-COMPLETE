@@ -15,9 +15,13 @@ interface ESPNArticle {
 }
 
 const ESPN_FEEDS = [
-  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/news?limit=20', cat: 'Football' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ken.1/news?limit=20', cat: 'Kenya Premier League' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/news?limit=20', cat: 'Premier League' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/news?limit=20', cat: 'La Liga' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/news?limit=20', cat: 'Champions League' },
   { url: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news?limit=10', cat: 'Basketball' },
-  { url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/news?limit=10', cat: 'Tennis' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/news?limit=10', cat: 'ATP Tennis' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/wta/news?limit=10', cat: 'WTA Tennis' },
 ];
 
 export async function GET() {

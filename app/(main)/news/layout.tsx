@@ -4,8 +4,8 @@ import { getCanonicalSiteUrl } from '@/lib/site-url';
 const BASE_URL = getCanonicalSiteUrl();
 
 export const metadata: Metadata = {
-  title: 'Sports News & Betting Insights | Football, Tennis, Cricket & More | Betcheza Kenya',
-  description: "Latest football news, transfer rumours, injury updates, match previews and betting analysis. Covering Premier League, Champions League, Kenya Premier League, ATP tennis, NBA basketball and all major sports — updated hourly on Betcheza Kenya.",
+  title: 'Sports News & Betting Insights in Kenya',
+  description: 'Football news, match previews, transfers, injuries and betting analysis for Kenyan and international sports, updated daily on Betcheza.',
   keywords: [
     'football news today Kenya', 'sports news Kenya', 'football transfer news',
     'injury news football', 'Premier League news', 'Champions League news',

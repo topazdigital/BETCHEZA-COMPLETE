@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Tipster Leaderboard Kenya | Top Betting Predictors | Betcheza',
+  title: 'Tipster Leaderboard Kenya | Top Football Predictors',
   description: 'See the top-ranked football tipsters in Kenya. Daily, weekly and monthly leaderboards showing win rates, ROI and streaks. Find the best SportPesa and Betika tipsters.',
   keywords: [
     'tipster leaderboard Kenya', 'best betting tipsters Kenya', 'top football predictors Kenya',

@@ -135,6 +135,8 @@ export function Footer() {
             <nav className="grid grid-cols-2 gap-x-3 gap-y-1 sm:flex sm:flex-col">
               <Link href="/matches" className={linkCls}>Matches</Link>
               <Link href="/results" className={linkCls}>Results</Link>
+              <Link href="/news" className={linkCls}>Sports News</Link>
+              <Link href="/sports" className={linkCls}>All Sports</Link>
               <Link href="/tipsters" className={linkCls}>Tipsters</Link>
               <Link href="/leaderboard" className={linkCls}>Leaderboard</Link>
               <Link href="/competitions" className={linkCls}>Competitions</Link>

@@ -116,9 +116,13 @@ interface ESPNArticle {
 }
 
 const ESPN_FEEDS = [
-  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/news?limit=100', category: 'Football' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ken.1/news?limit=30', category: 'Kenya Premier League' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/news?limit=30', category: 'Premier League' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/news?limit=20', category: 'La Liga' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/news?limit=20', category: 'Champions League' },
   { url: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news?limit=50', category: 'Basketball' },
-  { url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/news?limit=50', category: 'Tennis' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/news?limit=20', category: 'ATP Tennis' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/wta/news?limit=20', category: 'WTA Tennis' },
 ];
 
 /**
@@ -131,7 +135,7 @@ export async function seedNewsArticleIndexFromFeeds(): Promise<void> {
     try {
       const response = await fetch(feed.url, {
         signal: AbortSignal.timeout(8_000),
-        cache: 'no-store',
+        next: { revalidate: 900 },
       });
       if (!response.ok) return [];
       const data = await response.json() as { articles?: ESPNArticle[] };

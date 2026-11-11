@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import BettingAcademyPage from './BettingAcademyPage';
 
 export const metadata: Metadata = {
-  title: 'Betting Academy — Learn All Betting Markets & Odds | Betcheza',
+  title: 'Betting Academy: Learn Sports Markets & Odds',
   description:
     'Master sports betting with Betcheza\'s free Betting Academy. Learn every betting market — 1X2, Over/Under, BTTS, Asian Handicap, Correct Score, Accumulators, Double Chance and more. Plain-English guides for all skill levels.',
   keywords: [

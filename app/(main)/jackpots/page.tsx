@@ -8,7 +8,7 @@ import { SUPPORTED_BOOKMAKERS } from '@/lib/jackpot-types';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Kenya Jackpot Predictions Today | SportPesa Mega Jackpot, Betika Grand Jackpot — Betcheza',
+  title: 'Kenya Jackpot Predictions Today | SportPesa & Betika',
   description: 'Free AI jackpot predictions for all Kenyan bookmakers today. SportPesa Mega Jackpot (17 games), SportPesa Midweek Jackpot, Betika Grand Jackpot, OdiBets Jackpot Bonanza, Mozzartbet Mega Jackpot — banker picks & confidence ratings updated daily.',
   keywords: [
     'Kenya jackpot predictions today',
