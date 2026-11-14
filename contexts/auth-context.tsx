@@ -9,6 +9,7 @@ interface AuthUser {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  phone?: string | null;
   role: UserRole;
   balance: number;
   isEmailVerified?: boolean;

@@ -118,6 +118,7 @@ interface ESPNArticle {
 const ESPN_FEEDS = [
   { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ken.1/news?limit=30', category: 'Kenya Premier League' },
   { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/news?limit=30', category: 'Premier League' },
+  { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.w.1/news?limit=20', category: 'Women’s Super League' },
   { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/news?limit=20', category: 'La Liga' },
   { url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/news?limit=20', category: 'Champions League' },
   { url: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news?limit=50', category: 'Basketball' },
@@ -125,37 +126,63 @@ const ESPN_FEEDS = [
   { url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/wta/news?limit=20', category: 'WTA Tennis' },
 ];
 
+const NEWS_FEED_REFRESH_MS = 15 * 60 * 1000;
+let newsFeedSeedInFlight: Promise<void> | null = null;
+let lastNewsFeedSeedAt = 0;
+
 /**
  * Refresh the index from public ESPN feeds. This is called by the sitemap
  * itself, so Google's normal sitemap fetch also discovers newly published
  * stories without an operator requesting each URL in Search Console.
  */
 export async function seedNewsArticleIndexFromFeeds(): Promise<void> {
-  const results = await Promise.all(ESPN_FEEDS.map(async feed => {
-    try {
-      const response = await fetch(feed.url, {
-        signal: AbortSignal.timeout(8_000),
-        next: { revalidate: 900 },
-      });
-      if (!response.ok) return [];
-      const data = await response.json() as { articles?: ESPNArticle[] };
-      return (data.articles || []).flatMap((article, index) => {
-        if (!article.headline) return [];
-        return [{
-          id: String(article.id || `${feed.category}-${index}-${article.headline}`).slice(0, 160),
-          headline: article.headline,
-          description: article.description || '',
-          image: article.images?.[0]?.url || '',
-          published: article.published || new Date().toISOString(),
-          sourceUrl: article.links?.web?.href || '',
-          source: 'ESPN',
-        }];
-      });
-    } catch (error) {
-      console.warn('[news-index] ESPN feed failed:', feed.url, error);
-      return [];
-    }
-  }));
+  if (newsFeedSeedInFlight) return newsFeedSeedInFlight;
+  if (Date.now() - lastNewsFeedSeedAt < NEWS_FEED_REFRESH_MS) return;
 
-  await upsertNewsArticles(results.flat());
+  newsFeedSeedInFlight = (async () => {
+    let queuedWrites: Promise<void> = Promise.resolve();
+    await Promise.all(ESPN_FEEDS.map(async feed => {
+      try {
+        const response = await fetch(feed.url, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'curl/8.0',
+          },
+          signal: AbortSignal.timeout(8_000),
+          next: { revalidate: 900 },
+        });
+        if (!response.ok) return [];
+        const data = await response.json() as { articles?: ESPNArticle[] };
+        const articles = (data.articles || []).flatMap((article, index) => {
+          if (!article.headline) return [];
+          return [{
+            id: String(article.id || `${feed.category}-${index}-${article.headline}`).slice(0, 160),
+            headline: article.headline,
+            description: article.description || '',
+            image: article.images?.[0]?.url || '',
+            published: article.published || new Date().toISOString(),
+            sourceUrl: article.links?.web?.href || '',
+            source: 'ESPN',
+          }];
+        });
+        if (articles.length > 0) {
+          // Persist each feed as soon as it responds so the page can show
+          // available stories without waiting for every slower league feed.
+          queuedWrites = queuedWrites.then(() => upsertNewsArticles(articles));
+          await queuedWrites;
+        }
+      } catch (error) {
+        console.warn('[news-index] ESPN feed failed:', feed.url, error);
+      }
+    }));
+
+    await queuedWrites;
+  })();
+
+  try {
+    await newsFeedSeedInFlight;
+    lastNewsFeedSeedAt = Date.now();
+  } finally {
+    newsFeedSeedInFlight = null;
+  }
 }

@@ -13,6 +13,7 @@ interface DbUser {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  phone: string | null;
   role: 'user' | 'tipster' | 'admin';
   balance: number;
   is_verified: boolean;
@@ -20,7 +21,7 @@ interface DbUser {
 
 async function findUserById(id: number): Promise<DbUser | null> {
   return queryOne<DbUser>(
-    'SELECT id, email, username, display_name, avatar_url, role, balance, is_verified FROM users WHERE id = ? LIMIT 1',
+    'SELECT id, email, username, display_name, avatar_url, phone, role, balance, is_verified FROM users WHERE id = ? LIMIT 1',
     [id]
   );
 }
@@ -47,6 +48,7 @@ export async function GET() {
       if (!authUser.userId || !authUser.email) {
         return NextResponse.json({ user: null }, { status: 401 });
       }
+      const profile = await getProfile(authUser.userId).catch(() => null);
       // Return minimal user from JWT — keeps session alive even when DB is down
       return NextResponse.json({
         user: {
@@ -55,6 +57,7 @@ export async function GET() {
           username: authUser.email.split('@')[0],
           displayName: authUser.email.split('@')[0],
           avatarUrl: null,
+          phone: profile?.phone ?? null,
           role: authUser.role ?? 'user',
           balance: 0,
           isEmailVerified: false,
@@ -76,6 +79,7 @@ export async function GET() {
         username: profile?.username || user.username,
         displayName: profile?.displayName || user.display_name,
         avatarUrl: profile?.avatarUrl || user.avatar_url,
+        phone: profile?.phone || user.phone || null,
         role: user.role,
         balance,
         isEmailVerified: !!user.is_verified || isVerified(user.id),

@@ -14,7 +14,12 @@ import {
 } from '@/lib/api/unified-sports-api';
 import { fetchCamel1Matches } from '@/lib/api/camel1';
 import { slugToMatchId } from '@/lib/utils/match-url';
-import { upsertNewsArticles } from '@/lib/news-article-index';
+import {
+  getIndexedNewsArticles,
+  seedNewsArticleIndexFromFeeds,
+  upsertNewsArticles,
+  type IndexedNewsArticle,
+} from '@/lib/news-article-index';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 30;
@@ -648,7 +653,13 @@ function buildSegmentBreakdown(summary: ESPNSummaryResponse, sportType: string):
   };
 }
 
-function buildNews(summary: ESPNSummaryResponse, homeName: string, awayName: string) {
+function buildNews(
+  summary: ESPNSummaryResponse | null,
+  homeName: string,
+  awayName: string,
+  indexedArticles: IndexedNewsArticle[] = [],
+  matchCompetitionName = '',
+) {
   // ESPN may return articles in summary.news.articles OR as individual
   // article/headlines fields (structure changed in mid-2025). Check both.
   type AnyArticle = {
@@ -659,12 +670,13 @@ function buildNews(summary: ESPNSummaryResponse, homeName: string, awayName: str
     images?: Array<{ url?: string }>;
     links?: { web?: { href?: string } };
     type?: string;
+    source?: string;
   };
 
-  const raw = summary as unknown as Record<string, unknown>;
+  const raw = (summary || {}) as unknown as Record<string, unknown>;
 
   // Primary: summary.news.articles
-  let articles: AnyArticle[] = (summary.news?.articles as AnyArticle[] | undefined) || [];
+  let articles: AnyArticle[] = (summary?.news?.articles as AnyArticle[] | undefined) || [];
 
   // Fallback 1: summary.headlines (some ESPN endpoints use this)
   if (articles.length === 0 && Array.isArray(raw.headlines)) {
@@ -677,6 +689,22 @@ function buildNews(summary: ESPNSummaryResponse, homeName: string, awayName: str
     if (art.headline) articles = [art];
   }
 
+  const recentCutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  const indexedAsArticles: AnyArticle[] = indexedArticles
+    .filter(article => {
+      const publishedAt = Date.parse(article.published || article.indexedAt);
+      return !Number.isFinite(publishedAt) || publishedAt >= recentCutoff;
+    })
+    .map(article => ({
+      id: article.id,
+      headline: article.headline,
+      description: article.description,
+      published: article.published,
+      images: article.image ? [{ url: article.image }] : undefined,
+      links: article.sourceUrl ? { web: { href: article.sourceUrl } } : undefined,
+      source: article.source || 'ESPN',
+    }));
+  articles = [...articles, ...indexedAsArticles];
   if (articles.length === 0) return [];
 
   const normalize = (value: string) => value
@@ -692,16 +720,23 @@ function buildNews(summary: ESPNSummaryResponse, homeName: string, awayName: str
     return [normalizedName, ...distinctiveWords];
   }).filter(term => term.length >= 4);
 
-  const competitionName = summary.header?.league?.name || '';
+  const competitionName = summary?.header?.league?.name || matchCompetitionName;
   const competitionWithoutOrganizer = competitionName.replace(/^(?:UEFA|FIFA|AFC|CAF|CONCACAF|CONMEBOL|OFC)\s+/i, '');
   const competitionNeedles = [competitionName, competitionWithoutOrganizer]
     .map(normalize)
     .filter(term => term.length >= 8);
+  if (/women|wsl/i.test(competitionName) && /super league|wsl/i.test(competitionName)) {
+    competitionNeedles.push('wsl', 'women super league');
+  }
 
   // ESPN's summary news can be a broad sport-wide feed. Keep only stories that
   // mention one of these teams or the confirmed competition; never imply that
   // unrelated soccer headlines are match coverage.
+  const seenArticles = new Set<string>();
   articles = articles.filter(article => {
+    const key = article.links?.web?.href || normalize(article.headline || '');
+    if (!key || seenArticles.has(key)) return false;
+    seenArticles.add(key);
     const text = normalize(`${article.headline || ''} ${article.description || ''}`);
     return teamNeedles.some(term => text.includes(term))
       || competitionNeedles.some(term => text.includes(term));
@@ -717,7 +752,7 @@ function buildNews(summary: ESPNSummaryResponse, homeName: string, awayName: str
       published: a.published,
       image: a.images?.[0]?.url,
       link: a.links?.web?.href,
-      source: 'ESPN',
+      source: a.source || 'ESPN',
     };
   });
 }
@@ -1079,6 +1114,15 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       }
       return null;
     })();
+    const cachedNewsArticles = getIndexedNewsArticles();
+    if (cachedNewsArticles.length > 0) {
+      void seedNewsArticleIndexFromFeeds().catch(() => {});
+    }
+    const newsIndexPromise = cachedNewsArticles.length > 0
+      ? Promise.resolve(cachedNewsArticles)
+      : seedNewsArticleIndexFromFeeds()
+          .then(() => getIndexedNewsArticles())
+          .catch(() => []);
 
     const isoKickoff = match.kickoffTime instanceof Date
       ? match.kickoffTime.toISOString()
@@ -1173,12 +1217,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     // Keep source timeouts independent. A slow SGO markets lookup should not
     // erase a summary, bookmaker lines, or SofaScore details that already
     // completed. Give the richer market feed slightly longer than core data.
-    const [summary, sgoRaw, sgoMarkets, sharpMarkets, ssDetails] = await Promise.all([
+    const [summary, sgoRaw, sgoMarkets, sharpMarkets, ssDetails, indexedNews] = await Promise.all([
       settleWithin(summaryPromise, null, 7_000),
       settleWithin(sgoPromise, [], 8_000),
       settleWithin(sgoMarketsPromise, [], 10_000),
       settleWithin(sharpMarketsPromise, [], 12_000),
       settleWithin(ssDetailsPromise, null, 7_000),
+      settleWithin(newsIndexPromise, [], 2_500),
     ]);
 
     // ── Stale-scheduled override ──────────────────────────────────────────────
@@ -1529,7 +1574,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     const standings = summary ? buildStandings(summary, cfg?.sport || 'soccer') : null;
-    const news = summary ? buildNews(summary, match.homeTeam.name, match.awayTeam.name) : [];
+    const news = buildNews(
+      summary,
+      match.homeTeam.name,
+      match.awayTeam.name,
+      indexedNews,
+      match.league?.name || '',
+    );
     if (news.length > 0) {
       void upsertNewsArticles(news.map(article => ({
         id: String(article.id || ''),

@@ -11,6 +11,14 @@ export const dynamic = 'force-dynamic';
 const NEWS_LIMIT = 24;
 
 async function loadNewsArticles(): Promise<IndexedNewsArticle[]> {
+  const cachedArticles = getIndexedNewsArticles();
+  if (cachedArticles.length > 0) {
+    void seedNewsArticleIndexFromFeeds().catch(error => {
+      console.error('[news] Could not refresh sports news:', error);
+    });
+    return cachedArticles.slice(0, NEWS_LIMIT);
+  }
+
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
   try {

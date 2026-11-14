@@ -77,6 +77,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/leagues`,              lastModified: now, changeFrequency: 'daily',   priority: 0.70 },
     { url: `${base}/bookmakers`,           lastModified: now, changeFrequency: 'weekly',  priority: 0.68 },
     { url: `${base}/competitions`,         lastModified: now, changeFrequency: 'daily',   priority: 0.88 },
+    { url: `${base}/news`,                 lastModified: now, changeFrequency: 'hourly',  priority: 0.78 },
     { url: `${base}/sports`,              lastModified: now, changeFrequency: 'weekly',  priority: 0.60 },
     { url: `${base}/predictor/h2h`,        lastModified: now, changeFrequency: 'daily',   priority: 0.58 },
     { url: `${base}/players/compare`,      lastModified: now, changeFrequency: 'weekly',  priority: 0.52 },
@@ -289,7 +290,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // two-day Google News sitemap window. The article index is refreshed by
   // the news sitemap and by every match-details response that contains news.
   const articleEntries: MetadataRoute.Sitemap = getIndexedNewsArticles().map(article => ({
-    url: articleToUrl(article, base),
+    // Sitemap XML requires query separators to be escaped. Next serializes
+    // metadata sitemap URLs verbatim, so escape separators here only.
+    url: articleToUrl(article, base).replace(/&/g, '&amp;'),
     lastModified: new Date(article.published || article.indexedAt),
     changeFrequency: 'weekly' as const,
     priority: 0.62,

@@ -15,6 +15,29 @@ import {
 
 const STORAGE_KEY = 'bz_social_onboarding_done';
 
+function normalizePhoneForSave(value: string, dialCode: string): string | null {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  const dialDigits = dialCode.replace(/\D/g, '');
+  if (!digits || !dialDigits) return null;
+
+  let internationalDigits: string;
+  if (trimmed.startsWith('+')) {
+    internationalDigits = digits;
+    if (internationalDigits.startsWith(dialDigits)) {
+      internationalDigits = dialDigits + internationalDigits.slice(dialDigits.length).replace(/^0+/, '');
+    }
+  } else if (trimmed.startsWith('00')) {
+    internationalDigits = digits.slice(2);
+  } else if (digits.startsWith(dialDigits) && digits.length > dialDigits.length + 6) {
+    internationalDigits = dialDigits + digits.slice(dialDigits.length).replace(/^0+/, '');
+  } else {
+    internationalDigits = dialDigits + digits.replace(/^0+/, '');
+  }
+
+  return /^[1-9]\d{7,14}$/.test(internationalDigits) ? `+${internationalDigits}` : null;
+}
+
 export function SocialOnboardingModal() {
   const { user, isAuthenticated, refreshUser } = useAuth();
   const [visible, setVisible] = useState(false);
@@ -49,7 +72,7 @@ export function SocialOnboardingModal() {
     try {
       if (localStorage.getItem(STORAGE_KEY) === String(user.id)) return;
     } catch {}
-    const needsPhone = !(user as unknown as { phone?: string | null }).phone;
+    const needsPhone = !user.phone;
     if (needsPhone) setVisible(true);
   }, [isAuthenticated, user]);
 
@@ -67,13 +90,18 @@ export function SocialOnboardingModal() {
 
   async function handleSave() {
     if (!phone.trim()) { setError('Please enter your phone number'); return; }
+    const normalizedPhone = normalizePhoneForSave(phone, selected.dialCode);
+    if (!normalizedPhone) {
+      setError('Please enter a valid phone number.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
       const res = await fetch('/api/users/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: `${selected.dialCode}${phone.trim().replace(/^0/, '')}` }),
+        body: JSON.stringify({ phone: normalizedPhone }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));

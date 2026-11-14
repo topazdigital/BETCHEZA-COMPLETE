@@ -31,6 +31,13 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid data', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const profile = await updateProfile(user.userId, parsed.data);
-  return NextResponse.json({ success: true, profile });
+  try {
+    const profile = await updateProfile(user.userId, parsed.data);
+    return NextResponse.json({ success: true, profile });
+  } catch {
+    return NextResponse.json(
+      { error: 'We could not save your profile changes. Please try again.' },
+      { status: 503 },
+    );
+  }
 }

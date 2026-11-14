@@ -86,6 +86,12 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
   c[userId] = merged;
   fileStoreSet('user-profiles', c);
 
+  // Keep the account's canonical phone in sync with the profile override so
+  // phone-based login and authenticated user responses see the same value.
+  if (hasDb() && patch.phone !== undefined) {
+    await query('UPDATE users SET phone = ? WHERE id = ?', [merged.phone ?? null, userId]);
+  }
+
   if (hasDb()) {
     try {
       await ensureTable();

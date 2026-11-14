@@ -2599,6 +2599,9 @@ export default function MatchDetailPage({ params }: PageProps) {
                     <Newspaper className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p className="font-semibold">No verified coverage yet</p>
                     <p className="text-sm mt-1">No articles about either team or this competition are available.</p>
+                    <Link href="/news" className="mt-3 inline-flex text-sm font-medium text-primary hover:underline">
+                      Browse the latest sports news
+                    </Link>
                   </div>
                 )}
               </CardContent>
