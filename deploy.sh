@@ -155,9 +155,10 @@ if [ -d "$APP_DIR/.next" ]; then
   fi
 fi
 
-# Use Webpack's build worker and memory optimizations on the constrained VPS.
-# Cap the Node heap so the OS does not kill the process before Next can fail cleanly.
-if NODE_OPTIONS='--max-old-space-size=1500' npm run build -- --webpack && [ -s "$APP_DIR/.next/BUILD_ID" ]; then
+# Use Next.js' default builder (Turbopack on Next.js 16). Forcing Webpack made
+# the instrumentation bundle resolve Node-only mysql2 modules as build errors.
+# Cap the Node heap; the VPS swapfile provides extra headroom for the build.
+if NODE_OPTIONS='--max-old-space-size=1500' npm run build && [ -s "$APP_DIR/.next/BUILD_ID" ]; then
   # The new build is ready; remove the rollback copy when possible.
   [ ! -d "$BUILD_BACKUP" ] || rm -rf "$BUILD_BACKUP" 2>/dev/null || true
   [ -z "$INCOMPLETE_BUILD" ] || rm -rf "$INCOMPLETE_BUILD" 2>/dev/null || true

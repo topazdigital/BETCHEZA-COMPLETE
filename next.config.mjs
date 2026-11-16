@@ -24,10 +24,6 @@ const nextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   experimental: {
-    // The production VPS is memory-constrained. Its deploy script uses
-    // `next build --webpack`; keep the compiler in a worker and lower its peak.
-    webpackBuildWorker: true,
-    webpackMemoryOptimizations: true,
     prerenderEarlyExit: false,
     optimizeCss: true,
     optimizePackageImports: [
