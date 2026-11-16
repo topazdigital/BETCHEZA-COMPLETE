@@ -22,6 +22,7 @@ const DISMISSAL_KEY = 'betcheza-strategy-promo-dismissed-until';
 const SESSION_KEY = 'betcheza-strategy-promo-shown';
 const DISMISSAL_DAYS = 7;
 const POPUP_DELAY_MS = 8_000;
+const WEEKLY_TARGET_PAYOUTS = 165_000;
 
 const planDays = [
   { day: '01', label: 'Start today' },
@@ -188,11 +189,15 @@ export function StrategyPromo() {
                 Explore the 7-day plan
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
               </Link>
-              <p className="text-xs text-white/65">
-                <span className="font-semibold text-white">KES 5,000</span> per week
-                <span className="mx-2 text-white/30" aria-hidden="true">/</span>
-                No guaranteed outcomes
-              </p>
+              <div className="text-xs text-white/65">
+                <p>
+                  <span className="font-semibold text-white">KES {WEEKLY_TARGET_PAYOUTS.toLocaleString()}</span>
+                  {' '}combined target payouts over seven days
+                </p>
+                <p className="mt-1 text-[10px] text-white/55">
+                  Only if all daily targets hit; not guaranteed or net profit.
+                </p>
+              </div>
             </div>
             <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-white/50">
               <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#c7ef67]/80" aria-hidden="true" />
@@ -257,12 +262,15 @@ export function StrategyPromo() {
                 <div className="flex flex-col justify-between rounded-2xl border border-[#dce4d6] bg-white/75 p-4 sm:p-5">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6f7f7d]">
-                      Weekly access
+                      7-day target payouts
                     </p>
                     <p className="mt-2 flex items-baseline gap-1.5 text-[#10283a]">
-                      <span className="text-3xl font-black tracking-[-0.05em]">KES 5,000</span>
+                      <span className="text-3xl font-black tracking-[-0.05em]">KES {WEEKLY_TARGET_PAYOUTS.toLocaleString()}</span>
                     </p>
-                    <p className="mt-1 text-xs text-[#6b7a82]">per week · 7-day plan</p>
+                    <p className="mt-1 text-xs text-[#6b7a82]">combined daily targets across seven days</p>
+                    <p className="mt-2 text-[10px] leading-relaxed text-[#6b7a82]">
+                      Only if all daily targets hit; not guaranteed or net profit.
+                    </p>
                     <div className="my-4 h-px bg-[#e0e7da]" />
                     <ul className="space-y-2.5 text-xs leading-relaxed text-[#405563]">
                       <li className="flex gap-2">
