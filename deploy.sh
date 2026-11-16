@@ -130,17 +130,43 @@ sleep 2
 
 # ── Step 3: Build ─────────────────────────────────────────────────────────────
 echo -e "${YELLOW}[3/5] Building...${NC}"
-# Clear stale Next.js build cache before every deploy to prevent partial-build
-# artifacts from causing TypeScript or module-resolution failures.
-# Use || true so a locked/busy file doesn't abort the script (set -e is active).
-rm -rf "$APP_DIR/.next" 2>/dev/null || {
-  echo -e "${YELLOW}  rm -rf .next had issues — retrying with find...${NC}"
-  find "$APP_DIR/.next" -type f -delete 2>/dev/null || true
-  find "$APP_DIR/.next" -type d -empty -delete 2>/dev/null || true
-}
-# Cap build at 1.5 GB — enough for Next.js Turbopack with 80+ routes, but
-# leaves headroom on a 4 GB server. (Was 4096 which competed with PM2.)
-NODE_OPTIONS='--max-old-space-size=1500' npm run build
+# Preserve the last successful Next.js build so a failed build can bring the
+# currently deployed app back instead of leaving PM2 stopped with no .next dir.
+BUILD_BACKUP="$APP_DIR/.next.deploy-backup.$(date +%Y%m%d-%H%M%S)"
+if [ -d "$APP_DIR/.next" ]; then
+  if mv "$APP_DIR/.next" "$BUILD_BACKUP"; then
+    echo -e "${GREEN}  ✓ Preserved the last successful build for rollback${NC}"
+  else
+    echo -e "${RED}Could not preserve the existing .next build; aborting before build.${NC}"
+    pm2 restart betcheza 2>/dev/null || true
+    exit 1
+  fi
+fi
+
+# Cap build at 1.5 GB — the package script must not override this limit.
+if NODE_OPTIONS='--max-old-space-size=1500' npm run build; then
+  # The new build is ready; remove the rollback copy when possible.
+  [ ! -d "$BUILD_BACKUP" ] || rm -rf "$BUILD_BACKUP" 2>/dev/null || true
+else
+  BUILD_EXIT_CODE=$?
+  echo -e "${RED}Build failed (exit ${BUILD_EXIT_CODE}); restoring the previous build.${NC}"
+  rm -rf "$APP_DIR/.next" 2>/dev/null || true
+  if [ -d "$BUILD_BACKUP" ]; then
+    mv "$BUILD_BACKUP" "$APP_DIR/.next"
+    if ! pm2 restart betcheza 2>/dev/null; then
+      if [ -f "$APP_DIR/ecosystem.config.js" ]; then
+        pm2 start "$APP_DIR/ecosystem.config.js" 2>/dev/null || true
+      else
+        PORT="$APP_PORT" pm2 start npm --name "betcheza" -- start 2>/dev/null || true
+      fi
+    fi
+    pm2 save 2>/dev/null || true
+    echo -e "${YELLOW}  Restored the previous build; check PM2 health before retrying.${NC}"
+  else
+    echo -e "${RED}No previous build backup exists; the app remains stopped.${NC}"
+  fi
+  exit "$BUILD_EXIT_CODE"
+fi
 
 # ── Step 4: Apache proxy config ───────────────────────────────────────────────
 echo -e "${YELLOW}[4/5] Configuring Apache reverse proxy...${NC}"
