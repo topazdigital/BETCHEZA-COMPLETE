@@ -133,37 +133,60 @@ echo -e "${YELLOW}[3/5] Building...${NC}"
 # Preserve the last successful Next.js build so a failed build can bring the
 # currently deployed app back instead of leaving PM2 stopped with no .next dir.
 BUILD_BACKUP="$APP_DIR/.next.deploy-backup.$(date +%Y%m%d-%H%M%S)"
+INCOMPLETE_BUILD=""
 if [ -d "$APP_DIR/.next" ]; then
-  if mv "$APP_DIR/.next" "$BUILD_BACKUP"; then
-    echo -e "${GREEN}  ✓ Preserved the last successful build for rollback${NC}"
+  if [ -s "$APP_DIR/.next/BUILD_ID" ]; then
+    if mv "$APP_DIR/.next" "$BUILD_BACKUP"; then
+      echo -e "${GREEN}  ✓ Preserved the last successful Next.js build for rollback${NC}"
+    else
+      echo -e "${RED}Could not preserve the existing .next build; aborting before build.${NC}"
+      pm2 restart betcheza 2>/dev/null || true
+      exit 1
+    fi
   else
-    echo -e "${RED}Could not preserve the existing .next build; aborting before build.${NC}"
-    pm2 restart betcheza 2>/dev/null || true
-    exit 1
+    INCOMPLETE_BUILD="$APP_DIR/.next.incomplete.$(date +%Y%m%d-%H%M%S)"
+    if mv "$APP_DIR/.next" "$INCOMPLETE_BUILD"; then
+      echo -e "${YELLOW}  Existing .next has no BUILD_ID; moved aside, not treated as a rollback build.${NC}"
+    else
+      echo -e "${RED}Could not move the incomplete .next directory; aborting before build.${NC}"
+      pm2 stop betcheza 2>/dev/null || true
+      exit 1
+    fi
   fi
 fi
 
-# Cap build at 1.5 GB — the package script must not override this limit.
-if NODE_OPTIONS='--max-old-space-size=1500' npm run build; then
+# Use Webpack's build worker and memory optimizations on the constrained VPS.
+# Cap the Node heap so the OS does not kill the process before Next can fail cleanly.
+if NODE_OPTIONS='--max-old-space-size=1500' npm run build -- --webpack && [ -s "$APP_DIR/.next/BUILD_ID" ]; then
   # The new build is ready; remove the rollback copy when possible.
   [ ! -d "$BUILD_BACKUP" ] || rm -rf "$BUILD_BACKUP" 2>/dev/null || true
+  [ -z "$INCOMPLETE_BUILD" ] || rm -rf "$INCOMPLETE_BUILD" 2>/dev/null || true
 else
   BUILD_EXIT_CODE=$?
+  if [ "$BUILD_EXIT_CODE" -eq 0 ]; then
+    BUILD_EXIT_CODE=1
+    echo -e "${RED}Build command succeeded but .next/BUILD_ID is missing.${NC}"
+  fi
   echo -e "${RED}Build failed (exit ${BUILD_EXIT_CODE}); restoring the previous build.${NC}"
   rm -rf "$APP_DIR/.next" 2>/dev/null || true
-  if [ -d "$BUILD_BACKUP" ]; then
-    mv "$BUILD_BACKUP" "$APP_DIR/.next"
-    if ! pm2 restart betcheza 2>/dev/null; then
-      if [ -f "$APP_DIR/ecosystem.config.js" ]; then
-        pm2 start "$APP_DIR/ecosystem.config.js" 2>/dev/null || true
-      else
-        PORT="$APP_PORT" pm2 start npm --name "betcheza" -- start 2>/dev/null || true
+  if [ -s "$BUILD_BACKUP/BUILD_ID" ]; then
+    if mv "$BUILD_BACKUP" "$APP_DIR/.next"; then
+      if ! pm2 restart betcheza 2>/dev/null; then
+        if [ -f "$APP_DIR/ecosystem.config.js" ]; then
+          pm2 start "$APP_DIR/ecosystem.config.js" 2>/dev/null || true
+        else
+          PORT="$APP_PORT" pm2 start npm --name "betcheza" -- start 2>/dev/null || true
+        fi
       fi
+      pm2 save 2>/dev/null || true
+      echo -e "${YELLOW}  Restored the previous valid build; check PM2 health before retrying.${NC}"
+    else
+      echo -e "${RED}Could not restore the previous build; leaving the app stopped.${NC}"
+      pm2 stop betcheza 2>/dev/null || true
     fi
-    pm2 save 2>/dev/null || true
-    echo -e "${YELLOW}  Restored the previous build; check PM2 health before retrying.${NC}"
   else
-    echo -e "${RED}No previous build backup exists; the app remains stopped.${NC}"
+    echo -e "${RED}No valid previous build exists; leaving the app stopped to avoid a restart loop.${NC}"
+    pm2 stop betcheza 2>/dev/null || true
   fi
   exit "$BUILD_EXIT_CODE"
 fi
