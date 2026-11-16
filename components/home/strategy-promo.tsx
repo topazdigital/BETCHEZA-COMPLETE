@@ -173,7 +173,7 @@ export function StrategyPromo() {
               className="max-w-xl text-balance text-[1.7rem] font-black leading-[1.08] tracking-[-0.045em] sm:text-3xl lg:text-[2.65rem]"
             >
               Make your next seven days
-              <span className="text-[#c7ef67]"> easier to follow.</span>
+               <span className="text-[#93c5fd]"> easier to follow.</span>
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/70 sm:text-[15px]">
               A daily football-picks plan with a clear start, a simple routine, and your week laid out in one place.
@@ -183,7 +183,7 @@ export function StrategyPromo() {
               <Link
                 href="/strategy"
                 data-testid="strategy-home-cta"
-                className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#c7ef67] px-5 py-3 text-sm font-bold text-[#10283a] transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-[#d7f69a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c7ef67] motion-reduce:transform-none motion-reduce:transition-none"
+                className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#2563eb] px-5 py-3 text-sm font-bold text-white transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-[#1d4ed8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#60a5fa] motion-reduce:transform-none motion-reduce:transition-none"
               >
                 Explore the 7-day plan
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
@@ -238,7 +238,7 @@ export function StrategyPromo() {
                   data-testid="strategy-promo-dismiss"
                   onClick={dismissPopup}
                   aria-label="Close strategy promotion"
-                  className="-mr-1 -mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#506575] transition-colors hover:bg-[#10283a]/[0.07] hover:text-[#10283a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#557b28] motion-reduce:transition-none"
+                  className="-mr-1 -mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#506575] transition-colors hover:bg-[#10283a]/[0.07] hover:text-[#10283a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] motion-reduce:transition-none"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -246,7 +246,7 @@ export function StrategyPromo() {
 
               <DialogTitle className="max-w-lg text-balance text-[1.8rem] font-black leading-[1.04] tracking-[-0.05em] sm:text-[2.35rem]">
                 Football picks, with a
-                <span className="text-[#537728]"> seven-day rhythm.</span>
+                <span className="text-[#1d4ed8]"> seven-day rhythm.</span>
               </DialogTitle>
               <DialogDescription className="mt-3 max-w-xl text-sm leading-relaxed text-[#526675]">
                 Follow Betcheza&apos;s daily picks through a personal 7-day plan. Your plan begins on the day you subscribe.
@@ -283,7 +283,7 @@ export function StrategyPromo() {
                     <Link
                       href="/strategy"
                       data-testid="strategy-popup-cta"
-                      className="group inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#10283a] px-4 py-3 text-sm font-bold text-white transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-[#1c3d50] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#557b28] motion-reduce:transform-none motion-reduce:transition-none"
+                      className="group inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#2563eb] px-4 py-3 text-sm font-bold text-white transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-[#1d4ed8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] motion-reduce:transform-none motion-reduce:transition-none"
                     >
                       View the strategy
                       <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
