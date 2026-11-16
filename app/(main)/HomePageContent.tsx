@@ -43,6 +43,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { tipsterHref } from '@/lib/utils/slug';
 import { WhatsAppCommunityCta } from '@/components/home/whatsapp-community-cta';
+import { StrategyPromo } from '@/components/home/strategy-promo';
 
 const PanelSkeleton = () => (
   <div className="space-y-2 p-1">
@@ -361,6 +362,10 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
             </div>
           </div>
         </section>
+
+        <div className="px-4">
+          <StrategyPromo />
+        </div>
 
         {/* Sports Filter */}
         <section className="border-b border-border bg-card/50 px-4 py-2">
