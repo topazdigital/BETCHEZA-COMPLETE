@@ -23,7 +23,25 @@ function WhatsAppMark({ className = 'h-6 w-6' }: { className?: string }) {
   );
 }
 
-export function WhatsAppCommunityCta() {
+export function WhatsAppCommunityCta({ compact = false }: { compact?: boolean } = {}) {
+  if (compact) {
+    return (
+      <a
+        href={WHATSAPP_GROUP_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Join the Betcheza WhatsApp community"
+        className="group inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:-translate-y-0.5 hover:bg-emerald-300/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-200 text-emerald-950">
+          <WhatsAppMark className="h-4 w-4" />
+        </span>
+        Join the Betcheza community
+        <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+      </a>
+    );
+  }
+
   return (
     <a
       href={WHATSAPP_GROUP_URL}

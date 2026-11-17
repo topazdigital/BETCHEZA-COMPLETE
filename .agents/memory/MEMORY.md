@@ -15,7 +15,7 @@
 - [Match not found — espn_eventid_ cache skip](match-eventid-cache.md) — getMatchById was skipping cache scan for espn_eventid_ format, causing "Match not found" for tennis/basketball/all non-soccer sports even when match was live in cache
 - [League page sport param & slug resolution](league-page-sport-param.md) — unknown league links must include ?sport=slug; never use raw match.league.slug; status filter is context-aware based on dateTab
 - [Historical matches & SEO timezone](historical-matches-seo.md) — tryLeagues no age cutoff + collision guard; EAT timezone in formatKickoffDate & JSON-LD; league page calls /api/leagues/[id]/matches?season=YEAR
-- [GTmetrix perf optimizations](gtmetrix-perf.md) — webpack config breaks Turbopack builds; MatchCardNew/HeroCarousel/LiveSidePanel/LiveMarquee must be dynamic imports; use turbopack:{} not webpack config
+- [GTmetrix and Turbopack](gtmetrix-perf.md) — keep heavy homepage panels split; local dev can fail on an off-workspace CSS-loader path independently of UI code
 - [Roster null-safety](roster-null-safety.md) — roster.starting can be undefined even when roster is non-null (API omits it); always use (roster.starting || []).slice() everywhere; buildPitchData guards with !roster.starting?.length
 - [Tips feed null guards](tips-feed-nulls.md) — tip.tipster can be null at runtime despite interface; BestBetCard/TipCard must return null early; sportCounts can be null before first SWR response
 - [teams.short_name column width](db-short-name.md) — short_name was VARCHAR(50); ESPN abbreviations can exceed that; widened to VARCHAR(100) via instrumentation.ts ALTER TABLE migration

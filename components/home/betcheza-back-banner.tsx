@@ -66,7 +66,7 @@ export function BetchezaBackBanner() {
 
   return (
     <div
-      className="fixed left-0 right-0 top-0 z-[200] px-3 py-2 shadow-lg"
+      className="relative z-20 w-full px-3 py-2 shadow-lg"
       style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}
     >
       <div className="relative mx-auto max-w-4xl overflow-hidden rounded-xl border border-primary/40 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-3">

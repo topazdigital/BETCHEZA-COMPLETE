@@ -12,13 +12,9 @@ import {
   Trophy,
   Target,
   Users,
-  ArrowRight,
-  Zap,
   Shield,
   ShieldCheck,
   Medal,
-  PenLine,
-  LayoutDashboard,
 } from 'lucide-react';
 const BetchezaBackBanner = dynamic(
   () => import('@/components/home/betcheza-back-banner').then(m => ({ default: m.BetchezaBackBanner })),
@@ -40,9 +36,9 @@ import { cn } from '@/lib/utils';
 import { MyTipsPanel, useFavoritedTips } from '@/components/home/favorited-tips-panel';
 import { useAuthModal } from '@/contexts/auth-modal-context';
 import { useAuth } from '@/contexts/auth-context';
+import { HomeHero } from '@/components/home/home-hero';
 import { matchToSlug } from '@/lib/utils/match-url';
 import { tipsterHref } from '@/lib/utils/slug';
-import { WhatsAppCommunityCta } from '@/components/home/whatsapp-community-cta';
 import { StrategyPromo } from '@/components/home/strategy-promo';
 
 const PanelSkeleton = () => (
@@ -64,16 +60,6 @@ const FavoritedTipsPanel = dynamic(
 const NewsletterSection = dynamic(
   () => import('@/components/sections/newsletter').then(m => ({ default: m.NewsletterSection })),
   { ssr: false, loading: () => <div className="h-24 rounded-xl bg-muted/30 animate-pulse" /> }
-);
-const HeroCarousel = dynamic(
-  () => import('@/components/home/hero-carousel').then(m => ({ default: m.HeroCarousel })),
-  { ssr: false, loading: () => (
-    <div className="space-y-3">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="rounded-2xl border border-border bg-card/50 p-4 animate-pulse shadow-xl" style={{ height: '88px' }} />
-      ))}
-    </div>
-  )}
 );
 const LiveSidePanel = dynamic(
   () => import('@/components/home/live-side-panel').then(m => ({ default: m.LiveSidePanel })),
@@ -261,107 +247,17 @@ export default function HomePageContent({ initialHomeData }: { initialHomeData?:
 
   return (
     <div className="overflow-hidden">
-        {/* Hero Section — compact */}
-        <section className="relative overflow-hidden border-b border-border bg-gradient-to-br from-background via-background to-primary/5">
-          <div className="px-4 py-4 sm:py-6">
-            <div className="grid gap-4 lg:grid-cols-2 lg:gap-8">
-              {/* Left: Main content */}
-              <div className="flex flex-col justify-center">
-                {/* "We're back" announcement — animated, dismissable per session */}
-                <BetchezaBackBanner />
-                <Badge variant="secondary" className="mb-2 w-fit text-[10px]">
-                  <Zap className="mr-1 h-3 w-3" />
-                  Trusted by 50,000+ tipsters
-                </Badge>
-                <h1 className="mb-2 text-balance text-2xl font-bold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
-                  The Complete Platform for
-                  <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent"> Sports Betting Tips</span>
-                </h1>
-                <p className="mb-3 text-pretty text-sm text-muted-foreground">
-                  Expert predictions across 35+ sports — track performance and compete worldwide.
-                </p>
-                <WhatsAppCommunityCta />
-                {isAuthenticated && user ? (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-xs text-muted-foreground">
-                      Welcome back, <span className="font-semibold text-foreground">{user.displayName || user.username}</span> 👋
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" asChild>
-                        <Link href="/feed">
-                          <PenLine className="mr-2 h-4 w-4" />
-                          Post a Tip
-                        </Link>
-                      </Button>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/dashboard">
-                          <LayoutDashboard className="mr-2 h-4 w-4" />
-                          My Dashboard
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" onClick={() => openAuthModal('register')}>
-                      Get Started Free
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href="/matches">
-                        Browse Matches
-                      </Link>
-                    </Button>
-                  </div>
-                )}
-
-                {/* Quick Stats — each tile links somewhere relevant so the
-                    "they look clickable" promise is honoured. */}
-                <div className="mt-4 grid grid-cols-4 gap-2">
-                  <Link
-                    href="/matches?status=live"
-                    className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
-                  >
-                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.isLoading ? '–' : (stats.live || 0)}</div>
-                    <div className="text-xs text-muted-foreground">Live Now</div>
-                  </Link>
-                  <Link
-                    href="/matches"
-                    className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
-                  >
-                    <div className="text-2xl font-bold tabular-nums text-foreground min-w-[2ch] mx-auto">{stats.isLoading ? '–' : (stats.today || 0)}</div>
-                    <div className="text-xs text-muted-foreground">Today</div>
-                  </Link>
-                  <Link
-                    href="/matches"
-                    className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
-                  >
-                    <div className="text-2xl font-bold text-foreground">35+</div>
-                    <div className="text-xs text-muted-foreground">Sports</div>
-                  </Link>
-                  <Link
-                    href="/leaderboard"
-                    className="rounded-lg p-1 text-center transition-colors hover:bg-muted/50"
-                  >
-                    <div className="text-2xl font-bold text-foreground">50K+</div>
-                    <div className="text-xs text-muted-foreground">Tipsters</div>
-                  </Link>
-                </div>
-              </div>
-
-              {/* Right: Live Now / Featured Matches carousel */}
-              <div className="hidden lg:flex lg:items-center lg:justify-center">
-                <div className="relative w-full max-w-md">
-                  <HeroCarousel
-                    liveMatches={liveMatches.slice(0, 3)}
-                    featuredMatches={upcomingMatches.slice(0, 3)}
-                    isLoading={isLoading}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* "We're back" announcement — animated, dismissable per session */}
+        <BetchezaBackBanner />
+        <HomeHero
+          liveMatches={liveMatches}
+          featuredMatches={upcomingMatches.slice(0, 3)}
+          isLoading={isLoading}
+          stats={stats}
+          isAuthenticated={isAuthenticated}
+          welcomeName={user?.displayName || user?.username}
+          onRegister={() => openAuthModal('register')}
+        />
 
         <div className="px-4">
           <StrategyPromo />

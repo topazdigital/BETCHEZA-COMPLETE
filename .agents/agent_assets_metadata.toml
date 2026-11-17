@@ -4,11 +4,15 @@ generated = []
 [[outputs]]
 id = "DbvLNsnwoBJM3fecpdqJI"
 uri = "file://attached_assets/linebet-reply.html"
-type = "unspecified"
+type = "html"
 title = "Linebet Reply Email (HTML)"
+logical_id = "70de08f2-0b0a-4a4f-a587-0a47da1c1556"
+content_type = "text/html"
 
 [[outputs]]
 id = "W0077nHWeJXhu0uPTCaM4"
 uri = "file://attached_assets/linebet-reply2.html"
-type = "unspecified"
+type = "html"
 title = "Linebet Reply 2 (HTML)"
+logical_id = "ba72ae20-bab1-477c-bcd0-e2b353ad6632"
+content_type = "text/html"
