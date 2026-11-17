@@ -167,7 +167,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/users/me', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName: displayName.trim(), bio: bio.trim() }),
       });
       const data = await res.json();
@@ -216,7 +216,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/users/me', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ avatarUrl: url }),
       });
       if (!res.ok) {

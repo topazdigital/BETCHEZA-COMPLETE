@@ -251,8 +251,5 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (req.headers.get('x-http-method-override')?.toUpperCase() !== 'PATCH') {
-    return NextResponse.json({ error: 'Unsupported action' }, { status: 405 });
-  }
   return PATCH(req);
 }

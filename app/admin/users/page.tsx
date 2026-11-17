@@ -737,18 +737,18 @@ export default function AdminUsersPage() {
   }
 
   async function changeRole(id: number, role: Role) {
-    await fetch('/api/admin/users', {
+    await fetch('/api/admin/users?mode=update', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, role }),
     });
     mutate(url);
   }
 
   async function singleAction(id: number, action: string) {
-    await fetch('/api/admin/users', {
+    await fetch('/api/admin/users?mode=update', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, action }),
     });
     mutate(url);
@@ -756,9 +756,9 @@ export default function AdminUsersPage() {
 
   async function bulkAction(action: string) {
     const ids = Array.from(selected);
-    await fetch('/api/admin/users', {
+    await fetch('/api/admin/users?mode=update', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ids }),
     });
     setSelected(new Set());

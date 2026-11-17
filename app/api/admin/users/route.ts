@@ -309,7 +309,7 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (request.headers.get('x-http-method-override')?.toUpperCase() === 'PATCH') {
+  if (new URL(request.url).searchParams.get('mode') === 'update') {
     return PATCH(request);
   }
 

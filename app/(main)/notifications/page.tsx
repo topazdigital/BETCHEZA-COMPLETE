@@ -64,7 +64,7 @@ export default function NotificationsPage() {
     try {
       await fetch('/api/notifications/preferences', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: next[key] }),
       });
     } finally {

@@ -148,7 +148,7 @@ export default function LiveChatPage() {
   async function closeSession(sessionId: number) {
     await fetch("/api/admin/support-chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-HTTP-Method-Override": "PATCH" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, action: "close" }),
     }).catch(() => {})
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: "closed" as const } : s))

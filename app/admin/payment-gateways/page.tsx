@@ -415,7 +415,7 @@ export default function PaymentGatewaysPage() {
     try {
       const res = await fetch('/api/admin/payment-gateways', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, enabled }),
       })
       if (!res.ok) {

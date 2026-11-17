@@ -83,7 +83,7 @@ export default function AdminTipsterApplicationsPage() {
     try {
       const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'resend_email' }),
       });
       const json = await r.json().catch(() => ({}));
@@ -105,7 +105,7 @@ export default function AdminTipsterApplicationsPage() {
     try {
       const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reapply' }),
       });
       const json = await r.json().catch(() => ({}));
@@ -127,7 +127,7 @@ export default function AdminTipsterApplicationsPage() {
     try {
       const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           decision,
           note: notes[app.id] || undefined,

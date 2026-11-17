@@ -171,9 +171,9 @@ export default function AdminCompetitionsPage() {
   const saveKickoff = async (id: number) => {
     setSavingKickoff(true)
     try {
-      const r = await fetch('/api/admin/competitions', {
+      const r = await fetch('/api/admin/competitions?mode=update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id,
           matchKickoffFrom: kickoffForm.from ? new Date(kickoffForm.from).toISOString() : null,
@@ -347,9 +347,9 @@ export default function AdminCompetitionsPage() {
         editForm.prize2 ? { place: '🥈 2nd', amount: Number(editForm.prize2) } : null,
         editForm.prize3 ? { place: '🥉 3rd', amount: Number(editForm.prize3) } : null,
       ].filter(Boolean) as Array<{ place: string; amount: number }>
-      const r = await fetch('/api/admin/competitions', {
+      const r = await fetch('/api/admin/competitions?mode=update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id,
           name: editForm.name.trim(),

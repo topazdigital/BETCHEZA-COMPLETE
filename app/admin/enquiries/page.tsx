@@ -178,7 +178,7 @@ export default function InboxPage() {
         : prev, false)
       await fetch('/api/admin/inbox', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid: email.uid, account: email.account }),
       })
     }

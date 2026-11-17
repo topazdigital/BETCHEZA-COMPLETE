@@ -36,7 +36,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (req.headers.get('x-http-method-override')?.toUpperCase() === 'PATCH') {
+  if (new URL(req.url).searchParams.get('mode') === 'update') {
     return PATCH(req);
   }
 
