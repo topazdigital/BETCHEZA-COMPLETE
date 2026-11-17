@@ -34,7 +34,11 @@ export async function PATCH(req: Request) {
   try {
     const profile = await updateProfile(user.userId, parsed.data);
     return NextResponse.json({ success: true, profile });
-  } catch {
+  } catch (error) {
+    console.error(
+      '[users/me] profile update failed:',
+      error instanceof Error ? error.message : error,
+    );
     return NextResponse.json(
       { error: 'We could not save your profile changes. Please try again.' },
       { status: 503 },

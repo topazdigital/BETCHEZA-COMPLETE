@@ -60,13 +60,23 @@ export default function AdminTipsterApplicationsPage() {
     setLoading(true);
     try {
       const r = await fetch('/api/admin/tipster-applications', { cache: 'no-store' });
-      const json = (await r.json()) as ApiResp;
+      const json = (await r.json().catch(() => ({}))) as ApiResp;
+      if (!r.ok) {
+        throw new Error((json as unknown as { error?: string }).error || `Could not load applications (HTTP ${r.status}).`);
+      }
       setData(json);
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not load tipster applications.', 'error');
     } finally {
       setLoading(false);
     }
   }
   useEffect(() => { load(); }, []);
+
+  async function getActionError(response: Response, fallback: string) {
+    const json = await response.json().catch(() => ({})) as { error?: string };
+    return json.error || `${fallback} (HTTP ${response.status}). Refresh and try again.`;
+  }
 
   async function resendEmail(app: AdminApplication) {
     setBusyId(app.id + '-email');
@@ -81,8 +91,10 @@ export default function AdminTipsterApplicationsPage() {
         addToast(`✅ Approval email re-sent to ${app.email}`, 'success');
         await load();
       } else {
-        addToast(json.error || 'Email sending failed — configure SMTP in Admin → Email Setup', 'error');
+        addToast(json.error || `Email sending failed (HTTP ${r.status}). Check SMTP in Admin → Email Setup.`, 'error');
       }
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not resend the approval email.', 'error');
     } finally {
       setBusyId(null);
     }
@@ -101,8 +113,10 @@ export default function AdminTipsterApplicationsPage() {
         addToast(`✅ ${app.displayName}'s DB role updated — they will now appear in the tipsters list`, 'success');
         await load();
       } else {
-        addToast(json.error || 'Re-apply failed — check server logs', 'error');
+        addToast(json.error || `Could not apply the tipster role (HTTP ${r.status}). Refresh and try again.`, 'error');
       }
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not apply the tipster role.', 'error');
     } finally {
       setBusyId(null);
     }
@@ -121,21 +135,24 @@ export default function AdminTipsterApplicationsPage() {
         }),
       });
       if (r.ok) {
+        const result = await r.json().catch(() => ({})) as { application?: AdminApplication };
+        const roleApplied = result.application?.dbUpdated !== false;
         if (decision === 'approve') {
-          addToast(
-            app.email
-              ? `✅ ${app.displayName} promoted to tipster — confirmation email sent to ${app.email}`
-              : `✅ ${app.displayName} promoted to tipster`,
-            'success'
-          );
+          addToast(roleApplied
+            ? app.email
+              ? `${app.displayName} approved and promoted to tipster. Email sent to ${app.email}.`
+              : `${app.displayName} approved and promoted to tipster.`
+            : `${app.displayName} approved, but the database role update needs retrying below.`,
+            roleApplied ? 'success' : 'error');
         } else {
-          addToast(`${app.displayName}'s application rejected${app.email ? ' — notification sent' : ''}.`, 'error');
+          addToast(`${app.displayName}'s application rejected${app.email ? ' — notification sent' : ''}.`, 'success');
         }
         await load();
       } else {
-        const e = await r.json().catch(() => ({}));
-        addToast(e?.error || 'Action failed', 'error');
+        addToast(await getActionError(r, 'Application review failed'), 'error');
       }
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not review this application.', 'error');
     } finally {
       setBusyId(null);
     }

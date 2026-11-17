@@ -18,6 +18,21 @@ export const runtime = 'nodejs';
 interface Ctx { params: Promise<{ id: string }> }
 
 export async function PATCH(request: NextRequest, ctx: Ctx) {
+  try {
+    return await handlePatch(request, ctx);
+  } catch (error) {
+    console.error(
+      '[tipster-applications] review action failed:',
+      error instanceof Error ? error.message : error,
+    );
+    return NextResponse.json(
+      { error: 'The application action could not be completed. Please refresh and try again.' },
+      { status: 500 },
+    );
+  }
+}
+
+async function handlePatch(request: NextRequest, ctx: Ctx) {
   const me = await getCurrentUser();
   if (!me || !hasPermission(me.role, 'admin.users.role')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });

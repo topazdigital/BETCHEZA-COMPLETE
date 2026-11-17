@@ -88,8 +88,18 @@ export async function updateProfile(userId: number, patch: ProfilePatch): Promis
 
   // Keep the account's canonical phone in sync with the profile override so
   // phone-based login and authenticated user responses see the same value.
+  // A failure here must not prevent saving the profile override below: /api/auth/me
+  // reads the profile value as a fallback, and that is also the intended
+  // file-backed behavior when the primary users table is temporarily unavailable.
   if (hasDb() && patch.phone !== undefined) {
-    await query('UPDATE users SET phone = ? WHERE id = ?', [merged.phone ?? null, userId]);
+    try {
+      await query('UPDATE users SET phone = ? WHERE id = ?', [merged.phone ?? null, userId]);
+    } catch (e) {
+      console.warn(
+        '[user-profile] canonical phone update failed; continuing with profile persistence:',
+        e instanceof Error ? e.message : e,
+      );
+    }
   }
 
   if (hasDb()) {
