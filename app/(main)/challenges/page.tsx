@@ -739,7 +739,7 @@ function AcceptModal({ challenge, onClose, onAccepted }: {
     setSubmitting(true); setError('');
     try {
       const res = await fetch(`/api/challenges/${challenge.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ action: 'accept', picks }),
       });
       const data = await res.json() as { error?: string };
@@ -1376,7 +1376,7 @@ export default function ChallengesPage() {
   const handleCancel = async (id: number) => {
     if (!confirm('Cancel this challenge? Your stake will be refunded.')) return;
     await fetch(`/api/challenges/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
       body: JSON.stringify({ action: 'cancel' }),
     });
     mutate();

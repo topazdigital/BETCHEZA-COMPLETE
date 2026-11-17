@@ -18,3 +18,7 @@ export async function PATCH(req: NextRequest) {
   const prefs = await setPreferences(user.userId, body);
   return NextResponse.json({ preferences: prefs });
 }
+
+export async function POST(req: NextRequest) {
+  return PATCH(req);
+}

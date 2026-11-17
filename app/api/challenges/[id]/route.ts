@@ -129,3 +129,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
+
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  return PATCH(req, ctx);
+}

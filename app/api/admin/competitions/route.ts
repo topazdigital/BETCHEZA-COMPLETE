@@ -36,6 +36,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (req.headers.get('x-http-method-override')?.toUpperCase() === 'PATCH') {
+    return PATCH(req);
+  }
+
   const user = await requireAdmin();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   await ensureMigrated();

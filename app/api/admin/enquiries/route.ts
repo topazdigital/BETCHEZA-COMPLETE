@@ -31,3 +31,7 @@ export async function DELETE(req: NextRequest) {
   const ok = deleteEnquiry(id);
   return NextResponse.json({ ok });
 }
+
+export async function POST(req: NextRequest) {
+  return PATCH(req);
+}

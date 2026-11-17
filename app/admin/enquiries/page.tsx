@@ -177,8 +177,8 @@ export default function InboxPage() {
         ? { ...prev, emails: prev.emails.map(e => e.uid === email.uid && e.account === email.account ? { ...e, seen: true } : e) }
         : prev, false)
       await fetch('/api/admin/inbox', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ uid: email.uid, account: email.account }),
       })
     }

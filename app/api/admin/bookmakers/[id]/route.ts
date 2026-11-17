@@ -45,3 +45,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   const ok = deleteBookmaker(Number(id));
   return NextResponse.json({ success: ok });
 }
+
+export async function POST(request: NextRequest, ctx: Ctx) {
+  return PATCH(request, ctx);
+}

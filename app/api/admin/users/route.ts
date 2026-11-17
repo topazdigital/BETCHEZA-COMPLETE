@@ -309,6 +309,10 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (request.headers.get('x-http-method-override')?.toUpperCase() === 'PATCH') {
+    return PATCH(request);
+  }
+
   const me = await getCurrentUser();
   if (!me || !hasPermission(me.role, 'admin.users.read')) {
     return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 });

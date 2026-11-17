@@ -414,8 +414,8 @@ export default function PaymentGatewaysPage() {
     setGateways((prev) => prev.map((g) => g.id === id ? { ...g, enabled } : g))
     try {
       const res = await fetch('/api/admin/payment-gateways', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ id, enabled }),
       })
       if (!res.ok) {

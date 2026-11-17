@@ -172,8 +172,8 @@ export default function AdminCompetitionsPage() {
     setSavingKickoff(true)
     try {
       const r = await fetch('/api/admin/competitions', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({
           id,
           matchKickoffFrom: kickoffForm.from ? new Date(kickoffForm.from).toISOString() : null,
@@ -348,8 +348,8 @@ export default function AdminCompetitionsPage() {
         editForm.prize3 ? { place: '🥉 3rd', amount: Number(editForm.prize3) } : null,
       ].filter(Boolean) as Array<{ place: string; amount: number }>
       const r = await fetch('/api/admin/competitions', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({
           id,
           name: editForm.name.trim(),

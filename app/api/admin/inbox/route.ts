@@ -42,3 +42,7 @@ export async function DELETE() {
   invalidateImapCache();
   return NextResponse.json({ ok: true });
 }
+
+export async function POST(req: NextRequest) {
+  return PATCH(req);
+}

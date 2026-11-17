@@ -46,3 +46,4 @@
 - [Imported project dependency setup](imported-project-dependencies.md) — imported Next.js projects may lack node_modules; restore declared packages before diagnosing app code
 - [GitHub HTTPS push auth](github-push-auth.md) — GitHub accepted the PAT via Basic x-access-token auth when a Bearer extraheader was rejected
 - [ESPN request identity](espn-request-headers.md) — explicit curl-compatible user agent avoids Akamai 403s that cause sparse non-odds fallback data
+- [Apache PATCH method restriction](production-http-method-compatibility.md) — production Apache rejects PATCH before Next.js; browser updates need POST-compatible handlers and a manual VPS deploy

@@ -45,3 +45,7 @@ export async function PATCH(req: Request) {
     );
   }
 }
+
+export async function POST(req: Request) {
+  return PATCH(req);
+}

@@ -73,3 +73,7 @@ export async function PATCH(req: Request) {
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
+
+export async function POST(req: Request) {
+  return PATCH(req);
+}

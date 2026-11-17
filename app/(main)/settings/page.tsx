@@ -166,8 +166,8 @@ export default function SettingsPage() {
     setProfileSaving(true);
     try {
       const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ displayName: displayName.trim(), bio: bio.trim() }),
       });
       const data = await res.json();
@@ -215,8 +215,8 @@ export default function SettingsPage() {
     setAvatarSaving(true);
     try {
       const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ avatarUrl: url }),
       });
       if (!res.ok) {

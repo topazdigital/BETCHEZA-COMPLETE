@@ -99,8 +99,8 @@ export function SocialOnboardingModal() {
     setError('');
     try {
       const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ phone: normalizedPhone }),
       });
       if (!res.ok) {

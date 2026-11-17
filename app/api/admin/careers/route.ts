@@ -92,3 +92,7 @@ export async function DELETE(req: NextRequest) {
   await execute(`DELETE FROM career_applications WHERE id = ?`, [id]);
   return NextResponse.json({ ok: true });
 }
+
+export async function POST(req: NextRequest) {
+  return PATCH(req);
+}

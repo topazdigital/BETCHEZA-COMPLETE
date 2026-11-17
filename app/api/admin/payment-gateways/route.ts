@@ -249,3 +249,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to toggle gateway' }, { status: 500 })
   }
 }
+
+export async function POST(req: NextRequest) {
+  if (req.headers.get('x-http-method-override')?.toUpperCase() !== 'PATCH') {
+    return NextResponse.json({ error: 'Unsupported action' }, { status: 405 });
+  }
+  return PATCH(req);
+}

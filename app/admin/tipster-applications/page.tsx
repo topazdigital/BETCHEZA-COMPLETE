@@ -82,8 +82,8 @@ export default function AdminTipsterApplicationsPage() {
     setBusyId(app.id + '-email');
     try {
       const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ action: 'resend_email' }),
       });
       const json = await r.json().catch(() => ({}));
@@ -104,8 +104,8 @@ export default function AdminTipsterApplicationsPage() {
     setBusyId(app.id + '-reapply');
     try {
       const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({ action: 'reapply' }),
       });
       const json = await r.json().catch(() => ({}));
@@ -126,8 +126,8 @@ export default function AdminTipsterApplicationsPage() {
     setBusyId(app.id);
     try {
       const r = await fetch(`/api/admin/tipster-applications/${app.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HTTP-Method-Override': 'PATCH' },
         body: JSON.stringify({
           decision,
           note: notes[app.id] || undefined,

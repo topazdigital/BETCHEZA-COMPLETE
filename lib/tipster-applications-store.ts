@@ -55,25 +55,38 @@ interface StoreShape {
   applications: TipsterApplication[];
 }
 
-const g = globalThis as { __tipsterAppsStore?: StoreShape; __tipsterAppsLoaded?: boolean };
+const g = globalThis as {
+  __tipsterAppsStore?: StoreShape;
+  __tipsterAppsLoadPromise?: Promise<void>;
+};
 if (!g.__tipsterAppsStore) g.__tipsterAppsStore = { applications: [] };
 
 function store(): StoreShape {
   return g.__tipsterAppsStore!;
 }
 
-async function ensureLoaded(): Promise<void> {
-  if (g.__tipsterAppsLoaded) return;
-  g.__tipsterAppsLoaded = true;
-  try {
-    const raw = await fs.readFile(STORE_PATH, 'utf8');
-    const data = JSON.parse(raw) as StoreShape;
-    if (Array.isArray(data?.applications)) {
-      store().applications = data.applications;
-    }
-  } catch {
-    // No file yet — that's fine. We'll create one on first write.
+function findApplication(id: string): TipsterApplication | undefined {
+  return store().applications.find(application => String(application.id) === String(id));
+}
+
+function ensureLoaded(): Promise<void> {
+  if (!g.__tipsterAppsLoadPromise) {
+    g.__tipsterAppsLoadPromise = (async () => {
+      try {
+        const raw = await fs.readFile(STORE_PATH, 'utf8');
+        const data = JSON.parse(raw) as StoreShape;
+        if (Array.isArray(data?.applications)) {
+          store().applications = data.applications.map(application => ({
+            ...application,
+            id: String(application.id),
+          }));
+        }
+      } catch {
+        // No file yet — that's fine. We'll create one on first write.
+      }
+    })();
   }
+  return g.__tipsterAppsLoadPromise;
 }
 
 async function persist(): Promise<void> {
@@ -138,7 +151,7 @@ export async function listApplicationsForUser(userId: number): Promise<TipsterAp
 
 export async function getApplication(id: string): Promise<TipsterApplication | undefined> {
   await ensureLoaded();
-  return store().applications.find(a => a.id === id);
+  return findApplication(id);
 }
 
 export interface ReviewInput {
@@ -151,7 +164,7 @@ export interface ReviewInput {
 
 export async function reviewApplication(id: string, input: ReviewInput): Promise<TipsterApplication | undefined> {
   await ensureLoaded();
-  const row = store().applications.find(a => a.id === id);
+  const row = findApplication(id);
   if (!row) return undefined;
   row.status = input.decision === 'approve' ? 'approved' : 'rejected';
   row.reviewedAt = new Date().toISOString();
@@ -215,7 +228,7 @@ export async function reviewApplication(id: string, input: ReviewInput): Promise
 /** Re-apply the DB role update for an already-approved application. Returns true if successful. */
 export async function reapplyDbRole(id: string): Promise<boolean> {
   await ensureLoaded();
-  const row = store().applications.find(a => a.id === id);
+  const row = findApplication(id);
   if (!row || row.status !== 'approved') return false;
   let dbOk = false;
   try {
@@ -274,7 +287,7 @@ export async function reapplyDbRole(id: string): Promise<boolean> {
 /** Mark whether the notification email was successfully sent (called from route handler). */
 export async function markApplicationEmailSent(id: string, sent: boolean): Promise<void> {
   await ensureLoaded();
-  const row = store().applications.find(a => a.id === id);
+  const row = findApplication(id);
   if (row) {
     row.emailSent = sent;
     await persist();

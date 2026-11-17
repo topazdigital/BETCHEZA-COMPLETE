@@ -172,3 +172,7 @@ async function handlePatch(request: NextRequest, ctx: Ctx) {
 
   return NextResponse.json({ application: updated });
 }
+
+export async function POST(request: NextRequest, ctx: Ctx) {
+  return PATCH(request, ctx);
+}
