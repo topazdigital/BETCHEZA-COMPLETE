@@ -1,25 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendMail } from '@/lib/mailer';
 import { execute, query } from '@/lib/db';
+import {
+  cleanFormText,
+  escapeHtml,
+  isHoneypotFilled,
+  isValidEmail,
+  protectPublicForm,
+} from '@/lib/public-form-security';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { name, phone, role, email, location, network, message } = body;
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ ok: false, error: 'Invalid request.' }, { status: 400 });
+    }
+    const data = body as Record<string, unknown>;
+    if (isHoneypotFilled(data.companyFax)) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const protection = await protectPublicForm(req, 'careers-application', data);
+    if (!protection.ok) return protection.response;
+
+    const name = cleanFormText(data.name, 200);
+    const phone = cleanFormText(data.phone, 30);
+    const role = cleanFormText(data.role, 100);
+    const emailInput = cleanFormText(data.email, 254).toLowerCase();
+    const location = cleanFormText(data.location, 200);
+    const network = cleanFormText(data.network, 500);
+    const message = cleanFormText(data.message, 2000);
 
     if (!name || !phone || !role) {
       return NextResponse.json({ ok: false, error: 'Name, phone and role are required.' }, { status: 400 });
     }
+    if (emailInput && !isValidEmail(emailInput)) {
+      return NextResponse.json({ ok: false, error: 'Please enter a valid email address.' }, { status: 400 });
+    }
 
-    const sanitizedName    = String(name).trim().slice(0, 200);
-    const sanitizedPhone   = String(phone).trim().slice(0, 30);
-    const sanitizedRole    = String(role).trim().slice(0, 100);
-    const sanitizedEmail   = email   ? String(email).trim().slice(0, 200)   : null;
-    const sanitizedLocation = location ? String(location).trim().slice(0, 200) : null;
-    const sanitizedNetwork  = network  ? String(network).trim().slice(0, 500)  : null;
-    const sanitizedMessage  = message  ? String(message).trim().slice(0, 2000) : null;
+    const sanitizedName = name;
+    const sanitizedPhone = phone;
+    const sanitizedRole = role;
+    const sanitizedEmail = emailInput || null;
+    const sanitizedLocation = location || null;
+    const sanitizedNetwork = network || null;
+    const sanitizedMessage = message || null;
+
+    const htmlName = escapeHtml(sanitizedName);
+    const htmlPhone = escapeHtml(sanitizedPhone);
+    const htmlRole = escapeHtml(sanitizedRole);
+    const htmlEmail = sanitizedEmail ? escapeHtml(sanitizedEmail) : null;
+    const htmlLocation = sanitizedLocation ? escapeHtml(sanitizedLocation) : null;
+    const htmlNetwork = sanitizedNetwork ? escapeHtml(sanitizedNetwork) : null;
+    const htmlMessage = sanitizedMessage ? escapeHtml(sanitizedMessage) : null;
 
     // ── 1. Save to DB ────────────────────────────────────────────────────────
     let applicationId: number | null = null;
@@ -69,13 +104,13 @@ export async function POST(req: NextRequest) {
 <body>
   <div class="card">
     <h1>New Agent Application</h1>
-    <span class="badge">${sanitizedRole}</span>
-    <div class="row"><span class="label">Name</span><span class="value"><strong>${sanitizedName}</strong></span></div>
-    <div class="row"><span class="label">Phone / WhatsApp</span><span class="value">${sanitizedPhone}</span></div>
-    ${sanitizedEmail    ? `<div class="row"><span class="label">Email</span><span class="value">${sanitizedEmail}</span></div>` : ''}
-    ${sanitizedLocation ? `<div class="row"><span class="label">Location</span><span class="value">${sanitizedLocation}</span></div>` : ''}
-    ${sanitizedNetwork  ? `<div class="row"><span class="label">Network/Audience</span><span class="value">${sanitizedNetwork}</span></div>` : ''}
-    ${sanitizedMessage  ? `<div class="row" style="flex-direction:column;"><span class="label" style="width:auto;margin-bottom:6px;">Message</span><div class="msg-box">${sanitizedMessage}</div></div>` : ''}
+    <span class="badge">${htmlRole}</span>
+    <div class="row"><span class="label">Name</span><span class="value"><strong>${htmlName}</strong></span></div>
+    <div class="row"><span class="label">Phone / WhatsApp</span><span class="value">${htmlPhone}</span></div>
+    ${htmlEmail    ? `<div class="row"><span class="label">Email</span><span class="value">${htmlEmail}</span></div>` : ''}
+    ${htmlLocation ? `<div class="row"><span class="label">Location</span><span class="value">${htmlLocation}</span></div>` : ''}
+    ${htmlNetwork  ? `<div class="row"><span class="label">Network/Audience</span><span class="value">${htmlNetwork}</span></div>` : ''}
+    ${htmlMessage  ? `<div class="row" style="flex-direction:column;"><span class="label" style="width:auto;margin-bottom:6px;">Message</span><div class="msg-box">${htmlMessage}</div></div>` : ''}
     ${applicationId ? `<a class="cta" href="${appUrl}/admin/careers">View in Admin Dashboard →</a>` : ''}
     <div class="footer">Betcheza Careers · Reply to this email or WhatsApp the applicant directly</div>
   </div>

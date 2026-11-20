@@ -15,6 +15,7 @@ import {
   BadgeCheck, Flame, ArrowUpRight, Send, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CaptchaChallenge, type CaptchaChallengeHandle } from '@/components/auth/captcha-challenge';
 
 const SidebarBanners = dynamicImport(
   () => import('@/components/home/sidebar-banners').then(m => ({ default: m.SidebarBanners })),
@@ -77,7 +78,7 @@ function PackageCard({ name, price, features, highlight, badge }: {
         ))}
       </ul>
       <a
-        href="mailto:partnerships@betcheza.co.ke?subject=Advertising%20Enquiry%20-%20Betcheza"
+        href="#contact"
         className={cn(
           'w-full rounded-lg py-2 text-center text-xs font-semibold transition-colors',
           highlight
@@ -85,7 +86,7 @@ function PackageCard({ name, price, features, highlight, badge }: {
             : 'border border-border bg-card hover:bg-muted text-foreground'
         )}
       >
-        Get in touch
+        Use protected form
       </a>
     </div>
   );
@@ -302,11 +303,11 @@ function AdvertiseRightSidebar({ stats, loading }: { stats: AdvertiseStats | nul
           Get our media kit, audience data pack, and a custom proposal within 24 hours.
         </p>
         <a
-          href="mailto:partnerships@betcheza.co.ke?subject=Advertising%20Enquiry%20-%20Betcheza&body=Hi%20Betcheza%20Partnerships%20Team%2C%0A%0AI%20am%20interested%20in%20advertising%20on%20Betcheza.%20Please%20send%20me%20your%20media%20kit.%0A%0ACompany%3A%20%0AWebsite%3A%20%0AMonthly%20budget%3A%20%0AModel%20preferred%20(CPA%2FRevShare%2FFixed)%3A%20%0A%0AThanks"
+          href="#contact"
           className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-primary py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors mb-2"
         >
-          <Mail className="h-3.5 w-3.5" />
-          Email partnerships team
+          <Send className="h-3.5 w-3.5" />
+          Use protected enquiry form
         </a>
         <a
           href="https://wa.me/254113226240?text=Hi%20Betcheza%2C%20I'm%20interested%20in%20advertising%20on%20your%20platform.%20Please%20send%20me%20your%20media%20kit."
@@ -339,6 +340,7 @@ export default function AdvertisePage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const captchaRef = useRef<CaptchaChallengeHandle>(null);
 
   function setField(k: keyof FormState, v: string) {
     setForm(f => ({ ...f, [k]: v }));
@@ -348,27 +350,38 @@ export default function AdvertisePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.company || !form.name || !form.email) return;
+    const captcha = captchaRef.current?.getResult();
+    if (!captcha) {
+      setSubmitResult({ ok: false, msg: 'Please complete the security check before submitting.' });
+      return;
+    }
     setSubmitting(true);
     setSubmitResult(null);
     try {
       const res = await fetch('/api/advertise/enquiry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          companyFax: e.currentTarget.querySelector<HTMLInputElement>('input[name="companyFax"]')?.value || '',
+          captchaToken: captcha.token,
+          captchaId: captcha.id,
+        }),
       });
       const data = await res.json();
       if (data.ok) {
         setSubmitResult({ ok: true, msg: "We got your enquiry! We'll be in touch within 24 hours." });
         setForm(EMPTY_FORM);
       } else if (data.skipped) {
-        setSubmitResult({ ok: false, msg: 'Email not configured on the server yet. Please email us at partnerships@betcheza.co.ke directly.' });
+        setSubmitResult({ ok: false, msg: 'Email delivery is temporarily unavailable. Please contact us via WhatsApp or try again later.' });
       } else {
         setSubmitResult({ ok: false, msg: data.error || 'Something went wrong. Please try again.' });
       }
     } catch {
-      setSubmitResult({ ok: false, msg: 'Network error. Please try again or email us directly.' });
+        setSubmitResult({ ok: false, msg: 'Network error. Please try again or contact us via WhatsApp.' });
     } finally {
       setSubmitting(false);
+      void captchaRef.current?.refresh();
     }
   }
 
@@ -650,6 +663,10 @@ export default function AdvertisePage() {
               </p>
 
               <form onSubmit={handleSubmit} className="space-y-3">
+                <div className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden opacity-0" aria-hidden="true">
+                  <label htmlFor="advertise-company-fax">Leave this field empty</label>
+                  <input id="advertise-company-fax" name="companyFax" tabIndex={-1} autoComplete="off" />
+                </div>
                 {/* Row 1: Company + Contact name */}
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
@@ -750,6 +767,7 @@ export default function AdvertisePage() {
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                   />
                 </div>
+                <CaptchaChallenge ref={captchaRef} visible required />
 
                 {/* Result banner */}
                 {submitResult && (
@@ -773,10 +791,7 @@ export default function AdvertisePage() {
                     {submitting ? 'Sending…' : 'Send Enquiry'}
                   </button>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>or contact us directly:</span>
-                    <a href="mailto:partnerships@betcheza.co.ke" className="flex items-center gap-1 text-primary hover:underline font-medium">
-                      <Mail className="h-3 w-3" /> Email
-                    </a>
+                    <span>or message us:</span>
                     <a href="https://wa.me/254113226240" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-green-600 hover:underline font-medium">
                       <MessageCircle className="h-3 w-3" /> WhatsApp
                     </a>

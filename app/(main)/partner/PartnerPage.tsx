@@ -2,17 +2,18 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Handshake, BarChart3, Target, Eye, Star, DollarSign, Shield,
   CheckCircle2, ChevronRight, MapPin, Globe, Smartphone, Radio,
-  Mail, MessageCircle, Clock, TrendingUp, Users, Zap, FileText,
+  MessageCircle, Clock, TrendingUp, Users, Zap, FileText,
   PieChart, BadgeCheck, ArrowUpRight, Send, Loader2, LayoutDashboard,
   Megaphone, Activity, Lock, RefreshCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CaptchaChallenge, type CaptchaChallengeHandle } from '@/components/auth/captcha-challenge';
 
 /* ── Types ──────────────────────────────────────────────────── */
 interface PlatformStats {
@@ -269,11 +270,11 @@ function PartnerRightSidebar({
           Get our media kit and a custom proposal within 24 hours. No commitment required.
         </p>
         <a
-          href="mailto:partnerships@betcheza.co.ke?subject=Partnership%20Enquiry%20-%20Betcheza&body=Hi%20Betcheza%20Partnerships%20Team%2C%0A%0AI%20am%20interested%20in%20a%20partnership%20with%20Betcheza.%0A%0ACompany%3A%20%0AWebsite%3A%20%0AModel%20preferred%20(CPA%2FRevShare%2FHybrid)%3A%20%0AExpected%20monthly%20volume%3A%20%0A%0AThanks"
+          href="#contact"
           className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-primary py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors mb-2"
         >
-          <Mail className="h-3.5 w-3.5" />
-          Email partnerships team
+          <Send className="h-3.5 w-3.5" />
+          Use protected enquiry form
         </a>
         <a
           href="https://wa.me/254113226240?text=Hi%20Betcheza%2C%20I%27m%20interested%20in%20a%20partnership.%20Please%20send%20me%20your%20media%20kit."
@@ -308,6 +309,7 @@ export default function PartnerPage() {
   const [form, setForm]           = useState<InquiryForm>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const captchaRef = useRef<CaptchaChallengeHandle>(null);
 
   function setField(k: keyof InquiryForm, v: string) {
     setForm(f => ({ ...f, [k]: v }));
@@ -317,27 +319,40 @@ export default function PartnerPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.company || !form.name || !form.email) return;
+    const captcha = captchaRef.current?.getResult();
+    if (!captcha) {
+      setSubmitResult({ ok: false, msg: 'Please complete the security check before submitting.' });
+      return;
+    }
     setSubmitting(true);
     setSubmitResult(null);
     try {
       const res  = await fetch('/api/advertise/enquiry', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ ...form, budget: form.volume, source: 'partner-page' }),
+        body:    JSON.stringify({
+          ...form,
+          budget: form.volume,
+          source: 'partner-page',
+          companyFax: e.currentTarget.querySelector<HTMLInputElement>('input[name="companyFax"]')?.value || '',
+          captchaToken: captcha.token,
+          captchaId: captcha.id,
+        }),
       });
       const data = await res.json();
       if (data.ok) {
         setSubmitResult({ ok: true, msg: "We got your enquiry! We'll be in touch within 24 hours with a custom proposal." });
         setForm(EMPTY_FORM);
       } else if (data.skipped) {
-        setSubmitResult({ ok: false, msg: 'Email not configured yet — please email partnerships@betcheza.co.ke directly.' });
+        setSubmitResult({ ok: false, msg: 'Email delivery is temporarily unavailable. Please contact us via WhatsApp or try again later.' });
       } else {
         setSubmitResult({ ok: false, msg: data.error || 'Something went wrong. Please try again.' });
       }
     } catch {
-      setSubmitResult({ ok: false, msg: 'Network error. Please try again or email us directly.' });
+      setSubmitResult({ ok: false, msg: 'Network error. Please try again or contact us via WhatsApp.' });
     } finally {
       setSubmitting(false);
+      void captchaRef.current?.refresh();
     }
   }
 
@@ -679,6 +694,10 @@ export default function PartnerPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden opacity-0" aria-hidden="true">
+                <label htmlFor="partner-company-fax">Leave this field empty</label>
+                <input id="partner-company-fax" name="companyFax" tabIndex={-1} autoComplete="off" />
+              </div>
               <div className="grid sm:grid-cols-2 gap-3">
                 {([
                   { k: 'company',  label: 'Company Name *',       ph: 'Your bookmaker name',  type: 'text',  req: true  },
@@ -740,6 +759,7 @@ export default function PartnerPage() {
                   onChange={e => setField('message', e.target.value)}
                 />
               </div>
+              <CaptchaChallenge ref={captchaRef} visible required />
               <button
                 type="submit"
                 disabled={submitting || !form.company || !form.name || !form.email}
@@ -750,10 +770,7 @@ export default function PartnerPage() {
                   : <><Send    className="h-3.5 w-3.5" /> Send Partnership Enquiry</>}
               </button>
               <p className="text-center text-[10px] text-muted-foreground">
-                Or email us directly at{' '}
-                <a href="mailto:partnerships@betcheza.co.ke" className="text-primary underline underline-offset-2">
-                  partnerships@betcheza.co.ke
-                </a>
+                This protected form checks submissions before they reach our team.
               </p>
             </form>
           </div>

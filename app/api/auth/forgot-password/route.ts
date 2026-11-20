@@ -2,19 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { createPasswordResetToken } from '@/lib/password-reset-store';
 import { sendMail } from '@/lib/mailer';
+import { cleanFormText, escapeHtml, protectPublicForm } from '@/lib/public-form-security';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function getOrigin(req: NextRequest): string {
-  const proto = req.headers.get('x-forwarded-proto') || 'https';
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:5000';
-  return `${proto}://${host}`;
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      // Fall through to the request's canonical origin.
+    }
+  }
+  return req.nextUrl.origin;
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as { email?: string };
-  const email = (body.email || '').trim().toLowerCase();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
+  }
+  const data = body as Record<string, unknown>;
+  const protection = await protectPublicForm(req, 'forgot-password', data);
+  if (!protection.ok) return protection.response;
+
+  const email = cleanFormText(data.email, 254).toLowerCase();
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return NextResponse.json({ error: 'A valid email is required' }, { status: 400 });
   }
@@ -31,9 +45,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const { token, expiresAt } = createPasswordResetToken(user.id, user.email);
+  const { token } = createPasswordResetToken(user.id, user.email);
   const origin = getOrigin(req);
   const link = `${origin}/?auth=reset&reset_token=${encodeURIComponent(token)}`;
+  const safeEmail = escapeHtml(user.email);
 
   const html = `
     <div style="font-family:Inter,system-ui,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#f7fafc;">
@@ -44,7 +59,7 @@ export async function POST(req: NextRequest) {
         </div>
         <h1 style="margin:0 0 12px;font-size:20px;color:#0f172a;">Reset your password</h1>
         <p style="color:#475569;line-height:1.6;margin:0 0 16px;">
-          We received a request to reset the password for <strong>${user.email}</strong>.
+          We received a request to reset the password for <strong>${safeEmail}</strong>.
           Click the button below to choose a new password. This link expires in 60 minutes.
         </p>
         <p style="margin:24px 0;">
@@ -76,5 +91,5 @@ export async function POST(req: NextRequest) {
     ? { devResetLink: link, mailSkipped: !!mail.skipped, mailError: mail.error }
     : {};
 
-  return NextResponse.json({ ok: true, expiresAt, ...devHint });
+  return NextResponse.json({ ok: true, ...devHint });
 }

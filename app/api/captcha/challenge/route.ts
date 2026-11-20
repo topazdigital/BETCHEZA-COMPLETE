@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic'
 // to load — e.g. network error, domain mismatch, browser extension blocking).
 export async function GET(req: NextRequest) {
   const forceMath = req.nextUrl.searchParams.get('math') === '1'
+  const required = req.nextUrl.searchParams.get('required') === '1'
 
   if (forceMath) {
     const c = generateMathChallenge()
@@ -25,11 +26,11 @@ export async function GET(req: NextRequest) {
   }
 
   const cfg = await getPublicCaptchaConfig()
-  if (cfg.provider === 'math') {
+  if (cfg.provider === 'math' || (required && cfg.provider === 'none')) {
     const c = generateMathChallenge()
     rememberMathAnswer(c.id, c.answer)
     return NextResponse.json({
-      provider: cfg.provider,
+      provider: 'math',
       siteKey: null,
       math: { id: c.id, question: c.question },
     })

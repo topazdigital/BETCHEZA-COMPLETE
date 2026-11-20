@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getStaticPage } from '@/lib/static-pages-store';
 import { getSiteSettings } from '@/lib/site-settings';
 import { StaticPageRenderer } from '@/components/static-page-renderer';
+import { PublicContactForm } from '@/components/public-contact-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,5 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ContactPage() {
   const page = await getStaticPage('contact');
   if (!page) notFound();
-  return <StaticPageRenderer title={page.title} body={page.body} updatedAt={page.updated_at ?? null} />;
+  return (
+    <>
+      <StaticPageRenderer title={page.title} body={page.body} updatedAt={page.updated_at ?? null} />
+      <PublicContactForm />
+    </>
+  );
 }

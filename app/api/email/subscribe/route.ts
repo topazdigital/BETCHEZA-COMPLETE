@@ -3,14 +3,14 @@ import { subscribeEmail, getExistingSubscriber } from '@/lib/notification-store'
 import { logAdminEvent } from '@/lib/admin-events-store';
 import { sendMail, renderTemplate } from '@/lib/mailer';
 import { getTemplate } from '@/lib/email-templates-store';
+import { cleanFormText, isHoneypotFilled, isValidEmail, protectPublicForm } from '@/lib/public-form-security';
 
 export const dynamic = 'force-dynamic';
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const TOPIC_LABELS: Record<string, string> = {
   daily_tips: 'Daily expert tips',
   match_alerts: 'Live match alerts',
+  big_matches: 'Big match alerts',
   big_picks: 'High-confidence VIP picks',
   weekly_digest: 'Weekly performance digest',
   league_news: 'League & team news',
@@ -70,15 +70,28 @@ Bet smart, bet small. — Team Betcheza`;
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const email = (body.email || '').toString().trim().toLowerCase();
-  if (!EMAIL_RE.test(email)) {
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
+  }
+  const data = body as Record<string, unknown>;
+  if (isHoneypotFilled(data.companyFax)) {
+    return NextResponse.json({ success: true });
+  }
+
+  const protection = await protectPublicForm(req, 'newsletter-subscribe', data);
+  if (!protection.ok) return protection.response;
+
+  const email = cleanFormText(data.email, 254).toLowerCase();
+  if (!isValidEmail(email)) {
     return NextResponse.json({ error: 'Please enter a valid email address' }, { status: 400 });
   }
-  const topics = Array.isArray(body.topics) && body.topics.length > 0
-    ? body.topics.map((t: unknown) => String(t)).slice(0, 12)
+  const allowedTopics = new Set(Object.keys(TOPIC_LABELS));
+  const requestedTopics = Array.isArray(data.topics) && data.topics.length > 0
+    ? data.topics.map((t: unknown) => String(t)).filter((t: string) => allowedTopics.has(t)).slice(0, 12)
     : ['daily_tips'];
-  const countryCode = body.countryCode ? String(body.countryCode).toUpperCase().slice(0, 8) : null;
+  const topics = requestedTopics.length > 0 ? requestedTopics : ['daily_tips'];
+  const countryCode = data.countryCode ? String(data.countryCode).toUpperCase().slice(0, 8) : null;
   // Check if already subscribed before saving
   const existing = await getExistingSubscriber(email);
   if (existing && existing.active) {
@@ -88,7 +101,7 @@ export async function POST(req: NextRequest) {
       message: 'This email is already subscribed to our newsletter.',
     }, { status: 409 });
   }
-  const row = await subscribeEmail({ email, topics, countryCode });
+  const row = await subscribeEmail({ email, topics, countryCode, active: true, unsubscribeToken: '' });
   const unsubscribeUrl = `/api/email/unsubscribe?token=${row.unsubscribeToken}`;
   try { logAdminEvent('newsletter_subscribe', `Newsletter: ${email}`, topics.join(', '), { email, topics: topics.length, country: countryCode }); } catch { /* non-critical */ }
 

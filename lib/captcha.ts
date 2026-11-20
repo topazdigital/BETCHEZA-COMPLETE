@@ -112,6 +112,13 @@ export async function verifyCaptcha(opts: {
 }): Promise<{ ok: boolean; error?: string }> {
   const cfg = await getCaptchaConfig()
   const token = (opts.token || '').trim()
+  if (opts.expected !== undefined) {
+    const expected = opts.expected.trim()
+    if (token && token.length === expected.length && safeEqual(token, expected)) {
+      return { ok: true }
+    }
+    return { ok: false, error: 'Wrong captcha answer' }
+  }
   if (cfg.provider === 'none') return { ok: true }
   if (!token) return { ok: false, error: 'Captcha required' }
 
@@ -150,10 +157,7 @@ export async function verifyCaptcha(opts: {
   // Math captcha — token is the user-typed answer, expected is the answer we
   // signed and gave them. Compare in constant time.
   if (cfg.provider === 'math') {
-    const exp = (opts.expected || '').trim()
-    if (!exp) return { ok: false, error: 'Captcha expired' }
-    if (token.length === exp.length && safeEqual(token, exp)) return { ok: true }
-    return { ok: false, error: 'Wrong captcha answer' }
+    return { ok: false, error: 'Captcha expired' }
   }
 
   return { ok: true }

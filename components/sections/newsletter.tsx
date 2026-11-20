@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Mail, Check, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CaptchaChallenge, type CaptchaChallengeHandle } from '@/components/auth/captcha-challenge';
 
 const LS_KEY = 'betcheza_newsletter_subscribed';
 
@@ -11,6 +12,7 @@ export function NewsletterSection() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  const captchaRef = useRef<CaptchaChallengeHandle>(null);
 
   useEffect(() => {
     try {
@@ -21,13 +23,24 @@ export function NewsletterSection() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || busy) return;
+    const captcha = captchaRef.current?.getResult();
+    if (!captcha) {
+      setError('Please complete the security check.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       const res = await fetch('/api/email/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, topics: ['daily_tips', 'big_matches'] }),
+        body: JSON.stringify({
+          email,
+          topics: ['daily_tips', 'big_matches'],
+          captchaToken: captcha.token,
+          captchaId: captcha.id,
+          companyFax: e.currentTarget.querySelector<HTMLInputElement>('input[name="companyFax"]')?.value || '',
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 409 || data.alreadySubscribed) {
@@ -43,6 +56,7 @@ export function NewsletterSection() {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setBusy(false);
+      void captchaRef.current?.refresh();
     }
   };
 
@@ -67,6 +81,10 @@ export function NewsletterSection() {
           </div>
 
           <form onSubmit={submit} className="flex w-full flex-col gap-3">
+            <div className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden opacity-0" aria-hidden="true">
+              <label htmlFor="newsletter-company-fax">Leave this field empty</label>
+              <input id="newsletter-company-fax" name="companyFax" tabIndex={-1} autoComplete="off" />
+            </div>
             {done ? (
               <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-700 dark:text-emerald-300">
                 <Check className="h-5 w-5" />
@@ -98,6 +116,7 @@ export function NewsletterSection() {
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Subscribe'}
                   </Button>
                 </div>
+                <CaptchaChallenge ref={captchaRef} visible required />
                 {error && <p className="text-xs text-destructive">{error}</p>}
                 <p className="text-[11px] text-muted-foreground">
                   By subscribing you agree to our{' '}

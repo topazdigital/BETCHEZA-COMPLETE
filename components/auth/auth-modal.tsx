@@ -1297,16 +1297,22 @@ function ForgotPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const captchaRef = useRef<CaptchaChallengeHandle>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    const captcha = captchaRef.current?.getResult();
+    if (!captcha) {
+      setError('Please complete the security check.');
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, captchaToken: captcha.token, captchaId: captcha.id }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -1318,6 +1324,7 @@ function ForgotPanel() {
       setError('Network error. Please try again.');
     } finally {
       setIsLoading(false);
+      void captchaRef.current?.refresh();
     }
   };
 
@@ -1353,6 +1360,7 @@ function ForgotPanel() {
           className="h-8 text-xs"
         />
       </div>
+      <CaptchaChallenge ref={captchaRef} visible required />
       <Button type="submit" size="sm" className="w-full h-8 text-xs" disabled={isLoading}>
         {isLoading ? (
           <>

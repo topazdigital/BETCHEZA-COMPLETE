@@ -50,8 +50,10 @@ declare global {
 export const CaptchaChallenge = forwardRef<CaptchaChallengeHandle, {
   /** Show the widget. We keep it always-mounted but hide it until needed. */
   visible: boolean
+  /** Keep a verification step even when the site-wide provider is disabled. */
+  required?: boolean
   className?: string
-}>(function CaptchaChallenge({ visible, className }, ref) {
+}>(function CaptchaChallenge({ visible, required = false, className }, ref) {
   const [config, setConfig] = useState<CaptchaConfig | null>(null)
   const [mathAnswer, setMathAnswer] = useState('')
   const [tokenFromWidget, setTokenFromWidget] = useState<string | null>(null)
@@ -64,7 +66,11 @@ export const CaptchaChallenge = forwardRef<CaptchaChallengeHandle, {
     setMathAnswer('')
     setTokenFromWidget(null)
     try {
-      const url = forceMath ? '/api/captcha/challenge?math=1' : '/api/captcha/challenge'
+      const url = forceMath
+        ? '/api/captcha/challenge?math=1'
+        : required
+          ? '/api/captcha/challenge?required=1'
+          : '/api/captcha/challenge'
       const res = await fetch(url, { cache: 'no-store' })
       if (res.ok) setConfig(await res.json())
     } finally {
@@ -125,6 +131,7 @@ export const CaptchaChallenge = forwardRef<CaptchaChallengeHandle, {
         if (!mathAnswer.trim() || !config.math) return null
         return { token: mathAnswer.trim(), id: config.math.id }
       }
+      if (config.provider === 'none') return { token: '' }
       if (!tokenFromWidget) return null
       return { token: tokenFromWidget }
     },

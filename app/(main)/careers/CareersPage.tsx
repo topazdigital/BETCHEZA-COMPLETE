@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Briefcase, Users, TrendingUp, Megaphone, Smartphone,
@@ -13,6 +13,7 @@ import {
   Handshake, Target, Wallet, Clock, MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CaptchaChallenge, type CaptchaChallengeHandle } from '@/components/auth/captcha-challenge';
 
 /* ── Role data ──────────────────────────────────────────────── */
 const ROLES = [
@@ -380,6 +381,7 @@ export default function CareersPage() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const captchaRef = useRef<CaptchaChallengeHandle>(null);
 
   function set(k: keyof FormState, v: string) {
     setForm(f => ({ ...f, [k]: v }));
@@ -389,26 +391,36 @@ export default function CareersPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name || !form.phone || !form.role) return;
+    const captcha = captchaRef.current?.getResult();
+    if (!captcha) {
+      setResult({ ok: false, msg: 'Please complete the security check before submitting.' });
+      return;
+    }
     setSubmitting(true);
     setResult(null);
     try {
       const res = await fetch('/api/careers/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          companyFax: e.currentTarget.querySelector<HTMLInputElement>('input[name="companyFax"]')?.value || '',
+          captchaToken: captcha.token,
+          captchaId: captcha.id,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
         setResult({ ok: true, msg: "Application received! We'll WhatsApp you within 24 hours. Create or sign into your Betcheza account to track your application and see your referrals in your Agent Dashboard." });
         setForm(EMPTY);
       } else {
-        // Fallback to WhatsApp if API not set up
-        setResult({ ok: false, msg: "Couldn't submit online. Please WhatsApp us at 0113 226 240 to apply, or email careers@betcheza.co.ke." });
+        setResult({ ok: false, msg: data.error || "Couldn't submit online. Please try again or apply via WhatsApp." });
       }
     } catch {
       setResult({ ok: false, msg: "Network error. WhatsApp us at 0113 226 240 to apply directly." });
     } finally {
       setSubmitting(false);
+      void captchaRef.current?.refresh();
     }
   }
 
@@ -696,6 +708,10 @@ export default function CareersPage() {
 
             <div className="rounded-xl border border-border bg-card p-4">
               <form onSubmit={handleSubmit} className="space-y-3">
+                <div className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden opacity-0" aria-hidden="true">
+                  <label htmlFor="careers-company-fax">Leave this field empty</label>
+                  <input id="careers-company-fax" name="companyFax" tabIndex={-1} autoComplete="off" />
+                </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Full Name *</label>
@@ -813,6 +829,7 @@ export default function CareersPage() {
                   </div>
                 )}
 
+                <CaptchaChallenge ref={captchaRef} visible required />
                 <div className="flex items-center gap-2 pt-1">
                   <button
                     type="submit"
@@ -852,12 +869,12 @@ export default function CareersPage() {
               >
                 <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
               </a>
-              <a
-                href="mailto:careers@betcheza.co.ke"
+              <Link
+                href="/contact#contact-form"
                 className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors"
               >
-                <Mail className="h-3.5 w-3.5" /> Email us
-              </a>
+                <Mail className="h-3.5 w-3.5" /> Protected contact form
+              </Link>
             </div>
           </div>
 
