@@ -472,9 +472,16 @@ function EmailModal({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [batchSize, setBatchSize] = useState(50);
-  const [delayMinutes, setDelayMinutes] = useState(0);
-  const [status, setStatus] = useState<'idle' | 'sending' | 'waiting' | 'done'>('idle');
-  const [progress, setProgress] = useState({ batchIndex: 0, totalBatches: 1, sent: 0, failed: 0 });
+  const [delayMinutes, setDelayMinutes] = useState(1);
+  const [status, setStatus] = useState<'idle' | 'sending' | 'waiting' | 'done' | 'error'>('idle');
+  const [progress, setProgress] = useState({
+    batchIndex: 0,
+    totalBatches: 1,
+    accepted: 0,
+    failed: 0,
+    failures: [] as { email: string; error: string }[],
+  });
+  const [sendError, setSendError] = useState('');
   const [countdown, setCountdown] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isBulk = !targetUser;
@@ -490,31 +497,43 @@ function EmailModal({
 
   const sendBatch = useCallback(async (batchIndex: number) => {
     setStatus('sending');
-    const res = await fetch('/api/admin/users/email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userIds,
-        subject,
-        rawBody: body,
-        batchIndex,
-        batchSize,
-      }),
-    });
-    const data = await res.json();
-    setProgress(prev => ({
-      batchIndex: data.batchIndex ?? batchIndex,
-      totalBatches: data.totalBatches ?? prev.totalBatches,
-      sent: prev.sent + (data.sent ?? 0),
-      failed: prev.failed + (data.failed ?? 0),
-    }));
-    if (data.done) {
-      setStatus('done');
-    } else if (delayMinutes > 0) {
-      setStatus('waiting');
-      setCountdown(delayMinutes * 60);
-    } else {
-      await sendBatch(batchIndex + 1);
+    setSendError('');
+    try {
+      const res = await fetch('/api/admin/users/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds,
+          subject,
+          rawBody: body,
+          batchIndex,
+          batchSize,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        setSendError(data.error || `Email batch failed (HTTP ${res.status}).`);
+        setStatus('error');
+        return;
+      }
+      setProgress(prev => ({
+        batchIndex: data.batchIndex ?? batchIndex,
+        totalBatches: data.totalBatches ?? prev.totalBatches,
+        accepted: prev.accepted + (data.accepted ?? 0),
+        failed: prev.failed + (data.failed ?? 0),
+        failures: [...prev.failures, ...(data.failures ?? [])].slice(0, 10),
+      }));
+      if (data.done) {
+        setStatus('done');
+      } else if (delayMinutes > 0) {
+        setStatus('waiting');
+        setCountdown(delayMinutes * 60);
+      } else {
+        await sendBatch(batchIndex + 1);
+      }
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'Network error while sending email.');
+      setStatus('error');
     }
   }, [userIds, subject, body, batchSize, delayMinutes]);
 
@@ -543,7 +562,14 @@ function EmailModal({
 
   async function handleSend() {
     if (!subject.trim() || !body.trim()) return;
-    setProgress({ batchIndex: 0, totalBatches: Math.ceil(userIds.length / batchSize), sent: 0, failed: 0 });
+    setSendError('');
+    setProgress({
+      batchIndex: 0,
+      totalBatches: Math.ceil(userIds.length / batchSize),
+      accepted: 0,
+      failed: 0,
+      failures: [],
+    });
     await sendBatch(0);
   }
 
@@ -609,8 +635,8 @@ function EmailModal({
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Batch size</label>
-                    <Input className="h-8 text-xs" type="number" min={1} max={500} value={batchSize}
-                      onChange={e => setBatchSize(Math.max(1, parseInt(e.target.value) || 50))} />
+                    <Input className="h-8 text-xs" type="number" min={1} max={100} value={batchSize}
+                      onChange={e => setBatchSize(Math.min(100, Math.max(1, parseInt(e.target.value) || 50)))} />
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
                       {Math.ceil(userIds.length / batchSize)} batch{Math.ceil(userIds.length / batchSize) !== 1 ? 'es' : ''} total
                     </p>
@@ -639,24 +665,39 @@ function EmailModal({
             </>
           )}
 
-          {(status === 'sending' || status === 'waiting' || status === 'done') && (
+          {(status === 'sending' || status === 'waiting' || status === 'done' || status === 'error') && (
             <div className="space-y-3 py-2">
               <div className="flex items-center gap-3">
                 {status === 'sending' && <Spinner className="h-5 w-5 shrink-0" />}
                 {status === 'waiting' && <Clock className="h-5 w-5 shrink-0 text-amber-500" />}
-                {status === 'done' && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />}
+                {status === 'done' && progress.failed === 0 && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />}
+                {(status === 'error' || (status === 'done' && progress.failed > 0)) &&
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />}
                 <div>
                   <p className="text-sm font-medium">
                     {status === 'sending' && `Sending batch ${progress.batchIndex + 1} of ${progress.totalBatches}…`}
                     {status === 'waiting' && `Waiting ${fmtCountdown(countdown)} before next batch`}
-                    {status === 'done' && 'All done!'}
+                    {status === 'done' && progress.failed === 0 && 'Finished'}
+                    {status === 'done' && progress.failed > 0 && 'Finished with rejected emails'}
+                    {status === 'error' && 'Sending stopped'}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {progress.sent} sent · {progress.failed} failed
+                    {progress.accepted} accepted by mail server · {progress.failed} not accepted
                     {isBulk && ` · batch ${progress.batchIndex + 1} / ${progress.totalBatches}`}
                   </p>
                 </div>
               </div>
+              {sendError && <p className="text-xs text-destructive">{sendError}</p>}
+              {progress.failures.length > 0 && (
+                <div className="max-h-28 space-y-1 overflow-y-auto rounded-md border bg-muted/20 p-2 text-[10px]">
+                  {progress.failures.slice(0, 5).map((failure, index) => (
+                    <p key={`${failure.email}-${index}`}><strong>{failure.email}</strong>: {failure.error}</p>
+                  ))}
+                  {progress.failed > progress.failures.length && (
+                    <p className="text-muted-foreground">Additional failures were not listed here.</p>
+                  )}
+                </div>
+              )}
               {isBulk && (
                 <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div

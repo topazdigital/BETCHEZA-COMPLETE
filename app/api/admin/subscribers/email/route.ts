@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listEmailSubscribers } from '@/lib/notification-store';
-import { getSiteSettings } from '@/lib/site-settings';
-import { renderTemplate } from '@/lib/mailer';
+import { renderTemplate, sendMail } from '@/lib/mailer';
 import { query } from '@/lib/db';
-import nodemailer from 'nodemailer';
+import { getEmailConfig } from '@/lib/email-config-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,9 +24,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Subject and body are required' }, { status: 400 });
   }
 
+  const hasEmailOverride = Array.isArray(emailOverride);
   // Get recipient list — either supplied (e.g. selected subset) or all active subscribers
   let allEmails: string[];
-  if (Array.isArray(emailOverride) && emailOverride.length > 0) {
+  if (hasEmailOverride) {
     allEmails = emailOverride;
   } else {
     const subs = await listEmailSubscribers();
@@ -35,25 +35,22 @@ export async function POST(req: NextRequest) {
   }
 
   const totalCount = allEmails.length;
-  const batchStart = batchIndex * batchSize;
-  const batch = allEmails.slice(batchStart, batchStart + batchSize);
+  const safeBatchSize = Math.min(100, Math.max(1, Math.trunc(Number(batchSize) || 50)));
+  const safeBatchIndex = Math.max(0, Math.trunc(Number(batchIndex) || 0));
+  const batchStart = safeBatchIndex * safeBatchSize;
+  const batch = hasEmailOverride
+    ? allEmails
+    : allEmails.slice(batchStart, batchStart + safeBatchSize);
 
   if (batch.length === 0) {
     return NextResponse.json({ sent: 0, totalCount, done: true });
   }
 
-  const settings = await getSiteSettings();
-  const emailCfg = (settings as Record<string, string | undefined>);
-  const smtpHost = emailCfg.smtpHost || process.env.SMTP_HOST;
-  const smtpPort = parseInt(emailCfg.smtpPort || process.env.SMTP_PORT || '587', 10);
-  const smtpUser = emailCfg.smtpUser || process.env.SMTP_USER;
-  const smtpPass = emailCfg.smtpPass || process.env.SMTP_PASS;
-  const fromEmail = emailCfg.fromEmail || process.env.FROM_EMAIL || smtpUser || 'noreply@betcheza.co.ke';
-  const fromName = emailCfg.siteName || 'Betcheza';
+  const emailCfg = await getEmailConfig();
   const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
 
-  if (!smtpHost || !smtpUser || !smtpPass) {
-    return NextResponse.json({ error: 'SMTP not configured. Set SMTP settings in Admin → Settings.' }, { status: 503 });
+  if (!emailCfg.enabled || !emailCfg.host || !emailCfg.username || !emailCfg.password) {
+    return NextResponse.json({ error: 'Outgoing email is not configured. Check Admin → Email Configuration.' }, { status: 503 });
   }
 
   // Build a name lookup map (email → username) for personalisation.
@@ -72,36 +69,35 @@ export async function POST(req: NextRequest) {
     // non-fatal — personalisation falls back to 'there'
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    requireTLS: smtpPort !== 465,
-    auth: { user: smtpUser, pass: smtpPass },
-    tls: { rejectUnauthorized: false },
-  });
-
   let sent = 0;
   let failed = 0;
-  for (const email of batch) {
+  const failures: { email: string; error: string }[] = [];
+  for (const [index, email] of batch.entries()) {
     try {
       const name = nameMap.get(email.toLowerCase()) || 'there';
       const vars: Record<string, string> = { name, email, siteUrl };
       const renderedSubject = renderTemplate(subject, vars);
       const renderedHtml = renderTemplate(html, vars);
 
-      await transporter.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
+      const result = await sendMail({
         to: email,
         subject: renderedSubject,
         html: renderedHtml,
       });
-      sent++;
-    } catch {
+      if (result.ok) sent++;
+      else {
+        failed++;
+        if (failures.length < 10) failures.push({ email, error: result.error || 'SMTP did not accept the recipient' });
+      }
+    } catch (error) {
       failed++;
+      if (failures.length < 10) {
+        failures.push({ email, error: error instanceof Error ? error.message : 'Unexpected send error' });
+      }
     }
+    if (index < batch.length - 1) await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
-  const done = batchStart + batchSize >= totalCount;
-  return NextResponse.json({ sent, failed, totalCount, batchIndex, done });
+  const done = hasEmailOverride || batchStart + safeBatchSize >= totalCount;
+  return NextResponse.json({ sent, failed, failures, totalCount, batchIndex: safeBatchIndex, done });
 }

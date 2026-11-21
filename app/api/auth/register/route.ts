@@ -270,7 +270,7 @@ export async function POST(request: Request) {
         request.headers.get('origin') ||
         request.headers.get('referer')?.replace(/^(https?:\/\/[^/]+).*/, '$1') ||
         process.env.NEXT_PUBLIC_APP_URL ||
-        'https://betcheza.com';
+        'https://betcheza.co.ke';
       const appUrl = origin.replace(/\/$/, '');
       const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verification.token)}`;
       // We also keep the original welcome content available in case admins

@@ -4,6 +4,7 @@ import { hasPermission } from '@/lib/permissions';
 import { query } from '@/lib/db';
 import { sendMail, renderTemplate } from '@/lib/mailer';
 import { buildBroadcastEmail } from '@/lib/email-templates';
+import { getEmailConfig } from '@/lib/email-config-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,17 +20,27 @@ export async function POST(request: NextRequest) {
   const subject = String(body.subject || '').trim();
   const rawBody = String(body.rawBody || body.text || body.body || '').trim();
   const text = rawBody;
-  const batchIndex = typeof body.batchIndex === 'number' ? body.batchIndex : 0;
-  const batchSize = typeof body.batchSize === 'number' ? Math.max(1, body.batchSize) : 50;
+  const batchIndex = typeof body.batchIndex === 'number' ? Math.max(0, Math.trunc(body.batchIndex)) : 0;
+  const batchSize = typeof body.batchSize === 'number'
+    ? Math.min(100, Math.max(1, Math.trunc(body.batchSize)))
+    : 50;
 
   if (!subject) return NextResponse.json({ success: false, error: 'Subject is required' }, { status: 400 });
   if (!text) return NextResponse.json({ success: false, error: 'Body is required' }, { status: 400 });
   if (userIds.length === 0) return NextResponse.json({ success: false, error: 'No users selected' }, { status: 400 });
 
+  const emailConfig = await getEmailConfig();
+  if (!emailConfig.enabled || !emailConfig.host || !emailConfig.username || !emailConfig.password) {
+    return NextResponse.json({
+      success: false,
+      error: 'Outgoing email is not configured. Check Admin → Email Configuration.',
+    }, { status: 503 });
+  }
+
   // Slice just the batch we need
   const batchIds = userIds.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
   if (batchIds.length === 0) {
-    return NextResponse.json({ success: true, sent: 0, failed: 0, done: true, total: userIds.length });
+    return NextResponse.json({ success: true, accepted: 0, failed: 0, done: true, total: userIds.length });
   }
 
   // Fetch emails + usernames from DB for this batch of IDs
@@ -52,9 +63,10 @@ export async function POST(request: NextRequest) {
 
   const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://betcheza.co.ke').replace(/\/$/, '');
 
-  let sent = 0;
+  let accepted = 0;
   let failed = 0;
-  for (const u of users) {
+  const failures: { email: string; error: string }[] = [];
+  for (const [index, u] of users.entries()) {
     try {
       const displayName = u.display_name || u.username || 'there';
       const vars: Record<string, string> = { name: displayName, email: u.email, siteUrl };
@@ -66,11 +78,21 @@ export async function POST(request: NextRequest) {
         recipientName: displayName,
       });
       const res = await sendMail({ to: u.email, subject: renderedSubject, html: renderedHtml, text: renderedText });
-      if (res.ok) sent++;
-      else failed++;
-    } catch {
+      if (res.ok) accepted++;
+      else {
+        failed++;
+        if (failures.length < 10) failures.push({ email: u.email, error: res.error || 'SMTP did not accept the recipient' });
+      }
+    } catch (error) {
       failed++;
+      if (failures.length < 10) {
+        failures.push({
+          email: u.email,
+          error: error instanceof Error ? error.message : 'Unexpected send error',
+        });
+      }
     }
+    if (index < users.length - 1) await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
   const totalBatches = Math.ceil(userIds.length / batchSize);
@@ -78,8 +100,9 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    sent,
+    accepted,
     failed,
+    failures,
     batchIndex,
     totalBatches,
     done,

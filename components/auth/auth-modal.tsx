@@ -722,7 +722,7 @@ function VerifyEmailPanel({
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [info, setInfo] = useState<string>(() => {
-    if (initialEmailStatus === 'sent') return `We sent a 6-digit code to ${email}.`;
+    if (initialEmailStatus === 'sent') return `The mail server accepted a 6-digit code for ${email}. Check your Inbox and Spam folders.`;
     if (initialEmailStatus === 'skipped') return 'Email delivery is not yet configured. Ask an admin to set SMTP, then click resend.';
     if (initialEmailStatus === 'failed') return 'We had trouble sending the email. Try Resend below.';
     return `Check ${email} for a 6-digit verification code.`;
@@ -758,9 +758,10 @@ function VerifyEmailPanel({
       setError(r.error || 'Could not resend code');
       return;
     }
-    if (r.emailStatus === 'sent') setInfo(`A fresh code is on the way to ${email}.`);
+    if (r.emailStatus === 'sent') setInfo(`The mail server accepted a fresh code for ${email}. Check Inbox and Spam.`);
     else if (r.emailStatus === 'skipped') setInfo('Email delivery is not configured yet. Ask an admin to set SMTP.');
-    else setInfo('Code requested. If it does not arrive, contact support.');
+    else if (r.emailStatus === 'failed') setError('The mail server did not accept the code. Please try again later or contact support.');
+    else setInfo('Code request completed. Check Inbox and Spam, or contact support if it does not arrive.');
   };
 
   return (

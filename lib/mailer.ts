@@ -3,19 +3,24 @@ import { getEmailConfig, type EmailConfig } from './email-config-store';
 
 let cached: { cfg: EmailConfig; transporter: Transporter } | null = null;
 
+function sameConfig(a: EmailConfig, b: EmailConfig) {
+  return a.enabled === b.enabled &&
+    a.host === b.host &&
+    a.port === b.port &&
+    a.secure === b.secure &&
+    a.username === b.username &&
+    a.password === b.password &&
+    a.fromEmail === b.fromEmail &&
+    a.fromName === b.fromName &&
+    a.replyTo === b.replyTo;
+}
+
 async function getTransporter(): Promise<{ cfg: EmailConfig; transporter: Transporter } | null> {
   const cfg = await getEmailConfig();
   if (!cfg.enabled || !cfg.host || !cfg.username || !cfg.password) {
     return null;
   }
-  if (
-    cached &&
-    cached.cfg.host === cfg.host &&
-    cached.cfg.port === cfg.port &&
-    cached.cfg.secure === cfg.secure &&
-    cached.cfg.username === cfg.username &&
-    cached.cfg.password === cfg.password
-  ) {
+  if (cached && sameConfig(cached.cfg, cfg)) {
     return cached;
   }
   const transporter = nodemailer.createTransport({
@@ -49,12 +54,13 @@ export interface SendMailResult {
   accepted?: string[];
   rejected?: string[];
   response?: string;
+  partial?: boolean;
 }
 
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   const ctx = await getTransporter();
   if (!ctx) {
-    console.warn('[mailer] SMTP not configured — skipping send to', input.to);
+    console.warn('[mailer] SMTP is not configured — email was not sent');
     return { ok: false, skipped: true, error: 'SMTP not configured' };
   }
   try {
@@ -69,12 +75,38 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
       replyTo: input.replyTo || ctx.cfg.replyTo || undefined,
       headers: input.headers,
     });
+    const accepted: string[] = (info.accepted || []).map((value: unknown) => String(value));
+    const rejected: string[] = (info.rejected || []).map((value: unknown) => String(value));
+    const expected = (Array.isArray(input.to) ? input.to : [input.to])
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim().replace(/^<|>$/g, '').toLowerCase())
+      .filter(Boolean);
+    const acceptedSet = new Set(accepted.map((value) => value.trim().replace(/^<|>$/g, '').toLowerCase()));
+    const rejectedSet = new Set(rejected.map((value) => value.trim().replace(/^<|>$/g, '').toLowerCase()));
+    const allAccepted = expected.length > 0 &&
+      expected.every((recipient) => acceptedSet.has(recipient) && !rejectedSet.has(recipient));
+    const partial = accepted.length > 0 && !allAccepted;
+    const error = allAccepted
+      ? undefined
+      : rejected.length
+        ? `SMTP rejected ${rejected.join(', ')}`
+        : accepted.length
+          ? 'SMTP accepted only some requested recipients'
+          : 'SMTP accepted no recipients';
+    if (!allAccepted) {
+      console.warn('[mailer] SMTP did not accept every requested recipient', {
+        acceptedCount: accepted.length,
+        rejectedCount: rejected.length,
+      });
+    }
     return {
-      ok: true,
+      ok: allAccepted,
       messageId: info.messageId,
-      accepted: info.accepted.map(String),
-      rejected: info.rejected.map(String),
+      accepted,
+      rejected,
       response: info.response,
+      ...(error ? { error } : {}),
+      ...(partial ? { partial: true } : {}),
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

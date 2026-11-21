@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     request.headers.get('origin') ||
     request.headers.get('referer')?.replace(/^(https?:\/\/[^/]+).*/, '$1') ||
     process.env.NEXT_PUBLIC_APP_URL ||
-    'https://betcheza.com';
+    'https://betcheza.co.ke';
   const verifyUrl = `${origin.replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(v.token)}`;
   const { text, html } = buildVerificationEmail({
     displayName: user.display_name,

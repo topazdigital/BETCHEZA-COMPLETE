@@ -11,7 +11,20 @@ export interface EmailConfig {
   fromEmail: string;
   fromName: string;
   replyTo?: string;
+  imapHost: string;
+  imapPort: number;
+  imapSecure: boolean;
+  imapPasswords: Partial<Record<EmailInboxName, string>>;
 }
+
+export const EMAIL_INBOXES = [
+  { name: 'support', email: 'support@betcheza.co.ke' },
+  { name: 'partnerships', email: 'partnerships@betcheza.co.ke' },
+  { name: 'info', email: 'info@betcheza.co.ke' },
+  { name: 'careers', email: 'careers@betcheza.co.ke' },
+] as const;
+
+export type EmailInboxName = (typeof EMAIL_INBOXES)[number]['name'];
 
 export const DEFAULT_EMAIL_CONFIG: EmailConfig = {
   enabled: false,
@@ -23,25 +36,51 @@ export const DEFAULT_EMAIL_CONFIG: EmailConfig = {
   fromEmail: '',
   fromName: 'Betcheza',
   replyTo: '',
+  imapHost: '',
+  imapPort: 993,
+  imapSecure: true,
+  imapPasswords: {},
 };
 
 const g = globalThis as { __emailCfg?: EmailConfig };
 
 function fromEnv(): Partial<EmailConfig> {
   const host = process.env.SMTP_HOST || '';
-  const username = process.env.SMTP_USERNAME || '';
-  if (!host && !username) return {};
+  const username = process.env.SMTP_USERNAME || process.env.SMTP_USER || '';
+  const imapHost = process.env.IMAP_HOST || '';
+  const imapPasswords = Object.fromEntries(
+    EMAIL_INBOXES
+      .map(({ name }) => [name, process.env[`IMAP_PASSWORD_${name.toUpperCase()}`] || ''])
+      .filter(([, password]) => !!password)
+  );
+  if (
+    !host &&
+    !username &&
+    !imapHost &&
+    !process.env.IMAP_PORT &&
+    !process.env.IMAP_SECURE &&
+    !process.env.IMAP_PASSWORD &&
+    !Object.keys(imapPasswords).length
+  ) return {};
   return {
-    enabled: !!(host && username),
-    host,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: (process.env.SMTP_SECURE || '').toLowerCase() === 'true' ||
-            parseInt(process.env.SMTP_PORT || '587', 10) === 465,
-    username,
-    password: process.env.SMTP_PASSWORD || '',
-    fromEmail: process.env.SMTP_FROM_EMAIL || username,
-    fromName: process.env.SMTP_FROM_NAME || 'Betcheza',
-    replyTo: process.env.SMTP_REPLY_TO || '',
+    ...(host || username ? {
+      enabled: !!(host && username),
+      host,
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: (process.env.SMTP_SECURE || '').toLowerCase() === 'true' ||
+              parseInt(process.env.SMTP_PORT || '587', 10) === 465,
+      username,
+      password: process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '',
+      fromEmail: process.env.SMTP_FROM_EMAIL || process.env.FROM_EMAIL || username,
+      fromName: process.env.SMTP_FROM_NAME || 'Betcheza',
+      replyTo: process.env.SMTP_REPLY_TO || '',
+    } : {}),
+    imapHost,
+    imapPort: parseInt(process.env.IMAP_PORT || '993', 10),
+    imapSecure: (process.env.IMAP_SECURE || '').toLowerCase() === 'false'
+      ? false
+      : parseInt(process.env.IMAP_PORT || '993', 10) === 993,
+    imapPasswords,
   };
 }
 
@@ -55,9 +94,18 @@ function mergeWithEnv(base: EmailConfig): EmailConfig {
     secure: base.host ? base.secure : (env.secure ?? false),
     username: base.username || env.username || '',
     password: base.password || env.password || '',
-    fromEmail: base.fromEmail || env.fromEmail || '',
+    fromEmail: base.fromEmail || env.fromEmail || base.username || env.username || '',
     fromName: base.fromName || env.fromName || 'Betcheza',
     replyTo: base.replyTo || env.replyTo || '',
+    imapHost: base.imapHost || env.imapHost || '',
+    imapPort: base.imapHost ? base.imapPort : env.imapPort || base.imapPort || 993,
+    imapSecure: base.imapHost ? base.imapSecure : env.imapSecure ?? base.imapSecure ?? true,
+    imapPasswords: Object.fromEntries(
+      EMAIL_INBOXES.map(({ name }) => [
+        name,
+        base.imapPasswords?.[name] || env.imapPasswords?.[name] || '',
+      ])
+    ),
     // Enable automatically if host+username are set
     enabled: base.host
       ? base.enabled
@@ -69,7 +117,7 @@ export async function getEmailConfig(): Promise<EmailConfig> {
   // 1. Try MySQL DB
   try {
     const result = await query<{ name: string; value: string }>(
-      "SELECT name, value FROM admin_settings WHERE name LIKE 'smtp_%'"
+      "SELECT name, value FROM admin_settings WHERE name LIKE 'smtp_%' OR name LIKE 'imap_%'"
     );
     const rows = result.rows;
     if (rows && rows.length > 0) {
@@ -84,6 +132,12 @@ export async function getEmailConfig(): Promise<EmailConfig> {
         fromEmail: m.get('smtp_from_email') || '',
         fromName: m.get('smtp_from_name') || 'Betcheza',
         replyTo: m.get('smtp_reply_to') || '',
+        imapHost: m.get('imap_host') || '',
+        imapPort: parseInt(m.get('imap_port') || '993', 10),
+        imapSecure: m.get('imap_secure') === undefined ? true : m.get('imap_secure') === 'true',
+        imapPasswords: Object.fromEntries(
+          EMAIL_INBOXES.map(({ name }) => [name, m.get(`imap_password_${name}`) || ''])
+        ),
       };
       const merged = mergeWithEnv(cfg);
       g.__emailCfg = merged;
@@ -131,6 +185,13 @@ export async function saveEmailConfig(cfg: Partial<EmailConfig>): Promise<EmailC
       ['smtp_from_email', merged.fromEmail],
       ['smtp_from_name', merged.fromName],
       ['smtp_reply_to', merged.replyTo || ''],
+      ['imap_host', merged.imapHost || ''],
+      ['imap_port', String(merged.imapPort || 993)],
+      ['imap_secure', String(merged.imapSecure)],
+      ...EMAIL_INBOXES.map(({ name }) => [
+        `imap_password_${name}`,
+        merged.imapPasswords?.[name] || '',
+      ] as [string, string]),
     ];
     for (const [name, value] of entries) {
       await query(
@@ -146,7 +207,14 @@ export async function saveEmailConfig(cfg: Partial<EmailConfig>): Promise<EmailC
   return merged;
 }
 
-export function maskedConfig(cfg: EmailConfig): Omit<EmailConfig, 'password'> & { passwordSet: boolean } {
-  const { password, ...rest } = cfg;
-  return { ...rest, passwordSet: !!password };
+export function maskedConfig(cfg: EmailConfig) {
+  const { password, imapPasswords, ...rest } = cfg;
+  return {
+    ...rest,
+    passwordSet: !!password,
+    imapPasswords: Object.fromEntries(EMAIL_INBOXES.map(({ name }) => [name, ''])),
+    imapPasswordSet: Object.fromEntries(
+      EMAIL_INBOXES.map(({ name }) => [name, !!imapPasswords?.[name]])
+    ),
+  };
 }

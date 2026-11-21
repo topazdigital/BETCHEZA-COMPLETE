@@ -43,13 +43,18 @@ function stripHtml(html: string) {
 function EmailBody({ email }: { email: InboxEmail }) {
   const [showHtml, setShowHtml] = useState(false)
   const body = email.bodyText || (email.bodyHtml ? stripHtml(email.bodyHtml) : '(no body)')
+  const isolatedHtml = email.bodyHtml
+    ? `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:"></head><body>${email.bodyHtml}</body></html>`
+    : ''
 
   if (email.bodyHtml && showHtml) {
     return (
       <div>
-        <div
-          className="rounded-md bg-white border p-3 text-sm overflow-auto"
-          dangerouslySetInnerHTML={{ __html: email.bodyHtml }}
+        <iframe
+          title={`Formatted email: ${email.subject}`}
+          sandbox=""
+          srcDoc={isolatedHtml}
+          className="w-full min-h-[240px] rounded-md bg-white border"
         />
         <button onClick={() => setShowHtml(false)} className="text-xs text-muted-foreground hover:underline mt-1">
           Show plain text
@@ -103,11 +108,11 @@ function ReplyComposer({ email, onSent, onCancel }: { email: InboxEmail; onSent:
   if (sent) return (
     <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400">
       <p className="flex items-center gap-2 font-medium">
-        <Send className="h-4 w-4 shrink-0" /> Reply accepted for delivery
+        <Send className="h-4 w-4 shrink-0" /> Reply accepted by the mail server
       </p>
       <p className="text-xs">
         Sent from <strong>{email.accountEmail}</strong> to <strong>{email.fromEmail}</strong>.
-        Check the recipient&apos;s spam or promotions folder if it does not arrive shortly.
+        Acceptance does not confirm inbox delivery; the recipient&apos;s provider may delay, reject, or filter it.
       </p>
       <Button onClick={onCancel} variant="outline" size="sm" className="h-7 text-xs">
         Close
@@ -149,7 +154,7 @@ function ReplyComposer({ email, onSent, onCancel }: { email: InboxEmail; onSent:
 export default function InboxPage() {
   const { data, isLoading, mutate } = useSWR<InboxData>(
     '/api/admin/inbox', fetcher,
-    { refreshInterval: 2 * 60 * 1000, revalidateOnFocus: false }
+    { refreshInterval: 60 * 1000, revalidateOnFocus: true }
   )
 
   const [selected, setSelected] = useState<InboxEmail | null>(null)
@@ -160,7 +165,7 @@ export default function InboxPage() {
   const allEmails = data?.emails ?? []
   const accounts = data?.accounts ?? []
   // Only show errors that aren't expected auth failures (already removed admin account)
-  const errors = (data?.errors ?? []).filter(e => !e.message.toLowerCase().includes('command failed'))
+  const errors = data?.errors ?? []
   const serverError = data?.error
 
   const filtered = activeAccount === 'all'
@@ -267,11 +272,11 @@ export default function InboxPage() {
       )}
 
       {/* ── Empty state ──────────────────────────────────────────────────────── */}
-      {!isLoading && configuredAccounts.length === 0 && !serverError && (
+      {!isLoading && configuredAccounts.length === 0 && !serverError && errors.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground p-6">
           <Mail className="h-10 w-10 mb-3 opacity-25" />
-          <p className="font-medium text-sm">No email accounts configured</p>
-          <p className="text-xs mt-1">Set <code className="bg-muted px-1 rounded">IMAP_PASSWORD</code> as a Replit Secret.</p>
+          <p className="font-medium text-sm">No mailboxes connected</p>
+          <p className="text-xs mt-1">Set the IMAP host and mailbox passwords under Admin → Email Configuration.</p>
         </div>
       )}
 

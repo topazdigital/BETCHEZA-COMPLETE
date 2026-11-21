@@ -20,7 +20,19 @@ interface Cfg {
   fromName: string;
   replyTo?: string;
   passwordSet?: boolean;
+  imapHost: string;
+  imapPort: number;
+  imapSecure: boolean;
+  imapPasswords: Record<string, string>;
+  imapPasswordSet: Record<string, boolean>;
 }
+
+const INBOX_ACCOUNTS = [
+  { name: 'support', email: 'support@betcheza.co.ke' },
+  { name: 'partnerships', email: 'partnerships@betcheza.co.ke' },
+  { name: 'info', email: 'info@betcheza.co.ke' },
+  { name: 'careers', email: 'careers@betcheza.co.ke' },
+];
 
 const DEFAULT: Cfg = {
   enabled: false,
@@ -32,6 +44,11 @@ const DEFAULT: Cfg = {
   fromEmail: '',
   fromName: 'Betcheza',
   replyTo: '',
+  imapHost: '',
+  imapPort: 993,
+  imapSecure: true,
+  imapPasswords: Object.fromEntries(INBOX_ACCOUNTS.map(({ name }) => [name, ''])),
+  imapPasswordSet: Object.fromEntries(INBOX_ACCOUNTS.map(({ name }) => [name, false])),
 };
 
 const PRESETS: Record<string, Partial<Cfg>> = {
@@ -57,7 +74,15 @@ export default function AdminEmailConfigPage() {
     fetch('/api/admin/email-config')
       .then((r) => r.json())
       .then((d) => {
-        if (d.config) setCfg({ ...DEFAULT, ...d.config, password: '' });
+        if (d.config) {
+          setCfg({
+            ...DEFAULT,
+            ...d.config,
+            password: '',
+            imapPasswords: { ...DEFAULT.imapPasswords, ...d.config.imapPasswords },
+            imapPasswordSet: { ...DEFAULT.imapPasswordSet, ...d.config.imapPasswordSet },
+          });
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -97,6 +122,10 @@ export default function AdminEmailConfigPage() {
         fromEmail: cfg.fromEmail,
         fromName: cfg.fromName,
         replyTo: cfg.replyTo,
+        imapHost: cfg.imapHost,
+        imapPort: cfg.imapPort,
+        imapSecure: cfg.imapSecure,
+        imapPasswords: cfg.imapPasswords,
         keepPassword,
       };
       if (!keepPassword) {
@@ -110,7 +139,13 @@ export default function AdminEmailConfigPage() {
       let d: { config?: Cfg; error?: string } = {};
       try { d = await res.json(); } catch { /* non-JSON body */ }
       if (res.ok && d.config) {
-        setCfg({ ...DEFAULT, ...d.config, password: '' });
+        setCfg({
+          ...DEFAULT,
+          ...d.config,
+          password: '',
+          imapPasswords: { ...DEFAULT.imapPasswords, ...d.config.imapPasswords },
+          imapPasswordSet: { ...DEFAULT.imapPasswordSet, ...d.config.imapPasswordSet },
+        });
         setPasswordChanged(false);
         setUnsavedChanges(false);
         setStatus({ kind: 'ok', msg: 'Settings saved.' });
@@ -151,7 +186,9 @@ export default function AdminEmailConfigPage() {
         body: JSON.stringify({ action: 'test', to: testEmail }),
       });
       const d = await res.json();
-      setStatus(d.ok ? { kind: 'ok', msg: `Test email sent to ${testEmail}` } : { kind: 'err', msg: d.error || 'Send failed' });
+      setStatus(d.ok
+        ? { kind: 'ok', msg: `SMTP accepted the test for ${testEmail}. Check Inbox and Spam to confirm delivery.` }
+        : { kind: 'err', msg: d.error || 'The mail server did not accept the test.' });
     } finally {
       setTesting(false);
     }
@@ -164,7 +201,7 @@ export default function AdminEmailConfigPage() {
       <div>
         <h1 className="text-lg font-bold">Email Configuration</h1>
         <p className="text-xs text-muted-foreground">
-          Configure the SMTP server used for transactional and broadcast emails.
+          Configure outgoing email and the inbox accounts shown in Admin → Inbox.
         </p>
       </div>
 
@@ -291,12 +328,67 @@ export default function AdminEmailConfigPage() {
       <Card>
         <CardHeader className="py-2 pb-1.5 px-3">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Mail className="h-4 w-4" /> Incoming inbox (IMAP)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 p-3">
+          <p className="text-[11px] text-muted-foreground">
+            Use the IMAP host from your mail provider. Leave the host blank to use a provider default.
+            Passwords can differ by mailbox; blank fields keep their saved password or use the shared IMAP/SMTP password.
+          </p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">IMAP Host</label>
+              <Input
+                className="h-8 text-xs"
+                value={cfg.imapHost}
+                onChange={(e) => update('imapHost', e.target.value)}
+                placeholder="mail.betcheza.co.ke"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">IMAP Port</label>
+              <Input
+                className="h-8 text-xs"
+                type="number"
+                value={cfg.imapPort}
+                onChange={(e) => update('imapPort', parseInt(e.target.value, 10) || 993)}
+              />
+            </div>
+            <div className="md:col-span-2 flex items-center gap-2">
+              <Switch checked={cfg.imapSecure} onCheckedChange={(value) => update('imapSecure', value)} />
+              <span className="text-xs">{cfg.imapSecure ? 'IMAP SSL/TLS enabled' : 'IMAP SSL/TLS disabled'}</span>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {INBOX_ACCOUNTS.map(({ name, email }) => (
+              <div className="space-y-1" key={name}>
+                <label className="text-[10px] font-medium uppercase text-muted-foreground px-0.5">
+                  {email} password
+                  {cfg.imapPasswordSet[name] && <span className="ml-1 text-emerald-500">(saved)</span>}
+                </label>
+                <Input
+                  className="h-8 text-xs"
+                  type="password"
+                  value={cfg.imapPasswords[name] || ''}
+                  onChange={(e) => update('imapPasswords', { ...cfg.imapPasswords, [name]: e.target.value })}
+                  placeholder={cfg.imapPasswordSet[name] ? 'Leave blank to keep saved password' : 'Uses shared password if blank'}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="py-2 pb-1.5 px-3">
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <Send className="h-4 w-4" /> Send a test email
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 p-3">
           <p className="text-xs text-muted-foreground">
-            Save your settings first, then send a quick test to confirm delivery.
+            Save your settings first. SMTP acceptance confirms the sender connection; check Inbox and Spam to confirm placement.
           </p>
           <div className="flex gap-1.5">
             <Input

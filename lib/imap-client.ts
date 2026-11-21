@@ -1,13 +1,20 @@
 /**
  * imap-client.ts
  * Fetches emails from all betcheza.co.ke inboxes via IMAP.
- * Password is read from:
- *   1. IMAP_PASSWORD env var (Replit dev)
- *   2. SMTP password stored in admin Email Config (production)
- * IMAP host is derived from the SMTP host set in Email Config.
+ * Per-mailbox passwords are stored in Admin → Email Configuration. They can
+ * also be provided through IMAP_PASSWORD_<ACCOUNT> environment variables;
+ * IMAP_PASSWORD and the SMTP password remain shared-account fallbacks.
+ * The IMAP host can be configured separately from SMTP, with common provider
+ * defaults derived from the outgoing host when no IMAP host is specified.
  */
 import { ImapFlow } from 'imapflow';
-import { getEmailConfig } from './email-config-store';
+import { simpleParser } from 'mailparser';
+import {
+  EMAIL_INBOXES,
+  getEmailConfig,
+  type EmailConfig,
+  type EmailInboxName,
+} from './email-config-store';
 
 export interface InboxEmail {
   uid: number;
@@ -29,25 +36,31 @@ export interface InboxEmail {
 // Account registry
 // ---------------------------------------------------------------------------
 const FALLBACK_IMAP_HOST = 'mail.betcheza.co.ke';
-const IMAP_PORT = 993;
+const ACCOUNTS = EMAIL_INBOXES;
 
-const ACCOUNTS = [
-  { name: 'support',      email: 'support@betcheza.co.ke' },
-  { name: 'partnerships', email: 'partnerships@betcheza.co.ke' },
-  { name: 'info',         email: 'info@betcheza.co.ke' },
-  { name: 'careers',      email: 'careers@betcheza.co.ke' },
-];
+function deriveImapHost(smtpHost: string) {
+  const host = smtpHost.trim().toLowerCase();
+  if (host === 'smtp.gmail.com') return 'imap.gmail.com';
+  if (host === 'smtp.office365.com' || host === 'smtp-mail.outlook.com') return 'outlook.office365.com';
+  if (host === 'smtp.zoho.com') return 'imap.zoho.com';
+  if (host === 'smtp.betcheza.co.ke') return FALLBACK_IMAP_HOST;
+  if (host.startsWith('imap.')) return host;
+  if (host.startsWith('mail.')) return host;
+  return FALLBACK_IMAP_HOST;
+}
 
-/** Resolve IMAP credentials — env var first, then saved Email Config. */
-async function getImapConfig(): Promise<{ host: string; pass: string }> {
-  const envPass = process.env.IMAP_PASSWORD || '';
-  if (envPass) return { host: FALLBACK_IMAP_HOST, pass: envPass };
+function getImapConfig(cfg: EmailConfig) {
+  const host = cfg.imapHost || process.env.IMAP_HOST || deriveImapHost(cfg.host);
+  const port = cfg.imapPort || Number(process.env.IMAP_PORT) || 993;
+  return { host, port, secure: cfg.imapSecure };
+}
 
-  const cfg = await getEmailConfig();
-  const pass = cfg.password || '';
-  // Derive IMAP host from SMTP host (same mail server, different port)
-  const host = cfg.host || FALLBACK_IMAP_HOST;
-  return { host, pass };
+function getImapPassword(account: EmailInboxName, cfg: EmailConfig) {
+  return cfg.imapPasswords?.[account] ||
+    process.env[`IMAP_PASSWORD_${account.toUpperCase()}`] ||
+    process.env.IMAP_PASSWORD ||
+    cfg.password ||
+    '';
 }
 
 // ---------------------------------------------------------------------------
@@ -72,11 +85,14 @@ export function invalidateImapCache(account?: string) {
 // Fetch emails for one account
 // ---------------------------------------------------------------------------
 async function fetchAccountEmails(
-  acct: typeof ACCOUNTS[number],
+  acct: (typeof ACCOUNTS)[number],
   host: string,
+  port: number,
+  secure: boolean,
   pass: string,
   limit: number
 ): Promise<InboxEmail[]> {
+  if (!pass) throw new Error(`No IMAP password configured for ${acct.email}.`);
   const now = Date.now();
   const cache = getCache();
   if (cache[acct.name] && now - cache[acct.name].ts < CACHE_TTL_MS) {
@@ -85,8 +101,8 @@ async function fetchAccountEmails(
 
   const client = new ImapFlow({
     host,
-    port: IMAP_PORT,
-    secure: true,
+    port,
+    secure,
     auth: { user: acct.email, pass },
     logger: false,
     tls: { rejectUnauthorized: false },
@@ -113,20 +129,22 @@ async function fetchAccountEmails(
           const seen      = msg.flags?.has('\\Seen') ?? false;
 
           let bodyText = '', bodyHtml = '';
+          let messageId = env?.messageId || '';
           if (msg.source) {
-            // Use binary (Latin-1) to preserve raw bytes — do NOT assume UTF-8
-            const raw = msg.source.toString('binary');
-            bodyText = extractMimePart(raw, 'text/plain');
-            bodyHtml = extractMimePart(raw, 'text/html');
-            if (!bodyText && !bodyHtml) {
-              const bodyStart = raw.indexOf('\r\n\r\n');
-              if (bodyStart !== -1) bodyText = decodePart(raw.slice(bodyStart + 4), '7bit', 'utf-8');
+            try {
+              const parsed = await simpleParser(msg.source);
+              bodyText = parsed.text || '';
+              bodyHtml = typeof parsed.html === 'string' ? parsed.html : '';
+              messageId ||= parsed.messageId || '';
+            } catch (error) {
+              console.warn('[imap] Could not parse message body:', error instanceof Error ? error.message : 'unknown parser error');
+              bodyText = '(Message body could not be decoded.)';
             }
           }
 
           emails.push({
             uid: msg.uid,
-            messageId: env?.messageId || `${msg.uid}@${acct.name}`,
+            messageId,
             from: fromName, fromEmail, to: toStr, subject, date,
             bodyText: bodyText.trim(), bodyHtml: bodyHtml.trim(),
             seen, source: 'imap', account: acct.name, accountEmail: acct.email,
@@ -150,11 +168,14 @@ export async function fetchInboxEmails(limit = 60): Promise<{
   accounts: { name: string; email: string }[];
   errors: { account: string; message: string }[];
 }> {
-  const { host, pass } = await getImapConfig();
-  if (!pass) throw new Error('No IMAP password configured. Set it in Admin → Config → Email Setup.');
+  const cfg = await getEmailConfig();
+  const { host, port } = getImapConfig(cfg);
 
   const settled = await Promise.allSettled(
-    ACCOUNTS.map(acct => fetchAccountEmails(acct, host, pass, limit))
+    ACCOUNTS.map(async (acct) => {
+      const pass = getImapPassword(acct.name, cfg);
+      return fetchAccountEmails(acct, host, port, cfg.imapSecure, pass, limit);
+    })
   );
 
   const allEmails: InboxEmail[] = [];
@@ -182,87 +203,21 @@ export async function fetchInboxEmails(limit = 60): Promise<{
 export async function markEmailSeen(uid: number, account: string): Promise<void> {
   const acct = ACCOUNTS.find(a => a.name === account);
   if (!acct) return;
-  const { host, pass } = await getImapConfig();
-  if (!pass) return;
+  const cfg = await getEmailConfig();
+  const { host, port } = getImapConfig(cfg);
+  const pass = getImapPassword(acct.name, cfg);
+  if (!pass) throw new Error(`No IMAP password configured for ${acct.email}.`);
   const client = new ImapFlow({
-    host, port: IMAP_PORT, secure: true,
+    host, port, secure: cfg.imapSecure,
     auth: { user: acct.email, pass }, logger: false,
     tls: { rejectUnauthorized: false },
   });
   try {
     await client.connect();
     await client.mailboxOpen('INBOX');
-    await client.messageFlagsAdd({ uid: true }, [uid], ['\\Seen']);
+    await client.messageFlagsAdd([uid], ['\\Seen'], { uid: true });
   } finally {
     await client.logout().catch(() => {});
   }
   invalidateImapCache(account);
-}
-
-/**
- * Extract a text/plain or text/html part from a raw binary RFC2822 message,
- * respecting its Content-Transfer-Encoding and charset.
- */
-function extractMimePart(raw: string, mimeType: string): string {
-  // Match the part header + body. We look for the Content-Type line followed
-  // by optional folded header lines, then a blank line, then the body.
-  const partRe = new RegExp(
-    `Content-Type:\\s*${mimeType.replace('/', '\\/')}[^\\r\\n]*(?:\\r?\\n[ \\t][^\\r\\n]*)*\\r?\\n` +
-    `([\\s\\S]*?\\r?\\n)?\\r?\\n` +   // remaining part headers (e.g. CTE)
-    `([\\s\\S]*?)(?=\\r?\\n--|$)`,
-    'i'
-  );
-  const m = raw.match(partRe);
-  if (!m) return '';
-
-  // Re-capture the full block so we can find headers before the body
-  const blockStart = m.index!;
-  const blankLine = raw.indexOf('\r\n\r\n', blockStart);
-  if (blankLine === -1) return '';
-
-  const headerBlock = raw.slice(blockStart, blankLine);
-  const body = raw.slice(blankLine + 4);
-  // Trim at the next MIME boundary
-  const bodyContent = body.split(/\r?\n--/)[0];
-
-  // Extract Content-Transfer-Encoding
-  const cteMatch = headerBlock.match(/Content-Transfer-Encoding:\s*(\S+)/i);
-  const encoding = cteMatch ? cteMatch[1].replace(/[";]/g, '').trim() : '7bit';
-
-  // Extract charset (may span a folded line)
-  const charsetMatch = headerBlock.replace(/\r?\n[ \t]/g, ' ').match(/charset=["']?([^"'\s;]+)/i);
-  const charset = charsetMatch ? charsetMatch[1] : 'utf-8';
-
-  return decodePart(bodyContent, encoding, charset);
-}
-
-/**
- * Decode a MIME body part given its transfer encoding and charset.
- * `raw` must be a binary (Latin-1) string — one char per byte.
- */
-function decodePart(raw: string, encoding: string, charset: string): string {
-  let bytes: Buffer;
-  const enc = (encoding || '7bit').toLowerCase().trim();
-
-  if (enc === 'base64') {
-    bytes = Buffer.from(raw.replace(/\s/g, ''), 'base64');
-  } else if (enc === 'quoted-printable') {
-    const qp = raw
-      .replace(/=\r?\n/g, '')                                          // soft line breaks
-      .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-    bytes = Buffer.from(qp, 'binary');
-  } else {
-    // 7bit / 8bit / binary
-    bytes = Buffer.from(raw, 'binary');
-  }
-
-  // Normalise charset name for TextDecoder
-  const cs = (charset || 'utf-8').toLowerCase()
-    .replace(/^utf8$/, 'utf-8')
-    .replace(/^latin[-_]?1$/i, 'iso-8859-1');
-  try {
-    return new TextDecoder(cs, { fatal: false }).decode(bytes);
-  } catch {
-    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-  }
 }

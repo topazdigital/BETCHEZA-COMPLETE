@@ -47,8 +47,14 @@ function EmailModal({
   const [batchSize, setBatchSize] = useState(50);
   const [delayMin, setDelayMin] = useState(2);
   const [sending, setSending] = useState(false);
-  const [phase, setPhase] = useState<'compose' | 'sending' | 'done'>('compose');
-  const [progress, setProgress] = useState({ sent: 0, failed: 0, batch: 0, total: 0 });
+  const [phase, setPhase] = useState<'compose' | 'sending' | 'done' | 'error'>('compose');
+  const [progress, setProgress] = useState({
+    accepted: 0,
+    failed: 0,
+    batch: 0,
+    total: 0,
+    failures: [] as { email: string; error: string }[],
+  });
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -59,7 +65,12 @@ function EmailModal({
   }
   useEffect(() => () => clearTimer(), []);
 
-  async function sendBatch(batchIndex: number, totalSent: number, totalFailed: number) {
+  async function sendBatch(
+    batchIndex: number,
+    totalAccepted: number,
+    totalFailed: number,
+    previousFailures: { email: string; error: string }[],
+  ) {
     try {
       const start = batchIndex * batchSize;
       const slice = recipientEmails.slice(start, start + batchSize);
@@ -72,13 +83,25 @@ function EmailModal({
         body: JSON.stringify({ subject, html: body.replace(/\n/g, '<br>'), emails: slice }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Send failed'); setSending(false); return; }
+      if (!res.ok) {
+        setError(data.error || 'Send failed');
+        setSending(false);
+        setPhase('error');
+        return;
+      }
 
-      const newSent = totalSent + (data.sent || 0);
+      const newAccepted = totalAccepted + (data.sent || 0);
       const newFailed = totalFailed + (data.failed || 0);
+      const failures = [...previousFailures, ...(data.failures ?? [])].slice(0, 10);
       nextBatchRef.current = batchIndex + 1;
       const nextStart = (batchIndex + 1) * batchSize;
-      setProgress({ sent: newSent, failed: newFailed, batch: batchIndex + 1, total: recipientEmails.length });
+      setProgress({
+        accepted: newAccepted,
+        failed: newFailed,
+        batch: batchIndex + 1,
+        total: recipientEmails.length,
+        failures,
+      });
 
       if (nextStart >= recipientEmails.length) {
         clearTimer(); setPhase('done'); setSending(false); return;
@@ -89,7 +112,7 @@ function EmailModal({
       timerRef.current = setInterval(() => {
         secs--;
         setCountdown(secs);
-        if (secs <= 0) { clearTimer(); sendBatch(nextBatchRef.current, newSent, newFailed); }
+        if (secs <= 0) { clearTimer(); sendBatch(nextBatchRef.current, newAccepted, newFailed, failures); }
       }, 1000);
     } catch {
       setError('Network error. Please try again.');
@@ -102,12 +125,12 @@ function EmailModal({
     setError('');
     setSending(true);
     setPhase('sending');
-    setProgress({ sent: 0, failed: 0, batch: 0, total: recipientEmails.length });
+    setProgress({ accepted: 0, failed: 0, batch: 0, total: recipientEmails.length, failures: [] });
     nextBatchRef.current = 0;
-    await sendBatch(0, 0, 0);
+    await sendBatch(0, 0, 0, []);
   }
 
-  const pct = progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
+  const pct = progress.total > 0 ? Math.round((progress.accepted / progress.total) * 100) : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -165,9 +188,9 @@ function EmailModal({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-medium">Batch size</label>
-                    <input type="number" min={1} max={200}
+                    <input type="number" min={1} max={100}
                       className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      value={batchSize} onChange={e => setBatchSize(Number(e.target.value))} />
+                      value={batchSize} onChange={e => setBatchSize(Math.min(100, Math.max(1, Number(e.target.value) || 1)))} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium">Delay between batches (min)</label>
@@ -197,10 +220,17 @@ function EmailModal({
               <div className="rounded-full bg-muted h-2 overflow-hidden">
                 <div className="h-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
               </div>
-              <p className="text-xs text-muted-foreground text-center">{progress.sent} sent · {progress.failed} failed · {progress.total} total</p>
+              <p className="text-xs text-muted-foreground text-center">{progress.accepted} accepted by mail server · {progress.failed} not accepted · {progress.total} total</p>
+              {progress.failures.length > 0 && (
+                <div className="max-h-24 space-y-1 overflow-y-auto rounded-md border bg-muted/20 p-2 text-left text-[10px]">
+                  {progress.failures.slice(0, 5).map((failure, index) => (
+                    <p key={`${failure.email}-${index}`}><strong>{failure.email}</strong>: {failure.error}</p>
+                  ))}
+                </div>
+              )}
               {countdown > 0 && (
                 <Button size="sm" className="w-full h-7 text-xs" variant="secondary"
-                  onClick={() => { clearTimer(); sendBatch(nextBatchRef.current, progress.sent, progress.failed); }}>
+                  onClick={() => { clearTimer(); sendBatch(nextBatchRef.current, progress.accepted, progress.failed, progress.failures); }}>
                   Send next batch now
                 </Button>
               )}
@@ -209,14 +239,26 @@ function EmailModal({
 
           {phase === 'done' && (
             <div className="py-4 text-center space-y-2">
-              <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
-              <p className="text-sm font-semibold">Done!</p>
-              <p className="text-xs text-muted-foreground">{progress.sent} sent · {progress.failed} failed</p>
+              {progress.failed === 0
+                ? <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
+                : <XCircle className="h-8 w-8 text-amber-500 mx-auto" />}
+              <p className="text-sm font-semibold">{progress.failed === 0 ? 'Finished' : 'Finished with rejected emails'}</p>
+              <p className="text-xs text-muted-foreground">
+                {progress.accepted} accepted by mail server · {progress.failed} not accepted
+              </p>
+            </div>
+          )}
+          {phase === 'error' && (
+            <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
+              <p className="font-medium text-destructive">{error}</p>
+              <p className="text-muted-foreground">
+                {progress.accepted} accepted by mail server · {progress.failed} not accepted before sending stopped.
+              </p>
             </div>
           )}
         </div>
 
-        {(phase === 'compose' || phase === 'done') && (
+        {(phase === 'compose' || phase === 'done' || phase === 'error') && (
           <div className="flex justify-end gap-2 border-t px-4 py-3">
             <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onClose}>Close</Button>
             {phase === 'compose' && (
