@@ -1,4 +1,4 @@
-const BASE_URL_FALLBACK = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const BASE_URL_FALLBACK = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/+$/, '');
 
 export interface JackpotAlertEmailOptions {
   bookmakerName: string; bookmakerColor: string; jackpotTitle: string;
@@ -16,6 +16,7 @@ export function buildJackpotAlertEmail(opts: JackpotAlertEmailOptions) {
   const deadlineStr = new Date(deadline).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
   const amount = jackpotAmount ? `${currency || 'KES'} ${jackpotAmount}` : '';
   const siteUrl = appUrl || BASE_URL_FALLBACK;
+  const logoUrl = `${siteUrl.replace(/\/+$/, '')}/betcheza-logo.png`;
 
   const picksHtml = topPicks.slice(0, 5).map((p, i) => `
     <tr>
@@ -44,7 +45,7 @@ export function buildJackpotAlertEmail(opts: JackpotAlertEmailOptions) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${bookmakerName} Jackpot Alert — Betcheza</title>
 </head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<body data-betcheza-email="branded" style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">🏆 ${bookmakerName} jackpot tips are ready — ${amount || 'huge prize pool'}. Check the top AI picks now.</div>
 
@@ -59,11 +60,12 @@ export function buildJackpotAlertEmail(opts: JackpotAlertEmailOptions) {
             <table width="100%" cellpadding="0" cellspacing="0">
               <tr>
                 <td>
-                  <span style="color:#ffffff;font-size:14px;font-weight:800;">⚽ Betcheza</span>
+                  <img src="${logoUrl}" alt="Betcheza" width="28" height="28" style="display:inline-block;width:28px;height:28px;vertical-align:middle;border:0;border-radius:50%;margin-right:8px;" />
+                  <span style="color:#ffffff;font-size:14px;font-weight:800;vertical-align:middle;">Betcheza</span>
                   <span style="color:#475569;font-size:12px;margin-left:8px;">Expert Sports Predictions</span>
                 </td>
                 <td style="text-align:right;">
-                  <a href="${siteUrl}" style="color:#10b981;font-size:11px;text-decoration:none;font-weight:600;">Visit site →</a>
+                  <a href="${siteUrl}" style="color:#64b5f6;font-size:11px;text-decoration:none;font-weight:600;">Visit site →</a>
                 </td>
               </tr>
             </table>

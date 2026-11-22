@@ -48,10 +48,8 @@ export async function POST(req: NextRequest) {
       : undefined;
 
     const html = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-        <div style="white-space:pre-line;font-size:14px;line-height:1.6;padding:16px 0">${cleanBody.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-        <p style="font-size:12px;color:#9ca3af">Betcheza · betcheza.co.ke</p>
+      <div style="white-space:pre-line;font-size:14px;line-height:1.6">
+        ${cleanBody.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
       </div>`;
 
     const result = await sendMail({

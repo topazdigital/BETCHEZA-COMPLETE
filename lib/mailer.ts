@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { getEmailConfig, type EmailConfig } from './email-config-store';
+import { brandEmailHtml } from './email-branding';
 
 let cached: { cfg: EmailConfig; transporter: Transporter } | null = null;
 
@@ -71,7 +72,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
       to: Array.isArray(input.to) ? input.to.join(',') : input.to,
       subject: input.subject,
       text: input.text,
-      html: input.html,
+      html: brandEmailHtml(input.subject, input.html, input.text),
       replyTo: input.replyTo || ctx.cfg.replyTo || undefined,
       headers: input.headers,
     });

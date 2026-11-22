@@ -1,4 +1,5 @@
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/+$/, '');
+const LOGO_URL = `${BASE_URL}/betcheza-logo.png`;
 
 export function buildVerificationEmail(opts: {
   displayName: string;
@@ -27,7 +28,7 @@ This code expires in 24 hours. If you didn't sign up for Betcheza, you can safel
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Confirm your Betcheza account</title>
 </head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<body data-betcheza-email="branded" style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Confirm your email to start receiving tips and predictions — Betcheza</div>
 
@@ -38,14 +39,14 @@ This code expires in 24 hours. If you didn't sign up for Betcheza, you can safel
 
         <!-- ── HEADER ─────────────────────────────────────────── -->
         <tr>
-          <td style="background:linear-gradient(135deg,#065f46 0%,#059669 55%,#10b981 100%);padding:36px 32px 28px;">
+          <td style="background:linear-gradient(135deg,#0f172a 0%,#1565c0 70%,#1d4ed8 100%);padding:36px 32px 28px;">
             <table width="100%" cellpadding="0" cellspacing="0">
               <tr>
                 <td>
                   <table cellpadding="0" cellspacing="0">
                     <tr>
                       <td style="vertical-align:middle;padding-right:12px;">
-                        <div style="width:44px;height:44px;background:rgba(255,255,255,0.18);border-radius:11px;text-align:center;line-height:44px;font-size:24px;">⚽</div>
+                          <img src="${LOGO_URL}" width="44" height="44" alt="Betcheza" style="display:block;width:44px;height:44px;border:0;border-radius:50%;" />
                       </td>
                       <td style="vertical-align:middle;">
                         <div style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-0.3px;line-height:1;">Betcheza</div>
@@ -67,7 +68,7 @@ This code expires in 24 hours. If you didn't sign up for Betcheza, you can safel
 
         <!-- ── ACCENT LINE ────────────────────────────────────── -->
         <tr>
-          <td style="height:3px;background:linear-gradient(90deg,#f59e0b 0%,#10b981 45%,#7c3aed 100%);"></td>
+          <td style="height:3px;background:linear-gradient(90deg,#f59e0b 0%,#1565c0 50%,#64b5f6 100%);"></td>
         </tr>
 
         <!-- ── BODY ───────────────────────────────────────────── -->
@@ -103,7 +104,7 @@ This code expires in 24 hours. If you didn't sign up for Betcheza, you can safel
             <!-- CTA -->
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
               <tr>
-                <td style="background:#10b981;border-radius:10px;">
+                  <td style="background:#1565c0;border-radius:10px;">
                   <a href="${verifyUrl}" style="display:inline-block;padding:15px 40px;color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;letter-spacing:-0.2px;">✓ &nbsp;Verify my email</a>
                 </td>
               </tr>
@@ -124,7 +125,7 @@ This code expires in 24 hours. If you didn't sign up for Betcheza, you can safel
         <tr>
           <td style="background:#0f172a;padding:24px 32px;text-align:center;">
             <p style="margin:0 0 6px;color:rgba(255,255,255,0.5);font-size:12px;">
-              <a href="${BASE_URL}" style="color:#10b981;text-decoration:none;font-weight:600;">betcheza.co.ke</a>
+              <a href="${BASE_URL}" style="color:#64b5f6;text-decoration:none;font-weight:600;">betcheza.co.ke</a>
               &nbsp;·&nbsp;
               <a href="mailto:support@betcheza.co.ke" style="color:rgba(255,255,255,0.4);text-decoration:none;">support@betcheza.co.ke</a>
             </p>

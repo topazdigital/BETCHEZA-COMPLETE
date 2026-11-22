@@ -2,7 +2,7 @@
  * Email HTML templates — beautiful, branded Betcheza emails.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke';
+const BASE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://betcheza.co.ke').replace(/\/+$/, '');
 
 // ── Shared Design Primitives ─────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ function emailShell(content: string, preheader = ''): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Betcheza</title>
 </head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<body data-betcheza-email="branded" style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}</div>` : ''}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:36px 16px;">
     <tr><td align="center">
@@ -22,11 +22,11 @@ function emailShell(content: string, preheader = ''): string {
 
         <!-- HEADER -->
         <tr>
-          <td style="background:linear-gradient(135deg,#065f46 0%,#059669 55%,#10b981 100%);padding:28px 32px 22px;">
+          <td style="background:linear-gradient(135deg,#0f172a 0%,#1565c0 70%,#1d4ed8 100%);padding:28px 32px 22px;">
             <table cellpadding="0" cellspacing="0">
               <tr>
                 <td style="vertical-align:middle;padding-right:12px;">
-                  <div style="width:42px;height:42px;background:rgba(255,255,255,0.18);border-radius:10px;text-align:center;line-height:42px;font-size:22px;">⚽</div>
+                  <img src="${BASE_URL}/betcheza-logo.png" width="42" height="42" alt="Betcheza" style="display:block;width:42px;height:42px;border:0;border-radius:50%;" />
                 </td>
                 <td style="vertical-align:middle;">
                   <div style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-0.3px;line-height:1;">Betcheza</div>
@@ -39,7 +39,7 @@ function emailShell(content: string, preheader = ''): string {
 
         <!-- ACCENT LINE -->
         <tr>
-          <td style="height:3px;background:linear-gradient(90deg,#f59e0b 0%,#10b981 45%,#7c3aed 100%);"></td>
+          <td style="height:3px;background:linear-gradient(90deg,#f59e0b 0%,#1565c0 50%,#64b5f6 100%);"></td>
         </tr>
 
         <!-- BODY -->
@@ -53,7 +53,7 @@ function emailShell(content: string, preheader = ''): string {
         <tr>
           <td style="background:#0f172a;padding:22px 32px;text-align:center;">
             <p style="margin:0 0 6px;color:rgba(255,255,255,0.5);font-size:12px;line-height:1.6;">
-              <a href="${BASE_URL}" style="color:#10b981;text-decoration:none;font-weight:600;">betcheza.co.ke</a>
+              <a href="${BASE_URL}" style="color:#64b5f6;text-decoration:none;font-weight:600;">betcheza.co.ke</a>
               &nbsp;·&nbsp;
               <a href="mailto:support@betcheza.co.ke" style="color:rgba(255,255,255,0.35);text-decoration:none;">support@betcheza.co.ke</a>
             </p>
@@ -71,7 +71,7 @@ function emailShell(content: string, preheader = ''): string {
 }
 
 function statCard(label: string, value: string, color = '#10b981'): string {
-  return `<td style="text-align:center;padding:16px 10px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+  return `<td class="betcheza-stat-cell" style="text-align:center;padding:16px 10px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
     <div style="color:${color};font-size:21px;font-weight:800;line-height:1;">${value}</div>
     <div style="color:#94a3b8;font-size:10px;margin-top:5px;text-transform:uppercase;letter-spacing:0.7px;font-weight:600;">${label}</div>
   </td>`;
@@ -81,7 +81,7 @@ function sectionLabel(text: string): string {
   return `<p style="margin:0 0 12px;color:#94a3b8;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">${text}</p>`;
 }
 
-function primaryButton(text: string, href: string, color = '#10b981'): string {
+function primaryButton(text: string, href: string, color = '#1565c0'): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
     <tr>
       <td style="background:${color};border-radius:10px;">
@@ -123,12 +123,12 @@ export function tipsterSubscriptionEmail(opts: {
     </p>
 
     ${sectionLabel('Subscription Details')}
-    <table role="presentation" width="100%" cellpadding="6" cellspacing="6" style="margin-bottom:28px;">
+    <table class="betcheza-stat-row" role="presentation" width="100%" cellpadding="6" cellspacing="6" style="margin-bottom:28px;">
       <tr>
         ${statCard('Tipster', opts.tipsterName, '#7c3aed')}
-        <td style="width:12px;"></td>
+        <td class="betcheza-stat-spacer" style="width:12px;"></td>
         ${statCard('Amount Paid', `${opts.currency} ${opts.price.toLocaleString()}`, '#10b981')}
-        <td style="width:12px;"></td>
+        <td class="betcheza-stat-spacer" style="width:12px;"></td>
         ${statCard('Days Remaining', String(opts.daysLeft), '#f59e0b')}
       </tr>
     </table>
@@ -278,12 +278,12 @@ export function strategyAccessEmail(opts: {
     </p>
 
     ${sectionLabel('Strategy Overview')}
-    <table role="presentation" width="100%" cellpadding="6" cellspacing="6" style="margin-bottom:28px;">
+    <table class="betcheza-stat-row" role="presentation" width="100%" cellpadding="6" cellspacing="6" style="margin-bottom:28px;">
       <tr>
         ${statCard('Days', `${opts.startDay}–${opts.endDay}`, '#7c3aed')}
-        <td style="width:12px;"></td>
+        <td class="betcheza-stat-spacer" style="width:12px;"></td>
         ${statCard('Daily Stake', `KES ${opts.stake.toLocaleString()}`, '#10b981')}
-        <td style="width:12px;"></td>
+        <td class="betcheza-stat-spacer" style="width:12px;"></td>
         ${statCard('Active Until', expiry, '#f59e0b')}
       </tr>
     </table>
@@ -489,12 +489,12 @@ export function strategyPicksEmail(opts: {
     </p>
 
     ${sectionLabel('Strategy Stats')}
-    <table role="presentation" width="100%" cellpadding="6" cellspacing="6" style="margin-bottom:28px;">
+    <table class="betcheza-stat-row" role="presentation" width="100%" cellpadding="6" cellspacing="6" style="margin-bottom:28px;">
       <tr>
         ${statCard(`Day`, `${opts.day} of 7`, '#7c3aed')}
-        <td style="width:12px;"></td>
+        <td class="betcheza-stat-spacer" style="width:12px;"></td>
         ${statCard("Today's Stake", `KES ${opts.stake.toLocaleString()}`, '#10b981')}
-        <td style="width:12px;"></td>
+        <td class="betcheza-stat-spacer" style="width:12px;"></td>
         ${statCard('Combined Odds', `${opts.combinedOdds}×`, '#f59e0b')}
       </tr>
     </table>
@@ -664,7 +664,7 @@ export function bookmakerPartnershipEmail(opts: {
   const logoUrl = `${BASE_URL}/betcheza-logo.png`;
 
   const statPill = (val: string, label: string, accent: string) => `
-    <td style="text-align:center;padding:0 6px;">
+    <td class="betcheza-stat-cell" style="text-align:center;padding:0 6px;">
       <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 12px;">
         <div style="color:${accent};font-size:22px;font-weight:900;letter-spacing:-0.5px;line-height:1;">${val}</div>
         <div style="color:rgba(255,255,255,0.45);font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin-top:6px;">${label}</div>
@@ -709,7 +709,7 @@ export function bookmakerPartnershipEmail(opts: {
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Partnership Proposal — Betcheza × ${opts.bookmakerName}</title>
 </head>
-<body style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<body data-betcheza-email="branded" style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
   <!-- Preheader -->
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Exclusive advertising partnership proposal for ${opts.bookmakerName} from Betcheza — Kenya's leading sports predictions platform.</div>
@@ -720,28 +720,28 @@ export function bookmakerPartnershipEmail(opts: {
 
       <!-- ═══ HEADER ═══ -->
       <tr>
-        <td style="background:linear-gradient(145deg,#0b1120 0%,#0f172a 45%,#1a1040 100%);border-radius:18px 18px 0 0;padding:36px 40px 28px;text-align:center;">
+        <td style="background:linear-gradient(145deg,#0b1120 0%,#0f172a 45%,#1e3a8a 100%);border-radius:18px 18px 0 0;padding:36px 40px 28px;text-align:center;">
 
           <!-- Logo -->
           <table cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">
             <tr>
               <td style="text-align:center;">
-                <img src="${logoUrl}" alt="Betcheza" width="160" height="auto"
+                <img src="${logoUrl}" alt="Betcheza" width="160"
                   style="display:block;max-width:160px;height:auto;margin:0 auto;"
-                  onerror="this.style.display='none'" />
+                  />
                 <div style="margin-top:4px;color:rgba(255,255,255,0.35);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Kenya's #1 Tipster Community</div>
               </td>
             </tr>
           </table>
 
           <!-- Badge -->
-          <div style="display:inline-block;background:rgba(124,58,237,0.25);border:1px solid rgba(167,139,250,0.35);border-radius:30px;padding:7px 22px;margin-bottom:22px;">
+          <div style="display:inline-block;background:rgba(21,101,192,0.25);border:1px solid rgba(100,181,246,0.35);border-radius:30px;padding:7px 22px;margin-bottom:22px;">
             <span style="color:rgba(255,255,255,0.9);font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">🤝 Partnership Proposal · ${year}</span>
           </div>
 
           <!-- Headline -->
           <h1 style="margin:0 0 8px;color:#ffffff;font-size:26px;font-weight:900;line-height:1.2;letter-spacing:-0.5px;">
-            Grow <span style="color:#a78bfa;">${opts.bookmakerName}</span><br/>with Kenya's Most Engaged Bettors
+            Grow <span style="color:#64b5f6;">${opts.bookmakerName}</span><br/>with Kenya's Most Engaged Bettors
           </h1>
           <p style="margin:0;color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;">
             An exclusive advertising opportunity tailored for ${opts.bookmakerName}
@@ -750,16 +750,16 @@ export function bookmakerPartnershipEmail(opts: {
       </tr>
 
       <!-- Rainbow accent -->
-      <tr><td style="height:4px;background:linear-gradient(90deg,#7c3aed 0%,#10b981 40%,#f59e0b 75%,#ef4444 100%);"></td></tr>
+      <tr><td style="height:4px;background:linear-gradient(90deg,#1565c0 0%,#64b5f6 40%,#10b981 75%,#f59e0b 100%);"></td></tr>
 
       <!-- ═══ AUDIENCE STATS ═══ -->
       <tr>
         <td style="background:#0f172a;padding:24px 40px 28px;">
           <p style="margin:0 0 16px;color:rgba(255,255,255,0.35);font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;text-align:center;">Our Audience — ${month}</p>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <table class="betcheza-stat-row" role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
               ${statPill('50K+', 'Monthly Visitors', '#10b981')}
-              ${statPill('87%', 'Mobile Audience', '#a78bfa')}
+              ${statPill('87%', 'Mobile Audience', '#64b5f6')}
               ${statPill('2.5m', 'Avg. Session', '#f59e0b')}
               ${statPill('93%', 'East Africa Reach', '#38bdf8')}
             </tr>
@@ -776,12 +776,12 @@ export function bookmakerPartnershipEmail(opts: {
           <p style="margin:0 0 20px;color:#475569;font-size:14px;line-height:1.75;">
             ${greeting}<br/><br/>
             We are reaching out to offer <strong style="color:#0f172a;">${opts.bookmakerName}</strong> an exclusive spot on
-            <a href="${BASE_URL}" style="color:#7c3aed;font-weight:700;text-decoration:none;">Betcheza.co.ke</a> —
+            <a href="${BASE_URL}" style="color:#1565c0;font-weight:700;text-decoration:none;">Betcheza.co.ke</a> —
             where Kenya's most committed sports bettors discover tips, analyse odds, and decide where to place their bets every single day.
           </p>
 
           <!-- Why Betcheza -->
-          <h2 style="margin:0 0 16px;color:#0f172a;font-size:16px;font-weight:800;border-left:3px solid #7c3aed;padding-left:12px;">
+          <h2 style="margin:0 0 16px;color:#0f172a;font-size:16px;font-weight:800;border-left:3px solid #1565c0;padding-left:12px;">
             Why ${opts.bookmakerName} Should Partner with Betcheza
           </h2>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
@@ -793,15 +793,15 @@ export function bookmakerPartnershipEmail(opts: {
           </table>
 
           <!-- Proposed package -->
-          <div style="background:linear-gradient(135deg,#faf5ff 0%,#f5f3ff 100%);border:2px solid #7c3aed;border-radius:16px;padding:28px;margin-bottom:28px;">
+          <div style="background:linear-gradient(135deg,#eff6ff 0%,#f0f7ff 100%);border:2px solid #1565c0;border-radius:16px;padding:28px;margin-bottom:28px;">
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
               <tr>
                 <td style="vertical-align:middle;">
-                  <div style="color:#7c3aed;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">Proposed for ${opts.bookmakerName}</div>
-                  <h3 style="margin:0;color:#4c1d95;font-size:20px;font-weight:900;letter-spacing:-0.3px;">${tier.title}</h3>
+                  <div style="color:#1565c0;font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">Proposed for ${opts.bookmakerName}</div>
+                  <h3 style="margin:0;color:#0f172a;font-size:20px;font-weight:900;letter-spacing:-0.3px;">${tier.title}</h3>
                 </td>
                 <td style="text-align:right;vertical-align:middle;">
-                  <div style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:14px;font-weight:800;padding:10px 20px;border-radius:30px;white-space:nowrap;box-shadow:0 4px 14px rgba(124,58,237,0.35);">${tier.price}</div>
+                  <div style="background:linear-gradient(135deg,#1565c0,#1d4ed8);color:#fff;font-size:14px;font-weight:800;padding:10px 20px;border-radius:30px;white-space:nowrap;box-shadow:0 4px 14px rgba(21,101,192,0.35);">${tier.price}</div>
                 </td>
               </tr>
             </table>
@@ -818,7 +818,7 @@ export function bookmakerPartnershipEmail(opts: {
           </div>` : ''}
 
           <!-- CTA block -->
-          <div style="background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);border-radius:16px;padding:32px;text-align:center;">
+          <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);border-radius:16px;padding:32px;text-align:center;">
             <div style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">Ready to grow with Kenya's #1 betting community?</div>
             <h3 style="margin:0 0 8px;color:#ffffff;font-size:18px;font-weight:800;">Let's talk, ${opts.bookmakerName}</h3>
             <p style="margin:0 0 24px;color:rgba(255,255,255,0.55);font-size:13px;line-height:1.65;">
@@ -828,7 +828,7 @@ export function bookmakerPartnershipEmail(opts: {
               <tr>
                 <td style="padding-right:12px;">
                   <a href="mailto:partnerships@betcheza.co.ke?subject=Re%3A%20Partnership%20Proposal%20%E2%80%94%20${encodeURIComponent(opts.bookmakerName)}"
-                    style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-weight:700;font-size:14px;padding:14px 26px;border-radius:10px;text-decoration:none;box-shadow:0 4px 14px rgba(124,58,237,0.4);">
+                    style="display:inline-block;background:linear-gradient(135deg,#1565c0,#1d4ed8);color:#fff;font-weight:700;font-size:14px;padding:14px 26px;border-radius:10px;text-decoration:none;box-shadow:0 4px 14px rgba(21,101,192,0.4);">
                     Reply to Discuss →
                   </a>
                 </td>
@@ -858,14 +858,14 @@ export function bookmakerPartnershipEmail(opts: {
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="vertical-align:middle;">
-                <img src="${logoUrl}" alt="Betcheza" width="100" height="auto"
+                <img src="${logoUrl}" alt="Betcheza" width="100"
                   style="display:block;max-width:100px;height:auto;margin-bottom:10px;opacity:0.7;"
-                  onerror="this.style.display='none'" />
+                  />
                 <p style="margin:0;color:rgba(255,255,255,0.35);font-size:11px;line-height:1.8;">
                   Kenya's #1 Sports Betting Tipster Community<br/>
-                  <a href="mailto:partnerships@betcheza.co.ke" style="color:#10b981;text-decoration:none;">partnerships@betcheza.co.ke</a>
+              <a href="mailto:partnerships@betcheza.co.ke" style="color:#64b5f6;text-decoration:none;">partnerships@betcheza.co.ke</a>
                   &nbsp;·&nbsp;
-                  <a href="${BASE_URL}" style="color:#10b981;text-decoration:none;">betcheza.co.ke</a>
+              <a href="${BASE_URL}" style="color:#64b5f6;text-decoration:none;">betcheza.co.ke</a>
                 </p>
               </td>
               <td style="text-align:right;vertical-align:top;">
