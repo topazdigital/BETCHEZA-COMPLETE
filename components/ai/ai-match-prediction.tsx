@@ -15,13 +15,19 @@ interface AIMatchPredictionProps {
     home: { name: string; score?: number }
     away: { name: string; score?: number }
   }> | null
+  markets?: Array<{
+    key: string
+    name: string
+    outcomes: Array<{ name: string; price: number; point?: number }>
+    isDerived?: boolean
+  }> | null
   /** Stable match ID used as the localStorage cache key. */
   matchId?: string
   /** True once the match has finished — locks to the pre-match prediction. */
   isFinished?: boolean
 }
 
-const LS_PREFIX = 'betcheza:ai-pred:'
+const LS_PREFIX = 'betcheza:ai-pred:v2:'
 
 /**
  * Rule-based AI prediction. Generates a deterministic-feeling prediction
@@ -40,6 +46,7 @@ export function AIMatchPrediction({
   homeForm,
   awayForm,
   h2h,
+  markets,
   matchId,
   isFinished = false,
 }: AIMatchPredictionProps) {
@@ -52,8 +59,9 @@ export function AIMatchPrediction({
   // never changes pre- vs post-match and keeps the prediction stable.
   const liveAnalysis = useMemo(() => {
     const safeOdds = isFinished ? null : odds
-    return analyseMatch({ homeTeam, awayTeam, sportSlug, odds: safeOdds, homeForm, awayForm, h2h })
-  }, [homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, isFinished])
+    const safeMarkets = isFinished ? null : markets
+    return analyseMatch({ homeTeam, awayTeam, sportSlug, odds: safeOdds, homeForm, awayForm, h2h, markets: safeMarkets })
+  }, [homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h, markets, isFinished])
 
   // Locked pre-match prediction, loaded from / saved to localStorage
   const [lockedAnalysis, setLockedAnalysis] = useState<AnalysisResult | null>(null)
@@ -80,6 +88,7 @@ export function AIMatchPrediction({
       const hasMeaningfulData = odds !== null && odds !== undefined
         || !!(homeForm) || !!(awayForm)
         || (Array.isArray(h2h) && h2h.length > 0)
+        || (Array.isArray(markets) && markets.some((market) => !market.isDerived && market.outcomes.length > 0))
       if (hasMeaningfulData) {
         localStorage.setItem(key, JSON.stringify(liveAnalysis))
         setLockedAnalysis(liveAnalysis)
@@ -88,7 +97,7 @@ export function AIMatchPrediction({
   // Re-run when data loads so we capture odds once they arrive — but once
   // stored, the localStorage branch returns early and never overwrites.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, odds, homeForm, awayForm, h2h, isFinished, liveAnalysis])
+  }, [matchId, odds, homeForm, awayForm, h2h, markets, isFinished, liveAnalysis])
 
   // Always prefer locked prediction; for finished matches liveAnalysis is
   // already odds-stripped so it's also safe to fall back to.
@@ -123,7 +132,7 @@ export function AIMatchPrediction({
               </span>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground">Betcheza AI · trained on odds, form &amp; head-to-head</p>
+          <p className="text-[11px] text-muted-foreground">Betcheza AI · compares available markets, odds, form &amp; head-to-head</p>
         </div>
         <Sparkles className="h-4 w-4 text-violet-400" />
       </div>
@@ -133,7 +142,9 @@ export function AIMatchPrediction({
         <div className={cn("rounded-xl bg-gradient-to-br p-4 border border-white/5", confBg)}>
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Predicted</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+                Best market{analysis.market ? ` · ${analysis.market}` : ''}
+              </p>
               <p className="mt-1 text-base md:text-lg font-bold text-foreground line-clamp-2">{analysis.prediction}</p>
               {analysis.subPrediction && (
                 <p className="text-xs text-muted-foreground mt-0.5">{analysis.subPrediction}</p>
@@ -225,21 +236,280 @@ interface AnalyseInput {
     home: { name: string; score?: number }
     away: { name: string; score?: number }
   }> | null
+  markets?: Array<{
+    key: string
+    name: string
+    outcomes: Array<{ name: string; price: number; point?: number }>
+    isDerived?: boolean
+  }> | null
 }
 
 interface AnalysisResult {
   prediction: string
+  market?: string
   subPrediction?: string
   confidence: number
   reasoning: string[]
 }
 
+type MarketFamily =
+  | 'result'
+  | 'double_chance'
+  | 'draw_no_bet'
+  | 'btts'
+  | 'totals'
+  | 'handicap'
+  | 'clean_sheet'
+  | 'win_to_nil'
+  | 'first_team_to_score'
+  | 'goal_first_half'
+
+interface RankedMarketPick {
+  market: string
+  pick: string
+  price: number
+  modelProbability: number
+  marketProbability: number
+  edge: number
+  family: MarketFamily
+}
+
+function normalizeMarketText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9.+-]/g, '')
+}
+
+function predictionMarketFamily(key: string, name: string): MarketFamily | null {
+  const value = normalizeMarketText(`${key} ${name}`)
+  if (value.includes('doublechance')) return 'double_chance'
+  if (value.includes('drawnobet')) return 'draw_no_bet'
+  if (value.includes('btts') || value.includes('bothteamstoscore')) return 'btts'
+  if (value.includes('cleansheet')) return 'clean_sheet'
+  if (value.includes('wintonil')) return 'win_to_nil'
+  if (value.includes('firstteamtoscore')) return 'first_team_to_score'
+  if (value.includes('goalfirsthalf')) return 'goal_first_half'
+  if (value.includes('asian') || value.includes('handicap') || value.includes('spread')) return 'handicap'
+  if (value.includes('total') || value.includes('over') || value.includes('under')) return 'totals'
+  if (
+    value.includes('1x2') ||
+    value.includes('matchresult') ||
+    value.includes('fulltimeresult') ||
+    value.includes('matchwinner') ||
+    value === 'h2h' ||
+    value.includes('moneyline')
+  ) return 'result'
+  return null
+}
+
+function matchOutcomeSide(name: string, homeTeam: string, awayTeam: string): 'home' | 'away' | 'draw' | null {
+  const value = normalizeMarketText(name)
+  const home = normalizeMarketText(homeTeam)
+  const away = normalizeMarketText(awayTeam)
+  if (value === 'x' || value === 'draw' || value.includes('draw')) return 'draw'
+  if (value === '1' || value === 'home' || value.includes(home)) return 'home'
+  if (value === '2' || value === 'away' || value.includes(away)) return 'away'
+  return null
+}
+
+function marketLine(name: string, point?: number): number | null {
+  if (typeof point === 'number' && Number.isFinite(point)) return point
+  const signedMatch = name.match(/[+-]\d+(?:\.\d+)?/)
+  if (signedMatch) return Number(signedMatch[0])
+  const match = name.match(/[+-]?\d+(?:\.\d+)?/)
+  return match ? Number(match[0]) : null
+}
+
+function poissonProbability(lambda: number, goals: number): number {
+  if (goals < 0) return 0
+  let probability = Math.exp(-lambda)
+  for (let i = 1; i <= goals; i++) probability *= lambda / i
+  return probability
+}
+
+function poissonAtMost(lambda: number, goals: number): number {
+  if (goals < 0) return 0
+  let probability = Math.exp(-lambda)
+  let total = probability
+  for (let i = 1; i <= goals; i++) {
+    probability *= lambda / i
+    total += probability
+  }
+  return total
+}
+
+function estimateAvailableMarketPick(
+  input: AnalyseInput,
+  probabilities: { home: number; draw: number; away: number },
+): RankedMarketPick | null {
+  const isSoccerMatch = input.sportSlug === 'soccer' || input.sportSlug === 'football'
+  const markets = (input.markets || []).filter((market) => !market.isDerived)
+  if (!markets.length) return null
+
+  const history = input.h2h?.slice(0, 6) || []
+  let goals = 0
+  let bothScored = 0
+  for (const game of history) {
+    const homeScore = game.home.score ?? 0
+    const awayScore = game.away.score ?? 0
+    goals += homeScore + awayScore
+    if (homeScore > 0 && awayScore > 0) bothScored++
+  }
+  // Shrink a small head-to-head sample toward a neutral league scoring baseline.
+  const expectedGoals = history.length > 0 ? (goals + 2.6 * 2) / (history.length + 2) : 2.6
+  const homeShare = Math.min(0.72, Math.max(0.28,
+    (probabilities.home + probabilities.away) > 0
+      ? probabilities.home / (probabilities.home + probabilities.away)
+      : 0.55,
+  ))
+  const lambdaHome = Math.max(0.2, expectedGoals * homeShare)
+  const lambdaAway = Math.max(0.2, expectedGoals - lambdaHome)
+  const noGoal = Math.exp(-(lambdaHome + lambdaAway))
+  const homeFirst = (lambdaHome / (lambdaHome + lambdaAway)) * (1 - noGoal)
+  const awayFirst = 1 - noGoal - homeFirst
+
+  const candidates: RankedMarketPick[] = []
+  for (const market of markets) {
+    const family = predictionMarketFamily(market.key, market.name)
+    if (!family || !market.outcomes.length) continue
+    // These goal and handicap estimates are soccer-specific. Other sports stay
+    // on their native moneyline until a sport-specific model is available.
+    if (!isSoccerMatch && family !== 'result') continue
+    const impliedTotal = market.outcomes.reduce(
+      (sum, outcome) => sum + (outcome.price > 1 ? 1 / outcome.price : 0),
+      0,
+    )
+    if (impliedTotal <= 0) continue
+
+    for (const outcome of market.outcomes) {
+      if (!Number.isFinite(outcome.price) || outcome.price < 1.2 || outcome.price > 6) continue
+      const label = normalizeMarketText(outcome.name)
+      const side = matchOutcomeSide(outcome.name, input.homeTeam, input.awayTeam)
+      let modelProbability: number | null = null
+      let pick = outcome.name
+
+      if (family === 'result') {
+        if (side === 'home') modelProbability = probabilities.home
+        else if (side === 'away') modelProbability = probabilities.away
+        else if (side === 'draw') modelProbability = probabilities.draw
+        if (side === 'home') pick = `${input.homeTeam} to win`
+        else if (side === 'away') pick = `${input.awayTeam} to win`
+        else if (side === 'draw') pick = 'Draw'
+      } else if (family === 'double_chance') {
+        if (label.includes('1x') || (label.includes('home') && label.includes('draw')) ||
+            (label.includes(normalizeMarketText(input.homeTeam)) && label.includes('draw'))) {
+          modelProbability = probabilities.home + probabilities.draw
+          pick = `${input.homeTeam} or Draw`
+        } else if (label.includes('x2') || (label.includes('away') && label.includes('draw')) ||
+            (label.includes(normalizeMarketText(input.awayTeam)) && label.includes('draw'))) {
+          modelProbability = probabilities.away + probabilities.draw
+          pick = `${input.awayTeam} or Draw`
+        } else if (label.includes('12') || (label.includes(normalizeMarketText(input.homeTeam)) && label.includes(normalizeMarketText(input.awayTeam)))) {
+          modelProbability = probabilities.home + probabilities.away
+          pick = `${input.homeTeam} or ${input.awayTeam}`
+        }
+      } else if (family === 'draw_no_bet') {
+        if (side === 'home') {
+          modelProbability = probabilities.home / Math.max(probabilities.home + probabilities.away, 0.001)
+          pick = `${input.homeTeam} (Draw No Bet)`
+        } else if (side === 'away') {
+          modelProbability = probabilities.away / Math.max(probabilities.home + probabilities.away, 0.001)
+          pick = `${input.awayTeam} (Draw No Bet)`
+        }
+      } else if (family === 'btts' && history.length > 0) {
+        const yesProbability = (bothScored + 1) / (history.length + 2)
+        if (label === 'yes' || label.includes('yes')) {
+          modelProbability = yesProbability
+          pick = 'Both Teams to Score — Yes'
+        } else if (label === 'no' || label.includes('no')) {
+          modelProbability = 1 - yesProbability
+          pick = 'Both Teams to Score — No'
+        }
+      } else if (family === 'totals' && history.length > 0) {
+        const line = marketLine(outcome.name, outcome.point)
+        if (line !== null && (label.includes('over') || label.includes('under'))) {
+          const underProbability = poissonAtMost(expectedGoals, Math.floor(line))
+          if (label.includes('over')) {
+            modelProbability = 1 - underProbability
+            pick = `Over ${line} Goals`
+          } else {
+            modelProbability = underProbability
+            pick = `Under ${line} Goals`
+          }
+        }
+      } else if (family === 'handicap' && side && side !== 'draw') {
+        const line = marketLine(outcome.name, outcome.point)
+        if (line !== null) {
+          let coverProbability = 0
+          for (let homeGoals = 0; homeGoals <= 9; homeGoals++) {
+            for (let awayGoals = 0; awayGoals <= 9; awayGoals++) {
+              const jointProbability = poissonProbability(lambdaHome, homeGoals) * poissonProbability(lambdaAway, awayGoals)
+              const adjustedDifference = side === 'home'
+                ? homeGoals + line - awayGoals
+                : awayGoals + line - homeGoals
+              coverProbability += adjustedDifference > 0
+                ? jointProbability
+                : adjustedDifference === 0 ? jointProbability * 0.5 : 0
+            }
+          }
+          modelProbability = coverProbability
+        }
+      } else if (family === 'clean_sheet') {
+        const marketLabel = normalizeMarketText(`${market.key} ${market.name}`)
+        const defendingSide = marketLabel.includes('home') || marketLabel.includes(normalizeMarketText(input.homeTeam))
+          ? 'home'
+          : marketLabel.includes('away') || marketLabel.includes(normalizeMarketText(input.awayTeam))
+            ? 'away'
+            : null
+        if (defendingSide && (label === 'yes' || label === 'no')) {
+          const yesProbability = defendingSide === 'home' ? Math.exp(-lambdaAway) : Math.exp(-lambdaHome)
+          modelProbability = label === 'yes' ? yesProbability : 1 - yesProbability
+        }
+      } else if (family === 'win_to_nil') {
+        if (side === 'home') modelProbability = Math.exp(-lambdaAway) * (1 - Math.exp(-lambdaHome))
+        else if (side === 'away') modelProbability = Math.exp(-lambdaHome) * (1 - Math.exp(-lambdaAway))
+        else if (label.includes('neither')) {
+          modelProbability = 1 -
+            Math.exp(-lambdaAway) * (1 - Math.exp(-lambdaHome)) -
+            Math.exp(-lambdaHome) * (1 - Math.exp(-lambdaAway))
+        }
+      } else if (family === 'first_team_to_score') {
+        if (side === 'home') modelProbability = homeFirst
+        else if (side === 'away') modelProbability = awayFirst
+        else if (label.includes('nogoal') || label.includes('not')) modelProbability = noGoal
+      } else if (family === 'goal_first_half' && (label === 'yes' || label === 'no')) {
+        const yesProbability = 1 - Math.exp(-(lambdaHome + lambdaAway) * 0.48)
+        modelProbability = label === 'yes' ? yesProbability : 1 - yesProbability
+      }
+
+      if (modelProbability === null || !Number.isFinite(modelProbability) || modelProbability < 0.3) continue
+      const marketProbability = (1 / outcome.price) / impliedTotal
+      candidates.push({
+        market: market.name,
+        pick,
+        price: outcome.price,
+        modelProbability,
+        marketProbability,
+        edge: modelProbability - marketProbability,
+        family,
+      })
+    }
+  }
+
+  candidates.sort((a, b) =>
+    b.edge - a.edge ||
+    Number(a.family === 'result') - Number(b.family === 'result') ||
+    b.modelProbability - a.modelProbability,
+  )
+  return candidates[0] || null
+}
+
 function analyseMatch(input: AnalyseInput): AnalysisResult {
   const { homeTeam, awayTeam, sportSlug, odds, homeForm, awayForm, h2h } = input
+  const isSoccer = sportSlug === "soccer" || sportSlug === "football"
   const reasoning: string[] = []
 
   // 1. Odds → implied probabilities
   let homeP = 0.4, drawP = 0.25, awayP = 0.35
+  if (!isSoccer) drawP = 0
   if (odds) {
     const hp = 1 / odds.home
     const ap = 1 / odds.away
@@ -297,7 +567,6 @@ function analyseMatch(input: AnalyseInput): AnalysisResult {
   awayP = Math.max(0.05, Math.min(0.85, awayP - formDelta - h2hDelta))
 
   // 5. Pick winner
-  const isSoccer = sportSlug === "soccer" || sportSlug === "football"
   let prediction: string
   let confidence: number
   let subPrediction: string | undefined
@@ -335,5 +604,27 @@ function analyseMatch(input: AnalyseInput): AnalysisResult {
 
   if (reasoning.length < 2) reasoning.push("Signal strength is moderate — consider waiting for late team-news before placing.")
 
-  return { prediction, subPrediction, confidence, reasoning }
+  const totalProbability = homeP + drawP + awayP || 1
+  const bestMarket = estimateAvailableMarketPick(input, {
+    home: homeP / totalProbability,
+    draw: drawP / totalProbability,
+    away: awayP / totalProbability,
+  })
+  if (bestMarket && bestMarket.edge >= 0.01) {
+    prediction = bestMarket.pick
+    confidence = Math.round(Math.min(92, Math.max(34, bestMarket.modelProbability * 100)))
+    subPrediction = `Odds ${bestMarket.price.toFixed(2)} · estimated value edge ${Math.round(bestMarket.edge * 100)} pts`
+    reasoning.unshift(
+      `${bestMarket.market} compares best among available bookmaker markets: estimated probability ${Math.round(bestMarket.modelProbability * 100)}% vs ${Math.round(bestMarket.marketProbability * 100)}% market-implied.`,
+    )
+    return { prediction, market: bestMarket.market, subPrediction, confidence, reasoning }
+  }
+
+  return {
+    prediction,
+    market: sportSlug === 'soccer' || sportSlug === 'football' ? 'Match Result (1X2)' : 'Moneyline',
+    subPrediction,
+    confidence,
+    reasoning,
+  }
 }

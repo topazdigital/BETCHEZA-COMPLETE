@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { recordPrediction } from '@/lib/predictor-store'
 import { getUpcomingMatches } from '@/lib/api/unified-sports-api'
+import type { Market } from '@/lib/api/unified-sports-api'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -213,9 +214,114 @@ function getSportConfig(sport?: string) {
   return SPORT_MARKETS[key] || SPORT_MARKETS['soccer']
 }
 
+function normalizeMarketValue(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function predictorMarketFamily(market: Market): string {
+  const text = normalizeMarketValue(`${market.key} ${market.name}`)
+  if (text.includes('doublechance')) return 'double_chance'
+  if (text.includes('drawnobet')) return 'draw_no_bet'
+  if (text.includes('btts') || text.includes('bothteamstoscore')) return 'btts'
+  if (text.includes('cleansheet')) return 'clean_sheet'
+  if (text.includes('wintonil')) return 'win_to_nil'
+  if (text.includes('firstteamtoscore')) return 'first_team_to_score'
+  if (text.includes('goalfirsthalf')) return 'goal_first_half'
+  if (text.includes('halftime') && text.includes('result')) return 'half_time_result'
+  if (text.includes('corner')) return 'corners'
+  if (text.includes('card') || text.includes('booking')) return 'cards'
+  if (text.includes('asian') || text.includes('handicap') || text.includes('spread')) return 'handicap'
+  if (text.includes('total') || text.includes('over') || text.includes('under')) return 'totals'
+  if (text.includes('1x2') || text.includes('matchresult') || text.includes('fulltimeresult') || text.includes('winner') || text.includes('moneyline') || text.includes('h2h')) return 'result'
+  return 'other'
+}
+
+function selectAvailablePredictionMarkets(markets: Market[]): Market[] {
+  const supported = markets
+    .filter((market) => !market.isDerived)
+    .filter((market) => {
+      const text = normalizeMarketValue(`${market.key} ${market.name}`)
+      return ![
+        'correctscore',
+        'exactscore',
+        'exactgoals',
+        'halftimefulltime',
+        'player',
+        'goalscorer',
+        'oddoreven',
+        'outright',
+      ].some((excluded) => text.includes(excluded))
+    })
+  const familyOrder = [
+    'result',
+    'double_chance',
+    'draw_no_bet',
+    'btts',
+    'totals',
+    'handicap',
+    'half_time_result',
+    'goal_first_half',
+    'clean_sheet',
+    'win_to_nil',
+    'first_team_to_score',
+    'corners',
+    'cards',
+    'other',
+  ]
+  const selected: Market[] = []
+  const included = new Set<Market>()
+  for (const family of familyOrder) {
+    const market = supported.find((item) => predictorMarketFamily(item) === family)
+    if (market) {
+      selected.push(market)
+      included.add(market)
+    }
+  }
+  for (const market of supported) {
+    if (selected.length >= 20) break
+    if (!included.has(market)) selected.push(market)
+  }
+  return selected
+}
+
+function formatAvailableMarkets(markets: Market[]): string {
+  return selectAvailablePredictionMarkets(markets)
+    .map((market) => {
+      const outcomes = market.outcomes
+        .filter((outcome) => Number.isFinite(outcome.price) && outcome.price > 1)
+        .slice(0, 12)
+        .map((outcome) => `${outcome.name}=${outcome.price}`)
+        .join(' ')
+      return outcomes ? `${market.name} [${market.key}]: ${outcomes}` : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function verifyMarketPick(markets: Market[], requestedMarket: string, requestedPick: string) {
+  const marketLabel = normalizeMarketValue(requestedMarket)
+  const pickLabel = normalizeMarketValue(requestedPick)
+  const candidates = markets
+    .filter((market) => !market.isDerived)
+    .sort((a, b) =>
+      Number(normalizeMarketValue(b.name) === marketLabel) -
+      Number(normalizeMarketValue(a.name) === marketLabel),
+    )
+  for (const market of candidates) {
+    if (
+      marketLabel &&
+      normalizeMarketValue(market.name) !== marketLabel &&
+      normalizeMarketValue(market.key) !== marketLabel
+    ) continue
+    const outcome = market.outcomes.find((item) => normalizeMarketValue(item.name) === pickLabel)
+    if (outcome) return { market: market.name, pick: outcome.name }
+  }
+  return null
+}
+
 // Deterministic fallback so the predictor still feels useful when no LLM is
 // configured. Uses a hash of the team names for stable, varied results.
-function localPredict(home: string, away: string, league?: string, sport?: string): PredictorResult {
+function localPredict(home: string, away: string, league?: string, sport?: string, markets?: Market[]): PredictorResult {
   const hash = (s: string) => {
     let h = 0
     for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0
@@ -225,6 +331,32 @@ function localPredict(home: string, away: string, league?: string, sport?: strin
   const r = (offset: number) => ((seed + offset) % 100) / 100
 
   const cfg = getSportConfig(sport)
+  const availableOutcomes = selectAvailablePredictionMarkets(markets || [])
+    .flatMap((market) => market.outcomes
+      .filter((outcome) => Number.isFinite(outcome.price) && outcome.price >= 1.3 && outcome.price <= 6)
+      .map((outcome) => ({ market: market.name, pick: outcome.name, price: outcome.price })))
+    .sort((a, b) => a.price - b.price)
+
+  if (availableOutcomes.length > 0) {
+    const best = availableOutcomes[0]
+    return {
+      pick: best.pick,
+      market: best.market,
+      confidence: Math.min(80, Math.round(100 / best.price)),
+      recommendedBet: `Single — ${best.pick} (${best.market} @${best.price.toFixed(2)})`,
+      altMarkets: availableOutcomes.slice(1, 4).map((alternative) => ({
+        market: alternative.market,
+        pick: alternative.pick,
+        confidence: Math.min(80, Math.round(100 / alternative.price)),
+      })),
+      reasoning: [
+        `${best.market}: ${best.pick} at ${best.price.toFixed(2)} has the strongest bookmaker-implied probability among the available supported markets.`,
+        `This is a market-price fallback because the AI provider is unavailable; it is not a form-based value estimate.`,
+        `Stake 1–2% of bankroll and account for the risk of any single outcome.`,
+      ],
+      source: 'fallback',
+    }
+  }
 
   const homeStrength = 0.45 + r(1) * 0.4
   const drawProb = cfg.hasDraw ? 0.22 + r(2) * 0.12 : 0
@@ -250,20 +382,20 @@ function localPredict(home: string, away: string, league?: string, sport?: strin
 }
 
 // Build a sport-aware system prompt for the AI
-function buildSystemPrompt(sport?: string): string {
+function buildSystemPrompt(sport?: string, hasProviderMarkets = false): string {
   const s = (sport || 'soccer').toLowerCase()
 
   const sportRules: Record<string, string> = {
-    soccer: `Primary market: Match Result (1X2). Include in altMarkets: Over/Under 2.5 Goals, BTTS (Both Teams to Score - Yes/No), Double Chance. Do NOT use moneyline, points spread, or sets markets.`,
-    football: `Sport is American Football (NFL/NCAA). Primary market: Moneyline. Include in altMarkets: Over/Under Points (e.g. Over 44.5 Points), Point Spread (e.g. Home -3.5), First Half Winner. Do NOT use 1X2, BTTS, or goals markets.`,
-    basketball: `Primary market: Moneyline. Include in altMarkets: Over/Under Points (e.g. Over 215.5 Points), Point Spread (e.g. Home -4.5), First Half Winner. Do NOT use 1X2, BTTS, or goals markets.`,
-    tennis: `Primary market: Moneyline (match winner). Include in altMarkets: Total Sets (Over/Under 2.5 Sets), Over/Under Games (e.g. Over 22.5 Games), Set Betting (e.g. 2-0, 2-1). Do NOT use 1X2, BTTS, points spread, or goals markets.`,
-    cricket: `Primary market: Match Winner (can include Draw for Tests). Include in altMarkets: Total Runs (e.g. Over 300.5 Runs), First Innings Lead, Top Batsman. Do NOT use 1X2, BTTS, or goals markets.`,
-    baseball: `Primary market: Moneyline. Include in altMarkets: Over/Under Runs (e.g. Over 8.5 Runs), Run Line (e.g. Home -1.5), 1st Inning Score. Do NOT use 1X2, BTTS, goals, or sets markets.`,
-    hockey: `Sport is Ice Hockey. Primary market: Moneyline (60 min). Include in altMarkets: Over/Under Goals (e.g. Over 5.5 Goals), Both Teams to Score, Period 1 Winner. Do NOT use 1X2 three-way, BTTS soccer-style, or points markets.`,
-    mma: `Sport is MMA/UFC. Primary market: Moneyline (fight winner). Include in altMarkets: Method of Victory (KO/TKO/Decision/Submission), Fight Goes the Distance (Yes/No), Total Rounds (Over/Under 2.5). Do NOT use goals, sets, points, or BTTS markets.`,
-    rugby: `Primary market: Match Result (1X2 with Draw). Include in altMarkets: Over/Under Points (e.g. Over 42.5 Points), Handicap (e.g. Home -5.5), First Try Scorer. Do NOT use goals, sets, or basketball-style markets.`,
-    golf: `Sport is Golf. Primary market: Tournament Winner (outright). Include in altMarkets: Top 5 Finish, Top 10 Finish, Head-to-Head matchup. Do NOT use 1X2, BTTS, goals, or points markets.`,
+    soccer: `Soccer markets include match result, double chance, draw no bet, BTTS, goal totals, Asian Handicap, and other listed match markets.`,
+    football: `Sport is American Football (NFL/NCAA). Use appropriate listed moneyline, spread, or points-total markets. Do NOT use soccer 1X2, BTTS, or goals markets.`,
+    basketball: `Use appropriate listed moneyline, spread, and points-total markets. Do NOT use soccer 1X2, BTTS, or goals markets.`,
+    tennis: `Use appropriate listed match-winner, set, and games markets. Do NOT use 1X2, BTTS, or soccer goals markets.`,
+    cricket: `Use appropriate listed match-winner, runs, or innings markets. A draw may be possible in Test matches.`,
+    baseball: `Use appropriate listed moneyline, run-line, and runs-total markets.`,
+    hockey: `Use appropriate listed moneyline, puck-line, and goals-total markets.`,
+    mma: `Use appropriate listed fight-winner, method, rounds, or goes-the-distance markets.`,
+    rugby: `Use appropriate listed match-result, points-total, or handicap markets.`,
+    golf: `Use appropriate listed tournament-winner or placement markets.`,
   }
 
   const sportKey = Object.keys(sportRules).find(k => s.includes(k)) || 'soccer'
@@ -276,14 +408,17 @@ Rules:
 - If a team/player is obscure, infer reasonable probabilities from the league/tournament context.
 - Confidence MUST be a calibrated probability percentage (0-100). Don't go above 80 unless one side is overwhelmingly favoured.
 - SPORT-SPECIFIC MARKETS: ${marketRules}
+- ${hasProviderMarkets ? 'Compare the available real bookmaker markets and choose the best-supported primary market; use only the exact market and outcome names listed for this fixture.' : 'No bookmaker market list is available, so use only a sensible sport-appropriate core market and do not invent prices or lines.'}
+- Do not default to match winner or handicap. Compare all listed market types that have relevant evidence, and do not select a market solely because it has the shortest odds.
+- Each altMarkets entry must also use a market and outcome from the supplied bookmaker list when one is available.
 - recommendedBet must be a single concrete bet a user could place today, with staking guidance.
 - reasoning is a 3-5 item array of short, specific bullet points (cite form/H2H/style/venue/surface/stats — no fluff).
 - NEVER invent fixture dates or scores you can't verify. Reason about probabilities, not certainties.
 
 Output STRICT JSON with this exact shape:
 {
-  "pick": "string — e.g. 'Team Name to win' or 'Draw'",
-  "market": "string (sport-appropriate primary market)",
+  "pick": "exact outcome name from the listed market when available",
+  "market": "exact market name from the listed markets when available",
   "confidence": number (0-100),
   "recommendedBet": "string",
   "altMarkets": [
@@ -314,7 +449,7 @@ export async function POST(request: NextRequest) {
 
   // Restrict the predictor to upcoming fixtures so the "recent" list
   // never grows full of bets on games that already kicked off.
-  let matchedFixture: { id: string; league: string; kickoffTime: string; sport?: string } | null = null
+  let matchedFixture: { id: string; league: string; sport?: string; markets?: Market[] } | null = null
   try {
     const upcoming = await getUpcomingMatches()
     const lh = home.toLowerCase()
@@ -325,14 +460,15 @@ export async function POST(request: NextRequest) {
       return (hn.includes(lh) || lh.includes(hn)) && (an.includes(la) || la.includes(an))
     })
     if (found) {
-      matchedFixture = {
+      const fixture = {
         id: String(found.id),
         league: found.league?.name || body.league || '',
-        kickoffTime: found.kickoffTime,
         sport: (found.sport as { name?: string } | undefined)?.name || sport,
+        markets: found.markets || [],
       }
+      matchedFixture = fixture
       // Prefer sport from matched fixture if not already set
-      if (!sport && matchedFixture.sport) sport = matchedFixture.sport
+      if (!sport && fixture.sport) sport = fixture.sport
     } else if (process.env.PREDICTOR_STRICT_UPCOMING === '1') {
       return NextResponse.json(
         { error: 'No upcoming fixture found for those teams. The predictor only covers upcoming matches.' },
@@ -363,11 +499,13 @@ export async function POST(request: NextRequest) {
 
   const openai = getOpenAI()
   if (!openai) {
-    return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport))
+    return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport, matchedFixture?.markets))
   }
 
-  const system = buildSystemPrompt(sport)
-  const user = `Predict: ${home} vs ${away}${body.league ? ` (${body.league})` : ''}${sport ? ` [Sport: ${sport}]` : ''}.${body.notes ? `\n\nUser notes: ${body.notes}` : ''}`
+  const realMarkets = selectAvailablePredictionMarkets(matchedFixture?.markets || [])
+  const availableMarkets = formatAvailableMarkets(realMarkets)
+  const system = buildSystemPrompt(sport, availableMarkets.length > 0)
+  const user = `Predict: ${home} vs ${away}${body.league ? ` (${body.league})` : ''}${sport ? ` [Sport: ${sport}]` : ''}.${availableMarkets ? `\n\nAVAILABLE REAL BOOKMAKER MARKETS AND OUTCOMES:\n${availableMarkets}` : ''}${body.notes ? `\n\nUser notes: ${body.notes}` : ''}`
 
   try {
     type ReasoningCreate = Parameters<typeof openai.chat.completions.create>[0] & {
@@ -385,13 +523,13 @@ export async function POST(request: NextRequest) {
     }
     const completion = await openai.chat.completions.create(params)
     const raw = completion.choices?.[0]?.message?.content?.trim()
-    if (!raw) return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport))
+    if (!raw) return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport, matchedFixture?.markets))
 
     let parsed: Partial<PredictorResult> = {}
     try {
       parsed = JSON.parse(raw) as Partial<PredictorResult>
     } catch {
-      return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport))
+      return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport, matchedFixture?.markets))
     }
     const out: PredictorResult = {
       pick: parsed.pick || `${home} Win`,
@@ -405,9 +543,20 @@ export async function POST(request: NextRequest) {
       reasoning: Array.isArray(parsed.reasoning) ? parsed.reasoning.slice(0, 6) : [],
       source: 'openai',
     }
+    if (realMarkets.length > 0) {
+      const verified = verifyMarketPick(realMarkets, out.market, out.pick)
+      if (!verified) {
+        return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport, matchedFixture?.markets))
+      }
+      out.market = verified.market
+      out.pick = verified.pick
+      out.altMarkets = out.altMarkets.filter((alternative) =>
+        verifyMarketPick(realMarkets, alternative.market, alternative.pick),
+      )
+    }
     return finishAndRecord(out)
   } catch (e) {
     console.error('[predictor] error', e)
-    return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport))
+    return finishAndRecord(localPredict(home, away, matchedFixture?.league || body.league, sport, matchedFixture?.markets))
   }
 }

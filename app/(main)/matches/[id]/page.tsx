@@ -148,7 +148,7 @@ interface SegmentBreakdown {
   totals?: { home: number; away: number }
 }
 interface MarketOutcome { name: string; price: number; point?: number }
-interface MatchMarket { key: string; name: string; outcomes: MarketOutcome[] }
+interface MatchMarket { key: string; name: string; outcomes: MarketOutcome[]; isDerived?: boolean }
 interface MatchDetails {
   match: {
     id: string
@@ -1802,6 +1802,7 @@ export default function MatchDetailPage({ params }: PageProps) {
               homeForm={match.homeTeam.form}
               awayForm={match.awayTeam.form}
               h2h={data.h2h}
+              markets={match.markets || null}
               matchId={match.id}
               isFinished={isFinished}
             />

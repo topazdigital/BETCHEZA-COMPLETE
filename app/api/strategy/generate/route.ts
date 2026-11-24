@@ -89,31 +89,103 @@ function fallbackPick(match: { homeTeam: { name: string }; awayTeam: { name: str
   };
 }
 
-// Preferred market keys in priority order for the rules-based fallback.
-// We only draw outcomes from these markets — they have clear real-world meaning.
-const FALLBACK_MARKET_PRIORITY = [
-  'double_chance',    // DC 1X / X2 / 12 — covers 2 of 3 outcomes
-  'draw_no_bet',      // DNB — removes draw risk
-  'totals_1_5',       // Over 1.5 goals — fires in ~75% of soccer matches
-  'btts',             // Both Teams to Score
-  'totals_2_5',       // Over/Under 2.5 goals
-  'goal_first_half',  // Goal in 1st half
-  'clean_sheet_home', // Home team keeps a clean sheet
-  'clean_sheet_away', // Away team keeps a clean sheet
-  'win_to_nil',       // Win without conceding
-  'totals_3_5',       // Over 3.5 for high-scoring games
-];
-
 function marketFamily(value: string): string {
   const normalized = normalizeStrategyTeamName(value);
   if (normalized.includes('doublechance') || normalized === 'dc') return 'double_chance';
   if (normalized.includes('drawnobet') || normalized === 'dnb') return 'draw_no_bet';
   if (normalized.includes('btts') || normalized.includes('bothteamstoscore')) return 'btts';
+  if (normalized.includes('cleansheet')) return 'clean_sheet';
+  if (normalized.includes('wintonil')) return 'win_to_nil';
+  if (normalized.includes('firstteamtoscore')) return 'first_team_to_score';
+  if (normalized.includes('goalfirsthalf')) return 'goal_first_half';
+  if ((normalized.includes('halftime') && normalized.includes('result')) || normalized === 'htresult') return 'half_time_result';
+  if (normalized.includes('corner')) return 'corners';
+  if (normalized.includes('card') || normalized.includes('booking')) return 'cards';
+  if (normalized.includes('asian') || normalized.includes('handicap') || normalized.includes('spread')) return 'handicap';
   if (normalized.includes('total') || normalized.includes('over') || normalized.includes('under')) return 'totals';
-  if (normalized.includes('asian') || normalized.includes('handicap')) return 'asian_handicap';
-  if (normalized.includes('wintonil') || normalized.includes('cleansheet')) return 'win_to_nil';
-  if (normalized.includes('1x2') || normalized.includes('matchresult') || normalized === '3way' || normalized === 'h2h') return '1x2';
+  if (
+    normalized.includes('1x2') ||
+    normalized.includes('matchresult') ||
+    normalized.includes('fulltimeresult') ||
+    normalized.includes('matchwinner') ||
+    normalized.includes('moneyline') ||
+    normalized === '3way' ||
+    normalized === 'h2h'
+  ) return '1x2';
   return normalized;
+}
+
+const STRATEGY_MARKET_FAMILIES = new Set([
+  '1x2',
+  'double_chance',
+  'draw_no_bet',
+  'btts',
+  'totals',
+  'handicap',
+  'clean_sheet',
+  'win_to_nil',
+  'first_team_to_score',
+  'goal_first_half',
+  'half_time_result',
+  'corners',
+  'cards',
+]);
+
+function isStrategyMarket(market: Market): boolean {
+  const label = `${market.key} ${market.name}`;
+  const normalized = normalizeStrategyTeamName(label);
+  if (
+    normalized.includes('correctscore') ||
+    normalized.includes('exactscore') ||
+    normalized.includes('exactgoals') ||
+    normalized.includes('halftimefulltime') ||
+    normalized.includes('player') ||
+    normalized.includes('topscorer') ||
+    normalized.includes('goalscorer') ||
+    normalized.includes('playerprops') ||
+    normalized.includes('shots') ||
+    normalized.includes('assists') ||
+    normalized.includes('oddoreven') ||
+    normalized.includes('oddgoals') ||
+    normalized.includes('evengoals') ||
+    normalized.includes('outright')
+  ) return false;
+  return STRATEGY_MARKET_FAMILIES.has(marketFamily(label));
+}
+
+function selectStrategyMarketsForAI(markets: Market[]): Market[] {
+  const supported = markets.filter(isStrategyMarket);
+  const familyOrder = [
+    '1x2',
+    'double_chance',
+    'draw_no_bet',
+    'btts',
+    'totals',
+    'handicap',
+    'half_time_result',
+    'goal_first_half',
+    'clean_sheet',
+    'win_to_nil',
+    'first_team_to_score',
+    'corners',
+    'cards',
+  ];
+  const selected: Market[] = [];
+  const included = new Set<Market>();
+
+  // Include a representative from each useful family before adding alternate lines.
+  for (const family of familyOrder) {
+    const market = supported.find((item) => marketFamily(`${item.key} ${item.name}`) === family);
+    if (market) {
+      selected.push(market);
+      included.add(market);
+    }
+  }
+  for (const market of supported) {
+    if (selected.length >= 20) break;
+    if (!included.has(market)) selected.push(market);
+  }
+  return selected;
 }
 
 function findVerifiedOutcome(
@@ -169,28 +241,22 @@ function buildRulesBasedPicks(
 
   for (const m of pool) {
     const isSoccer = m.sport.slug === 'soccer' || m.sport.slug === 'football';
-    if (!isSoccer || !m.odds) continue;
-    const { home, away } = m.odds;
-    if (!home || !away) continue;
+    if (!isSoccer) continue;
 
     // Strategy picks may use only markets explicitly returned by a provider.
     // A 1X2 price must never be used to invent BTTS, totals, or handicap odds.
-    const markets = (m.markets || []).filter(market => !market.isDerived);
+    const markets = (m.markets || []).filter((market) => !market.isDerived && isStrategyMarket(market));
 
     const matchKey = `${m.homeTeam.name}|${m.awayTeam.name}`;
 
-    for (const priorityKey of FALLBACK_MARKET_PRIORITY) {
-      const mk = markets.find(m => m.key === priorityKey);
-      if (!mk) continue;
-
-      // Pick the single best outcome from this market
-      // "Best" = highest implied probability within a sensible odds range (1.10–2.20)
-      const best = mk.outcomes
-         .filter(o => o.price >= 1.40 && o.price <= 2.20)
-        .sort((a, b) => a.price - b.price)[0]; // lowest odds = highest probability
-
+    for (const mk of markets) {
+      // Compare real outcomes across all supported markets instead of stopping
+      // at the first market family (which made Double Chance dominate fallback picks).
+      const outcomes = mk.outcomes
+        .filter((outcome) => Number.isFinite(outcome.price) && outcome.price >= 1.40 && outcome.price <= 2.20)
+        .sort((a, b) => a.price - b.price);
+      const best = outcomes[0];
       if (!best) continue;
-
       allCandidates.push({
         matchKey,
         homeTeam: m.homeTeam.name,
@@ -202,12 +268,11 @@ function buildRulesBasedPicks(
         odds: best.price,
         prob: 1 / best.price,
       });
-      break; // one market per match per candidate (lowest-odds market wins)
     }
   }
 
-  // Sort by probability descending (highest probability = lowest odds first)
-  allCandidates.sort((a, b) => b.prob - a.prob);
+  // Compare candidate prices across market families (highest implied probability first).
+  allCandidates.sort((a, b) => b.prob - a.prob || a.marketName.localeCompare(b.marketName));
 
   // Greedy accumulator: add picks until combined odds lands in 3.00–4.00
   const chosen: MatchCandidate[] = [];
@@ -357,20 +422,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Keys we actually send to the AI — only the markets useful for game reasoning.
-    // Exotic markets (Correct Score, HT/FT, Exact Goals, Odd/Even) balloon the prompt
-    // without helping the AI reason about how the match will play out.
-    const AI_MARKET_KEYS = [
-      'double_chance',    // 1X / X2 / 12
-      'draw_no_bet',      // DNB
-      'btts',             // Both Teams to Score
-      'totals_1_5',       // Over/Under 1.5 Goals
-      'totals_2_5',       // Over/Under 2.5 Goals
-      'totals_3_5',       // Over/Under 3.5 Goals
-      'asian_handicap',   // AH line
-      'win_to_nil',       // Win to Nil
-    ];
-
     const matchList = extendedPool
       .map((m) => {
         const isSoccer = m.sport.slug === 'soccer' || m.sport.slug === 'football';
@@ -389,12 +440,14 @@ export async function POST(req: NextRequest) {
         // ── Include useful markets returned by bookmakers ────────────────────
         const mkParts: string[] = [];
         if (isSoccer && m.markets?.length) {
-          const realMarkets = m.markets.filter(market => !market.isDerived);
-          for (const key of AI_MARKET_KEYS) {
-            const mk = realMarkets.find(x => x.key === key);
-            if (!mk) continue;
-            const outcomes = mk.outcomes.map(o => `${o.name}=${o.price}`).join(' ');
-            mkParts.push(`${mk.name}: ${outcomes}`);
+          const realMarkets = selectStrategyMarketsForAI(m.markets.filter((market) => !market.isDerived));
+          for (const market of realMarkets) {
+            const outcomes = market.outcomes
+              .filter((outcome) => Number.isFinite(outcome.price) && outcome.price > 1)
+              .slice(0, 12)
+              .map((outcome) => `${outcome.name}=${outcome.price}`)
+              .join(' ');
+            if (outcomes) mkParts.push(`${market.name} [${market.key}]: ${outcomes}`);
           }
         }
 
@@ -443,7 +496,7 @@ Do NOT default to the lowest odds just because it is the "safest" number. A shor
 - If a dominant home side is facing a weak away attack → Win to Nil or Draw No Bet.
 - Use Double Chance (1X or X2) to protect against a single uncertain outcome, not as a default for every match.
 
-Any outcome is valid: Home Win, Draw, Away Win, BTTS, Over/Under, Draw No Bet, Asian Handicap, Win to Nil. Pick what the game context actually supports.
+Choose from the real markets listed for each fixture, including match result, Double Chance, Draw No Bet, BTTS, goal totals, Asian Handicap, half-time, clean sheet, corners, or cards when available. Do not invent a market, line, outcome, or bookmaker price. The "market" and "pick" fields must match the listed market name and outcome exactly.
 
 ━━━ AVAILABLE MATCHES ━━━
 ${matchList}
@@ -456,8 +509,8 @@ Return ONLY a valid JSON array. No markdown, no explanation outside the array.
     "awayTeam": "exact name from match list",
     "league": "league name",
     "matchTime": "ISO 8601 datetime",
-    "pick": "specific outcome e.g. Draw | Away Win | Over 2.5 Goals | BTTS Yes | Home or Draw",
-    "market": "1X2 | Draw | Double Chance | Over/Under | BTTS | Draw No Bet | Win to Nil | Asian Handicap",
+    "pick": "exact outcome name from the listed bookmaker market",
+    "market": "exact market name from the listed bookmaker market",
     "odds": 1.85,
     "confidence": "High | Medium",
     "reasoning": "2–3 sentences: what the match context tells you and why this specific outcome makes sense for THIS game — not just 'low odds'."
